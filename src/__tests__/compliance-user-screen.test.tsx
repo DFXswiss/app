@@ -326,6 +326,20 @@ describe('ComplianceUserScreen', () => {
     expect(screen.queryByTestId('user-data-panel')).not.toBeInTheDocument();
   });
 
+  it('does not show the previous route id load failure while a new route id loads', async () => {
+    mockGetUserData.mockRejectedValue(new Error('Dossier 12 failed'));
+    const { rerender } = render(<ComplianceUserScreen />);
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Dossier 12 failed'));
+    mockGetUserData.mockReturnValue(new Promise(() => undefined));
+
+    mockUserDataId = '13';
+    rerender(<ComplianceUserScreen />);
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(mockGetUserData).toHaveBeenLastCalledWith(13);
+  });
+
   it('keeps the dossier visible while reloading the same route id', async () => {
     await renderDossier();
     mockGetUserData.mockReturnValue(new Promise(() => undefined));

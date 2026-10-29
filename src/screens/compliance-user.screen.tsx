@@ -61,7 +61,8 @@ export default function ComplianceUserScreen(): JSX.Element {
   const { getUserData, getKycFile } = useCompliance();
   const navigate = useNavigate();
 
-  const [error, setError] = useState<string>();
+  // Errors are kept with the route id they occurred for, like the dossier below.
+  const [failure, setFailure] = useState<{ userDataId?: string; message: string }>();
   // The dossier is kept with the route id it was requested for and only shown while that id is open.
   const [loaded, setLoaded] = useState<{ userDataId: string; data: ComplianceUserData }>();
   const [preview, setPreview] = useState<{ url: string; contentType: string; name: string; uid?: string }>();
@@ -118,7 +119,7 @@ export default function ComplianceUserScreen(): JSX.Element {
     try {
       const { content, contentType } = await getKycFile(file.uid, 'View');
       if (!content || content.type !== 'Buffer' || !Array.isArray(content.data)) {
-        setError('Invalid file type');
+        setFailure({ userDataId, message: 'Invalid file type' });
         return;
       }
 
@@ -127,7 +128,7 @@ export default function ComplianceUserScreen(): JSX.Element {
 
       setPreview({ url, contentType, name: file.name, uid: file.uid });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error loading file');
+      setFailure({ userDataId, message: e instanceof Error ? e.message : 'Error loading file' });
     }
   }
 
@@ -136,19 +137,20 @@ export default function ComplianceUserScreen(): JSX.Element {
     try {
       const { content, contentType } = await getKycFile(preview.uid, 'Download');
       if (!content || content.type !== 'Buffer' || !Array.isArray(content.data)) {
-        setError('Invalid file type');
+        setFailure({ userDataId, message: 'Invalid file type' });
         return;
       }
       saveBufferedFile(content, contentType, preview.name);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error downloading file');
+      setFailure({ userDataId, message: e instanceof Error ? e.message : 'Error downloading file' });
     }
   }
 
   const loadData = useCallback(() => {
     const request = ++latestRequestRef.current;
+    setFailure(undefined);
     if (!userDataId) {
-      setError('No ID provided');
+      setFailure({ userDataId, message: 'No ID provided' });
       return;
     }
     getUserData(+userDataId)
@@ -157,15 +159,10 @@ export default function ComplianceUserScreen(): JSX.Element {
       })
       .catch((e: unknown) => {
         if (request === latestRequestRef.current) {
-          setError(e instanceof Error ? e.message : 'Unknown error');
+          setFailure({ userDataId, message: e instanceof Error ? e.message : 'Unknown error' });
         }
       });
   }, [userDataId, getUserData]);
-
-  useEffect(() => {
-    // A previous customer's load error must not hide the next customer's dossier.
-    setError(undefined);
-  }, [userDataId]);
 
   useEffect(() => {
     loadData();
@@ -187,6 +184,7 @@ export default function ComplianceUserScreen(): JSX.Element {
   });
 
   const data = loaded?.userDataId === userDataId ? loaded.data : undefined;
+  const error = failure?.userDataId === userDataId ? failure.message : undefined;
 
   if (error && !data) return <ErrorHint message={error} />;
   if (!data || !userDataId) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
