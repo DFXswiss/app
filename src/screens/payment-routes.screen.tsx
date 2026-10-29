@@ -998,12 +998,15 @@ function PaymentLinkForm({
   }, [paymentLinks, allowedCountries, paymentLinkId, step, configData]);
 
   useEffect(() => {
-    const maxIdRoute = paymentRoutes?.sell.reduce(
+    const linkRouteId = paymentLinks?.find((link) => link.id === paymentLinkId)?.routeId;
+    const linkRoute = paymentRoutes?.sell.find((route) => route.id.toString() === linkRouteId?.toString());
+    const minIdRoute = paymentRoutes?.sell.reduce(
       (prev, current) => (prev.id < current.id ? prev : current),
       paymentRoutes.sell[0],
     );
-    if (maxIdRoute) setValue('routeId', routeToRouteIdSelectData(maxIdRoute));
-  }, [paymentRoutes]);
+    const selectedRoute = paymentLinkId ? linkRoute : minIdRoute;
+    if (selectedRoute) setValue('routeId', routeToRouteIdSelectData(selectedRoute));
+  }, [paymentLinkId, paymentLinks, paymentRoutes]);
 
   useEffect(() => {
     const routeId = data.routeId?.id ?? paymentLinks?.find((link) => link.id === paymentLinkId)?.routeId;

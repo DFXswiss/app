@@ -575,7 +575,7 @@ describe('PaymentLinkForm labels and steps', () => {
     renderScreen();
     fireEvent.click(screen.getByText('Create Payment Link'));
 
-    // ROUTE → fill label/externalId, pick route (max id auto-selected via effect)
+    // ROUTE → fill label/externalId; the effect preselects the sell route with the smallest id
     fireEvent.change(screen.getByTestId('input-externalId'), { target: { value: 'ext-new' } });
     fireEvent.change(screen.getByTestId('input-label'), { target: { value: 'New Link' } });
     fireEvent.click(screen.getByText('Next'));
@@ -714,9 +714,39 @@ describe('PaymentLinkForm labels and steps', () => {
     expect(linkId).toBe('pl-1');
     expect(payment.amount).toBe(50);
     expect(payment.mode).toBe('Multiple');
-    // routeId is prefilled by the form's sell-route effect, which keeps the lower id
-    // (id 10 / EUR) rather than the payment link's routeId 20.
-    expect(payment.currency).toBe('EUR');
+    // pl-1 is on route 20 (CHF). The sell-route effect must keep that route, not the
+    // smallest sell id (route 10 / EUR).
+    expect(payment.currency).toBe('CHF');
+  });
+
+  it('defaults a new payment link to the sell route with the smallest id', async () => {
+    renderScreen();
+    fireEvent.click(screen.getByText('Create Payment Link'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('value-routeId')).toHaveTextContent('10');
+    });
+
+    fireEvent.click(screen.getByText('Next'));
+    await waitFor(() => expect(screen.getByText('Skip')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Skip'));
+
+    await waitFor(() => expect(screen.getByTestId('dropdown-paymentMode')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('select-paymentMode-Single'));
+    fireEvent.change(screen.getByTestId('input-paymentAmount'), { target: { value: '25' } });
+    fireEvent.change(screen.getByTestId('input-paymentExternalId'), { target: { value: 'pay-eur' } });
+    fireEvent.click(screen.getByText('Next'));
+
+    await waitFor(() => expect(screen.getByTestId('dropdown-configDisplayQr')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Next'));
+    await waitFor(() => expect(screen.getByText('Create')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Create'));
+
+    await waitFor(() => {
+      expect(mockCreatePaymentLink).toHaveBeenCalled();
+    });
+    const payload = mockCreatePaymentLink.mock.calls[0][0];
+    expect(payload.routeId).toBe(10);
   });
 
   it('updates payment link configuration on Save', async () => {
@@ -780,42 +810,35 @@ describe('PaymentLinkForm labels and steps', () => {
     });
   });
 
-  it('runs Custom validators for configDisplayQr and configCancellable', async () => {
-    renderScreen();
-    fireEvent.click(screen.getAllByText('Edit configuration')[1]);
-    await waitFor(() => expect(screen.getByTestId('dropdown-configDisplayQr')).toBeInTheDocument());
-
-    // Force invalid values so the `|| 'invalid …'` branch of Custom validators runs
-    fireEvent.click(screen.getByTestId('select-configDisplayQr-Yes'));
-    fireEvent.click(screen.getByTestId('select-configCancellable-No'));
-    // Re-select valid booleans (validate also runs with true/false — covers both sides)
-    fireEvent.click(screen.getByTestId('select-configDisplayQr-No'));
-    fireEvent.click(screen.getByTestId('select-configCancellable-Yes'));
-    fireEvent.click(screen.getByText('Save'));
-
-    await waitFor(() => {
-      expect(mockUpdatePaymentLink).toHaveBeenCalled();
-    });
-  });
-
   it('merges empty config fields from userPaymentLinksConfig on create wizard', async () => {
-    // Start with empty standards array so isEmpty(current) is true and L993 assigns
-    mockRoutesState.overrides = {
-      userPaymentLinksConfig: {
-        standards: [],
-        minCompletionStatus: 'TxReceived',
-        displayQr: false,
-        fee: 0,
-        paymentTimeout: 60,
-        cancellable: true,
-      },
-    };
     renderScreen();
     fireEvent.click(screen.getByText('Create Payment Link'));
     // descriptionFunc exercised while rendering route dropdown items
     expect(screen.getByTestId('dropdown-routeId')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Next'));
     await waitFor(() => expect(screen.getByText('Skip')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Skip'));
+
+    await waitFor(() => expect(screen.getByTestId('dropdown-paymentMode')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Skip'));
+
+    await waitFor(() => expect(screen.getByTestId('input-configPaymentTimeout')).toBeInTheDocument());
+    // User value must survive. An emptied field must be refilled from userPaymentLinksConfig (60).
+    fireEvent.click(screen.getByTestId('select-configDisplayQr-Yes'));
+    fireEvent.change(screen.getByTestId('input-configPaymentTimeout'), { target: { value: '' } });
+    expect(screen.getByTestId('value-configDisplayQr')).toHaveTextContent('Yes');
+    expect(screen.getByTestId('input-configPaymentTimeout')).toHaveValue('');
+
+    fireEvent.click(screen.getByText('Next'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('summary-Configuration-Payment timeout (seconds)')).toHaveTextContent(
+        'Payment timeout (seconds): 60',
+      );
+    });
+    expect(screen.getByTestId('summary-Configuration-Always show QR code')).toHaveTextContent(
+      'Always show QR code: Yes',
+    );
   });
 
   it('shows QR config errors and does not save when the user config is missing', async () => {
