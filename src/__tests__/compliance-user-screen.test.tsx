@@ -302,6 +302,40 @@ describe('ComplianceUserScreen', () => {
     await waitFor(() => expect(screen.getByTestId('loading-spinner')).toBeInTheDocument());
   });
 
+  it('drops the previous dossier while loading a new route id', async () => {
+    const { rerender } = await renderDossier();
+    mockGetUserData.mockReturnValue(new Promise(() => undefined));
+
+    mockUserDataId = '13';
+    rerender(<ComplianceUserScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('loading-spinner')).toBeInTheDocument());
+    expect(screen.queryByTestId('user-data-panel')).not.toBeInTheDocument();
+    expect(mockGetUserData).toHaveBeenLastCalledWith(13);
+  });
+
+  it('shows a new route id load failure instead of the previous dossier', async () => {
+    const { rerender } = await renderDossier();
+    mockGetUserData.mockRejectedValue(new Error('Dossier 13 failed'));
+
+    mockUserDataId = '13';
+    rerender(<ComplianceUserScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Dossier 13 failed'));
+    expect(screen.queryByTestId('user-data-panel')).not.toBeInTheDocument();
+  });
+
+  it('keeps the dossier visible while reloading the same route id', async () => {
+    await renderDossier();
+    mockGetUserData.mockReturnValue(new Promise(() => undefined));
+
+    fireEvent.click(screen.getByRole('button', { name: 'refresh account access' }));
+
+    expect(screen.getByTestId('user-data-panel')).toBeInTheDocument();
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    expect(mockGetUserData).toHaveBeenLastCalledWith(12);
+  });
+
   it('renders the Support layout and reload callbacks without middle panels', async () => {
     mockRole = 'Support';
     const data = dossier({

@@ -162,6 +162,12 @@ export default function ComplianceUserScreen(): JSX.Element {
   }, [userDataId, getUserData]);
 
   useEffect(() => {
+    // Drop the previous customer's dossier and error when the route id changes.
+    setData(undefined);
+    setError(undefined);
+  }, [userDataId]);
+
+  useEffect(() => {
     loadData();
   }, [loadData]);
 
