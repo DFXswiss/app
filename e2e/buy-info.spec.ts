@@ -193,6 +193,11 @@ test.describe('Buy Info - UI Flow', () => {
       ),
     ).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: 'Click here once you have issued the transfer' })).not.toBeVisible();
+    await page
+      .getByText(
+        'Your account is only provisionally approved. This allows you to make a deposit, but your crypto assets will only be delivered once your onboarding is complete.',
+      )
+      .scrollIntoViewIfNeeded();
     await expect(page).toHaveScreenshot('buy-info-provisional-approval.png', {
       fullPage: true,
       maxDiffPixels: 10000,
