@@ -67,8 +67,12 @@ describe('AccountAccessToggles', () => {
     mockStaffName.error = undefined;
     mockSetProvisionalApproval.mockReset();
     mockSetVip.mockReset();
-    mockSetProvisionalApproval.mockResolvedValue({ id: 88001, vipUserIds: [] });
-    mockSetVip.mockResolvedValue({ id: 88001, vipUserIds: [] });
+    mockSetProvisionalApproval.mockImplementation((id: number, enabled: boolean) =>
+      Promise.resolve({ id, provisionalApprovalDate: enabled ? '2026-10-29' : undefined, vipUserIds: [] }),
+    );
+    mockSetVip.mockImplementation((id: number, enabled: boolean) =>
+      Promise.resolve({ id, vipUserIds: enabled ? [42] : [] }),
+    );
   });
 
   it('is hidden from a plain user role', () => {
@@ -114,9 +118,12 @@ describe('AccountAccessToggles', () => {
 
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
     expect(mockSetProvisionalApproval).toHaveBeenCalledWith(88001, true);
+    expect(screen.getByText('Provisional approval: on')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Revoke' })).toBeEnabled();
   });
 
   it('revokes provisional approval and removes VIP with false', async () => {
+    mockSetProvisionalApproval.mockResolvedValueOnce({ id: 88001, vipUserIds: [42] });
     const onChanged = jest.fn();
     const { rerender } = render(
       element({ provisionalApprovalDate: '2026-10-29', users: [{ id: 42, role: 'VIP' }], onChanged }),
@@ -124,6 +131,8 @@ describe('AccountAccessToggles', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
     await waitFor(() => expect(mockSetProvisionalApproval).toHaveBeenCalledWith(88001, false));
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Provisional approval: off')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove VIP' })).toBeEnabled();
 
     rerender(element({ provisionalApprovalDate: '2026-10-29', users: [{ id: 42, role: 'VIP' }], onChanged }));
     fireEvent.click(screen.getByRole('button', { name: 'Remove VIP' }));
@@ -138,6 +147,64 @@ describe('AccountAccessToggles', () => {
 
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
     expect(mockSetVip).toHaveBeenCalledWith(88001, true);
+    expect(screen.getByText('VIP: on')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove VIP' })).toBeEnabled();
+  });
+
+  it('keeps the successful answer scoped to its account', async () => {
+    const onChanged = jest.fn();
+    const { rerender } = render(element({ onChanged }));
+    fireEvent.click(screen.getByRole('button', { name: 'Grant' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Revoke' })).toBeEnabled());
+
+    rerender(element({ userDataId: 88002, onChanged }));
+    expect(screen.getByText('Provisional approval: off')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Grant' })).toBeEnabled();
+
+    rerender(element({ onChanged }));
+    expect(screen.getByText('Provisional approval: off')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Grant' })).toBeEnabled();
+  });
+
+  it('uses refreshed prop values instead of a stored answer', async () => {
+    mockSetProvisionalApproval.mockResolvedValueOnce({ id: 88001, vipUserIds: [] });
+    const onChanged = jest.fn();
+    const { rerender } = render(element({ provisionalApprovalDate: '2026-10-29', onChanged }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+    await waitFor(() => expect(screen.getByText('Provisional approval: off')).toBeInTheDocument());
+
+    rerender(
+      element({
+        provisionalApprovalDate: '2026-10-29',
+        users: [{ id: 42, role: 'VIP' }],
+        onChanged,
+      }),
+    );
+    expect(screen.getByText('Provisional approval: on')).toBeInTheDocument();
+    expect(screen.getByText('VIP: on')).toBeInTheDocument();
+
+    rerender(element({ provisionalApprovalDate: '2026-10-29', onChanged }));
+    expect(screen.getByText('Provisional approval: on')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+    await waitFor(() => expect(screen.getByText('Provisional approval: off')).toBeInTheDocument());
+
+    rerender(element({ provisionalApprovalDate: '2026-10-30', onChanged }));
+    expect(screen.getByText('Provisional approval: on')).toBeInTheDocument();
+    expect(screen.getByText('VIP: off')).toBeInTheDocument();
+
+    rerender(element({ provisionalApprovalDate: '2026-10-29', onChanged }));
+    expect(screen.getByText('Provisional approval: on')).toBeInTheDocument();
+  });
+
+  it('does not overlay an answer for another account', async () => {
+    mockSetVip.mockResolvedValueOnce({ id: 88002, vipUserIds: [42] });
+    const onChanged = jest.fn();
+    render(element({ onChanged }));
+    fireEvent.click(screen.getByRole('button', { name: 'Set VIP' }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('VIP: off')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set VIP' })).toBeEnabled();
   });
 
   it('shows the API error and permits retry', async () => {
@@ -232,5 +299,20 @@ describe('AccountAccessToggles', () => {
       deferred.reject(new Error('late'));
       await deferred.promise.catch(() => undefined);
     });
+  });
+
+  it('ignores a successful answer after unmount', async () => {
+    const deferred = createDeferred<{ id: number; vipUserIds: number[] }>();
+    mockSetVip.mockReturnValue(deferred.promise);
+    const onChanged = jest.fn();
+    const { unmount } = render(element({ onChanged }));
+    fireEvent.click(screen.getByRole('button', { name: 'Set VIP' }));
+    unmount();
+
+    await act(async () => {
+      deferred.resolve({ id: 88001, vipUserIds: [42] });
+      await deferred.promise;
+    });
+    expect(onChanged).not.toHaveBeenCalled();
   });
 });
