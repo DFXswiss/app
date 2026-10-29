@@ -62,7 +62,8 @@ export default function ComplianceUserScreen(): JSX.Element {
   const navigate = useNavigate();
 
   const [error, setError] = useState<string>();
-  const [data, setData] = useState<ComplianceUserData>();
+  // The dossier is kept with the route id it was requested for and only shown while that id is open.
+  const [loaded, setLoaded] = useState<{ userDataId: string; data: ComplianceUserData }>();
   const [preview, setPreview] = useState<{ url: string; contentType: string; name: string; uid?: string }>();
   const [activeTab, setActiveTab] = useState<TabType>('transactions');
   const [expandedBankTxId, setExpandedBankTxId] = useState<number>();
@@ -152,7 +153,7 @@ export default function ComplianceUserScreen(): JSX.Element {
     }
     getUserData(+userDataId)
       .then((response) => {
-        if (request === latestRequestRef.current) setData(response);
+        if (request === latestRequestRef.current) setLoaded({ userDataId, data: response });
       })
       .catch((e: unknown) => {
         if (request === latestRequestRef.current) {
@@ -162,8 +163,7 @@ export default function ComplianceUserScreen(): JSX.Element {
   }, [userDataId, getUserData]);
 
   useEffect(() => {
-    // Drop the previous customer's dossier and error when the route id changes.
-    setData(undefined);
+    // A previous customer's load error must not hide the next customer's dossier.
     setError(undefined);
   }, [userDataId]);
 
@@ -185,6 +185,8 @@ export default function ComplianceUserScreen(): JSX.Element {
     noMaxWidth: true,
     textStart: true,
   });
+
+  const data = loaded?.userDataId === userDataId ? loaded.data : undefined;
 
   if (error && !data) return <ErrorHint message={error} />;
   if (!data || !userDataId) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
