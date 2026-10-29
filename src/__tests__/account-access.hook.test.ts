@@ -21,7 +21,7 @@ describe('useAccountAccess', () => {
     const row = await result.current.setProvisionalApproval(88001, true);
 
     expect(mockCall).toHaveBeenCalledWith({
-      url: 'support/88001/provisional-approval',
+      url: 'support/88001/provisionalApproval',
       method: 'PUT',
       data: { enabled: true },
     });

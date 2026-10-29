@@ -15,7 +15,7 @@ export function useAccountAccess(): {
 
   async function setProvisionalApproval(userDataId: number, enabled: boolean): Promise<AccountAccessInfo> {
     return call<AccountAccessInfo>({
-      url: `support/${userDataId}/provisional-approval`,
+      url: `support/${userDataId}/provisionalApproval`,
       method: 'PUT',
       data: { enabled },
     });
