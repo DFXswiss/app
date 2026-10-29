@@ -16,7 +16,14 @@ const mockAccountAccessProps: {
 
 jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => ({ session: mockSession }),
-  UserRole: { USER: 'User', SUPPORT: 'Support', MARKETING: 'Marketing', COMPLIANCE: 'Compliance', ADMIN: 'Admin' },
+  UserRole: {
+    USER: 'User',
+    VIP: 'VIP',
+    SUPPORT: 'Support',
+    MARKETING: 'Marketing',
+    COMPLIANCE: 'Compliance',
+    ADMIN: 'Admin',
+  },
 }));
 
 jest.mock('src/components/compliance/collapsible-section', () => ({

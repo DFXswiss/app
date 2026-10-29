@@ -8,7 +8,14 @@ const mockSetVip = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => ({ session: mockSession.current }),
-  UserRole: { USER: 'User', SUPPORT: 'Support', MARKETING: 'Marketing', COMPLIANCE: 'Compliance', ADMIN: 'Admin' },
+  UserRole: {
+    USER: 'User',
+    VIP: 'VIP',
+    SUPPORT: 'Support',
+    MARKETING: 'Marketing',
+    COMPLIANCE: 'Compliance',
+    ADMIN: 'Admin',
+  },
 }));
 
 jest.mock('src/hooks/account-access.hook', () => ({

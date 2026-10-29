@@ -1,5 +1,12 @@
 jest.mock('@dfx.swiss/react', () => ({
-  UserRole: { USER: 'User', SUPPORT: 'Support', MARKETING: 'Marketing', COMPLIANCE: 'Compliance', ADMIN: 'Admin' },
+  UserRole: {
+    USER: 'User',
+    VIP: 'VIP',
+    SUPPORT: 'Support',
+    MARKETING: 'Marketing',
+    COMPLIANCE: 'Compliance',
+    ADMIN: 'Admin',
+  },
 }));
 
 import { UserRole } from '@dfx.swiss/react';

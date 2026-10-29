@@ -1,7 +1,7 @@
 import { UserRole } from '@dfx.swiss/react';
 
 export const ONBOARDING_COMPLETE_KYC_LEVEL = 50;
-export const VIP_ROLE = 'VIP';
+export const VIP_ROLE = UserRole.VIP;
 
 /**
  * Managing account access is a Support, Compliance or Admin action. The API enforces the same rule

@@ -11,7 +11,7 @@ const mockRevokeObjectURL = jest.fn();
 const mockUserDataPanelRender = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
-  UserRole: { USER: 'User', SUPPORT: 'Support', COMPLIANCE: 'Compliance', ADMIN: 'Admin' },
+  UserRole: { USER: 'User', VIP: 'VIP', SUPPORT: 'Support', COMPLIANCE: 'Compliance', ADMIN: 'Admin' },
   useAuthContext: () => ({ session: { role: mockRole } }),
 }));
 
