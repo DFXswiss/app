@@ -23,8 +23,8 @@ import {
   Recommendation,
   RecommendationStatus,
   RecommendationType,
-} from 'src/dto/recommendation.dto';
-import useRecommendation from 'src/hooks/recommendation.hook';
+  useRecommendation,
+} from '@dfx.swiss/react';
 import { blankedAddress, formatSwissDate, partition, url } from 'src/util/utils';
 
 interface RecommendationFormData {
@@ -116,7 +116,7 @@ export function RecommendationsSection({
 
     const action = confirm ? confirmRecommendation : rejectRecommendation;
 
-    action(recommendation)
+    action(recommendation.id)
       .then(() => loadRecommendations())
       .catch((error: ApiError) => setRecommendationError(error.message ?? 'Unknown error'))
       .finally(() => {
