@@ -183,8 +183,8 @@ export default function ComplianceUserScreen(): JSX.Element {
     textStart: true,
   });
 
-  const data = loaded?.userDataId === userDataId ? loaded.data : undefined;
-  const error = failure?.userDataId === userDataId ? failure.message : undefined;
+  const data = loaded && loaded.userDataId === userDataId ? loaded.data : undefined;
+  const error = failure && failure.userDataId === userDataId ? failure.message : undefined;
 
   if (error && !data) return <ErrorHint message={error} />;
   if (!data || !userDataId) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
