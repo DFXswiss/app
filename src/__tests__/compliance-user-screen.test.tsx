@@ -257,9 +257,7 @@ describe('ComplianceUserScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'refresh account access' }));
     fireEvent.click(screen.getByRole('button', { name: 'refresh account access' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Users (2)' })).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Users (2)' })).toBeInTheDocument());
 
     await act(async () => {
       resolveOlder(dossier({ users: [{}, {}, {}] }));
@@ -284,9 +282,7 @@ describe('ComplianceUserScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'refresh account access' }));
     fireEvent.click(screen.getByRole('button', { name: 'refresh account access' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Users (2)' })).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Users (2)' })).toBeInTheDocument());
     const rendersBeforeRejection = mockUserDataPanelRender.mock.calls.length;
 
     await act(async () => {
