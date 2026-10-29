@@ -42,6 +42,7 @@ import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { usePersonalIbanRows } from '../hooks/personal-iban-rows.hook';
 import { usePersonalIbanSelection } from '../hooks/personal-iban.hook';
 import { getKycErrorFromMessage } from '../util/api-error';
+import { isProvisionalApproval } from '../util/provisional-approval';
 import {
   deriveEffectivePersonalIbanProvider,
   displayedFrickCurrencies,
@@ -462,6 +463,8 @@ export default function BuyInfoScreen(): JSX.Element {
     setKycError(undefined);
     setKycMessageOverride(undefined);
 
+    if (isProvisionalApproval(buy)) return buy;
+
     switch (buy.error) {
       case TransactionError.AMOUNT_TOO_LOW:
         setCustomAmountError(
@@ -514,6 +517,13 @@ export default function BuyInfoScreen(): JSX.Element {
       // Inapplicable offers were already requested without a selector.
       setContinueWithoutPersonalIban({ value: true, identity: customerIdentity });
     }
+  }
+
+  function onSubmit(): void {
+    if (!paymentInfo || isProvisionalApproval(paymentInfo)) return;
+    setCompletedPaymentInfo({ info: paymentInfo, identity: customerIdentity });
+    setShowsCompletion(true);
+    scrollToTop();
   }
 
   function onSwitchPersonalIbanProvider(provider: PersonalIbanProvider) {
@@ -686,6 +696,15 @@ export default function BuyInfoScreen(): JSX.Element {
               }
             />
 
+            {isProvisionalApproval(paymentInfo) && (
+              <StyledInfoText invertedIcon>
+                {translate(
+                  'screens/payment',
+                  'Your account is only provisionally approved. This allows you to make a deposit, but your crypto assets will only be delivered once your onboarding is complete.',
+                )}
+              </StyledInfoText>
+            )}
+
             {activeFrickKycFallbackHint && (
               <StyledInfoText invertedIcon>
                 {translate(
@@ -718,17 +737,15 @@ export default function BuyInfoScreen(): JSX.Element {
               />
             </div>
 
-            <StyledButton
-              width={StyledButtonWidth.FULL}
-              label={translate('screens/buy', 'Click here once you have issued the transfer')}
-              onClick={() => {
-                setCompletedPaymentInfo({ info: paymentInfo, identity: customerIdentity });
-                setShowsCompletion(true);
-                scrollToTop();
-              }}
-              caps={false}
-              className="mt-4"
-            />
+            {!isProvisionalApproval(paymentInfo) && (
+              <StyledButton
+                width={StyledButtonWidth.FULL}
+                label={translate('screens/buy', 'Click here once you have issued the transfer')}
+                onClick={onSubmit}
+                caps={false}
+                className="mt-4"
+              />
+            )}
           </>
         )
       )}

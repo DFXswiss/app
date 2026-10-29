@@ -210,6 +210,8 @@ export default function ComplianceUserScreen(): JSX.Element {
             wide={isSupport}
             onLimitRequestCreated={loadData}
             onCreateNote={() => navigate(`/notes?userDataId=${numericUserDataId}&compose=1`)}
+            users={data.users}
+            onAccountAccessChanged={loadData}
           />
 
           {!isSupport && (

@@ -5,7 +5,7 @@
   },
   "buy-info": {
     "title": "Kauf-Infoseite",
-    "description": "Buy-Info-Flow (/buy/info): Personal-IBAN-Mismatch-Hinweis für eine Nicht-Frick-Währung. Bei angezeigtem USD nennen der Mismatch-Satz und der Währungsfehler EUR, CHF und USD, sonst nur EUR und CHF. Bestandskunden können zwischen Bank-Frick- und Yapeal-IBAN wechseln. Zusätzlich werden der KYC-Fallback auf die bestehende Yapeal-IBAN und der Fehlerfall eines nicht verfügbaren Personal-IBAN-Providers gezeigt."
+    "description": "Buy-Info-Flow (/buy/info): Personal-IBAN-Mismatch-Hinweis für eine Nicht-Frick-Währung. Bei angezeigtem USD nennen der Mismatch-Satz und der Währungsfehler EUR, CHF und USD, sonst nur EUR und CHF. Bestandskunden können zwischen Bank-Frick- und Yapeal-IBAN wechseln. Zusätzlich werden der KYC-Fallback auf die bestehende Yapeal-IBAN und der Fehlerfall eines nicht verfügbaren Personal-IBAN-Providers gezeigt. Die provisorische Freigabe zeigt die Einzahlungsdetails mit einem Hinweis und ohne Bestätigungsbutton."
   },
   "buy-bitcoin": {
     "title": "Bitcoin kaufen",
@@ -65,7 +65,7 @@
   },
   "compliance": {
     "title": "Compliance",
-    "description": "Compliance-Suche mit Quick-Links (Aktennotiz, unzugeordnete Bankeingänge, offene Chargebacks), Trefferliste und Nutzerdossier mit Tabs (KYC, Transaktionen, Bankdaten, Routen)."
+    "description": "Compliance-Suche mit Quick-Links (Aktennotiz, unzugeordnete Bankeingänge, offene Chargebacks), Trefferliste und Nutzerdossier mit Tabs (KYC, Transaktionen, Bankdaten, Routen) sowie Provisional-Approval- und VIP-Toggles für Kunden im laufenden Onboarding."
   },
   "compliance-recommendation-graph": {
     "title": "Compliance-Empfehlungsgraph",

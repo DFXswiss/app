@@ -371,6 +371,7 @@ export interface UserDataDetail {
   // Other
   isTrustedReferrer?: boolean;
   tradeApprovalDate?: string;
+  provisionalApprovalDate?: string;
   deactivationDate?: string;
   lastNameCheckDate?: string;
   letterSentDate?: string;

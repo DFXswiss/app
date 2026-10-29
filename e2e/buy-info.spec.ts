@@ -127,6 +127,78 @@ test.describe('Buy Info - UI Flow', () => {
     });
   });
 
+  test('shows the provisional-approval notice', async ({ page, request }) => {
+    const token = await getToken(request);
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          id: 8,
+          isValid: false,
+          error: 'EmailRequired',
+          provisionalApproval: true,
+          amount: 100,
+          estimatedAmount: 0.0251,
+          rate: 3862.5,
+          exchangeRate: 3984.06,
+          priceSteps: [],
+          minVolume: 10,
+          maxVolume: 990000,
+          minVolumeTarget: 0.0026,
+          maxVolumeTarget: 248.5,
+          fees: {
+            rate: 0.0099,
+            fixed: 0,
+            min: 0,
+            dfx: 0.99,
+            network: 0,
+            bank: 0,
+            bankFixed: 2,
+            bankVariable: 0,
+            platform: 0,
+            total: 2.99,
+          },
+          currency: { id: 2, name: 'EUR' },
+          asset: {
+            id: 111,
+            name: 'ETH',
+            uniqueName: 'Ethereum/ETH',
+            blockchain: 'Ethereum',
+            category: 'Public',
+          },
+          bank: 'Bank Frick',
+          bic: 'SWQBCHZZXXX',
+          iban: 'CH9300762011623852957',
+          name: 'DFX AG',
+          street: 'Bahnhofstrasse',
+          number: '7',
+          zip: '6300',
+          city: 'Zug',
+          country: 'Schweiz',
+          remittanceInfo: 'DFX-BUY-8',
+          paymentRequest: 'Static provisional-approval payment request',
+          sepaInstant: false,
+          isPersonalIban: true,
+        },
+      });
+    });
+
+    await page.goto(`/buy/info?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&lang=en`);
+
+    await expect(
+      page.getByText(
+        'Your account is only provisionally approved. This allows you to make a deposit, but your crypto assets will only be delivered once your onboarding is complete.',
+      ),
+    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'Click here once you have issued the transfer' })).not.toBeVisible();
+    await expect(page).toHaveScreenshot('buy-info-provisional-approval.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+  });
+
   // USD is in the displayed Frick set, so the mismatch sentence names EUR, CHF and USD.
   // The live fiat list hides USD until the display flag is on. This fixture injects it.
   test('shows the mismatch sentence naming USD when USD is displayed', async ({ page, request }) => {
