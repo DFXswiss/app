@@ -12,6 +12,7 @@ import { useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { carriesLogin, isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-address';
 import { loginTarget } from 'src/util/login-redirect';
+import { relativeUrl } from 'src/util/utils';
 
 interface DeletedAddressGateProps extends PropsWithChildren {
   router: Router;
@@ -60,8 +61,11 @@ function DeletedAddressNotice({ router }: { router: Router }): JSX.Element {
     setError(undefined);
     reactivateAddress()
       .then(() => {
-        const target = loginTarget(redirectPath, router.state.location.pathname);
-        if (target) router.navigate(target);
+        const pathname = router.state.location.pathname;
+        const target = loginTarget(redirectPath, pathname) ?? (pathname === '/connect' ? '/account' : undefined);
+        if (target) {
+          router.navigate(relativeUrl({ path: target, params: new URLSearchParams(router.state.location.search) }));
+        }
       })
       .catch((e: ApiError) => {
         setError(e.message ?? 'Unknown error');
