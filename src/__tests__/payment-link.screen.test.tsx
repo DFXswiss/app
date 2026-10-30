@@ -52,6 +52,7 @@ let mockFormData: { amount?: number | string } = { amount: 10 };
 let mockWatchValues: { paymentStandard?: PaymentStandardLike; asset?: string } = {};
 let mockAssetsList: AssetLike[] = [];
 let mockWindowWidth = 800;
+const mockIsHandheld = { value: false };
 
 function paymentHasQuote(request: unknown): boolean {
   return typeof request === 'object' && request !== null && 'quote' in request;
@@ -354,6 +355,10 @@ jest.mock('src/hooks/web3.hook', () => ({
   useWeb3: () => ({ toBlockchain: mockToBlockchain }),
 }));
 
+jest.mock('src/hooks/device.hook', () => ({
+  useIsHandheld: () => mockIsHandheld.value,
+}));
+
 jest.mock('src/util/open-crypto-pay', () => ({
   OpenCryptoPayUtils: {
     getOcpUrlByUniqueId: (id: string) => `ocp:${id}`,
@@ -513,6 +518,7 @@ describe('PaymentLinkScreen', () => {
     mockWatchValues = {};
     mockAssetsList = [];
     mockWindowWidth = 800;
+    mockIsHandheld.value = false;
     mockSetSearchParams.mockImplementation((params: URLSearchParams) => {
       mockSearchParams = params;
     });
@@ -1198,13 +1204,25 @@ describe('PaymentLinkScreen', () => {
       expect(screen.queryByTestId('expand-item-Quote Payment')).not.toBeInTheDocument();
     });
 
-    it('renders the QR row inside the details table when displayQr is false', () => {
+    it('renders the QR row inside the details table when displayQr is false on a handheld', () => {
+      mockIsHandheld.value = true;
       mockPaymentLinkContext.payRequest = quotedPayRequest({ displayQr: false });
 
       renderScreen();
 
       expect(screen.getByTestId('expand-QR Code')).toBeInTheDocument();
       expect(within(screen.getByTestId('expand-QR Code')).getByTestId('qr-basic')).toHaveTextContent('ocp:pl-1');
+    });
+
+    it('renders the large QR and the scan sentence when displayQr is false on desktop', () => {
+      mockIsHandheld.value = false;
+      mockPaymentLinkContext.payRequest = quotedPayRequest({ displayQr: false });
+
+      renderScreen();
+
+      expect(screen.queryByTestId('expand-QR Code')).not.toBeInTheDocument();
+      expect(screen.getByTestId('qr-basic')).toHaveTextContent('ocp:pl-1');
+      expect(screen.getByText('Scan the QR-Code with a compatible app to complete the payment.')).toBeInTheDocument();
     });
 
     it('renders the big QR when displayQr is true on the OpenCryptoPay path', () => {
@@ -1517,9 +1535,7 @@ describe('PaymentLinkScreen', () => {
         screen.queryByText('Scan the QR-Code with a compatible app to complete the payment.'),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByText(
-          'Tell the cashier that you want to pay with crypto and then scan the QR-Code with a compatible app to complete the payment.',
-        ),
+        screen.queryByText('Tell the cashier that you want to pay with crypto to start the payment.'),
       ).not.toBeInTheDocument();
     });
 
@@ -1530,10 +1546,9 @@ describe('PaymentLinkScreen', () => {
       renderScreen();
 
       expect(
-        screen.getByText(
-          'Tell the cashier that you want to pay with crypto and then scan the QR-Code with a compatible app to complete the payment.',
-        ),
+        screen.getByText('Tell the cashier that you want to pay with crypto to start the payment.'),
       ).toBeInTheDocument();
+      expect(document.body.textContent ?? '').not.toContain('and then scan the QR-Code');
     });
 
     it('hides the OpenCryptoPay path when another standard is selected', () => {

@@ -530,12 +530,58 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The payment-link screen unit test replaces the SDK, the context, wallets and the SPAR map.**
   `src/__tests__/payment-link.screen.test.tsx` replaces `useApi` with `mockCall`, the asset
   catalog with `useAssetContext`, the payment-link context and the wallet hook with in-memory
-  objects, wallet deeplinks with `mockGetDeeplinkByWalletId`, and `SparPlaceMap` with an empty
-  marker. Styled controls, the QR code and `window.open` are fakes too. A green run proves those
-  objects render the quote rows, the payment methods, the wallet block and the SPAR locations
-  block. It does not prove that the DFX payment-link API returns those payloads, that a wallet
-  deeplink opens, that the asset catalog matches production, or that the SPAR map draws the
-  place list.
+  objects, wallet deeplinks with `mockGetDeeplinkByWalletId`, `SparPlaceMap` with an empty marker, and
+  `useIsHandheld` with a fixed flag. Styled controls, the QR code and `window.open` are fakes too.
+  A green run proves those objects render the quote rows, the payment methods, the wallet block,
+  the SPAR locations block, and the large QR or the collapsed QR row for the flag it sets. It does
+  not prove that the DFX payment-link API returns those payloads, that a wallet deeplink opens,
+  that the asset catalog matches production, that the SPAR map draws the place list, or that a
+  real device reports that flag.
+- **The payment-link device unit test replaces the SDK, the contexts and the device signals.**
+  `src/__tests__/payment-link.device.test.tsx` replaces `react-device-detect`, `useApi` and
+  `useAssetContext`, the component library, the payment-link context and the wallet hook, the QR
+  code, OpenCryptoPay and deeplink helpers, and `SparPlaceMap` with an empty marker, and it
+  installs `window.matchMedia`. A green run proves those stubs show the large QR and the scan
+  sentence on a fine pointer, the collapsed QR row and the wallet sentence on a coarse pointer or
+  a mobile user agent, and the cashier sentence with no scan instruction when there is no quote.
+  It does not prove a real phone, a real `matchMedia`, a payment-link API response, or that the
+  SPAR map draws a place.
+- **The payment-link coverage unit test replaces the SDK, the form controls and the SPAR map.**
+  `src/__tests__/payment-link.coverage.test.tsx` replaces `useApi` and `useAssetContext`, the
+  component library including dropdowns wired through `react-hook-form`, the payment-link context
+  and the wallet hook, `Evm.decodeUri`, `toBlockchain`, navigation, `window.open`,
+  `react-device-detect`, `SparPlaceMap` with an empty marker, and it installs or removes
+  `window.matchMedia`. A green run proves those stubs switch payment standard, render the EVM
+  amount, address and blockchain rows, open wallet deeplinks, and show transfer methods and public
+  create or edit errors. It does not prove a live payment-link API, a real wallet deeplink, a real
+  block explorer, a real device signal, or that the SPAR map draws a place.
+- **The handheld hook unit test replaces `matchMedia` and `isMobile`.**
+  `src/__tests__/device.hook.test.ts` replaces `react-device-detect`'s `isMobile` and installs a
+  fake `window.matchMedia`. A green run proves `useIsHandheld` is true when `isMobile` is true or
+  the coarse-pointer query matches, false when both are absent, and that the hook subscribes with
+  `addEventListener` or `addListener`. It does not prove that a real browser reports a coarse
+  pointer or that `react-device-detect` classifies a real user agent.
+- **The payment-routes actions unit test replaces the SDK, the wallet context and the controls.**
+  `src/__tests__/payment-routes.actions.test.tsx` replaces `usePaymentRoutes`,
+  `usePaymentRoutesContext` and `useUserContext` with in-memory fixtures, `useWalletContext` with
+  a controllable `isInitialized`, the component library, overlays, the QR code, copy, LNURL
+  helpers and navigation. A green run proves those fixtures render the route lists and link
+  actions, and that the loading spinner shows when `isInitialized` is false and the other loading
+  flags are not. It does not prove a live payment-route API, a real wallet session, or that a
+  browser saves the QR image.
+- **The payment-link form unit test replaces the SDK and the form controls.**
+  `src/__tests__/payment-routes.form.test.tsx` replaces the payment-route and user hooks, the
+  wallet context, the component library, overlays, the QR code and the LNURL helpers. A green run
+  proves the stubbed wizard shows "Always show QR code", walks the create and edit steps, and
+  surfaces the stubbed save errors. It does not prove that the API accepts those payloads or that
+  a production form control validates them. The address helper stub returns no text when every
+  address part is empty, so a green run does not prove the real address formatter.
+- **The payment-routes screen unit test replaces the SDK, the wallet context and the controls.**
+  `src/__tests__/payment-routes.screen.test.tsx` replaces the payment-route and user hooks, the
+  wallet context (`isInitialized` fixed true), the component library, overlays, the QR code and
+  navigation. A green run proves the stub renders "Always show QR code" on the global config and
+  the link, the loading spinner while config loads, the empty state, and the Yes/No config
+  values. It does not prove a live payment-route API or a real wallet session.
 - **The rejected address switch visual spec answers the user and the switch itself.**
   `e2e/connect-address-switch.spec.ts` authenticates with a synthetic unsigned JWT without an address, fulfils
   `GET /v2/user` with one synthetic address (and with none in the custody case) and the bootstrap GETs,
@@ -587,6 +633,33 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   enums, the order hook, the debounce hook and the payment-info component. A green run proves the
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
+- **The payment-link device-split tests answer the pay-request endpoint themselves.** The loc API
+  cannot build a Lightning/BTC transfer amount (`404 No BTC transfer amount found`), so
+  `e2e-stack/specs/payment-links.spec.ts` fulfils `paymentLink/payment` with a quoted OpenCryptoPay
+  payload (`displayQr: false`) and holds `lnurlp/wait` / `paymentLink/payment/wait` open. A green
+  run proves the desktop QR / handheld wallet-copy split for that payload, not that the loc API can
+  produce a quote or that a real quote's transfer amounts, expiry or callback match what the screen
+  then renders.
+
+- **The two payment visual specs answer every API they need themselves.**
+  `e2e/payment-qr-device.spec.ts` fulfils the `/v1/` payment routes with a fixed quote whose
+  expiry is a constant ISO string, holds the wait-polling open so it never re-fetches, and pins
+  wall-clock time. The Pay-to-Address desktop case keeps that quote (`displayQr: false`) and
+  answers the two further calls that standard makes: `GET /v1/paymentLink/standard` with a
+  PayToAddress entry, and the quote callback with `{ uri }` whose address is the placeholder
+  `0x0000000000000000000000000000000000000001`. Assets and languages stay the catch-all empty
+  list. `e2e/payment-routes-qr-label.spec.ts` answers `GET /v2/user`,
+  `GET /v1/route`, the payment-link list, its config and POS endpoints and the info banner with
+  static payloads, and mounts the screen on a synthetic unsigned JWT. A green
+  run of either proves that the screen renders those payloads — the device split, the wallet copy,
+  the Pay-to-Address page without a QR row or scan sentence, and the renamed setting label — not
+  that a real session passes the address guard, that the API returns these shapes, or that a live
+  quote expires when the baseline says it does. A green Pay-to-Address run does not prove that a
+  live callback returns that URI, or that the placeholder address can receive a payment.
+  Opening the default-configuration editor in `e2e/payment-routes-qr-label.spec.ts` sends no
+  further request and adds no fixture: the form reads the config payload already returned, and
+  countries stay the catch-all empty list from screen load, so a green run shows the same label
+  on the form without proving a country list or a second config fetch.
 
 ## Known gaps
 
