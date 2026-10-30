@@ -605,8 +605,18 @@ test.describe('Buy flow', () => {
     );
     await page.goto('/buy?asset-in=CHF&asset-out=ETH&amount-in=100&blockchain=Ethereum');
     await page.waitForLoadState('networkidle');
-    expect((await rejectedResponsePromise).status()).toBe(400);
-    await expect(page.getByText('To trade, you need a recommendation from an existing DFX customer.')).toBeVisible();
+    const rejectedResponse = await rejectedResponsePromise;
+    expect(rejectedResponse.status()).toBe(400);
+    // Without the flag the API answers exactly as before: the trade-approval check (RecommendationRequired) or,
+    // for a wallet with automatic trade approval, the KYC-50 gate of the collection account (KycRequired).
+    const rejectedMessage = ((await rejectedResponse.json()) as { message?: string }).message;
+    const rejectionHints: Record<string, string> = {
+      RecommendationRequired: 'To trade, you need a recommendation from an existing DFX customer.',
+      KycRequired:
+        'This transaction is only possible with a verified account. Please complete our KYC (Know-Your-Customer) process.',
+    };
+    expect(Object.keys(rejectionHints)).toContain(rejectedMessage);
+    await expect(page.getByText(rejectionHints[rejectedMessage!])).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Payment Information' })).toHaveCount(0);
 
     const { jwt: supportJwt } = await loginAs('Support');
