@@ -45,6 +45,7 @@ import { PaymentInformationContent } from 'src/components/payment/payment-info-b
 import { useWindowContext } from 'src/contexts/window.context';
 import { getKycErrorFromMessage } from 'src/util/api-error';
 import { displayWalletAddress } from 'src/util/lnurl';
+import { isProvisionalApproval } from 'src/util/provisional-approval';
 import { ErrorHint } from '../components/error-hint';
 import { ExchangeRate } from '../components/exchange-rate';
 import { AddressSwitch } from '../components/payment/address-switch';
@@ -884,6 +885,8 @@ export default function BuyScreen(): JSX.Element {
     setKycError(undefined);
     setKycMessageOverride(undefined);
 
+    if (isProvisionalApproval(buy)) return;
+
     switch (buy.error) {
       case TransactionError.AMOUNT_TOO_LOW:
         setCustomAmountError(
@@ -964,6 +967,7 @@ export default function BuyScreen(): JSX.Element {
   }
 
   function onSubmit(_data?: FormData) {
+    if (isProvisionalApproval(paymentInfo)) return;
     if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
     if (
       !paymentInfo ||
@@ -1335,6 +1339,14 @@ export default function BuyScreen(): JSX.Element {
                               }
                             />
                           </div>
+                          {isProvisionalApproval(paymentInfo) && (
+                            <StyledInfoText iconColor={IconColor.BLUE}>
+                              {translate(
+                                'screens/payment',
+                                'Your account is only provisionally approved. This allows you to make a deposit, but your crypto assets will only be delivered once your onboarding is complete.',
+                              )}
+                            </StyledInfoText>
+                          )}
                           <SanctionHint />
                           {activeFrickKycFallbackHint && (
                             <StyledInfoText iconColor={IconColor.BLUE}>
@@ -1359,7 +1371,8 @@ export default function BuyScreen(): JSX.Element {
                                 )}
                               </StyledInfoText>
                             )}
-                          {!paymentInfo.isPersonalIban &&
+                          {!isProvisionalApproval(paymentInfo) &&
+                            !paymentInfo.isPersonalIban &&
                             (selectedCurrency?.name === undefined ||
                               !displayedFrickCurrencies(activeFiatNames).includes(selectedCurrency.name)) &&
                             effectivePersonalIban === undefined && (
@@ -1391,15 +1404,17 @@ export default function BuyScreen(): JSX.Element {
                               small
                               dark
                             />
-                            <StyledButton
-                              width={StyledButtonWidth.FULL}
-                              label={translate('screens/buy', 'Click here once you have issued the transfer')}
-                              onClick={() => onSubmit()}
-                              disabled={!isQuoteFinal}
-                              isLoading={isConfirming}
-                              caps={false}
-                              className="mt-4"
-                            />
+                            {!isProvisionalApproval(paymentInfo) && (
+                              <StyledButton
+                                width={StyledButtonWidth.FULL}
+                                label={translate('screens/buy', 'Click here once you have issued the transfer')}
+                                onClick={() => onSubmit()}
+                                disabled={!isQuoteFinal}
+                                isLoading={isConfirming}
+                                caps={false}
+                                className="mt-4"
+                              />
+                            )}
                           </div>
                         </>
                       ))}

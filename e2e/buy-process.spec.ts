@@ -140,6 +140,39 @@ test.describe('Buy Process - UI Flow', () => {
     });
   });
 
+  test('shows the provisional-approval notice on the buy page', async ({ page, request }) => {
+    const token = await getToken(request);
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          ...COLLECTION_IBAN_TOGGLE_PAYMENT_INFOS,
+          id: 8,
+          isValid: false,
+          error: 'EmailRequired',
+          provisionalApproval: true,
+          paymentRequest: 'Static provisional-approval payment request',
+          isPersonalIban: false,
+        },
+      });
+    });
+
+    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&lang=en`);
+
+    const notice = page.getByText(
+      'Your account is only provisionally approved. This allows you to make a deposit, but your crypto assets will only be delivered once your onboarding is complete.',
+    );
+    await expect(notice).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'Click here once you have issued the transfer' })).not.toBeVisible();
+    await notice.scrollIntoViewIfNeeded();
+    await expect(page).toHaveScreenshot('buy-provisional-approval.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+  });
+
   test('should apply the personal IBAN selector directly and display Bank Frick details', async ({ page, request }) => {
     const token = await getToken(request);
     let receivedProvider: unknown;

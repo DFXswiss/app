@@ -1,6 +1,6 @@
 import { useAuthContext, UserRole } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   BankDatasTable,
@@ -61,8 +61,10 @@ export default function ComplianceUserScreen(): JSX.Element {
   const { getUserData, getKycFile } = useCompliance();
   const navigate = useNavigate();
 
-  const [error, setError] = useState<string>();
-  const [data, setData] = useState<ComplianceUserData>();
+  // Errors are kept with the route id they occurred for, like the dossier below.
+  const [failure, setFailure] = useState<{ userDataId?: string; message: string }>();
+  // The dossier is kept with the route id it was requested for and only shown while that id is open.
+  const [loaded, setLoaded] = useState<{ userDataId: string; data: ComplianceUserData }>();
   const [preview, setPreview] = useState<{ url: string; contentType: string; name: string; uid?: string }>();
   const [activeTab, setActiveTab] = useState<TabType>('transactions');
   const [expandedBankTxId, setExpandedBankTxId] = useState<number>();
@@ -70,6 +72,7 @@ export default function ComplianceUserScreen(): JSX.Element {
   const [expandedBankDataId, setExpandedBankDataId] = useState<number>();
   const [expandedFiatOutputId, setExpandedFiatOutputId] = useState<number>();
   const [expandedTxUid, setExpandedTxUid] = useState<string>();
+  const latestRequestRef = useRef<number>(0);
   const { containerRef, splitPercent, setSplitPercent, handleSplitDrag } = useSplitPane();
 
   function handleExpandBankTx(id: number | undefined): void {
@@ -116,7 +119,7 @@ export default function ComplianceUserScreen(): JSX.Element {
     try {
       const { content, contentType } = await getKycFile(file.uid, 'View');
       if (!content || content.type !== 'Buffer' || !Array.isArray(content.data)) {
-        setError('Invalid file type');
+        setFailure({ userDataId, message: 'Invalid file type' });
         return;
       }
 
@@ -125,7 +128,7 @@ export default function ComplianceUserScreen(): JSX.Element {
 
       setPreview({ url, contentType, name: file.name, uid: file.uid });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error loading file');
+      setFailure({ userDataId, message: e instanceof Error ? e.message : 'Error loading file' });
     }
   }
 
@@ -134,23 +137,31 @@ export default function ComplianceUserScreen(): JSX.Element {
     try {
       const { content, contentType } = await getKycFile(preview.uid, 'Download');
       if (!content || content.type !== 'Buffer' || !Array.isArray(content.data)) {
-        setError('Invalid file type');
+        setFailure({ userDataId, message: 'Invalid file type' });
         return;
       }
       saveBufferedFile(content, contentType, preview.name);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error downloading file');
+      setFailure({ userDataId, message: e instanceof Error ? e.message : 'Error downloading file' });
     }
   }
 
   const loadData = useCallback(() => {
+    const request = ++latestRequestRef.current;
+    setFailure(undefined);
     if (!userDataId) {
-      setError('No ID provided');
+      setFailure({ userDataId, message: 'No ID provided' });
       return;
     }
     getUserData(+userDataId)
-      .then(setData)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Unknown error'));
+      .then((response) => {
+        if (request === latestRequestRef.current) setLoaded({ userDataId, data: response });
+      })
+      .catch((e: unknown) => {
+        if (request === latestRequestRef.current) {
+          setFailure({ userDataId, message: e instanceof Error ? e.message : 'Unknown error' });
+        }
+      });
   }, [userDataId, getUserData]);
 
   useEffect(() => {
@@ -171,6 +182,9 @@ export default function ComplianceUserScreen(): JSX.Element {
     noMaxWidth: true,
     textStart: true,
   });
+
+  const data = loaded && loaded.userDataId === userDataId ? loaded.data : undefined;
+  const error = failure && failure.userDataId === userDataId ? failure.message : undefined;
 
   if (error && !data) return <ErrorHint message={error} />;
   if (!data || !userDataId) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
@@ -210,6 +224,8 @@ export default function ComplianceUserScreen(): JSX.Element {
             wide={isSupport}
             onLimitRequestCreated={loadData}
             onCreateNote={() => navigate(`/notes?userDataId=${numericUserDataId}&compose=1`)}
+            users={data.users}
+            onAccountAccessChanged={loadData}
           />
 
           {!isSupport && (

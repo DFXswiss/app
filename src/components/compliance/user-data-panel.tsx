@@ -1,11 +1,12 @@
 import { useAuthContext } from '@dfx.swiss/react';
 import { ReactNode, useState } from 'react';
+import { AccountAccessToggles } from 'src/components/compliance/account-access-toggles';
 import { CollapsibleSection } from 'src/components/compliance/collapsible-section';
 import { LimitRequestModal } from 'src/components/compliance/limit-request-modal';
 import { ReactivateAccount } from 'src/components/compliance/reactivate-account';
 import type { UserDataStatusInfo } from 'src/hooks/account-reactivation.hook';
 import { useClipboard } from 'src/hooks/clipboard.hook';
-import { OrganizationDetail, UserDataDetail } from 'src/hooks/compliance.hook';
+import { OrganizationDetail, UserDataDetail, UserInfo } from 'src/hooks/compliance.hook';
 import { canReactivateAccount, DEACTIVATED_STATUS } from 'src/util/account-reactivation.util';
 import { appOrigin } from 'src/util/app-origin';
 import { display, formatBirthday, formatDate, formatDateTime, Primitive, refName } from 'src/util/compliance-helpers';
@@ -18,6 +19,8 @@ interface UserDataPanelProps {
   wide?: boolean;
   onLimitRequestCreated?: () => void;
   onCreateNote?: () => void;
+  users?: UserInfo[];
+  onAccountAccessChanged?: () => void;
 }
 
 function KycLinkButtons({ kycHash }: Readonly<{ kycHash: string }>): JSX.Element {
@@ -198,6 +201,7 @@ function otherRows(d: UserDataDetail): Row[] {
   return [
     { key: 'isTrustedReferrer', value: display(d.isTrustedReferrer) },
     { key: 'tradeApprovalDate', value: fmtDate(d.tradeApprovalDate) },
+    { key: 'provisionalApprovalDate', value: fmtDate(d.provisionalApprovalDate) },
     { key: 'deactivationDate', value: fmtDate(d.deactivationDate) },
     { key: 'lastNameCheckDate', value: fmtDate(d.lastNameCheckDate) },
     { key: 'letterSentDate', value: fmtDate(d.letterSentDate) },
@@ -213,6 +217,8 @@ export function UserDataPanel({
   wide = false,
   onLimitRequestCreated,
   onCreateNote,
+  users = [],
+  onAccountAccessChanged,
 }: Readonly<UserDataPanelProps>): JSX.Element {
   const [showLimitRequestModal, setShowLimitRequestModal] = useState(false);
   const { session } = useAuthContext();
@@ -276,6 +282,15 @@ export function UserDataPanel({
         <div className="bg-white rounded-lg shadow-sm divide-y divide-dfxGray-300">
           <CollapsibleSection title="UserData" initiallyOpen>
             <SectionTable rows={userDataRows(current, depositLimitNode, idNode, statusNode)} />
+            {userDataId !== undefined && rowIsThisAccount && onAccountAccessChanged && (
+              <AccountAccessToggles
+                userDataId={userDataId}
+                provisionalApprovalDate={current.provisionalApprovalDate}
+                kycLevel={current.kycLevel}
+                users={users}
+                onChanged={onAccountAccessChanged}
+              />
+            )}
           </CollapsibleSection>
 
           <CollapsibleSection title="Personal Data" initiallyOpen>

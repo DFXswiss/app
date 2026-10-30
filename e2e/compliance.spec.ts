@@ -123,6 +123,96 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       });
     });
 
+    test('shows account access toggles for a customer still onboarding', async ({ page }) => {
+      await page.route(`**/v1/support/${TEST_USER_DATA_ID}`, async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const users =
+          Array.isArray(data.users) && data.users.length > 0
+            ? data.users.map((user: Record<string, unknown>, index: number) =>
+                index === 0 ? { ...user, role: 'VIP' } : user,
+              )
+            : [
+                {
+                  id: 1,
+                  address: '0x0000000000000000000000000000000000000001',
+                  role: 'VIP',
+                  status: 'Active',
+                  created: '2026-01-01T00:00:00.000Z',
+                },
+              ];
+
+        await route.fulfill({
+          response,
+          json: {
+            ...data,
+            userData: {
+              ...data.userData,
+              kycLevel: 10,
+              provisionalApprovalDate: '2026-10-29T10:00:00.000Z',
+            },
+            users,
+          },
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await expect(page.getByText('Provisional approval: on')).toBeVisible();
+      await expect(page.getByText('VIP: on')).toBeVisible();
+
+      await expect(page).toHaveScreenshot('compliance-user-11-account-access-toggles.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows account access toggles in the off state', async ({ page }) => {
+      await page.route(`**/v1/support/${TEST_USER_DATA_ID}`, async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const users =
+          Array.isArray(data.users) && data.users.length > 0
+            ? data.users.map((user: Record<string, unknown>) => ({ ...user, role: 'User' }))
+            : [
+                {
+                  id: 1,
+                  address: '0x0000000000000000000000000000000000000001',
+                  role: 'User',
+                  status: 'Active',
+                  created: '2026-01-01T00:00:00.000Z',
+                },
+              ];
+
+        await route.fulfill({
+          response,
+          json: {
+            ...data,
+            userData: {
+              ...data.userData,
+              kycLevel: 10,
+              provisionalApprovalDate: undefined,
+            },
+            users,
+          },
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await expect(page.getByText('Provisional approval: off')).toBeVisible();
+      await expect(page.getByText('VIP: off')).toBeVisible();
+
+      await expect(page).toHaveScreenshot('compliance-user-12-account-access-toggles-off.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
     test('shows KYC file preview (selfie.jpg)', async ({ page }) => {
       await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
       await page.waitForLoadState('networkidle');
