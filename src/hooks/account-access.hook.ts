@@ -1,33 +1,22 @@
+import { AccountAccessInfo, useAccountAccess as useSdkAccountAccess } from '@dfx.swiss/react';
 import { useMemo } from 'react';
-import { useGuardedApi } from './guarded-api.hook';
+import { useStaffErrorGuard } from './guarded-api.hook';
 
-export interface AccountAccessInfo {
-  id: number;
-  provisionalApprovalDate?: string;
-  vipUserIds: number[];
-}
+export type { AccountAccessInfo };
 
 export function useAccountAccess(): {
   setProvisionalApproval(userDataId: number, enabled: boolean): Promise<AccountAccessInfo>;
   setVip(userDataId: number, enabled: boolean): Promise<AccountAccessInfo>;
 } {
-  const { call } = useGuardedApi();
+  const { setProvisionalApproval, setVip } = useSdkAccountAccess();
+  const guard = useStaffErrorGuard();
 
-  async function setProvisionalApproval(userDataId: number, enabled: boolean): Promise<AccountAccessInfo> {
-    return call<AccountAccessInfo>({
-      url: `support/${userDataId}/provisionalApproval`,
-      method: 'PUT',
-      data: { enabled },
-    });
-  }
-
-  async function setVip(userDataId: number, enabled: boolean): Promise<AccountAccessInfo> {
-    return call<AccountAccessInfo>({
-      url: `support/${userDataId}/vip`,
-      method: 'PUT',
-      data: { enabled },
-    });
-  }
-
-  return useMemo(() => ({ setProvisionalApproval, setVip }), [call]);
+  return useMemo(
+    () => ({
+      setProvisionalApproval: (userDataId: number, enabled: boolean) =>
+        guard(setProvisionalApproval(userDataId, enabled)),
+      setVip: (userDataId: number, enabled: boolean) => guard(setVip(userDataId, enabled)),
+    }),
+    [setProvisionalApproval, setVip, guard],
+  );
 }
