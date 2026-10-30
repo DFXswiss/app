@@ -21,6 +21,7 @@ import {
   createBankAccount,
   createBankTx,
   createCallQueueEntry,
+  createKycStep,
   createTransaction,
   createUser,
   TEST_IBAN,
@@ -149,6 +150,54 @@ test.describe('Compliance area (cases)', () => {
     );
     expect(after.status).toBe('Completed');
     expect(after.approved).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // /compliance/user/:id/kyc — Statutes on an account without account type: reject via UI + DB proof
+  // -------------------------------------------------------------------------
+
+  test('/compliance/user/:id/kyc rejects a ManualReview Statutes step on an account without account type', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffReady(userId);
+
+    const customer = await createUser({ tag: 'cmp-kyc-statutes', kycLevel: 0 });
+    const account = await queryOne<{ accountType: string | null }>(
+      `SELECT "accountType" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    expect(account?.accountType).toBeNull();
+
+    const step = await createKycStep(customer.userDataId, { name: 'Statutes', status: 'ManualReview' });
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}/kyc`, jwt);
+    await expect(page.getByText('UserDataId', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    // The Statutes tab is limited to Organization accounts but shows because the account has the step
+    const statutesTab = page.getByRole('button', { name: /^Statuten/ });
+    await expect(statutesTab).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: /^Operational Activity/ })).toHaveCount(0);
+    await statutesTab.click();
+
+    const decision = page.getByText('Die Statuten werden:', { exact: true }).locator('xpath=following-sibling::select');
+    await expect(decision).toBeVisible({ timeout: 15000 });
+    await decision.selectOption('Abgelehnt');
+    await page
+      .getByText('Kommentar:', { exact: true })
+      .locator('xpath=following-sibling::select')
+      .selectOption('Falsches Dokument');
+
+    const saveBtn = page.getByRole('button', { name: 'Speichern', exact: true });
+    await expect(saveBtn).toBeEnabled({ timeout: 5000 });
+    await saveBtn.click();
+
+    const after = await waitForRow<{ status: string; comment: string | null }>(
+      `SELECT status, comment FROM kyc_step WHERE id = $1 AND status = 'Failed'`,
+      [step.kycStepId],
+      20000,
+    );
+    expect(after.comment).toBe('Falsches Dokument');
   });
 
   // -------------------------------------------------------------------------
