@@ -13,8 +13,8 @@ test.use({
  * The page always asks for SPAR shops in Switzerland and shows no country or shop control.
  * The map picture uses the published SPAR shop locations, not a grid and not a
  * short list of city names. It does not list those names on the map.
- * Country is CH on the fixture because the page draws a pin only when country is CH.
- * The published rows have no stored country, so the picture is the shop locations.
+ * Country is on each fixture row; the page draws a pin only when country is CH.
+ * Non-CH published rows are not drawn.
  * These specs are a local review aid and do not run in CI.
  * The map uses the live Liberty style so the pictures show Switzerland,
  * not an empty canvas.
@@ -22,15 +22,39 @@ test.use({
  * Map tiles are the live OpenFreeMap style.
  */
 
-const OPENED_SHOP = PUBLISHED_SPARS.find((place) => place.name.includes('6900 Lugano'));
+const OPENED_SHOP = PUBLISHED_SPARS.find((place) => place.city === 'Lugano');
 if (OPENED_SHOP === undefined) {
   throw new Error('published SPAR fixture has no Lugano shop');
 }
+const OPENED_ADDRESS = `${OPENED_SHOP.street} ${OPENED_SHOP.houseNumber}, ${OPENED_SHOP.postalCode} ${OPENED_SHOP.city}`;
+const OPENED_MARKER_LABEL = `${OPENED_SHOP.name}, ${OPENED_ADDRESS}`;
 
 const PLACES = [
   ...PUBLISHED_SPARS,
-  { name: 'SPAR Vaduz', shopName: 'SPAR', country: 'LI', category: 'shopping', lat: 47.141, lon: 9.521 },
-  { name: 'Volg Samedan', shopName: 'Volg', country: 'CH', category: 'shopping', lat: 46.534, lon: 9.872 },
+  {
+    name: 'SPAR Vaduz',
+    shopType: 'SPAR',
+    street: 'Landstrasse',
+    houseNumber: '1',
+    postalCode: '9495',
+    city: 'Vaduz',
+    country: 'LI',
+    category: 'shopping',
+    lat: 47.141,
+    lon: 9.521,
+  },
+  {
+    name: 'Volg Samedan',
+    shopType: 'Others',
+    street: 'Plaz',
+    houseNumber: '16',
+    postalCode: '7503',
+    city: 'Samedan',
+    country: 'CH',
+    category: 'shopping',
+    lat: 46.534,
+    lon: 9.872,
+  },
 ];
 
 async function fulfillJson(route: Route, status: number, body: unknown): Promise<void> {
@@ -78,14 +102,14 @@ function watchMap(page: Page): string[] {
 
 async function expectSwissSparOnly(seen: string[]): Promise<void> {
   await expect.poll(() => seen.length).toBeGreaterThan(0);
-  expect(seen.every((url) => url.includes('/map/places?shopName=SPAR&country=CH'))).toBe(true);
+  expect(seen.every((url) => url.includes('/map/places?shopType=SPAR&country=CH'))).toBe(true);
   expect(seen.some((url) => url.includes('/map/filters'))).toBe(false);
 }
 
 async function stubPlaces(page: Page, places: { status: number; body: unknown }): Promise<void> {
   await page.route('https://api.opencryptopay.io/map/**', (route) => {
     const url = route.request().url();
-    if (!url.includes('/map/places?shopName=SPAR&country=CH')) return fulfillJson(route, 500, {});
+    if (!url.includes('/map/places?shopType=SPAR&country=CH')) return fulfillJson(route, 500, {});
     return fulfillJson(route, places.status, places.body);
   });
 }
@@ -135,7 +159,7 @@ test.describe('SPAR locations', () => {
     });
     await page.route('https://api.opencryptopay.io/map/**', async (route) => {
       const url = route.request().url();
-      if (!url.includes('/map/places?shopName=SPAR&country=CH')) return fulfillJson(route, 500, {});
+      if (!url.includes('/map/places?shopType=SPAR&country=CH')) return fulfillJson(route, 500, {});
       await placesHeld;
       return fulfillJson(route, 200, { places: [] });
     });
@@ -192,7 +216,10 @@ test.describe('SPAR locations', () => {
     await waitForMap(page);
     await expectSwissSparOnly(seen);
     expect(PUBLISHED_SPARS.length).toBe(170);
-    await expect(page.locator('.spar-place-marker')).toHaveCount(PUBLISHED_SPARS.length);
+    const markers = page.locator('.spar-place-marker');
+    await expect(markers).toHaveCount(PUBLISHED_SPARS.filter((place) => place.country === 'CH').length);
+    const markerLabels = await markers.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')));
+    expect(new Set(markerLabels).size).toBe(markerLabels.length);
     await expect(page.getByRole('list', { name: 'Locations' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'SPAR Vaduz' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Volg Samedan' })).toHaveCount(0);
@@ -209,8 +236,9 @@ test.describe('SPAR locations', () => {
     await openLocations(page);
     await waitForMap(page);
     await expectSwissSparOnly(seen);
-    await page.getByRole('button', { name: OPENED_SHOP.name, exact: true }).click();
+    await page.getByRole('button', { name: OPENED_MARKER_LABEL, exact: true }).click();
     await expect(page.locator('.maplibregl-popup').getByText(OPENED_SHOP.name, { exact: true })).toBeVisible();
+    await expect(page.locator('.maplibregl-popup').getByText(OPENED_ADDRESS, { exact: true })).toBeVisible();
     await expect(page.locator('.maplibregl-popup').getByText(OPENED_SHOP.category, { exact: true })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Country' })).toHaveCount(0);
     await expect(page.getByRole('combobox', { name: 'Shop' })).toHaveCount(0);
