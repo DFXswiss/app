@@ -600,12 +600,22 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The two payment visual specs answer every API they need themselves.**
   `e2e/payment-qr-device.spec.ts` fulfils the `/v1/` payment routes with a fixed quote whose
   expiry is a constant ISO string, holds the wait-polling open so it never re-fetches, and pins
-  wall-clock time; `e2e/payment-routes-qr-label.spec.ts` answers `GET /v2/user`,
+  wall-clock time. The Pay-to-Address desktop case keeps that quote (`displayQr: false`) and
+  answers the two further calls that standard makes: `GET /v1/paymentLink/standard` with a
+  PayToAddress entry, and the quote callback with `{ uri }` whose address is the placeholder
+  `0x0000000000000000000000000000000000000001`. Assets and languages stay the catch-all empty
+  list. `e2e/payment-routes-qr-label.spec.ts` answers `GET /v2/user`,
   `GET /v1/route`, the payment-link list, its config and POS endpoints and the info banner with
   static payloads, and mounts the screen on a synthetic unsigned JWT. A green
-  run of either proves that the screen renders those payloads — the device split, the wallet copy
-  and the renamed setting label — not that a real session passes the address guard, that the API
-  returns these shapes, or that a live quote expires when the baseline says it does.
+  run of either proves that the screen renders those payloads — the device split, the wallet copy,
+  the Pay-to-Address page without a QR row or scan sentence, and the renamed setting label — not
+  that a real session passes the address guard, that the API returns these shapes, or that a live
+  quote expires when the baseline says it does. A green Pay-to-Address run does not prove that a
+  live callback returns that URI, or that the placeholder address can receive a payment.
+  Opening the default-configuration editor in `e2e/payment-routes-qr-label.spec.ts` sends no
+  further request and adds no fixture: the form reads the config payload already returned, and
+  countries stay the catch-all empty list from screen load, so a green run shows the same label
+  on the form without proving a country list or a second config fetch.
 
 ## Known gaps
 

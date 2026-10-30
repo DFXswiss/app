@@ -6,7 +6,8 @@ import { expect, test, type Page, type Route } from '@playwright/test';
  * "Display QR code" was renamed to "Always show QR code" so the merchant-facing
  * dropdown matches the force-switch meaning of `displayQr`. This spec opens the
  * authenticated routes screen on mocked APIs, expands the default configuration
- * row, and snapshots the new label.
+ * row, snapshots the new label, then opens that row's editor and snapshots the
+ * same label on the form. Opening the editor does not call the API again.
  *
  * All /v1 and /v2 APIs are mocked. Session is a synthetic JWT so the address
  * guard lets the screen mount without a live backend.
@@ -147,7 +148,7 @@ test.describe('Payment routes — Always show QR code label', () => {
     hasTouch: false,
   });
 
-  test('default configuration shows Always show QR code', async ({ page }) => {
+  test('default configuration and its edit form show Always show QR code', async ({ page }) => {
     await installRoutesMocks(page);
     await page.goto(`/routes?session=${jwt()}&lang=en`, { waitUntil: 'domcontentloaded' });
 
@@ -161,5 +162,16 @@ test.describe('Payment routes — Always show QR code label', () => {
     await expect(page.getByText('Display QR code', { exact: true })).toHaveCount(0);
 
     await expect(page).toHaveScreenshot('payment-routes-qr-label.png', screenshotOpts);
+
+    // Edit configuration replaces the list with the form. Config, routes and the
+    // payment-link list were already answered above. Countries and the other
+    // bootstrap GETs stay the catch-all empty list from screen load; the form
+    // does not request them again.
+    await page.getByRole('button', { name: 'Edit configuration', exact: true }).click();
+    await expect(page.getByText('Handbook Shop Link', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Always show QR code', { exact: true })).toBeVisible();
+    await expect(page.getByText('Display QR code', { exact: true })).toHaveCount(0);
+
+    await expect(page).toHaveScreenshot('payment-routes-qr-label-form.png', screenshotOpts);
   });
 });

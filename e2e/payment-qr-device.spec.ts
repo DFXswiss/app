@@ -3,8 +3,12 @@ import { expect, test, devices, type Page, type Route } from '@playwright/test';
 /**
  * Visual regression: device-aware QR on the payment link page.
  *
- * Desktop → large QR + scan copy.
- * Handheld (iPhone profile: mobile UA + coarse pointer) → no large QR + wallet copy.
+ * Desktop OpenCryptoPay → large QR + scan copy.
+ * Handheld OpenCryptoPay (iPhone profile: mobile UA + coarse pointer) → no large QR + wallet copy.
+ * Desktop Pay to Address (displayQr false) → no QR row, no large QR, no scan copy.
+ * That case also fulfils GET /paymentLink/standard and the quote callback: the screen
+ * refetches the pay request once the form standard is known, then loads paymentIdentifier
+ * from the callback. The callback body is { uri } with a placeholder address.
  *
  * All payment APIs under /v1/ are mocked. Quote expiry is a fixed ISO string so the
  * expiration display stays stable. Wait-polling is held open so it never re-triggers
@@ -58,6 +62,32 @@ const PAYMENT_STANDARDS = [
   },
 ];
 
+/** Obvious placeholder. Not a key and not an address that can receive a payment. */
+const PLACEHOLDER_ADDRESS = '0x0000000000000000000000000000000000000001';
+
+const PAY_TO_ADDRESS_REQUEST = {
+  ...PAY_REQUEST,
+  standard: 'PayToAddress',
+  possibleStandards: ['PayToAddress'],
+  displayQr: false,
+  transferAmounts: [
+    {
+      method: 'Ethereum',
+      minFee: 0,
+      assets: [{ asset: 'ETH', amount: 1 }],
+      available: true,
+    },
+  ],
+};
+
+const PAY_TO_ADDRESS_STANDARDS = [
+  {
+    id: 'PayToAddress',
+    label: 'Pay to a {{blockchain}} Blockchain address',
+    description: '{{blockchain}} address',
+  },
+];
+
 const WALLET_APPS = [
   {
     id: 1,
@@ -75,7 +105,20 @@ const WALLET_APPS = [
   },
 ];
 
-async function installPaymentMocks(page: Page): Promise<void> {
+interface PaymentMocks {
+  payRequest: typeof PAY_REQUEST;
+  standards: { id: string; label: string; description: string }[];
+  callbackBody: { pr: string } | { uri: string };
+}
+
+async function installPaymentMocks(
+  page: Page,
+  mocks: PaymentMocks = {
+    payRequest: PAY_REQUEST,
+    standards: PAYMENT_STANDARDS,
+    callbackBody: { pr: 'lnbc1handbooktest' },
+  },
+): Promise<void> {
   // Repo standard: only intercept /v1/** so unknown API calls cannot slip to a live backend.
   await page.route('**/v1/**', async (route: Route) => {
     const url = route.request().url();
@@ -93,7 +136,7 @@ async function installPaymentMocks(page: Page): Promise<void> {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(PAY_REQUEST),
+        body: JSON.stringify(mocks.payRequest),
       });
       return;
     }
@@ -102,7 +145,7 @@ async function installPaymentMocks(page: Page): Promise<void> {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(PAYMENT_STANDARDS),
+        body: JSON.stringify(mocks.standards),
       });
       return;
     }
@@ -120,7 +163,7 @@ async function installPaymentMocks(page: Page): Promise<void> {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ pr: 'lnbc1handbooktest' }),
+        body: JSON.stringify(mocks.callbackBody),
       });
       return;
     }
@@ -134,10 +177,11 @@ async function installPaymentMocks(page: Page): Promise<void> {
   });
 }
 
-async function openPaymentPage(page: Page): Promise<void> {
-  await installPaymentMocks(page);
-  // Wall-clock pin for any Date.now() consumers; the rate/timer copy does not render
-  // here because PAYMENT_STANDARDS has no blockchain field (see payment-link.screen rate guard).
+async function openPaymentPage(page: Page, mocks?: PaymentMocks): Promise<void> {
+  await installPaymentMocks(page, mocks);
+  // Wall-clock pin. OpenCryptoPay standards carry no blockchain, so the rate line stays off.
+  // Pay to Address copies blockchain from the transfer method; the frozen clock never ticks
+  // the countdown, so that rate line stays in its loading state.
   await page.clock.setFixedTime(FIXED_NOW);
 
   // Avoid networkidle: the intentional hang on /lnurlp/wait keeps a connection open forever.
@@ -146,7 +190,15 @@ async function openPaymentPage(page: Page): Promise<void> {
   });
 
   // Merchant name + amount confirm the quote rendered (not the loading spinner).
-  await expect(page.getByText('Handbook Merchant')).toBeVisible({ timeout: 30000 });
+  // Pay to Address expands Payment details, so the Recipient row value
+  // (payRequest.recipient.name) is a second "Handbook Merchant". The other cases
+  // leave that collapsible closed and keep the text locator. The title paragraph
+  // is the only text-xl bold node with this name; it is rendered above the details.
+  const merchantName =
+    mocks?.payRequest.standard === 'PayToAddress'
+      ? page.locator('p.text-dfxBlue-800.font-bold.text-xl', { hasText: 'Handbook Merchant' })
+      : page.getByText('Handbook Merchant');
+  await expect(merchantName).toBeVisible({ timeout: 30000 });
   await expect(page.getByText('12.5')).toBeVisible({ timeout: 15000 });
 
   // QrBasic uses animate-pulse while isLoading; wait until the near-invisible QR state is gone.
@@ -179,6 +231,32 @@ test.describe('Payment QR — desktop', () => {
     expect(deviceFlags.coarse).toBe(false);
 
     await expect(page).toHaveScreenshot('payment-qr-desktop.png', screenshotOpts);
+  });
+
+  test('desktop Pay to Address shows no QR row and no scan copy', async ({ page }) => {
+    await openPaymentPage(page, {
+      payRequest: PAY_TO_ADDRESS_REQUEST,
+      standards: PAY_TO_ADDRESS_STANDARDS,
+      callbackBody: {
+        uri: `ethereum:${PLACEHOLDER_ADDRESS}@1?value=1000000000000000000`,
+      },
+    });
+
+    // animate-pulse exists only on the QR. This standard renders none, so the shared wait
+    // does not prove the callback returned. The blanked placeholder is the settled page.
+    await expect(page.getByText(/0x00000000000000000/)).toBeVisible({ timeout: 15000 });
+
+    await expect(page.getByText('QR Code', { exact: true })).toHaveCount(0);
+    await expect(page.locator('.w-48.my-3 svg')).toHaveCount(0);
+    await expect(page.getByText('Scan the QR-Code with a compatible app to complete the payment.')).toHaveCount(0);
+
+    const deviceFlags = await page.evaluate(() => ({
+      coarse:
+        typeof window.matchMedia === 'function' ? window.matchMedia('(pointer: coarse)').matches : null,
+    }));
+    expect(deviceFlags.coarse).toBe(false);
+
+    await expect(page).toHaveScreenshot('payment-qr-non-ocp.png', screenshotOpts);
   });
 });
 
