@@ -45,10 +45,11 @@ jobs:
       - name: Build code
         env:
           REACT_APP_BUILD_ID: ${{ github.run_number }}-${{ github.run_id }}
-        run: node scripts/generate-version.js && bash scripts/build.sh stg
+        run: npm run build:stg
 
       - name: Build widget
-        run: bash scripts/build-widget.sh stg
+        run: |
+          npm run widget:stg
 
       - name: Copy widget
         run: |

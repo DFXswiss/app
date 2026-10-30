@@ -51,6 +51,8 @@ cp .env.sample .env
 | `npm run start:dev`      | Start with dev API                 |
 | `npm run build`          | Build for production               |
 | `npm run build:dev`      | Build for dev environment          |
+| `npm run build:stg`      | Build for staging environment      |
+| `npm run widget:stg`     | Build widget for staging           |
 | `npm run test:e2e`       | Run E2E tests against dev API      |
 | `npm run test:e2e:local` | Run E2E tests against local API    |
 

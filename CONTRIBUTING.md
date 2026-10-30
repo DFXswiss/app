@@ -31,15 +31,15 @@ from develop`).
 ### Staging
 
 The `staging` branch deploys to [stg.app.dfx.swiss](https://stg.app.dfx.swiss).
-`staging` is a separate branch: by default, every contributor ALWAYS opens PRs
-against `develop`. Merging into `staging` is the exception a contributor
-consciously chooses. Which state runs on staging is always a free choice — there
+`staging` is a separate branch: merging into `staging` is the exception a
+contributor consciously chooses; feature pull requests always target `develop`
+(see above). Which state runs on staging is always a free choice — there
 is NO obligation to keep staging up to date. Staging users decide freely when to
-sync and rebase onto the latest develop. No branch protection on `staging`;
+sync and rebase onto the latest `develop`. No branch protection on `staging`;
 rebasing with force-push to `staging` is allowed.
 
-The Pages project that serves staging is provisioned in the infrastructure repo
-and must exist before the first deploy on `staging` runs.
+The Pages project `dfx-app-stg` and its custom domain must exist before the first
+`staging` deploy runs.
 
 | Branch    | URL                                            | Pages project | Workflow                    |
 | --------- | ---------------------------------------------- | ------------- | --------------------------- |
