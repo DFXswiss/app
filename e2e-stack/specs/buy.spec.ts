@@ -6,7 +6,17 @@
  */
 
 import type { Locator, Page } from '@playwright/test';
-import { expect, gotoWithSession, loginAs, openScreen, queryOne, queryRows, test, waitForRow, withDb } from './fixtures';
+import {
+  expect,
+  gotoWithSession,
+  loginAs,
+  openScreen,
+  queryOne,
+  queryRows,
+  test,
+  waitForRow,
+  withDb,
+} from './fixtures';
 import { apiGet, apiPut } from './fixtures/api-client';
 import { cleanupCreatedData, createBuy, createTransaction, createUser } from './fixtures/factories';
 
