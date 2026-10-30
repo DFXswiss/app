@@ -197,7 +197,7 @@
   },
   "login-redirect": {
     "title": "Login-Weiterleitung",
-    "description": "Anmeldung über die Kommandozeilen-Wallet auf /login landet auf /buy. Dieselbe Anmeldung auf /connect verlässt diese Seite und endet auf /account."
+    "description": "Anmeldung auf /login per Wallet, Mail-Link oder Alby führt nach /buy. Hat ein Screen zur Anmeldung geschickt, geht es danach dorthin zurück. Dieselbe Anmeldung auf /connect endet auf /account. Die Bilder zeigen die Kommandozeilen-Wallet."
   },
   "tfa-merged-redirect": {
     "title": "2FA-Screen: Weiterleitung bei zusammengeführtem Account",

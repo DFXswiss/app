@@ -156,7 +156,7 @@ function HomeScreenContent(): JSX.Element {
         ? goBack()
         : setConnectTo({ type: WalletType.ADDRESS });
     } else if (currentPageId) {
-      setPages((p) => p.pop((i) => getPage(i.page, i.allowedTiles)?.tiles?.length === 1));
+      setPages((p) => p.pop((i) => getPage(i.page, i.allowedTiles)?.tiles.length === 1));
     }
   }
 

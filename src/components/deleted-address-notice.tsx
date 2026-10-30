@@ -8,8 +8,10 @@ import {
 } from '@dfx.swiss/react-components';
 import { Router } from '@remix-run/router';
 import { PropsWithChildren, useRef, useState, useSyncExternalStore } from 'react';
+import { useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { carriesLogin, isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-address';
+import { loginTarget } from 'src/util/login-redirect';
 
 interface DeletedAddressGateProps extends PropsWithChildren {
   router: Router;
@@ -39,22 +41,28 @@ export function DeletedAddressGate({ children, router }: DeletedAddressGateProps
 
   if (!isLoggedIn || !isDeletedSessionAddress(user)) return <>{children}</>;
 
-  return <DeletedAddressNotice />;
+  return <DeletedAddressNotice router={router} />;
 }
 
-function DeletedAddressNotice(): JSX.Element {
+function DeletedAddressNotice({ router }: { router: Router }): JSX.Element {
   const { translate } = useSettingsContext();
+  const { redirectPath } = useAppHandlingContext();
   const { reactivateAddress, reloadUser } = useUserContext();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
 
   // The user context swaps in the returned session token and reloads the user. With the
-  // address active again, the gate renders the app. After an error the user is loaded again:
+  // address active again, the gate renders the app and, when there is a login target, the
+  // route moves there. After an error the user is loaded again and the route stays:
   // when only the reload failed, the address is already active and a second attempt would be refused.
   function activate() {
     setIsLoading(true);
     setError(undefined);
     reactivateAddress()
+      .then(() => {
+        const target = loginTarget(redirectPath, router.state.location.pathname);
+        if (target) router.navigate(target);
+      })
       .catch((e: ApiError) => {
         setError(e.message ?? 'Unknown error');
         return reloadUser();
