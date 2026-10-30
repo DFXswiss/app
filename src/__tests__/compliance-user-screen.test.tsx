@@ -351,6 +351,54 @@ describe('ComplianceUserScreen', () => {
     expect(mockGetUserData).toHaveBeenLastCalledWith(12);
   });
 
+  it('resets the preview, active tab, file error and expanded rows when the route id changes', async () => {
+    mockGetKycFile
+      .mockResolvedValueOnce({
+        content: { type: 'Buffer', data: [1] },
+        contentType: 'image/jpeg',
+      })
+      .mockRejectedValueOnce(new Error('Preview failed'));
+    const { rerender } = await renderDossier();
+
+    fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+    await waitFor(() => expect(screen.getByText('selfie.jpg')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Preview failed'));
+    fireEvent.click(screen.getByRole('button', { name: 'expand bank tx' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Users \(/ }));
+
+    mockUserDataId = '13';
+    rerender(<ComplianceUserScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('transactions-table')).toBeInTheDocument());
+    expect(screen.getByText('no preview')).toBeInTheDocument();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByTestId('expanded-values')).toHaveTextContent('-|-|-|-|-');
+    expect(mockRevokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(mockRevokeObjectURL).toHaveBeenCalledWith('blob:preview');
+  });
+
+  it('keeps the preview, active tab and expanded rows during a same-id reload', async () => {
+    mockGetKycFile.mockResolvedValue({
+      content: { type: 'Buffer', data: [1] },
+      contentType: 'image/jpeg',
+    });
+    await renderDossier();
+
+    fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+    await waitFor(() => expect(screen.getByText('selfie.jpg')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'expand bank tx' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Users \(/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'refresh account access' }));
+
+    await waitFor(() => expect(mockGetUserData).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('users-table')).toBeInTheDocument();
+    expect(screen.getByText('selfie.jpg')).toBeInTheDocument();
+    expect(mockRevokeObjectURL).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /^Transactions \(/ }));
+    expect(screen.getByTestId('expanded-values')).toHaveTextContent('11|-|-|-|-');
+  });
+
   it('renders the Support layout and reload callbacks without middle panels', async () => {
     mockRole = 'Support';
     const data = dossier({
@@ -533,22 +581,42 @@ describe('ComplianceUserScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'open file' }));
 
-    await waitFor(() => expect(mockUserDataPanelRender.mock.calls.length).toBeGreaterThan(rendersBeforeOpen));
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Invalid file type'));
+    expect(mockUserDataPanelRender.mock.calls.length).toBeGreaterThan(rendersBeforeOpen);
+    expect(screen.getByTestId('user-data-panel')).toBeInTheDocument();
     expect(mockGetKycFile).toHaveBeenCalledWith('file-1', 'View');
     expect(mockCreateObjectURL).not.toHaveBeenCalled();
     expect(screen.getByText('no preview')).toBeInTheDocument();
   });
 
-  it.each([[new Error('Preview failed')], ['failure']])('handles a thrown file-preview error', async (failure) => {
+  it.each([
+    { failure: new Error('Preview failed'), expectedMessage: 'Preview failed' },
+    { failure: 'failure', expectedMessage: 'Error loading file' },
+  ])('handles a thrown file-preview error', async ({ failure, expectedMessage }) => {
     mockGetKycFile.mockRejectedValue(failure);
     await renderDossier();
-    const rendersBeforeOpen = mockUserDataPanelRender.mock.calls.length;
 
     fireEvent.click(screen.getByRole('button', { name: 'open file' }));
 
-    await waitFor(() => expect(mockUserDataPanelRender.mock.calls.length).toBeGreaterThan(rendersBeforeOpen));
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent(expectedMessage));
+    expect(screen.getByTestId('user-data-panel')).toBeInTheDocument();
     expect(mockGetKycFile).toHaveBeenCalledWith('file-1', 'View');
     expect(screen.getByText('no preview')).toBeInTheDocument();
+  });
+
+  it('clears a file error after the next successful preview', async () => {
+    mockGetKycFile
+      .mockRejectedValueOnce(new Error('Preview failed'))
+      .mockResolvedValueOnce({ content: { type: 'Buffer', data: [1] }, contentType: 'image/jpeg' });
+    await renderDossier();
+
+    fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Preview failed'));
+    fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+
+    await waitFor(() => expect(screen.getByText('selfie.jpg')).toBeInTheDocument());
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByTestId('user-data-panel')).toBeInTheDocument();
   });
 
   it('does not download when no preview uid exists', async () => {
@@ -575,12 +643,17 @@ describe('ComplianceUserScreen', () => {
     const rendersBeforeDownload = mockUserDataPanelRender.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: 'download preview' }));
 
-    await waitFor(() => expect(mockUserDataPanelRender.mock.calls.length).toBeGreaterThan(rendersBeforeDownload));
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Invalid file type'));
+    expect(mockUserDataPanelRender.mock.calls.length).toBeGreaterThan(rendersBeforeDownload);
+    expect(screen.getByTestId('user-data-panel')).toBeInTheDocument();
     expect(mockGetKycFile).toHaveBeenCalledWith('file-1', 'Download');
     expect(mockSaveBufferedFile).not.toHaveBeenCalled();
   });
 
-  it.each([[new Error('Download failed')], ['failure']])('handles a thrown download error', async (failure) => {
+  it.each([
+    { failure: new Error('Download failed'), expectedMessage: 'Download failed' },
+    { failure: 'failure', expectedMessage: 'Error downloading file' },
+  ])('handles a thrown download error', async ({ failure, expectedMessage }) => {
     mockGetKycFile
       .mockResolvedValueOnce({ content: { type: 'Buffer', data: [1] }, contentType: 'image/jpeg' })
       .mockRejectedValueOnce(failure);
@@ -588,11 +661,30 @@ describe('ComplianceUserScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'open file' }));
     await waitFor(() => expect(screen.getByText('selfie.jpg')).toBeInTheDocument());
-    const rendersBeforeDownload = mockUserDataPanelRender.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: 'download preview' }));
 
-    await waitFor(() => expect(mockUserDataPanelRender.mock.calls.length).toBeGreaterThan(rendersBeforeDownload));
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent(expectedMessage));
+    expect(screen.getByTestId('user-data-panel')).toBeInTheDocument();
     expect(mockGetKycFile).toHaveBeenCalledWith('file-1', 'Download');
     expect(mockSaveBufferedFile).not.toHaveBeenCalled();
+  });
+
+  it('clears a file error after the next successful download', async () => {
+    const downloadContent = { type: 'Buffer', data: [2] };
+    mockGetKycFile
+      .mockResolvedValueOnce({ content: { type: 'Buffer', data: [1] }, contentType: 'image/jpeg' })
+      .mockRejectedValueOnce(new Error('Download failed'))
+      .mockResolvedValueOnce({ content: downloadContent, contentType: 'image/jpeg' });
+    await renderDossier();
+
+    fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+    await waitFor(() => expect(screen.getByText('selfie.jpg')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'download preview' }));
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Download failed'));
+    fireEvent.click(screen.getByRole('button', { name: 'download preview' }));
+
+    await waitFor(() => expect(mockSaveBufferedFile).toHaveBeenCalledWith(downloadContent, 'image/jpeg', 'selfie.jpg'));
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByTestId('user-data-panel')).toBeInTheDocument();
   });
 });

@@ -279,6 +279,28 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       });
     });
 
+    test('shows an error when the KYC file cannot be loaded', async ({ page }) => {
+      await page.route(/\/v2\/kyc\/file\/[^?]+\?access=View$/, async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'File could not be loaded' }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByText('selfie.jpg').click();
+      await expect(page.getByText('File could not be loaded')).toBeVisible();
+
+      await expect(page).toHaveScreenshot('compliance-user-15-kyc-file-error.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
     test('shows Transactions tab', async ({ page }) => {
       await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
       await page.waitForLoadState('networkidle');

@@ -128,6 +128,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   (`compliance-user-13` and `-14`) intercept `**/v1/support/1006`: the loading variant never answers,
   the error variant answers HTTP 500 with a fixed message. A green run proves how the screen renders
   those two states after an in-app route change, not that the API is slow or fails for that id.
+- **The KYC-file-error visual fails the file request itself.** `e2e/compliance.spec.ts`
+  (`compliance-user-15`) intercepts `GET /v2/kyc/file/:uid?access=View` and answers HTTP 500 with a
+  fixed message. A green run proves that the loaded dossier keeps rendering the file error in its
+  preview area, not that the API rejects a real KYC-file request or returns that message.
 - **The non-Frick buy screens inject a currency list.** `e2e/buy-process.spec.ts` and
   `e2e/buy-info.spec.ts` fulfil `**/v1/fiat` with CHF, EUR, and one buyable row outside the
   Bank Frick set, and they fulfil the quote in that currency. The product does not offer that

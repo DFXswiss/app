@@ -65,7 +65,7 @@
   },
   "compliance": {
     "title": "Compliance",
-    "description": "Compliance-Suche mit Quick-Links (Aktennotiz, unzugeordnete Bankeingänge, offene Chargebacks), Trefferliste und Nutzerdossier mit Tabs (KYC, Transaktionen, Bankdaten, Routen) sowie Provisional-Approval- und VIP-Toggles für Kunden im laufenden Onboarding. Beim Wechsel zu einem anderen Kunden erscheint ein Ladezustand, bis dessen Dossier geladen ist; schlägt der Wechsel fehl, ersetzt eine Fehlermeldung das vorherige Dossier."
+    "description": "Compliance-Suche mit Quick-Links (Aktennotiz, unzugeordnete Bankeingänge, offene Chargebacks), Trefferliste und Nutzerdossier mit Tabs (KYC, Transaktionen, Bankdaten, Routen) sowie Provisional-Approval- und VIP-Toggles für Kunden im laufenden Onboarding. Beim Wechsel zu einem anderen Kunden erscheint ein Ladezustand, bis dessen Dossier geladen ist; schlägt der Wechsel fehl, ersetzt eine Fehlermeldung das vorherige Dossier. Kann eine KYC-Datei nicht geladen werden, bleibt das Dossier sichtbar und der Fehler erscheint im Dateivorschaubereich."
   },
   "compliance-recommendation-graph": {
     "title": "Compliance-Empfehlungsgraph",
