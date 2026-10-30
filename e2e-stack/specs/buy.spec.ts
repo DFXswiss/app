@@ -33,9 +33,23 @@ interface PaymentInfoPayload {
   amount?: number;
   iban?: string;
   remittanceInfo?: string;
+  isValid?: boolean;
+  provisionalApproval?: boolean;
+  error?: string;
   currency?: { name?: string };
   asset?: { name?: string };
 }
+
+const PROVISIONAL_ONBOARDING_ERRORS = [
+  'EmailRequired',
+  'RecommendationRequired',
+  'KycRequired',
+  'KycDataRequired',
+  'LimitExceeded',
+] as const;
+const PROVISIONAL_NOTICE =
+  'Your account is only provisionally approved. This allows you to make a deposit, ' +
+  'but your crypto assets will only be delivered once your onboarding is complete.';
 
 function normPath(p: string): string {
   return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
@@ -557,6 +571,87 @@ test.describe('Buy flow', () => {
     await expect(confirmBtn).toBeVisible();
     await confirmBtn.click();
     await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
+  });
+
+  test('/buy and /buy/info: provisional approval exposes bank details without transfer confirmation', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    const user = await createUser({
+      tag: 'buy-provisional',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const eligibility = await queryOne<{ status: string; tradeApprovalDate: Date | null }>(
+      `SELECT status, "tradeApprovalDate" AS "tradeApprovalDate" FROM user_data WHERE id = $1`,
+      [user.userDataId],
+    );
+    expect(['Active', 'NA']).toContain(eligibility?.status);
+    expect(eligibility?.tradeApprovalDate).toBeNull();
+
+    await openScreen(page, '/buy', user.jwt);
+    const rejectedResponsePromise = page.waitForResponse(
+      (response) => {
+        if (response.request().method() !== 'PUT' || !response.url().includes('/buy/paymentInfos')) return false;
+        if (response.url().includes('/confirm') || response.url().includes('/invoice')) return false;
+        return Number(response.request().postDataJSON()?.amount) === 100;
+      },
+      { timeout: 45000 },
+    );
+    await page.goto('/buy?asset-in=CHF&asset-out=ETH&amount-in=100&blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+    expect((await rejectedResponsePromise).status()).toBe(400);
+    await expect(page.getByText('To trade, you need a recommendation from an existing DFX customer.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Payment Information' })).toHaveCount(0);
+
+    const { jwt: supportJwt } = await loginAs('Support');
+    const approval = await apiPut<{
+      id: number;
+      provisionalApprovalDate?: string;
+      vipUserIds: number[];
+    }>(`support/${user.userDataId}/provisionalApproval`, { enabled: true }, { jwt: supportJwt });
+    expect(approval.id).toBe(user.userDataId);
+    expect(approval.provisionalApprovalDate).toBeTruthy();
+
+    const buyCapture = attachPaymentInfoCapture(page);
+    await page.reload();
+    expect(await waitForQuoteUi(page, 45000)).toBe('payment');
+    await expect
+      .poll(() => buyCapture.get()?.provisionalApproval, {
+        timeout: 10000,
+        message: 'PUT /buy/paymentInfos must mark the quote as provisionally approved',
+      })
+      .toBe(true);
+    const buyPaymentInfo = buyCapture.get();
+    expect(buyPaymentInfo?.isValid).toBe(false);
+    expect(PROVISIONAL_ONBOARDING_ERRORS).toContain(buyPaymentInfo?.error);
+    expect(buyPaymentInfo?.iban).toBeTruthy();
+    const buyIban = dataTableValue(page, 'IBAN');
+    await expect(buyIban).toBeVisible();
+    expect(stripIban(await buyIban.innerText())).toContain(stripIban(buyPaymentInfo!.iban!).slice(0, 8));
+    await expect(page.getByText(PROVISIONAL_NOTICE, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Click here once you have issued the transfer/i })).toHaveCount(0);
+
+    const infoCapture = attachPaymentInfoCapture(page);
+    await page.goto('/buy/info?asset-in=CHF&asset-out=ETH&amount-in=100&blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+    expect(await waitForQuoteUi(page, 45000)).toBe('payment');
+    await expect
+      .poll(() => infoCapture.get()?.provisionalApproval, {
+        timeout: 10000,
+        message: 'PUT /buy/paymentInfos from /buy/info must mark the quote as provisionally approved',
+      })
+      .toBe(true);
+    const infoPaymentInfo = infoCapture.get();
+    expect(infoPaymentInfo?.isValid).toBe(false);
+    expect(PROVISIONAL_ONBOARDING_ERRORS).toContain(infoPaymentInfo?.error);
+    expect(infoPaymentInfo?.iban).toBeTruthy();
+    const infoIban = dataTableValue(page, 'IBAN');
+    await expect(infoIban).toBeVisible();
+    expect(stripIban(await infoIban.innerText())).toContain(stripIban(infoPaymentInfo!.iban!).slice(0, 8));
+    await expect(page.getByText(PROVISIONAL_NOTICE, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Click here once you have issued the transfer/i })).toHaveCount(0);
   });
 
   test('/buy: confirm after already confirmed shows completion, not error', async ({ page }) => {

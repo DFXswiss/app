@@ -18,6 +18,7 @@ import { createTestCredentials } from './test-wallet';
 
 // Test data - uses "max" search which returns Max Mueller (ID 1005)
 const TEST_USER_DATA_ID = '1005';
+const TEST_SWITCH_USER_DATA_ID = '1006';
 const TEST_SEARCH_QUERY = 'max';
 // Requires a local BuyCrypto on this transaction uid, owned by TEST_USER_DATA_ID, with status
 // Stopped, amlCheck Pass and not completed — that combination is what renders the resume button
@@ -208,6 +209,52 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await expect(page.getByText('VIP: off')).toBeVisible();
 
       await expect(page).toHaveScreenshot('compliance-user-12-account-access-toggles-off.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows loading while switching to another customer', async ({ page }) => {
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.route(`**/v1/support/${TEST_SWITCH_USER_DATA_ID}`, () => {});
+      await page.evaluate((userDataId) => {
+        window.history.pushState({}, '', `/compliance/user/${userDataId}`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, TEST_SWITCH_USER_DATA_ID);
+
+      await expect(page).toHaveURL(new RegExp(`/compliance/user/${TEST_SWITCH_USER_DATA_ID}$`));
+      await expect(page.locator('[role="status"], .animate-spin').first()).toBeVisible();
+
+      await expect(page).toHaveScreenshot('compliance-user-13-switch-loading.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows an error when switching to another customer fails', async ({ page }) => {
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.route(`**/v1/support/${TEST_SWITCH_USER_DATA_ID}`, async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Customer dossier could not be loaded' }),
+        });
+      });
+      await page.evaluate((userDataId) => {
+        window.history.pushState({}, '', `/compliance/user/${userDataId}`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, TEST_SWITCH_USER_DATA_ID);
+
+      await expect(page).toHaveURL(new RegExp(`/compliance/user/${TEST_SWITCH_USER_DATA_ID}$`));
+      await expect(page.getByText(/Something went wrong/)).toBeVisible();
+
+      await expect(page).toHaveScreenshot('compliance-user-14-switch-load-error.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });
