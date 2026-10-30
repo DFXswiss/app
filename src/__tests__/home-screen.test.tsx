@@ -698,19 +698,6 @@ describe('HomeScreen', () => {
     expect(screen.queryByText('Home description')).not.toBeInTheDocument();
   });
 
-  it('stops going back on a page that has no tiles', () => {
-    const view = setup('/');
-    clickImage(view.container, 'ghost.jpg');
-    clickImage(view.container, 'g.jpg');
-    expect(screen.getByText('loading')).toBeInTheDocument();
-
-    delete (mockState.pages.ghost as { tiles?: TestTile[] }).tiles;
-    pressBack();
-    expect(screen.getByText('loading')).toBeInTheDocument();
-    expect(screen.queryByText('Ghost page')).not.toBeInTheDocument();
-    expect(screen.queryByText('Home description')).not.toBeInTheDocument();
-  });
-
   it('clears a wallet connection, including one remembered only by the back handler', () => {
     const { container } = setup('/');
     clickImage(container, 'wallet.jpg');

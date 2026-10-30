@@ -12,6 +12,7 @@ let mockUser: User | undefined;
 let mockLoading = false;
 let mockLoggedIn = true;
 let mockInitialized = true;
+let mockRedirectPath: string | undefined;
 
 jest.mock('@dfx.swiss/react', () => ({
   UserStatus: { NA: 'NA', ACTIVE: 'Active', BLOCKED: 'Blocked', DELETED: 'Deleted' },
@@ -38,6 +39,10 @@ jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_key: string, value: string) => value }),
 }));
 
+jest.mock('src/contexts/app-handling.context', () => ({
+  useAppHandlingContext: () => ({ redirectPath: mockRedirectPath }),
+}));
+
 function userWithActiveAddress(status: UserStatus): User {
   return { activeAddress: { status } } as User;
 }
@@ -59,6 +64,7 @@ describe('deleted session address', () => {
     mockLoading = false;
     mockLoggedIn = true;
     mockInitialized = true;
+    mockRedirectPath = undefined;
     mockReactivateAddress.mockResolvedValue(undefined);
     mockReloadUser.mockResolvedValue(undefined);
   });
@@ -220,6 +226,61 @@ describe('deleted session address', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
 
     await waitFor(() => expect(screen.getByText('Unknown error')).toBeInTheDocument());
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('continues an activation on /login to /buy when no screen asked to be returned to', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+
+    const { router } = renderGate('/login');
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/buy'));
+    expect(mockReloadUser).not.toHaveBeenCalled();
+  });
+
+  it('returns an activation on /login to the path that sent the customer there', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+    mockRedirectPath = '/settings';
+
+    const { router } = renderGate('/login');
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/settings'));
+  });
+
+  it('stays on / after a successful activation when that route has no login target', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+    let resolveActivation: () => void = () => undefined;
+    mockReactivateAddress.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveActivation = resolve;
+      }),
+    );
+
+    const { router } = renderGate('/');
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+    expect(mockReactivateAddress).toHaveBeenCalledTimes(1);
+    expect(router.state.location.pathname).toBe('/');
+
+    await act(async () => {
+      resolveActivation();
+      await Promise.resolve();
+    });
+
+    expect(router.state.location.pathname).toBe('/');
+    expect(mockReloadUser).not.toHaveBeenCalled();
+  });
+
+  it('stays on /login when the activation fails', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+    mockReactivateAddress.mockRejectedValue({ statusCode: 400, message: 'Account is deactivated or blocked' });
+
+    const { router } = renderGate('/login');
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+
+    await waitFor(() => expect(screen.getByText('Account is deactivated or blocked')).toBeInTheDocument());
+    expect(router.state.location.pathname).toBe('/login');
     expect(mockReloadUser).toHaveBeenCalledTimes(1);
   });
 
