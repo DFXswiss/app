@@ -226,7 +226,8 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       }, TEST_SWITCH_USER_DATA_ID);
 
       await expect(page).toHaveURL(new RegExp(`/compliance/user/${TEST_SWITCH_USER_DATA_ID}$`));
-      await expect(page.locator('[role="status"], .animate-spin').first()).toBeVisible();
+      // The previous customer's dossier is gone while the new one is pending.
+      await expect(page.getByText('Max Mueller')).toHaveCount(0);
 
       await expect(page).toHaveScreenshot('compliance-user-13-switch-loading.png', {
         fullPage: true,
