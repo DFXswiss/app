@@ -1,0 +1,211 @@
+name: STG CI/CD
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-stg
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  build:
+    name: Build and deploy to STG
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install packages
+        run: npm ci
+
+      - name: Read version
+        id: package_version
+        run: echo "current-version=$(jq -r .version package.json)" >> $GITHUB_OUTPUT
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Build code
+        env:
+          REACT_APP_BUILD_ID: ${{ github.run_number }}-${{ github.run_id }}
+        run: node scripts/generate-version.js && bash scripts/build.sh stg
+
+      - name: Build widget
+        run: bash scripts/build-widget.sh stg
+
+      - name: Copy widget
+        run: |
+          version=$(echo "v${{ steps.package_version.outputs.current-version }}" | cut -d '.' -f1-2)
+
+          mkdir -p ./build/widget/$version-chunks
+          cp ./widget/static/js/main.*.js ./build/widget/$version
+          cp ./widget/static/css/main.*.css ./build/widget/$version.css
+          cp ./widget/$version-chunks/*.chunk.js ./build/widget/$version-chunks
+          cp ./widget/$version-chunks/*.chunk.css ./build/widget/$version-chunks
+          cp ./widget/$version-chunks/*.wasm ./build/widget/$version-chunks
+
+          sed -i "s|main-widget.css|https://stg.app.dfx.swiss/widget/$version.css|g" "./build/widget/$version"
+
+      - name: Install Wrangler
+        run: npm install -g wrangler@4
+
+      # Marker file the verify step polls before checking the 404 response. Seeing this
+      # deploy's marker at least once shows the new version is live somewhere at the edge --
+      # it does not prove the 404 check below was answered by that same edge node (see that
+      # step's comment). Includes run_attempt so a re-run of the same workflow run writes a
+      # distinct marker.
+      - name: Write deploy marker
+        run: printf '%s' '${{ github.run_id }}-${{ github.run_attempt }}' > build/deploy-id.txt
+
+      - name: Deploy to Cloudflare Pages (STG)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: wrangler pages deploy build --project-name=dfx-app-stg --branch=staging
+
+      - name: Verify missing assets return 404 (not the SPA fallback)
+        run: |
+          # functions/[[path]].js + public/_routes.json turn a missing /static/* asset into a
+          # plain 404 instead of the SPA fallback (index.html, status 200) that used to be
+          # eligible to stay cached under the asset's own URL for up to a year, until evicted or
+          # cleared (see public/_headers). This step is a smoke test, run after every staging deploy,
+          # for exactly that regression -- see below for what it actually proves and what it does
+          # not.
+          #
+          # First wait until THIS deploy is live at the custom domain (build/deploy-id.txt
+          # carries this run's id and attempt). Only then is the 404 check meaningful — an
+          # older deploy that already had the 404 fix would pass a path-only check without
+          # ever validating the version just uploaded.
+          #
+          # The marker poll and the 404 check are separate HTTP requests. During partial
+          # edge propagation they could in theory be answered by different edge nodes (or
+          # different deploy versions). Pages Functions on a direct-upload deploy
+          # (wrangler pages deploy, as used here) have no reliable deploy identity readable
+          # from the function, so this step cannot prove that the marker poll and the 404
+          # check were answered by the same edge state. What it does prove: a matching deploy
+          # marker was seen at least once, and staging answered the missing-asset check
+          # with a correct 404 at least once -- not that both came from the same edge. That
+          # makes this a smoke test, not a per-node proof: it reliably catches a real
+          # regression once the broken behaviour is widespread across the edge, since every
+          # attempt then hits it regardless of which node answers; it gives no guarantee about
+          # a regression still confined to a single node.
+
+          expected_deploy_id='${{ github.run_id }}-${{ github.run_attempt }}'
+          marker_url='https://stg.app.dfx.swiss/deploy-id.txt'
+          max_attempts=12
+          sleep_seconds=5
+          attempt=1
+          marker_body=''
+          last_error=''
+
+          while [ "$attempt" -le "$max_attempts" ]; do
+            cb="$(date +%s)-${attempt}"
+            if marker_body=$(curl -s --max-time 10 "${marker_url}?cb=${cb}"); then
+              last_error=''
+              marker_body=$(printf '%s' "$marker_body" | tr -d '\r\n')
+              if [ "$marker_body" = "$expected_deploy_id" ]; then
+                echo "OK: deploy marker matches $expected_deploy_id (attempt $attempt)"
+                break
+              fi
+              echo "Attempt $attempt/$max_attempts: deploy-id.txt body='$marker_body' expected='$expected_deploy_id' (no matching marker observed yet, retrying)"
+            else
+              marker_body=''
+              last_error='transport failure (curl could not complete the request)'
+              echo "Attempt $attempt/$max_attempts: curl failed fetching deploy-id.txt (no marker observed this attempt, retrying)"
+            fi
+            if [ "$attempt" -eq "$max_attempts" ]; then
+              echo "FAIL: no marker matching this run was observed at the custom domain within $max_attempts attempts."
+              echo "  url: ${marker_url}"
+              if [ -n "$last_error" ]; then
+                echo "  last error: $last_error"
+              else
+                echo "  last body: $marker_body"
+              fi
+              echo "  expected: $expected_deploy_id"
+              echo "Without a matching deploy marker the subsequent 404 check would only prove that SOME deploy answers missing assets correctly — not that this run's deploy does. The new version therefore remains untested."
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            sleep "$sleep_seconds"
+          done
+
+          # The asset name is randomised per run (and attempt): functions/[[path]].js answers a
+          # missing asset with cache-control: no-store, so no prior run's 404 should still be
+          # cached anywhere, but randomising removes any dependency on that holding true for
+          # this check to be valid.
+          asset="/static/js/does-not-exist.${{ github.run_id }}-${{ github.run_attempt }}-$(date +%s).chunk.js"
+          url="https://stg.app.dfx.swiss${asset}"
+
+          # A fresh Cloudflare Pages deploy can take a few seconds to become the version served
+          # at the custom domain, so a non-matching response (or a transport failure) is retried;
+          # it is never accepted as a pass, and running out of attempts fails the build.
+          # Success requires the exact headers functions/[[path]].js notFound() returns:
+          # status 404, content-type text/plain; charset=utf-8, cache-control no-store.
+          attempt=1
+          status=""
+          content_type=""
+          cache_control=""
+          last_error=""
+          any_response_received=false
+
+          while [ "$attempt" -le "$max_attempts" ]; do
+            if raw=$(curl -s -D - -o /dev/null --max-time 10 -w 'HTTP_STATUS:%{http_code}\n' "$url"); then
+              last_error=''
+              any_response_received=true
+              status=$(printf '%s\n' "$raw" | sed -n 's/^HTTP_STATUS://p')
+              content_type=$(printf '%s\n' "$raw" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | awk '/^content-type:/{sub(/^[^:]+:[[:space:]]*/,""); sub(/[[:space:]]+$/,""); print; exit}')
+              cache_control=$(printf '%s\n' "$raw" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | awk '/^cache-control:/{sub(/^[^:]+:[[:space:]]*/,""); sub(/[[:space:]]+$/,""); print; exit}')
+
+              if [ "$status" = "404" ] && [ "$content_type" = "text/plain; charset=utf-8" ] && [ "$cache_control" = "no-store" ]; then
+                echo "OK: $url -> $status, content-type: $content_type, cache-control: $cache_control"
+                exit 0
+              fi
+
+              echo "Attempt $attempt/$max_attempts: $url -> status=$status content-type=$content_type cache-control=$cache_control (waiting for deploy to go live)"
+            else
+              status=''
+              content_type=''
+              cache_control=''
+              last_error='transport failure (curl could not complete the request)'
+              echo "Attempt $attempt/$max_attempts: curl failed fetching $url (waiting for deploy to go live)"
+            fi
+            attempt=$((attempt + 1))
+            sleep "$sleep_seconds"
+          done
+
+          echo "FAIL: missing asset was not answered with a bare 404 after $max_attempts attempts."
+          echo "  url: $url"
+          if [ "$any_response_received" = false ]; then
+            # last_error is necessarily set here: every one of the $max_attempts attempts in this
+            # run failed to complete, not just the final one.
+            echo "  last error: $last_error"
+            echo "None of the $max_attempts attempts completed -- the request never received a response to inspect. Investigate connectivity to stg.app.dfx.swiss or the runner's network before trusting this deploy."
+          elif [ -n "$last_error" ]; then
+            # any_response_received is true, so an earlier attempt did get a complete answer; this
+            # is the final attempt failing to complete, not the whole run.
+            echo "  last error: $last_error"
+            echo "The final attempt did not complete -- no response was accepted from it. Earlier attempts did receive a complete response, and none of them satisfied the required contract (status 404, content-type text/plain; charset=utf-8, cache-control no-store). Investigate functions/[[path]].js, public/_routes.json and public/_headers before trusting this deploy."
+          else
+            echo "  last status: $status"
+            echo "  last content-type: $content_type"
+            echo "  last cache-control: $cache_control"
+            echo "The response received does not satisfy the required contract (status 404, content-type text/plain; charset=utf-8, cache-control no-store) -- which is what a client would see if an absent /static/* asset fell through to the SPA fallback (the cached-fallback incident this check exists for), though a mismatch here does not by itself prove that cause over an unrelated server error. Investigate functions/[[path]].js, public/_routes.json and public/_headers before trusting this deploy."
+          fi
+          exit 1

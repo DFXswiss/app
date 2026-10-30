@@ -28,6 +28,25 @@ Open feature pull requests against `develop`. CI rejects a pull request into
 `main` unless its head is this repository's `develop` (check name `Main only
 from develop`).
 
+### Staging
+
+The `staging` branch deploys to [stg.app.dfx.swiss](https://stg.app.dfx.swiss).
+`staging` is a separate branch: by default, every contributor ALWAYS opens PRs
+against `develop`. Merging into `staging` is the exception a contributor
+consciously chooses. Which state runs on staging is always a free choice — there
+is NO obligation to keep staging up to date. Staging users decide freely when to
+sync and rebase onto the latest develop. No branch protection on `staging`;
+rebasing with force-push to `staging` is allowed.
+
+The Pages project that serves staging is provisioned in the infrastructure repo
+and must exist before the first deploy on `staging` runs.
+
+| Branch    | URL                                            | Pages project | Workflow                    |
+| --------- | ---------------------------------------------- | ------------- | --------------------------- |
+| `develop` | [dev.app.dfx.swiss](https://dev.app.dfx.swiss) | `dfx-app-dev` | `.github/workflows/dev.yml` |
+| `staging` | [stg.app.dfx.swiss](https://stg.app.dfx.swiss) | `dfx-app-stg` | `.github/workflows/stg.yml` |
+| `main`    | [app.dfx.swiss](https://app.dfx.swiss)         | `dfx-app-prd` | `.github/workflows/prd.yml` |
+
 ### Report every bug you find, including pre-existing ones
 
 A defect in code a pull request touches is reported as a bug — with the same
