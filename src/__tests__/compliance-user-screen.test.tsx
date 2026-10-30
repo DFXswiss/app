@@ -201,6 +201,16 @@ async function renderDossier(data: ComplianceUserData = dossier()) {
   return result;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('ComplianceUserScreen', () => {
   beforeAll(() => {
     Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: mockCreateObjectURL });
@@ -686,5 +696,123 @@ describe('ComplianceUserScreen', () => {
     await waitFor(() => expect(mockSaveBufferedFile).toHaveBeenCalledWith(downloadContent, 'image/jpeg', 'selfie.jpg'));
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
     expect(screen.getByTestId('user-data-panel')).toBeInTheDocument();
+  });
+
+  describe('stale file requests', () => {
+    const fileResponse = (byte: number, contentType = 'image/png') => ({
+      content: { type: 'Buffer' as const, data: [byte] },
+      contentType,
+    });
+
+    it('keeps the new customer preview when the previous customer file resolves late', async () => {
+      const customer12File = deferred<ReturnType<typeof fileResponse>>();
+      mockGetKycFile.mockReturnValueOnce(customer12File.promise).mockResolvedValueOnce(fileResponse(13));
+      mockCreateObjectURL.mockReturnValueOnce('blob:13');
+      const { rerender } = await renderDossier();
+
+      fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+      mockUserDataId = '13';
+      rerender(<ComplianceUserScreen />);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'open file' })).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+      await waitFor(() => expect(mockCreateObjectURL).toHaveBeenCalledTimes(1));
+
+      await act(async () => {
+        customer12File.resolve(fileResponse(12));
+        await customer12File.promise;
+      });
+
+      expect(mockCreateObjectURL).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('selfie.jpg')).toBeInTheDocument();
+      expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    });
+
+    it('keeps the newer preview when two file clicks resolve out of order', async () => {
+      const olderFile = deferred<ReturnType<typeof fileResponse>>();
+      const newerFile = deferred<ReturnType<typeof fileResponse>>();
+      mockGetKycFile.mockReturnValueOnce(olderFile.promise).mockReturnValueOnce(newerFile.promise);
+      mockCreateObjectURL.mockReturnValueOnce('blob:newer');
+      await renderDossier();
+
+      fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+      fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+
+      await act(async () => {
+        newerFile.resolve(fileResponse(2));
+        await newerFile.promise;
+      });
+      await waitFor(() => expect(mockCreateObjectURL).toHaveBeenCalledTimes(1));
+
+      await act(async () => {
+        olderFile.resolve(fileResponse(1));
+        await olderFile.promise;
+      });
+
+      expect(mockCreateObjectURL).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('selfie.jpg')).toBeInTheDocument();
+      expect(mockRevokeObjectURL).not.toHaveBeenCalledWith('blob:newer');
+    });
+
+    it('ignores a late rejection from an older file click', async () => {
+      const olderFile = deferred<ReturnType<typeof fileResponse>>();
+      mockGetKycFile.mockReturnValueOnce(olderFile.promise).mockResolvedValueOnce(fileResponse(2));
+      mockCreateObjectURL.mockReturnValueOnce('blob:newer');
+      await renderDossier();
+
+      fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+      fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+      await waitFor(() => expect(mockCreateObjectURL).toHaveBeenCalledTimes(1));
+
+      await act(async () => {
+        olderFile.reject(new Error('stale file failure'));
+        await expect(olderFile.promise).rejects.toThrow('stale file failure');
+      });
+
+      expect(mockCreateObjectURL).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('selfie.jpg')).toBeInTheDocument();
+      expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    });
+
+    it('ignores stale download success and rejection', async () => {
+      const staleDownload = deferred<ReturnType<typeof fileResponse>>();
+      const staleRejectedDownload = deferred<ReturnType<typeof fileResponse>>();
+      mockGetKycFile
+        .mockResolvedValueOnce(fileResponse(1))
+        .mockReturnValueOnce(staleDownload.promise)
+        .mockResolvedValueOnce(fileResponse(2))
+        .mockReturnValueOnce(staleRejectedDownload.promise);
+      mockCreateObjectURL.mockReturnValueOnce('blob:12').mockReturnValueOnce('blob:newer');
+      const { rerender } = await renderDossier();
+
+      fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+      await waitFor(() => expect(screen.getByText('selfie.jpg')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'download preview' }));
+      fireEvent.click(screen.getByRole('button', { name: 'open file' }));
+      await waitFor(() => expect(mockCreateObjectURL).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(mockRevokeObjectURL).toHaveBeenCalledWith('blob:12'));
+      expect(screen.getByText('selfie.jpg')).toBeInTheDocument();
+      expect(mockRevokeObjectURL).not.toHaveBeenCalledWith('blob:newer');
+
+      await act(async () => {
+        staleDownload.resolve(fileResponse(3));
+        await staleDownload.promise;
+      });
+      expect(mockSaveBufferedFile).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'download preview' }));
+      mockUserDataId = '13';
+      rerender(<ComplianceUserScreen />);
+      await waitFor(() => expect(screen.getByText('no preview')).toBeInTheDocument());
+
+      await act(async () => {
+        staleRejectedDownload.reject(new Error('stale download failure'));
+        await expect(staleRejectedDownload.promise).rejects.toThrow('stale download failure');
+      });
+
+      expect(mockSaveBufferedFile).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    });
   });
 });

@@ -350,6 +350,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`openQuoteCapableBuy` and older quote cases) updates the limit
   directly so `LIMIT_EXCEEDED` does not hide payment info. A green run does **not** prove that a
   customer reaches that limit through the product path.
+- **The full-stack provisional buy spec SQL-clears `user_data.tradeApprovalDate`.**
+  `e2e-stack/specs/buy.spec.ts` (`/buy and /buy/info: provisional approval …`) sets the date to `NULL`
+  after creating the customer, because the factory may leave one behind. A green run does **not** prove
+  that a real KYC-30 customer of that wallet reaches the buy screen without a trade approval.
 - **Full-stack continue-race specs SQL-write `user_data.tradeApprovalDate`.**
   `e2e-stack/specs/kyc-continue-race.spec.ts` sets the date so recommendation is skipped. A green
   run does **not** prove that a customer obtains trade approval through the product path.

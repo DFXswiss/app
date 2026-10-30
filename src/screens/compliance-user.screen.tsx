@@ -80,6 +80,7 @@ export default function ComplianceUserScreen(): JSX.Element {
   const [expandedFiatOutputId, setExpandedFiatOutputId] = useState<number>();
   const [expandedTxUid, setExpandedTxUid] = useState<string>();
   const latestRequestRef = useRef<number>(0);
+  const latestFileRequestRef = useRef<number>(0);
   const { containerRef, splitPercent, setSplitPercent, handleSplitDrag } = useSplitPane();
   const visiblePreview = preview && preview.userDataId === userDataId ? preview : undefined;
   const fileError = fileFailure && fileFailure.userDataId === userDataId ? fileFailure.message : undefined;
@@ -125,8 +126,11 @@ export default function ComplianceUserScreen(): JSX.Element {
   }
 
   async function openFile(file: KycFile): Promise<void> {
+    const request = ++latestFileRequestRef.current;
     try {
       const { content, contentType } = await getKycFile(file.uid, 'View');
+      // Ignore file responses that a newer click or another customer has superseded.
+      if (request !== latestFileRequestRef.current) return;
       if (!content || content.type !== 'Buffer' || !Array.isArray(content.data)) {
         setFileFailure({ userDataId, message: 'Invalid file type' });
         return;
@@ -138,14 +142,17 @@ export default function ComplianceUserScreen(): JSX.Element {
       setFileFailure(undefined);
       setPreview({ userDataId, url, contentType, name: file.name, uid: file.uid });
     } catch (e: unknown) {
+      if (request !== latestFileRequestRef.current) return;
       setFileFailure({ userDataId, message: e instanceof Error ? e.message : 'Error loading file' });
     }
   }
 
   async function downloadPreview(): Promise<void> {
     if (!visiblePreview?.uid) return;
+    const request = ++latestFileRequestRef.current;
     try {
       const { content, contentType } = await getKycFile(visiblePreview.uid, 'Download');
+      if (request !== latestFileRequestRef.current) return;
       if (!content || content.type !== 'Buffer' || !Array.isArray(content.data)) {
         setFileFailure({ userDataId, message: 'Invalid file type' });
         return;
@@ -153,6 +160,7 @@ export default function ComplianceUserScreen(): JSX.Element {
       saveBufferedFile(content, contentType, visiblePreview.name);
       setFileFailure(undefined);
     } catch (e: unknown) {
+      if (request !== latestFileRequestRef.current) return;
       setFileFailure({ userDataId, message: e instanceof Error ? e.message : 'Error downloading file' });
     }
   }
@@ -188,6 +196,7 @@ export default function ComplianceUserScreen(): JSX.Element {
     setExpandedBankDataId(undefined);
     setExpandedFiatOutputId(undefined);
     setExpandedTxUid(undefined);
+    latestFileRequestRef.current++;
   }, [userDataId]);
 
   useEffect(() => {
