@@ -32,7 +32,7 @@ from develop`).
 
 The `staging` branch deploys to [stg.app.dfx.swiss](https://stg.app.dfx.swiss).
 `staging` is a separate branch: merging into `staging` is the exception a
-contributor consciously chooses; feature pull requests always target `develop`
+contributor consciously chooses; feature pull requests target `develop` by default
 (see above). Which state runs on staging is always a free choice — there
 is NO obligation to keep staging up to date. Staging users decide freely when to
 sync and rebase onto the latest `develop`. No branch protection on `staging`;
