@@ -6,7 +6,7 @@
  */
 
 import type { Locator, Page } from '@playwright/test';
-import { expect, gotoWithSession, loginAs, openScreen, queryOne, queryRows, test, waitForRow } from './fixtures';
+import { expect, gotoWithSession, loginAs, openScreen, queryOne, queryRows, test, waitForRow, withDb } from './fixtures';
 import { apiGet, apiPut } from './fixtures/api-client';
 import { cleanupCreatedData, createBuy, createTransaction, createUser } from './fixtures/factories';
 
@@ -583,6 +583,10 @@ test.describe('Buy flow', () => {
       completePersonalData: true,
       language: 'EN',
     });
+    // The factory may leave a trade approval behind; the provisional case needs a customer without one.
+    await withDb((client) =>
+      client.query('UPDATE user_data SET "tradeApprovalDate" = NULL WHERE id = $1', [user.userDataId]),
+    );
     const eligibility = await queryOne<{ status: string; tradeApprovalDate: Date | null }>(
       `SELECT status, "tradeApprovalDate" AS "tradeApprovalDate" FROM user_data WHERE id = $1`,
       [user.userDataId],
