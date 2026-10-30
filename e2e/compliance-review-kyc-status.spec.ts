@@ -90,9 +90,24 @@ async function fulfillJson(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
+interface KycStepFixture {
+  id: number;
+  name: string;
+  status: string;
+  sequenceNumber: number;
+  created: string;
+}
+
+// Fixtures may drop the account type, carry KYC steps or AML comments, which the base fixture does not
+type ComplianceFixture = Omit<typeof complianceFixture, 'userData' | 'kycSteps' | 'transactions'> & {
+  userData: Omit<typeof complianceFixture.userData, 'accountType'> & { accountType?: string };
+  kycSteps: KycStepFixture[];
+  transactions: ((typeof complianceFixture.transactions)[number] & { comment?: string })[];
+};
+
 async function installSyntheticApi(
   page: Page,
-  fixtureSource: typeof complianceFixture = complianceFixture,
+  fixtureSource: ComplianceFixture = complianceFixture,
 ): Promise<{ unexpectedRequests: string[]; mutations: { method: string; path: string; body: unknown }[] }> {
   const unexpectedRequests: string[] = [];
   const mutations: { method: string; path: string; body: unknown }[] = [];
@@ -221,7 +236,7 @@ test.describe('Compliance review KYC and AML actions', () => {
   test('shows the pending ManualCheck Fail and Reset decision variants', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 1200 });
 
-    const pendingFixture = structuredClone(complianceFixture);
+    const pendingFixture: ComplianceFixture = structuredClone(complianceFixture);
     pendingFixture.transactions = [
       {
         id: 326324,
@@ -287,7 +302,7 @@ test.describe('Compliance review KYC and AML actions', () => {
   test('shows the Scorechain acknowledgement row and the Reset warning for a high-risk hold', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 1200 });
 
-    const pendingFixture = structuredClone(complianceFixture);
+    const pendingFixture: ComplianceFixture = structuredClone(complianceFixture);
     pendingFixture.transactions = [
       {
         id: 336963,
@@ -347,7 +362,7 @@ test.describe('Compliance review KYC and AML actions', () => {
   test('shows the Scorechain acknowledgement row for an unavailable result', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 1200 });
 
-    const pendingFixture = structuredClone(complianceFixture);
+    const pendingFixture: ComplianceFixture = structuredClone(complianceFixture);
     pendingFixture.transactions = [
       {
         id: 336963,
@@ -396,7 +411,7 @@ test.describe('Compliance review KYC and AML actions', () => {
   test('shows the Reset hint for a name check that could not be completed', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 1200 });
 
-    const pendingFixture = structuredClone(complianceFixture);
+    const pendingFixture: ComplianceFixture = structuredClone(complianceFixture);
     pendingFixture.transactions = [
       {
         id: 400001,
@@ -435,6 +450,48 @@ test.describe('Compliance review KYC and AML actions', () => {
     await hint.scrollIntoViewIfNeeded();
 
     await expect(page).toHaveScreenshot('compliance-review-aml-pending-name-check-unavailable.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+
+    expect(unexpectedRequests).toEqual([]);
+  });
+
+  test('shows the Statutes decision for a step opened on an account without an account type', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1200 });
+
+    // A level-0 account without an account type whose Statutes step waits in ManualReview.
+    const { accountType: _accountType, ...userDataWithoutAccountType } = complianceFixture.userData;
+    const statutesFixture: ComplianceFixture = {
+      ...structuredClone(complianceFixture),
+      userData: { ...userDataWithoutAccountType, kycLevel: 0, kycStatus: 'NA' },
+      transactions: [],
+      kycSteps: [
+        {
+          id: 861016,
+          name: 'Statutes',
+          status: 'ManualReview',
+          sequenceNumber: 0,
+          created: '2026-10-29T04:53:40.000Z',
+        },
+      ],
+    };
+
+    const { unexpectedRequests } = await installSyntheticApi(page, statutesFixture);
+
+    await page.goto(`/compliance/user/${USER_DATA_ID}/kyc?session=${jwt()}&tab=statutes`);
+
+    await expect(page.getByRole('button', { name: /^Statuten/ })).toBeVisible();
+    await expect(page.getByText('Die Statuten werden:')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Operational Activity/ })).toHaveCount(0);
+
+    await page
+      .locator('select')
+      .filter({ has: page.locator('option[value="Abgelehnt"]') })
+      .selectOption('Abgelehnt');
+    await expect(page.getByText('Kommentar:')).toBeVisible();
+
+    await expect(page).toHaveScreenshot('compliance-review-statutes-without-account-type.png', {
       fullPage: true,
       maxDiffPixels: 5000,
     });

@@ -301,7 +301,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   rather than a screening result. A green run does not prove live API payloads, that
   Scorechain or the API produced those holds, that the API wrote `NameCheckUnavailable`,
   or that a name-check refresh failed, or that the Editor label is the logged-in staff
-  member's `verifiedName`.
+  member's `verifiedName`. The spec also answers a synthetic level-0 account without an account
+  type that has a `Statutes` step in `ManualReview`. A green run proves that the Statuten tab and
+  its decision render for that account. It does not prove that the API returns such an account or
+  that the decision is saved; the full-stack case covers the save.
 - **The call-queue outcome spec answers staff identity and the dossier itself.**
   `e2e/compliance-call-queue-outcome.spec.ts` fulfils `GET /v1/support/issue/clerk` with
   `{ clerk }`, a differently named fallback on `GET /v1/support/{staffAccount}`,
@@ -374,6 +377,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/compliance.spec.ts` inserts a `kyc_step` named `Recommendation` in status
   `InternalReview`, on a synthetic account at KYC level 30 with completed personal data. A green run
   does **not** prove that the customer KYC flow creates that open step.
+- **Full-stack compliance case specs SQL-insert a Statutes step on an account without account type.**
+  `e2e-stack/specs/compliance-cases.spec.ts` inserts a `kyc_step` named `Statutes` in status
+  `ManualReview` on a synthetic account at KYC level 0 whose `accountType` stays null. A green run
+  does **not** prove how such a step reaches review; the customer KYC flow only offers `Statutes` to
+  association accounts.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs

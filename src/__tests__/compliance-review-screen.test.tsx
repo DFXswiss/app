@@ -715,6 +715,20 @@ describe('save handlers', () => {
     expect(mockCreateKycLog).toHaveBeenCalledWith(42, expect.stringContaining('amlAccountType'));
   });
 
+  it('does not write an AML account type when the operational step sits on a non-organization account', async () => {
+    mockTabParam = 'operationalActivity';
+    await renderLoaded(
+      mockData({
+        accountType: undefined,
+        kycSteps: [mockStep('OperationalActivity', 'Pending', 1, '{"isOperational":true}')],
+      }),
+    );
+    await invoke(() => mockReviewProps?.onSave(7, 'Failed', 'Clerk', 'Operational') ?? Promise.resolve());
+    expect(mockUpdateKycStep).toHaveBeenCalled();
+    expect(mockUpdateUserData).not.toHaveBeenCalled();
+    expect(mockCreateKycLog).toHaveBeenCalledWith(42, expect.not.stringContaining('amlAccountType'));
+  });
+
   it.each([
     ['an Error', new Error('review failed'), 'review failed'],
     ['a non-Error', 'review failed', 'Error saving'],
@@ -1105,6 +1119,14 @@ describe('tab badges, colors and panels', () => {
     const organization = render(<ComplianceReviewScreen />);
     expect(await screen.findByRole('button', { name: 'Operational Activity' })).toBeInTheDocument();
     expect(organization.container.querySelector('[class*="w-0.5"]')).not.toBeNull();
+  });
+
+  it('shows an organization tab on an account without that account type when the account has its step', async () => {
+    mockTabParam = 'statutes';
+    await renderLoaded(mockData({ accountType: undefined, kycSteps: [mockStep('Statutes', 'ManualReview')] }));
+    expect(tab('Statuten')).toHaveClass('bg-white', 'border-dfxBlue-800');
+    expect(mockReviewProps?.step?.name).toBe('Statutes');
+    expect(screen.queryByRole('button', { name: 'Operational Activity' })).not.toBeInTheDocument();
   });
 
   it('falls back from an invisible requested tab and changes the active style when clicked', async () => {
