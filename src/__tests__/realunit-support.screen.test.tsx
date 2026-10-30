@@ -173,6 +173,9 @@ describe('RealunitSupportScreen', () => {
     expect(screen.getByRole('button', { name: /Answered \(1\)/ })).toBeInTheDocument();
     expect(screen.getAllByText('2')).not.toHaveLength(0); // Open Issues stat + Open tab count
 
+    // Every ticket here comes from the RealUnit app, so the App column of the DFX list is left out.
+    expect(screen.queryByRole('columnheader', { name: 'App' })).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByText('Customer waiting'));
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/support/issue/1');
   });

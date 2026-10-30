@@ -169,6 +169,12 @@ test.describe('Support dashboard (staff)', () => {
 
     await page.getByRole('button', { name: /^Limit Requests \(/ }).click();
     await expect(page.getByText(issue.name, { exact: true })).toBeVisible({ timeout: 15000 });
+
+    // The App column names where the ticket was opened: this one comes from the API without the RealUnit
+    // client header, so the list answers source DFX for it.
+    await expect(page.getByRole('columnheader', { name: 'App' })).toBeVisible();
+    const row = page.getByRole('row').filter({ has: page.getByText(issue.name, { exact: true }) });
+    await expect(row.getByRole('cell', { name: 'DFX', exact: true })).toBeVisible();
   });
 
   test('/support/dashboard/create creates an issue for a searched customer', async ({ page }) => {

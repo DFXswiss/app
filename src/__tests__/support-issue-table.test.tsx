@@ -115,6 +115,26 @@ describe('IssueTable', () => {
     expect(screen.queryByRole('columnheader', { name: 'Dept' })).not.toBeInTheDocument();
   });
 
+  it('shows the App column with the ticket source or a dash only when asked to', () => {
+    const issues = [
+      issue({ id: 1, name: 'From RealUnit', source: 'RealUnit' }),
+      issue({ id: 2, name: 'From DFX', source: 'DFX' }),
+      issue({ id: 3, name: 'Without source', source: undefined, lastMessageDate: '2026-09-01T10:00:00Z' }),
+    ];
+    const { rerender } = render(
+      <IssueTable issues={issues} showDepartment={false} showSource onRowClick={jest.fn()} />,
+    );
+
+    expect(screen.getByRole('columnheader', { name: 'App' })).toBeInTheDocument();
+    expect(within(rowOf('From RealUnit')).getByText('RealUnit')).toBeInTheDocument();
+    expect(within(rowOf('From DFX')).getByText('DFX')).toBeInTheDocument();
+    expect(within(rowOf('Without source')).getByText('-')).toBeInTheDocument();
+
+    rerender(<IssueTable issues={issues} showDepartment={false} onRowClick={jest.fn()} />);
+    expect(screen.queryByRole('columnheader', { name: 'App' })).not.toBeInTheDocument();
+    expect(within(rowOf('From RealUnit')).queryByText('RealUnit')).not.toBeInTheDocument();
+  });
+
   it('shows the type label, hides the Other reason and keeps specific reasons as subtitle', () => {
     render(
       <IssueTable
@@ -283,6 +303,19 @@ describe('GroupedIssueTable', () => {
 
     fireEvent.click(screen.getByText('Answered ticket'));
     expect(onRowClick).toHaveBeenCalledWith(answered);
+  });
+
+  it('widens the section headers by the App and Dept columns it shows', () => {
+    const groups = { needsReply: [issue({ id: 1, name: 'Needs reply', source: 'RealUnit' })], answered: [] };
+    const { rerender } = render(<GroupedIssueTable groups={groups} showDepartment showSource onRowClick={jest.fn()} />);
+
+    expect(screen.getByRole('columnheader', { name: 'App' })).toBeInTheDocument();
+    expect(within(rowOf('Needs reply')).getByText('RealUnit')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting reply (1)').closest('td')).toHaveAttribute('colspan', '8');
+
+    rerender(<GroupedIssueTable groups={groups} showDepartment={false} onRowClick={jest.fn()} />);
+    expect(screen.queryByRole('columnheader', { name: 'App' })).not.toBeInTheDocument();
+    expect(screen.getByText('Awaiting reply (1)').closest('td')).toHaveAttribute('colspan', '6');
   });
 
   it('renders the Awaiting header without toggle semantics', () => {

@@ -14,8 +14,9 @@ import {
 
 // Presentational support-issue table components, extracted verbatim from support-dashboard.screen.tsx so both the
 // DFX support dashboard and the RealUnit-scoped support screen can share them. All are pure/prop-driven; only
-// IssueRow reads `translate` from context. `onRowClick` and `showDepartment` are props, so each screen controls
-// routing target and department visibility itself (RealUnit passes showDepartment={false} + a /realunit/... route).
+// IssueRow reads `translate` from context. `onRowClick`, `showDepartment` and `showSource` are props, so each screen
+// controls routing target and column visibility itself (RealUnit passes showDepartment={false} + a /realunit/... route
+// and leaves out the App column, since every ticket there comes from its own app).
 
 export function TabButton({
   label,
@@ -73,18 +74,26 @@ export interface IssueGroups {
   answered: SupportIssueListItem[];
 }
 
-const COLUMN_COUNT = 7;
+// Type, Name, Clerk, State, Msgs and Last Msg; App and Dept are added when shown.
+const COLUMN_COUNT = 6;
 
 // Height of the sticky table header (text-xs line + py-1.5); section headers stick right below it.
 const SECTION_HEADER_TOP = 'top-7';
 
-function IssueTableHeader({ showDepartment }: { showDepartment: boolean }): JSX.Element {
+function IssueTableHeader({
+  showDepartment,
+  showSource,
+}: {
+  showDepartment: boolean;
+  showSource: boolean;
+}): JSX.Element {
   return (
     <thead className="sticky top-0 z-20 bg-dfxGray-300">
       <tr>
         <th className="px-2 py-1.5 text-left text-xs font-semibold text-dfxBlue-800">Type</th>
         <th className="px-2 py-1.5 text-left text-xs font-semibold text-dfxBlue-800">Name</th>
         <th className="px-2 py-1.5 text-left text-xs font-semibold text-dfxBlue-800">Clerk</th>
+        {showSource && <th className="px-2 py-1.5 text-left text-xs font-semibold text-dfxBlue-800">App</th>}
         {showDepartment && <th className="px-2 py-1.5 text-left text-xs font-semibold text-dfxBlue-800">Dept</th>}
         <th className="px-2 py-1.5 text-center text-xs font-semibold text-dfxBlue-800">State</th>
         <th className="px-2 py-1.5 text-center text-xs font-semibold text-dfxBlue-800">Msgs</th>
@@ -97,11 +106,13 @@ function IssueTableHeader({ showDepartment }: { showDepartment: boolean }): JSX.
 function IssueRow({
   issue,
   showDepartment,
+  showSource,
   showWaiting,
   onRowClick,
 }: {
   issue: SupportIssueListItem;
   showDepartment: boolean;
+  showSource: boolean;
   showWaiting: boolean;
   onRowClick: (issue: SupportIssueListItem) => void;
 }): JSX.Element {
@@ -142,6 +153,9 @@ function IssueRow({
           issue.clerk
         )}
       </td>
+      {showSource && (
+        <td className="px-2 py-1.5 text-xs text-dfxBlue-800 text-left group-hover:text-white">{issue.source || '-'}</td>
+      )}
       {showDepartment && (
         <td className="px-2 py-1.5 text-xs text-dfxBlue-800 text-left group-hover:text-white">
           {issue.department || '-'}
@@ -201,10 +215,12 @@ function SectionHeader({
 export function GroupedIssueTable({
   groups,
   showDepartment,
+  showSource = false,
   onRowClick,
 }: {
   groups: IssueGroups;
   showDepartment: boolean;
+  showSource?: boolean;
   onRowClick: (issue: SupportIssueListItem) => void;
 }): JSX.Element {
   // "Answered" starts folded so the tickets that need a reply own the screen; it unfolds on click
@@ -215,16 +231,23 @@ export function GroupedIssueTable({
   const total = groups.needsReply.length + groups.answered.length;
   if (total === 0) return <div className="p-4 text-dfxGray-700 text-sm">No issues found</div>;
 
-  const colSpan = showDepartment ? COLUMN_COUNT + 1 : COLUMN_COUNT;
+  const colSpan = COLUMN_COUNT + (showDepartment ? 1 : 0) + (showSource ? 1 : 0);
   const renderRows = (issues: SupportIssueListItem[]): JSX.Element[] =>
     issues.map((issue) => (
-      <IssueRow key={issue.id} issue={issue} showDepartment={showDepartment} showWaiting onRowClick={onRowClick} />
+      <IssueRow
+        key={issue.id}
+        issue={issue}
+        showDepartment={showDepartment}
+        showSource={showSource}
+        showWaiting
+        onRowClick={onRowClick}
+      />
     ));
 
   return (
     <div className="bg-white shadow-sm flex-1 min-h-0 overflow-auto scroll-shadow">
       <table className="w-full border-collapse">
-        <IssueTableHeader showDepartment={showDepartment} />
+        <IssueTableHeader showDepartment={showDepartment} showSource={showSource} />
         <tbody>
           {groups.needsReply.length > 0 && (
             <>
@@ -253,10 +276,12 @@ export function GroupedIssueTable({
 export function IssueTable({
   issues,
   showDepartment,
+  showSource = false,
   onRowClick,
 }: {
   issues: SupportIssueListItem[];
   showDepartment: boolean;
+  showSource?: boolean;
   onRowClick: (issue: SupportIssueListItem) => void;
 }): JSX.Element {
   if (issues.length === 0) {
@@ -266,13 +291,14 @@ export function IssueTable({
   return (
     <div className="bg-white shadow-sm flex-1 min-h-0 overflow-auto scroll-shadow">
       <table className="w-full border-collapse">
-        <IssueTableHeader showDepartment={showDepartment} />
+        <IssueTableHeader showDepartment={showDepartment} showSource={showSource} />
         <tbody>
           {issues.map((issue) => (
             <IssueRow
               key={issue.id}
               issue={issue}
               showDepartment={showDepartment}
+              showSource={showSource}
               showWaiting={false}
               onRowClick={onRowClick}
             />
