@@ -6,11 +6,17 @@ import {
   StyledLoadingSpinner,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { PropsWithChildren, useRef, useState } from 'react';
+import { Router } from '@remix-run/router';
+import { PropsWithChildren, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-address';
+import { carriesLogin, isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-address';
 
-export function DeletedAddressGate({ children }: PropsWithChildren): JSX.Element {
+interface DeletedAddressGateProps extends PropsWithChildren {
+  router: Router;
+}
+
+export function DeletedAddressGate({ children, router }: DeletedAddressGateProps): JSX.Element {
+  const pathname = useSyncExternalStore(router.subscribe, () => router.state.location.pathname);
   const { user, isUserLoading } = useUserContext();
   const { isInitialized, isLoggedIn } = useApiSession();
   // A load seen before a logout must not release the app after the next login.
@@ -25,6 +31,7 @@ export function DeletedAddressGate({ children }: PropsWithChildren): JSX.Element
       hasUser: user != null,
       isUserLoading,
       sawLoad: sawLoad.current,
+      carriesLogin: carriesLogin(pathname),
     })
   ) {
     return <StyledLoadingSpinner size={SpinnerSize.LG} />;

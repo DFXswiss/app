@@ -5,6 +5,7 @@ import {
   StyledButtonWidth,
   StyledLoadingSpinner,
 } from '@dfx.swiss/react-components';
+import { useLocation } from 'react-router-dom';
 import { GetInfoResponse } from 'webln';
 import { Api } from '../../../config/api';
 import { useAppHandlingContext } from '../../../contexts/app-handling.context';
@@ -13,13 +14,14 @@ import { WalletType } from '../../../contexts/wallet.context';
 import { useAlby } from '../../../hooks/wallets/alby.hook';
 import { AbortError } from '../../../util/abort-error';
 import { appOrigin } from '../../../util/app-origin';
-import { loginRedirectParams } from '../../../util/login-redirect';
+import { loginRedirectParams, loginTarget } from '../../../util/login-redirect';
 import { delay, relativeUrl, url } from '../../../util/utils';
 import { ConnectBase } from '../connect-base';
 import { Account, ConnectContentProps, ConnectError, ConnectProps } from '../connect-shared';
 
 export default function ConnectAlby(props: ConnectProps): JSX.Element {
   const { redirectPath, params: appParams, isWidget, widgetPersonalIban } = useAppHandlingContext();
+  const { pathname } = useLocation();
   const { isAvailable, enable, signMessage } = useAlby();
 
   async function getAccount(): Promise<Account> {
@@ -43,11 +45,12 @@ export default function ConnectAlby(props: ConnectProps): JSX.Element {
       redirectUrl.searchParams.set('type', WalletType.ALBY);
       // Merge redirectPath with an allowlisted callback param set (only personal-iban when present).
       // Do not copy the entire live search into the Alby redirect.
-      redirectPath &&
+      const target = loginTarget(redirectPath, pathname);
+      target &&
         redirectUrl.searchParams.set(
           'redirect',
           relativeUrl({
-            path: redirectPath,
+            path: target,
             params: loginRedirectParams({ isWidget, widgetPersonalIban }, win.location.search),
           }),
         );

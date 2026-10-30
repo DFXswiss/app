@@ -16,7 +16,7 @@ import { useSettingsContext } from '../../../contexts/settings.context';
 import { useWalletContext } from '../../../contexts/wallet.context';
 import { useNavigation } from '../../../hooks/navigation.hook';
 import { appOrigin } from '../../../util/app-origin';
-import { loginRedirectParams } from '../../../util/login-redirect';
+import { loginRedirectParams, loginTarget } from '../../../util/login-redirect';
 import { relativeUrl } from '../../../util/utils';
 import { ConnectError, ConnectProps } from '../connect-shared';
 import ConnectMailCode from './connect-mail-code';
@@ -41,7 +41,7 @@ export default function ConnectMail({ isConnect, onLogin, onCancel }: ConnectPro
   const { logout } = useSessionContext();
   const { navigate } = useNavigation();
   const { redirectPath, isWidget, widgetPersonalIban } = useAppHandlingContext();
-  const { search } = useLocation();
+  const { search, pathname } = useLocation();
   const { wallet, recommendationCode } = useAppParams();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -55,10 +55,11 @@ export default function ConnectMail({ isConnect, onLogin, onCancel }: ConnectPro
   // Merge redirectPath with personal-iban from the widget attribute when embedded, otherwise from the page query.
   // Do not copy the entire live search — that would forward user=/arbitrary= into the magic link.
   // The origin is the app's own, not the embedding page's (the API only accepts the app's origins as login redirect).
+  const target = loginTarget(redirectPath, pathname);
   const redirectUri =
-    redirectPath &&
+    target &&
     `${appOrigin()}${relativeUrl({
-      path: redirectPath,
+      path: target,
       params: loginRedirectParams({ isWidget, widgetPersonalIban }, win.location.search),
     })}`;
 

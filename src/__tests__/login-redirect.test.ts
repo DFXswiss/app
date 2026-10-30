@@ -1,6 +1,6 @@
 jest.mock('@dfx.swiss/react', () => ({}));
 
-import { loginRedirectParams } from '../util/login-redirect';
+import { loginRedirectParams, loginTarget } from '../util/login-redirect';
 
 describe('loginRedirectParams', () => {
   it('forwards only personal-iban from the page query when not a widget', () => {
@@ -38,5 +38,27 @@ describe('loginRedirectParams', () => {
     expect(params.has('personal-iban')).toBe(true);
     expect(params.get('personal-iban')).toBe('');
     expect(params.toString()).toBe('personal-iban=');
+  });
+});
+
+describe('loginTarget', () => {
+  it.each(['/login', '/login/mail', '/login/wallet'])('defaults %s to /buy', (pathname) => {
+    expect(loginTarget(undefined, pathname)).toBe('/buy');
+  });
+
+  it('has no default on / or /connect', () => {
+    expect(loginTarget(undefined, '/')).toBeUndefined();
+    expect(loginTarget(undefined, '/connect')).toBeUndefined();
+  });
+
+  it('prefers a set redirectPath on every one of those paths', () => {
+    for (const pathname of ['/login', '/login/mail', '/login/wallet', '/', '/connect']) {
+      expect(loginTarget('/settings', pathname)).toBe('/settings');
+    }
+  });
+
+  it('treats an empty redirectPath as unset', () => {
+    expect(loginTarget('', '/login')).toBe('/buy');
+    expect(loginTarget('', '/connect')).toBeUndefined();
   });
 });
