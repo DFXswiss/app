@@ -251,11 +251,33 @@ test.describe('Auth area e2e', () => {
     // ConnectMail auto-selected: email field + Next.
     await expect(page.getByPlaceholder('example@mail.com')).toBeVisible({ timeout: 15000 });
     await page.getByPlaceholder('example@mail.com').fill(email);
+
+    let redirectUri: string | undefined;
+    await page.route('**/v1/auth/mail', async (route) => {
+      const request = route.request();
+      if (request.method() !== 'POST' || new URL(request.url()).pathname !== '/v1/auth/mail') {
+        await route.continue();
+        return;
+      }
+      const parsed: unknown = request.postDataJSON();
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        await route.continue();
+        return;
+      }
+      const body = parsed as Record<string, unknown>;
+      if (typeof body.redirectUri === 'string') redirectUri = body.redirectUri;
+      const forwarded = { ...body };
+      // Remove redirectUri: @IsUrl() refuses the stack host, which has no top-level domain.
+      delete forwarded.redirectUri;
+      await route.continue({ postData: JSON.stringify(forwarded) });
+    });
+
     await page.getByRole('button', { name: 'Next' }).click();
 
     await expect(
       page.getByText('We have sent an email with further instructions to the address provided.', { exact: true }),
     ).toBeVisible({ timeout: 20000 });
+    expect(new URL(required(redirectUri, 'the login page should send redirectUri')).pathname).toBe('/buy');
     await expect(page.getByRole('button', { name: 'Back' })).toBeVisible();
 
     // OTP lives in notification; completeMailLogin exchanges it for a session JWT.
