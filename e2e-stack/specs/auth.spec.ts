@@ -11,6 +11,7 @@
  */
 
 import type { Page } from '@playwright/test';
+import { ethers } from 'ethers';
 import {
   completeMailLogin,
   expect,
@@ -118,6 +119,39 @@ test.describe('Auth area e2e', () => {
     await expect(page.locator('img[src*="mail"]')).toBeVisible();
   });
 
+  test('command-line wallet login on /login continues to /buy', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet();
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+  });
+
   // ---------------------------------------------------------------------------
   // /login/wallet — page id 'wallets' (icon grid, no description text)
   // ---------------------------------------------------------------------------
@@ -217,11 +251,33 @@ test.describe('Auth area e2e', () => {
     // ConnectMail auto-selected: email field + Next.
     await expect(page.getByPlaceholder('example@mail.com')).toBeVisible({ timeout: 15000 });
     await page.getByPlaceholder('example@mail.com').fill(email);
+
+    let redirectUri: string | undefined;
+    await page.route('**/v1/auth/mail', async (route) => {
+      const request = route.request();
+      if (request.method() !== 'POST' || new URL(request.url()).pathname !== '/v1/auth/mail') {
+        await route.continue();
+        return;
+      }
+      const parsed: unknown = request.postDataJSON();
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        await route.continue();
+        return;
+      }
+      const body = parsed as Record<string, unknown>;
+      if (typeof body.redirectUri === 'string') redirectUri = body.redirectUri;
+      const forwarded = { ...body };
+      // Remove redirectUri: @IsUrl() refuses the stack host, which has no top-level domain.
+      delete forwarded.redirectUri;
+      await route.continue({ postData: JSON.stringify(forwarded) });
+    });
+
     await page.getByRole('button', { name: 'Next' }).click();
 
     await expect(
       page.getByText('We have sent an email with further instructions to the address provided.', { exact: true }),
     ).toBeVisible({ timeout: 20000 });
+    expect(new URL(required(redirectUri, 'the login page should send redirectUri')).pathname).toBe('/buy');
     await expect(page.getByRole('button', { name: 'Back' })).toBeVisible();
 
     // OTP lives in notification; completeMailLogin exchanges it for a session JWT.

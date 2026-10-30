@@ -15,6 +15,7 @@ import { useAppParams } from '../hooks/app-params.hook';
 import { isWallet, Tile, useFeatureTree, Wallet } from '../hooks/feature-tree.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import { useResizeObserver } from '../hooks/resize-observer.hook';
+import { loginTarget } from '../util/login-redirect';
 import { Stack } from '../util/stack';
 
 export default function HomeScreen(): JSX.Element {
@@ -155,7 +156,7 @@ function HomeScreenContent(): JSX.Element {
         ? goBack()
         : setConnectTo({ type: WalletType.ADDRESS });
     } else if (currentPageId) {
-      setPages((p) => p.pop((i) => getPage(i.page, i.allowedTiles)?.tiles?.length === 1));
+      setPages((p) => p.pop((i) => getPage(i.page, i.allowedTiles)?.tiles.length === 1));
     }
   }
 
@@ -168,7 +169,7 @@ function HomeScreenContent(): JSX.Element {
         navigate('/');
 
       default:
-        const path = redirectPath ?? (session?.address ? '/account' : undefined);
+        const path = loginTarget(redirectPath, pathname) ?? (session?.address ? '/account' : undefined);
         path && navigate(path);
         break;
     }

@@ -421,6 +421,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   verification. A green run proves the notice replaces the app and shows the API error after
   a failed activation. It does not prove that the API marks a deleted address that way, that
   it rejects or accepts a real reactivation, or that a successful activation opens the app.
+- **The login-redirect visual spec answers sign-in and GET /v2/user itself.**
+  `e2e/login-redirect.spec.ts` fulfils `GET /v1/auth/signMessage` and `POST /v1/auth` with a
+  synthetic token, fulfils `GET /v2/user` with 401 until that login and then, after 800 ms, with
+  a synthetic user whose active address is `Active`, and fulfils the bootstrap GETs
+  (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner`). Unmatched `/v1/**` and `/v2/**` calls get `501`. The session is a
+  synthetic unsigned JWT, so a green run does not prove production auth, a real signature check,
+  real user latency, or that `/buy` and `/account` show live data.
 - **Full-stack screen-sync regressions hold delivery of real API responses.**
   `e2e-stack/specs/screen-sync.spec.ts` intercepts `GET /v2/kyc/file/:id` and
   `GET /v1/dashboard/financial/latest`, calls `route.fetch()` against the real API, then
@@ -558,6 +566,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   sends the rejected switch once and shows the translated rejection sentence instead of the API's text. It
   does not prove how an account reaches that state in production or any other reason the API may reject the
   switch.
+- **The login-mail full-stack case removes `redirectUri` from the request.** In
+  `e2e-stack/specs/auth.spec.ts`, the `/login/mail` mail form test removes `redirectUri` before
+  `POST /v1/auth/mail` reaches the API, because `@IsUrl()` refuses the stack's host without a top-level
+  domain. A green run proves that the page asks for `/buy` and that the real API sends the login mail
+  without it. It does not prove that the API accepts that `redirectUri` on a real host, or that the mail
+  link leads to `/buy`.
 - **The address-switch unit test runs the SDK user context against replaced HTTP and session hooks.**
   `src/__tests__/address-switch.test.tsx` transpiles `UserContextProvider` from the installed
   `@dfx.swiss/react` build and wires it to hand-written `useUser` and `useApiSession` replacements, and
