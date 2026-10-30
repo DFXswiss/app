@@ -141,7 +141,7 @@ export default function PaymentLinkScreen(): JSX.Element {
   const selectedAsset = useWatch({ control, name: 'asset' });
 
   // Large QR only exists inside the OpenCryptoPay section; displayQr forces it there on every device.
-  // Outside OCP (or MetaMask error/info), fall back to the collapsible "QR Code" row.
+  // The collapsible "QR Code" row is only the handheld OCP case. Other standards show no QR.
   // Form standard is set asynchronously; fall back to the payment's own standard so an unset form is not OCP.
   const showsOcpSection =
     !metaMaskError &&
@@ -532,7 +532,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                           <p>{new Date(payRequest.quote.expiration).toLocaleString()}</p>
                         </StyledDataTableExpandableRow>
                       )}
-                      {paymentHasQuote(payRequest) && !showLargeQr && (
+                      {paymentHasQuote(payRequest) && showsOcpSection && !showLargeQr && (
                         <StyledDataTableExpandableRow
                           label={translate('screens/payment', 'QR Code')}
                           expansionContent={

@@ -1,5 +1,6 @@
 // Device-aware QR on the payment-link screen: displayQr forces the large QR;
 // otherwise handheld (UA or coarse pointer) shows wallet copy, desktop shows QR.
+// That QR exists only for OpenCryptoPay. Pay to Address and Lightning show none.
 
 const mockDevice = { isMobile: false };
 
@@ -314,20 +315,25 @@ function mockContext(displayQr: boolean) {
   mockWallets();
 }
 
-/** Non-OCP standard (PayToAddress) — form selects it from payRequest.standard. */
-function mockContextNonOcp(displayQr: boolean, overrides: Record<string, unknown> = {}) {
+/** Non-OCP standard — form selects it from payRequest.standard. */
+function mockContextNonOcp(
+  displayQr: boolean,
+  overrides: Record<string, unknown> = {},
+  standard: 'PayToAddress' | 'LightningBolt11' = 'PayToAddress',
+) {
+  const label = standard === 'LightningBolt11' ? 'Lightning' : 'Pay to address';
   mockUsePaymentLinkContext.mockReturnValue({
     error: undefined,
     merchant: undefined,
     payRequest: {
       ...buildPayRequest(displayQr),
-      standard: 'PayToAddress',
-      possibleStandards: ['PayToAddress'],
+      standard,
+      possibleStandards: [standard],
     },
     timer: { minutes: 5, seconds: 0 },
-    paymentLinkApiUrl: { current: 'https://api.example.com/v1/paymentLink/payment?standard=PayToAddress' },
+    paymentLinkApiUrl: { current: `https://api.example.com/v1/paymentLink/payment?standard=${standard}` },
     callbackUrl: { current: undefined },
-    paymentStandards: [{ id: 'PayToAddress', label: 'Pay to address', description: 'on-chain' }],
+    paymentStandards: [{ id: standard, label, description: 'non-ocp' }],
     paymentIdentifier: 'lnurl1test',
     isLoadingPaymentIdentifier: false,
     paymentStatus: 'Pending',
@@ -395,6 +401,11 @@ function queryLargePaymentQr(): HTMLElement | undefined {
   return screen
     .queryAllByTestId('payment-qr')
     .find((el) => !collapsibleRow || !collapsibleRow.contains(el));
+}
+
+function expectNoPaymentQr(): void {
+  expect(screen.queryByTestId('expandable-QR Code')).not.toBeInTheDocument();
+  expect(screen.queryAllByTestId('payment-qr')).toHaveLength(0);
 }
 
 describe('PaymentLinkScreen device-aware QR', () => {
@@ -515,54 +526,65 @@ describe('PaymentLinkScreen device-aware QR', () => {
     expect(body.toLowerCase()).not.toMatch(/\bqr\b/);
   });
 
-  // Non-OCP: large QR only lives in the OCP section — collapsible row must remain the fallback.
-  it('desktop + non-OCP standard + displayQr false → collapsible QR row, no large QR', async () => {
+  // Non-OCP encodes no OpenCryptoPay link: neither the row nor any QR is rendered.
+  // Removing `showsOcpSection &&` from the row condition makes these six fail.
+  it('desktop + Pay to Address + displayQr false → no QR row and no QR', () => {
     mockDevice.isMobile = false;
     setMatchMedia(false);
     mockContextNonOcp(false);
     renderScreen();
 
-    await waitFor(() => {
-      expect(screen.getByTestId('expandable-QR Code')).toBeInTheDocument();
-    });
-    expect(queryLargePaymentQr()).toBeUndefined();
+    expectNoPaymentQr();
     expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
   });
 
-  it('desktop + non-OCP standard + displayQr true → collapsible QR row, no large QR', async () => {
+  it('desktop + Pay to Address + displayQr true → no QR row and no QR', () => {
     mockDevice.isMobile = false;
     setMatchMedia(false);
     mockContextNonOcp(true);
     renderScreen();
 
-    await waitFor(() => {
-      expect(screen.getByTestId('expandable-QR Code')).toBeInTheDocument();
-    });
-    expect(queryLargePaymentQr()).toBeUndefined();
+    expectNoPaymentQr();
     expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
   });
 
-  it('handheld + non-OCP standard → collapsible QR row, no large QR', async () => {
+  it('desktop + Lightning + displayQr false → no QR row and no QR', () => {
+    mockDevice.isMobile = false;
+    setMatchMedia(false);
+    mockContextNonOcp(false, {}, 'LightningBolt11');
+    renderScreen();
+
+    expectNoPaymentQr();
+    expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
+  });
+
+  it('desktop + Lightning + displayQr true → no QR row and no QR', () => {
+    mockDevice.isMobile = false;
+    setMatchMedia(false);
+    mockContextNonOcp(true, {}, 'LightningBolt11');
+    renderScreen();
+
+    expectNoPaymentQr();
+    expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
+  });
+
+  it('handheld + Pay to Address + displayQr false → no QR row and no QR', () => {
     mockDevice.isMobile = true;
     setMatchMedia(true);
     mockContextNonOcp(false);
     renderScreen();
 
-    await waitFor(() => {
-      expect(screen.getByTestId('expandable-QR Code')).toBeInTheDocument();
-    });
-    expect(queryLargePaymentQr()).toBeUndefined();
+    expectNoPaymentQr();
     expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
   });
 
-  it('desktop + non-OCP payment + form standard unset → collapsible QR row, no large QR', () => {
+  it('desktop + Pay to Address + form standard unset + displayQr false → no QR row and no QR', () => {
     mockDevice.isMobile = false;
     setMatchMedia(false);
     mockContextNonOcp(false, { paymentStandards: undefined });
     renderScreen();
 
-    expect(queryLargePaymentQr()).toBeUndefined();
-    expect(screen.getByTestId('expandable-QR Code')).toBeInTheDocument();
+    expectNoPaymentQr();
     expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
   });
 });
