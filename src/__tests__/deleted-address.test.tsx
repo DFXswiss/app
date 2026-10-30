@@ -239,6 +239,16 @@ describe('deleted session address', () => {
     expect(mockReloadUser).not.toHaveBeenCalled();
   });
 
+  it('keeps the purchase selection when an activation on /login continues to /buy', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+
+    const { router } = renderGate('/login?personal-iban=frick');
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/buy'));
+    expect(router.state.location.search).toBe('?personal-iban=frick');
+  });
+
   it('returns an activation on /login to the path that sent the customer there', async () => {
     mockUser = userWithActiveAddress(UserStatus.DELETED);
     mockRedirectPath = '/settings';
@@ -247,6 +257,26 @@ describe('deleted session address', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/settings'));
+  });
+
+  it('continues an activation on /connect to /account when no screen asked to be returned to', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+
+    const { router } = renderGate('/connect');
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/account'));
+    expect(mockReloadUser).not.toHaveBeenCalled();
+  });
+
+  it('returns an activation on /connect to the path that sent the customer there', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+    mockRedirectPath = '/buy';
+
+    const { router } = renderGate('/connect');
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/buy'));
   });
 
   it('stays on / after a successful activation when that route has no login target', async () => {
