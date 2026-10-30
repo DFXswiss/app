@@ -94,7 +94,7 @@ describe('ConnectMail login redirect', () => {
     mockIsWidget.mockReturnValue(false);
     mockWidgetPersonalIban.mockReturnValue(undefined);
     mockUseAppParams.mockReturnValue({ wallet: undefined, recommendationCode: undefined });
-    mockUseLocation.mockReturnValue({ search: '?user=user@example.com' });
+    mockUseLocation.mockReturnValue({ search: '?user=user@example.com', pathname: '/connect' });
     onCancel = jest.fn();
 
     locationStub = {
@@ -247,11 +247,22 @@ describe('ConnectMail login redirect', () => {
 
   it('passes undefined as redirectUri when redirectPath is undefined', async () => {
     mockRedirectPath.mockReturnValue(undefined);
+    mockUseLocation.mockReturnValue({ search: '?user=user@example.com', pathname: '/connect' });
 
     renderConnectMail();
     await submitNext();
 
     expect(mockSignInWithMail.mock.calls[0][1]).toBeUndefined();
+  });
+
+  it('uses /buy as redirectUri on /login when redirectPath is undefined', async () => {
+    mockRedirectPath.mockReturnValue(undefined);
+    mockUseLocation.mockReturnValue({ search: '?user=user@example.com', pathname: '/login' });
+
+    renderConnectMail();
+    await submitNext();
+
+    expect(mockSignInWithMail.mock.calls[0][1]).toBe('http://localhost/buy');
   });
 
   it('passes recommendationCode and wallet from useAppParams as third/fourth arguments', async () => {
@@ -308,7 +319,7 @@ describe('ConnectMail login redirect', () => {
   });
 
   it('treats a missing user query param as undefined mail default', async () => {
-    mockUseLocation.mockReturnValue({ search: '' });
+    mockUseLocation.mockReturnValue({ search: '', pathname: '/connect' });
     mockRedirectPath.mockReturnValue('/buy');
 
     renderConnectMail();

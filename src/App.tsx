@@ -730,7 +730,7 @@ function App({ routerFactory, params }: AppProps) {
             >
               <SettingsContextProvider>
                 <WalletContextProvider router={router}>
-                  <DeletedAddressGate>
+                  <DeletedAddressGate router={router}>
                     <RouterProvider router={router} />
                   </DeletedAddressGate>
                 </WalletContextProvider>

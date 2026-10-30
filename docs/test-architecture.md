@@ -421,6 +421,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   verification. A green run proves the notice replaces the app and shows the API error after
   a failed activation. It does not prove that the API marks a deleted address that way, that
   it rejects or accepts a real reactivation, or that a successful activation opens the app.
+- **The login-redirect visual spec answers sign-in and GET /v2/user itself.**
+  `e2e/login-redirect.spec.ts` fulfils `GET /v1/auth/signMessage` and `POST /v1/auth` with a
+  synthetic token, fulfils `GET /v2/user` with 401 until that login and then, after 800 ms, with
+  a synthetic user whose active address is `Active`, and fulfils the bootstrap GETs
+  (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner`). Unmatched `/v1/**` and `/v2/**` calls get `501`. The session is a
+  synthetic unsigned JWT, so a green run does not prove production auth, a real signature check,
+  real user latency, or that `/buy` and `/account` show live data.
 - **Full-stack screen-sync regressions hold delivery of real API responses.**
   `e2e-stack/specs/screen-sync.spec.ts` intercepts `GET /v2/kyc/file/:id` and
   `GET /v1/dashboard/financial/latest`, calls `route.fetch()` against the real API, then
