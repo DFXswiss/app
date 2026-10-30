@@ -124,6 +124,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   The "off" variant sets `kycLevel` to 10, removes `provisionalApprovalDate` (`undefined`), and
   sets all users to role `User` (or supplies a synthetic single User). A green run proves the
   toggles render for those values, not that the API stores or returns them.
+- **The customer-switch visuals hold or fail the next dossier themselves.** `e2e/compliance.spec.ts`
+  (`compliance-user-13` and `-14`) intercept `**/v1/support/1006`: the loading variant never answers,
+  the error variant answers HTTP 500 with a fixed message. A green run proves how the screen renders
+  those two states after an in-app route change, not that the API is slow or fails for that id.
 - **The non-Frick buy screens inject a currency list.** `e2e/buy-process.spec.ts` and
   `e2e/buy-info.spec.ts` fulfil `**/v1/fiat` with CHF, EUR, and one buyable row outside the
   Bank Frick set, and they fulfil the quote in that currency. The product does not offer that
