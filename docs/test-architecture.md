@@ -566,6 +566,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   sends the rejected switch once and shows the translated rejection sentence instead of the API's text. It
   does not prove how an account reaches that state in production or any other reason the API may reject the
   switch.
+- **The login-mail full-stack case removes `redirectUri` from the request.** In
+  `e2e-stack/specs/auth.spec.ts`, the `/login/mail` mail form test removes `redirectUri` before
+  `POST /v1/auth/mail` reaches the API, because `@IsUrl()` refuses the stack's host without a top-level
+  domain. A green run proves that the page asks for `/buy` and that the real API sends the login mail
+  without it. It does not prove that the API accepts that `redirectUri` on a real host, or that the mail
+  link leads to `/buy`.
 - **The address-switch unit test runs the SDK user context against replaced HTTP and session hooks.**
   `src/__tests__/address-switch.test.tsx` transpiles `UserContextProvider` from the installed
   `@dfx.swiss/react` build and wires it to hand-written `useUser` and `useApiSession` replacements, and
