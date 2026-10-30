@@ -1,6 +1,6 @@
 import { useAuthContext, UserRole } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   BankDatasTable,
@@ -61,16 +61,29 @@ export default function ComplianceUserScreen(): JSX.Element {
   const { getUserData, getKycFile } = useCompliance();
   const navigate = useNavigate();
 
-  const [error, setError] = useState<string>();
-  const [data, setData] = useState<ComplianceUserData>();
-  const [preview, setPreview] = useState<{ url: string; contentType: string; name: string; uid?: string }>();
+  // Errors are kept with the route id they occurred for, like the dossier below.
+  const [failure, setFailure] = useState<{ userDataId?: string; message: string }>();
+  // The dossier is kept with the route id it was requested for and only shown while that id is open.
+  const [loaded, setLoaded] = useState<{ userDataId: string; data: ComplianceUserData }>();
+  const [preview, setPreview] = useState<{
+    userDataId?: string;
+    url: string;
+    contentType: string;
+    name: string;
+    uid?: string;
+  }>();
+  const [fileFailure, setFileFailure] = useState<{ userDataId?: string; message: string }>();
   const [activeTab, setActiveTab] = useState<TabType>('transactions');
   const [expandedBankTxId, setExpandedBankTxId] = useState<number>();
   const [expandedCryptoInputId, setExpandedCryptoInputId] = useState<number>();
   const [expandedBankDataId, setExpandedBankDataId] = useState<number>();
   const [expandedFiatOutputId, setExpandedFiatOutputId] = useState<number>();
   const [expandedTxUid, setExpandedTxUid] = useState<string>();
+  const latestRequestRef = useRef<number>(0);
+  const latestFileRequestRef = useRef<number>(0);
   const { containerRef, splitPercent, setSplitPercent, handleSplitDrag } = useSplitPane();
+  const visiblePreview = preview && preview.userDataId === userDataId ? preview : undefined;
+  const fileError = fileFailure && fileFailure.userDataId === userDataId ? fileFailure.message : undefined;
 
   function handleExpandBankTx(id: number | undefined): void {
     setExpandedBankTxId(id);
@@ -113,49 +126,78 @@ export default function ComplianceUserScreen(): JSX.Element {
   }
 
   async function openFile(file: KycFile): Promise<void> {
+    const request = ++latestFileRequestRef.current;
     try {
       const { content, contentType } = await getKycFile(file.uid, 'View');
+      // Ignore file responses that a newer click or another customer has superseded.
+      if (request !== latestFileRequestRef.current) return;
       if (!content || content.type !== 'Buffer' || !Array.isArray(content.data)) {
-        setError('Invalid file type');
+        setFileFailure({ userDataId, message: 'Invalid file type' });
         return;
       }
 
       const blob = new Blob([new Uint8Array(content.data)], { type: contentType });
       const url = URL.createObjectURL(blob);
 
-      setPreview({ url, contentType, name: file.name, uid: file.uid });
+      setFileFailure(undefined);
+      setPreview({ userDataId, url, contentType, name: file.name, uid: file.uid });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error loading file');
+      if (request !== latestFileRequestRef.current) return;
+      setFileFailure({ userDataId, message: e instanceof Error ? e.message : 'Error loading file' });
     }
   }
 
   async function downloadPreview(): Promise<void> {
-    if (!preview?.uid) return;
+    if (!visiblePreview?.uid) return;
+    const request = ++latestFileRequestRef.current;
     try {
-      const { content, contentType } = await getKycFile(preview.uid, 'Download');
+      const { content, contentType } = await getKycFile(visiblePreview.uid, 'Download');
+      if (request !== latestFileRequestRef.current) return;
       if (!content || content.type !== 'Buffer' || !Array.isArray(content.data)) {
-        setError('Invalid file type');
+        setFileFailure({ userDataId, message: 'Invalid file type' });
         return;
       }
-      saveBufferedFile(content, contentType, preview.name);
+      saveBufferedFile(content, contentType, visiblePreview.name);
+      setFileFailure(undefined);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error downloading file');
+      if (request !== latestFileRequestRef.current) return;
+      setFileFailure({ userDataId, message: e instanceof Error ? e.message : 'Error downloading file' });
     }
   }
 
   const loadData = useCallback(() => {
+    const request = ++latestRequestRef.current;
+    setFailure(undefined);
     if (!userDataId) {
-      setError('No ID provided');
+      setFailure({ userDataId, message: 'No ID provided' });
       return;
     }
     getUserData(+userDataId)
-      .then(setData)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Unknown error'));
+      .then((response) => {
+        if (request === latestRequestRef.current) setLoaded({ userDataId, data: response });
+      })
+      .catch((e: unknown) => {
+        if (request === latestRequestRef.current) {
+          setFailure({ userDataId, message: e instanceof Error ? e.message : 'Unknown error' });
+        }
+      });
   }, [userDataId, getUserData]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    setPreview(undefined);
+    setFileFailure(undefined);
+    setActiveTab('transactions');
+    setExpandedBankTxId(undefined);
+    setExpandedCryptoInputId(undefined);
+    setExpandedBankDataId(undefined);
+    setExpandedFiatOutputId(undefined);
+    setExpandedTxUid(undefined);
+    latestFileRequestRef.current++;
+  }, [userDataId]);
 
   useEffect(() => {
     return () => preview && URL.revokeObjectURL(preview.url);
@@ -171,6 +213,9 @@ export default function ComplianceUserScreen(): JSX.Element {
     noMaxWidth: true,
     textStart: true,
   });
+
+  const data = loaded && loaded.userDataId === userDataId ? loaded.data : undefined;
+  const error = failure && failure.userDataId === userDataId ? failure.message : undefined;
 
   if (error && !data) return <ErrorHint message={error} />;
   if (!data || !userDataId) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
@@ -210,6 +255,8 @@ export default function ComplianceUserScreen(): JSX.Element {
             wide={isSupport}
             onLimitRequestCreated={loadData}
             onCreateNote={() => navigate(`/notes?userDataId=${numericUserDataId}&compose=1`)}
+            users={data.users}
+            onAccountAccessChanged={loadData}
           />
 
           {!isSupport && (
@@ -253,12 +300,15 @@ export default function ComplianceUserScreen(): JSX.Element {
               {isSupport ? (
                 <SupportUserOverviewPanel data={data} />
               ) : (
-                <FilePreviewPanel
-                  preview={preview}
-                  label={translate('screens/compliance', 'File Preview')}
-                  onClose={() => setPreview(undefined)}
-                  onDownload={downloadPreview}
-                />
+                <div className="flex flex-col gap-2">
+                  {fileError && <ErrorHint message={fileError} />}
+                  <FilePreviewPanel
+                    preview={visiblePreview}
+                    label={translate('screens/compliance', 'File Preview')}
+                    onClose={() => setPreview(undefined)}
+                    onDownload={downloadPreview}
+                  />
+                </div>
               )}
             </div>
           </>

@@ -705,6 +705,7 @@
     "New: Personal IBAN in your own name!": "Novità: IBAN personale a tuo nome!",
     "Personal IBANs are in your own name, which means you make the transfer to yourself instead of DFX AG. Such transactions are often processed faster and more reliably by banks.": "Gli IBAN personali sono a tuo nome, il che significa che effettui il bonifico a te stesso anziché a DFX AG. Tali transazioni vengono spesso elaborate più velocemente e in modo più affidabile dalle banche.",
     "Personal IBAN created successfully: {{iban}}": "IBAN personale creato con successo: {{iban}}",
+    "Your account is only provisionally approved. This allows you to make a deposit, but your crypto assets will only be delivered once your onboarding is complete.": "Il tuo conto è approvato solo provvisoriamente. Questo ti consente di effettuare un deposito, ma i tuoi asset crypto verranno consegnati solo al termine del tuo onboarding.",
     "Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.": "L'IBAN personale richiesto è disponibile solo per i bonifici bancari in EUR e CHF e non è stato quindi utilizzato per questa offerta.",
     "Your requested personal IBAN is only available for {{currencies}} bank transfers, so it was not used for this offer.": "L'IBAN personale richiesto è disponibile solo per i bonifici bancari in {{currencies}} e non è stato quindi utilizzato per questa offerta.",
     "Continue without personal IBAN": "Continua senza IBAN personale",

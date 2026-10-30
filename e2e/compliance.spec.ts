@@ -18,6 +18,7 @@ import { createTestCredentials } from './test-wallet';
 
 // Test data - uses "max" search which returns Max Mueller (ID 1005)
 const TEST_USER_DATA_ID = '1005';
+const TEST_SWITCH_USER_DATA_ID = '1006';
 const TEST_SEARCH_QUERY = 'max';
 // Requires a local BuyCrypto on this transaction uid, owned by TEST_USER_DATA_ID, with status
 // Stopped, amlCheck Pass and not completed — that combination is what renders the resume button
@@ -123,6 +124,143 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       });
     });
 
+    test('shows account access toggles for a customer still onboarding', async ({ page }) => {
+      await page.route(`**/v1/support/${TEST_USER_DATA_ID}`, async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const users =
+          Array.isArray(data.users) && data.users.length > 0
+            ? data.users.map((user: Record<string, unknown>, index: number) =>
+                index === 0 ? { ...user, role: 'VIP' } : user,
+              )
+            : [
+                {
+                  id: 1,
+                  address: '0x0000000000000000000000000000000000000001',
+                  role: 'VIP',
+                  status: 'Active',
+                  created: '2026-01-01T00:00:00.000Z',
+                },
+              ];
+
+        await route.fulfill({
+          response,
+          json: {
+            ...data,
+            userData: {
+              ...data.userData,
+              kycLevel: 10,
+              provisionalApprovalDate: '2026-10-29T10:00:00.000Z',
+            },
+            users,
+          },
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await expect(page.getByText('Provisional approval: on')).toBeVisible();
+      await expect(page.getByText('VIP: on')).toBeVisible();
+
+      await expect(page).toHaveScreenshot('compliance-user-11-account-access-toggles.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows account access toggles in the off state', async ({ page }) => {
+      await page.route(`**/v1/support/${TEST_USER_DATA_ID}`, async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const users =
+          Array.isArray(data.users) && data.users.length > 0
+            ? data.users.map((user: Record<string, unknown>) => ({ ...user, role: 'User' }))
+            : [
+                {
+                  id: 1,
+                  address: '0x0000000000000000000000000000000000000001',
+                  role: 'User',
+                  status: 'Active',
+                  created: '2026-01-01T00:00:00.000Z',
+                },
+              ];
+
+        await route.fulfill({
+          response,
+          json: {
+            ...data,
+            userData: {
+              ...data.userData,
+              kycLevel: 10,
+              provisionalApprovalDate: undefined,
+            },
+            users,
+          },
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await expect(page.getByText('Provisional approval: off')).toBeVisible();
+      await expect(page.getByText('VIP: off')).toBeVisible();
+
+      await expect(page).toHaveScreenshot('compliance-user-12-account-access-toggles-off.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows loading while switching to another customer', async ({ page }) => {
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.route(`**/v1/support/${TEST_SWITCH_USER_DATA_ID}`, () => {});
+      await page.evaluate((userDataId) => {
+        window.history.pushState({}, '', `/compliance/user/${userDataId}`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, TEST_SWITCH_USER_DATA_ID);
+
+      await expect(page).toHaveURL(new RegExp(`/compliance/user/${TEST_SWITCH_USER_DATA_ID}$`));
+      // The previous customer's dossier is gone while the new one is pending.
+      await expect(page.getByText('Max Mueller')).toHaveCount(0);
+
+      await expect(page).toHaveScreenshot('compliance-user-13-switch-loading.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows an error when switching to another customer fails', async ({ page }) => {
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.route(`**/v1/support/${TEST_SWITCH_USER_DATA_ID}`, async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Customer dossier could not be loaded' }),
+        });
+      });
+      await page.evaluate((userDataId) => {
+        window.history.pushState({}, '', `/compliance/user/${userDataId}`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, TEST_SWITCH_USER_DATA_ID);
+
+      await expect(page).toHaveURL(new RegExp(`/compliance/user/${TEST_SWITCH_USER_DATA_ID}$`));
+      await expect(page.getByText(/Something went wrong/)).toBeVisible();
+
+      await expect(page).toHaveScreenshot('compliance-user-14-switch-load-error.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
     test('shows KYC file preview (selfie.jpg)', async ({ page }) => {
       await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
       await page.waitForLoadState('networkidle');
@@ -136,6 +274,28 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await expect(page.locator('img[alt="selfie.jpg"]')).toBeVisible({ timeout: 10000 });
 
       await expect(page).toHaveScreenshot('compliance-user-02-kyc-file-preview.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows an error when the KYC file cannot be loaded', async ({ page }) => {
+      await page.route(/\/v2\/kyc\/file\/[^?]+\?access=View$/, async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'File could not be loaded' }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByText('selfie.jpg').click();
+      await expect(page.getByText('File could not be loaded')).toBeVisible();
+
+      await expect(page).toHaveScreenshot('compliance-user-15-kyc-file-error.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });

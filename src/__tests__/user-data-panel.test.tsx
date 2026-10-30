@@ -6,10 +6,24 @@ let mockSession: { role?: string } | undefined = { role: 'Compliance' };
 const mockCopy = jest.fn();
 let mockIsCopying = false;
 const mockReactivateProps: { userDataId?: number; onReactivated?: (info: unknown) => void } = {};
+const mockAccountAccessProps: {
+  userDataId?: number;
+  provisionalApprovalDate?: string;
+  kycLevel?: number;
+  users?: { id: number; role: string }[];
+  onChanged?: () => void;
+} = {};
 
 jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => ({ session: mockSession }),
-  UserRole: { USER: 'User', SUPPORT: 'Support', MARKETING: 'Marketing', COMPLIANCE: 'Compliance', ADMIN: 'Admin' },
+  UserRole: {
+    USER: 'User',
+    VIP: 'VIP',
+    SUPPORT: 'Support',
+    MARKETING: 'Marketing',
+    COMPLIANCE: 'Compliance',
+    ADMIN: 'Admin',
+  },
 }));
 
 jest.mock('src/components/compliance/collapsible-section', () => ({
@@ -64,6 +78,13 @@ jest.mock('src/components/compliance/reactivate-account', () => ({
   },
 }));
 
+jest.mock('src/components/compliance/account-access-toggles', () => ({
+  AccountAccessToggles: (props: typeof mockAccountAccessProps) => {
+    Object.assign(mockAccountAccessProps, props);
+    return <div data-testid="account-access-toggles" />;
+  },
+}));
+
 jest.mock('src/hooks/clipboard.hook', () => ({
   useClipboard: () => ({ copy: mockCopy, isCopying: mockIsCopying }),
 }));
@@ -80,7 +101,7 @@ jest.mock('src/util/compliance-helpers', () => ({
 
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { UserDataPanel } from 'src/components/compliance/user-data-panel';
-import type { UserDataDetail } from 'src/hooks/compliance.hook';
+import type { UserDataDetail, UserInfo } from 'src/hooks/compliance.hook';
 
 function detail(overrides: Partial<UserDataDetail> = {}): UserDataDetail {
   return {
@@ -96,6 +117,7 @@ function detail(overrides: Partial<UserDataDetail> = {}): UserDataDetail {
     surname: 'Example',
     birthday: '1980-01-01',
     kycHash: 'abc123',
+    provisionalApprovalDate: '2026-10-29T10:00:00.000Z',
     deactivationDate: '2025-07-01T21:35:38.000Z',
     ...overrides,
   } as UserDataDetail;
@@ -117,6 +139,9 @@ describe('UserDataPanel', () => {
     mockIsCopying = false;
     mockReactivateProps.userDataId = undefined;
     mockReactivateProps.onReactivated = undefined;
+    Object.keys(mockAccountAccessProps).forEach(
+      (key) => delete mockAccountAccessProps[key as keyof typeof mockAccountAccessProps],
+    );
     delete process.env.REACT_APP_PUBLIC_URL;
   });
 
@@ -133,9 +158,43 @@ describe('UserDataPanel', () => {
     expect(screen.getByText('No organization linked.')).toBeInTheDocument();
     expect(rowValue('Other', 'deactivationDate')).toBe('d:2025-07-01T21:35:38.000Z');
     expect(rowValue('Other', 'tradeApprovalDate')).toBe('-');
+    expect(rowValue('Other', 'provisionalApprovalDate')).toBe('d:2026-10-29T10:00:00.000Z');
     expect(screen.getByRole('region', { name: 'PaymentLink Data' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'PhoneCall' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Volumes' })).toBeInTheDocument();
+  });
+
+  it('passes the current account access data and reload handler to the toggles', () => {
+    const onAccountAccessChanged = jest.fn();
+    const users: UserInfo[] = [
+      { id: 42, address: '0x123', role: 'VIP', status: 'Active', created: '2026-10-29T10:00:00.000Z' },
+    ];
+    const { rerender } = render(
+      <UserDataPanel
+        userData={detail()}
+        userDataId={88001}
+        users={users}
+        onAccountAccessChanged={onAccountAccessChanged}
+      />,
+    );
+
+    expect(screen.getByTestId('account-access-toggles')).toBeInTheDocument();
+    expect(mockAccountAccessProps).toMatchObject({
+      userDataId: 88001,
+      provisionalApprovalDate: '2026-10-29T10:00:00.000Z',
+      kycLevel: 50,
+      users,
+      onChanged: onAccountAccessChanged,
+    });
+
+    rerender(<UserDataPanel userData={detail({ id: 88002 })} userDataId={88001} />);
+    expect(screen.queryByTestId('account-access-toggles')).not.toBeInTheDocument();
+  });
+
+  it('does not render account access toggles without a reload handler', () => {
+    render(<UserDataPanel userData={detail()} userDataId={88001} />);
+
+    expect(screen.queryByTestId('account-access-toggles')).not.toBeInTheDocument();
   });
 
   it('renders the organization rows when the account has one and hides the birthday without a value', () => {

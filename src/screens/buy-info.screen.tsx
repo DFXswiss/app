@@ -42,6 +42,7 @@ import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { usePersonalIbanRows } from '../hooks/personal-iban-rows.hook';
 import { usePersonalIbanSelection } from '../hooks/personal-iban.hook';
 import { getKycErrorFromMessage } from '../util/api-error';
+import { isProvisionalApproval } from '../util/provisional-approval';
 import {
   deriveEffectivePersonalIbanProvider,
   displayedFrickCurrencies,
@@ -327,15 +328,13 @@ export default function BuyInfoScreen(): JSX.Element {
         'PersonalIbanProviderUnsupported',
         activeFiatNames,
       );
-      if (generation === quoteGeneration.current) {
-        setPaymentInfoState(undefined);
-        setErrorMessage(
-          personalIbanErrorText
-            ? translate('screens/payment', personalIbanErrorText, { currencies: displayedFrickCurrencyList })
-            : translate('screens/payment', 'The requested personal IBAN provider is not recognized.'),
-        );
-        setIsLoading(false);
-      }
+      setPaymentInfoState(undefined);
+      setErrorMessage(
+        personalIbanErrorText
+          ? translate('screens/payment', personalIbanErrorText, { currencies: displayedFrickCurrencyList })
+          : translate('screens/payment', 'The requested personal IBAN provider is not recognized.'),
+      );
+      setIsLoading(false);
       return () => {
         isRunning = false;
       };
@@ -351,8 +350,8 @@ export default function BuyInfoScreen(): JSX.Element {
     };
     if (amountIn) {
       request.amount = +amountIn;
-    } else if (amountOut) {
-      request.targetAmount = +amountOut;
+    } else {
+      request.targetAmount = Number(amountOut);
     }
 
     setIsLoading(true);
@@ -462,6 +461,8 @@ export default function BuyInfoScreen(): JSX.Element {
     setKycError(undefined);
     setKycMessageOverride(undefined);
 
+    if (isProvisionalApproval(buy)) return buy;
+
     switch (buy.error) {
       case TransactionError.AMOUNT_TOO_LOW:
         setCustomAmountError(
@@ -514,6 +515,12 @@ export default function BuyInfoScreen(): JSX.Element {
       // Inapplicable offers were already requested without a selector.
       setContinueWithoutPersonalIban({ value: true, identity: customerIdentity });
     }
+  }
+
+  function onSubmit(info: Buy): void {
+    setCompletedPaymentInfo({ info, identity: customerIdentity });
+    setShowsCompletion(true);
+    scrollToTop();
   }
 
   function onSwitchPersonalIbanProvider(provider: PersonalIbanProvider) {
@@ -686,6 +693,15 @@ export default function BuyInfoScreen(): JSX.Element {
               }
             />
 
+            {isProvisionalApproval(paymentInfo) && (
+              <StyledInfoText invertedIcon>
+                {translate(
+                  'screens/payment',
+                  'Your account is only provisionally approved. This allows you to make a deposit, but your crypto assets will only be delivered once your onboarding is complete.',
+                )}
+              </StyledInfoText>
+            )}
+
             {activeFrickKycFallbackHint && (
               <StyledInfoText invertedIcon>
                 {translate(
@@ -718,17 +734,15 @@ export default function BuyInfoScreen(): JSX.Element {
               />
             </div>
 
-            <StyledButton
-              width={StyledButtonWidth.FULL}
-              label={translate('screens/buy', 'Click here once you have issued the transfer')}
-              onClick={() => {
-                setCompletedPaymentInfo({ info: paymentInfo, identity: customerIdentity });
-                setShowsCompletion(true);
-                scrollToTop();
-              }}
-              caps={false}
-              className="mt-4"
-            />
+            {!isProvisionalApproval(paymentInfo) && (
+              <StyledButton
+                width={StyledButtonWidth.FULL}
+                label={translate('screens/buy', 'Click here once you have issued the transfer')}
+                onClick={() => onSubmit(paymentInfo)}
+                caps={false}
+                className="mt-4"
+              />
+            )}
           </>
         )
       )}

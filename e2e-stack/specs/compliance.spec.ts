@@ -290,6 +290,88 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText('GenericIssue', { exact: true }).first()).toBeVisible();
   });
 
+  test('/compliance/user/:id lets Support grant and revoke provisional approval and VIP access', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Support');
+    await ensureStaffKycComplete(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-account-access',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+
+    await expect(page.getByText('Provisional approval: off', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('VIP: off', { exact: true })).toBeVisible();
+
+    const grantResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/support/${customer.userDataId}/provisionalApproval`,
+    );
+    await page.getByRole('button', { name: 'Grant', exact: true }).click();
+    expect((await grantResponsePromise).status()).toBe(200);
+    await expect(page.getByText('Provisional approval: on', { exact: true })).toBeVisible();
+    await waitForRow(
+      `SELECT id FROM user_data WHERE id = $1 AND "provisionalApprovalDate" IS NOT NULL`,
+      [customer.userDataId],
+      15000,
+    );
+
+    const setVipResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/support/${customer.userDataId}/vip`,
+    );
+    await page.getByRole('button', { name: 'Set VIP', exact: true }).click();
+    expect((await setVipResponsePromise).status()).toBe(200);
+    await expect(page.getByText('VIP: on', { exact: true })).toBeVisible();
+    await waitForRow(`SELECT id FROM "user" WHERE id = $1 AND role = 'VIP'`, [customer.userId], 15000);
+
+    const revokeResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/support/${customer.userDataId}/provisionalApproval`,
+    );
+    await page.getByRole('button', { name: 'Revoke', exact: true }).click();
+    expect((await revokeResponsePromise).status()).toBe(200);
+    await expect(page.getByText('Provisional approval: off', { exact: true })).toBeVisible();
+    await waitForRow(
+      `SELECT id FROM user_data WHERE id = $1 AND "provisionalApprovalDate" IS NULL`,
+      [customer.userDataId],
+      15000,
+    );
+
+    const removeVipResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/support/${customer.userDataId}/vip`,
+    );
+    await page.getByRole('button', { name: 'Remove VIP', exact: true }).click();
+    expect((await removeVipResponsePromise).status()).toBe(200);
+    await expect(page.getByText('VIP: off', { exact: true })).toBeVisible();
+    await waitForRow(`SELECT id FROM "user" WHERE id = $1 AND role = 'User'`, [customer.userId], 15000);
+  });
+
+  test('/compliance/user/:id hides account access toggles after onboarding is complete', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Support');
+    await ensureStaffKycComplete(userId);
+    const customer = await createUser({
+      tag: 'cmp-account-access-complete',
+      kycLevel: 50,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+
+    await expect(page.getByText(/^Provisional approval:/)).toHaveCount(0);
+    await expect(page.getByText(/^VIP:/)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^(Grant|Revoke|Set VIP|Remove VIP)$/ })).toHaveCount(0);
+  });
+
   test('/compliance/user/:id resets a pending recommendation and persists the step and the KYC log', async ({
     page,
   }) => {
