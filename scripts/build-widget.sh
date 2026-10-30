@@ -1,6 +1,6 @@
 #!/bin/bash
 # Widget build script
-# Usage: ./scripts/build-widget.sh [dev|prod|loc]
+# Usage: ./scripts/build-widget.sh [dev|stg|prod|loc]
 # Default: prod
 
 set -e
@@ -23,6 +23,10 @@ case $ENV in
   dev)
     API_URL="https://dev.api.dfx.swiss"
     PUBLIC_URL="https://dev.app.dfx.swiss"
+    ;;
+  stg)
+    API_URL="https://stg.api.dfx.swiss"
+    PUBLIC_URL="https://stg.app.dfx.swiss"
     ;;
   loc)
     API_URL="http://localhost:3000"
