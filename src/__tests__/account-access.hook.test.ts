@@ -7,7 +7,7 @@ const mockNavigate = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
   TfaLevel: { STRICT: 'Strict' },
-  useAccountAccess: mockUseSdkAccountAccess,
+  useAccountAccess: (...args: unknown[]) => mockUseSdkAccountAccess(...args),
 }));
 
 jest.mock('src/hooks/navigation.hook', () => ({

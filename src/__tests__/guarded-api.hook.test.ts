@@ -6,7 +6,7 @@ const mockNavigate = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
   TfaLevel: { STRICT: 'Strict' },
-  useApi: mockUseApi,
+  useApi: (...args: unknown[]) => mockUseApi(...args),
 }));
 
 jest.mock('src/hooks/navigation.hook', () => ({
