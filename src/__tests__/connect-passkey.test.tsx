@@ -91,7 +91,8 @@ describe('ConnectPasskey', () => {
   it('shows the wallet-beta placeholder and wires the buttons', () => {
     renderPasskey();
 
-    expect(screen.getByText('Passkey login arrives with the wallet beta')).toBeInTheDocument();
+    const hint = screen.getByText('Passkey login arrives with the wallet beta');
+    expect(hint).toHaveClass('text-dfxGray-700');
 
     const passkeyButton = screen.getByRole('button', { name: 'Passkey' });
     expect(passkeyButton).toHaveAttribute('data-disabled', 'true');

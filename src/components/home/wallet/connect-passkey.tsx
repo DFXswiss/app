@@ -11,7 +11,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
 
   return (
     <StyledVerticalStack gap={2} center>
-      <p className="error">Passkey login arrives with the wallet beta</p>
+      <p className="text-dfxGray-700">{translate('screens/home', 'Passkey login arrives with the wallet beta')}</p>
 
       <StyledButton
         width={StyledButtonWidth.FULL}
