@@ -17,15 +17,11 @@ export function useFeatureFlags(): { isEnabled: (feature: string) => boolean } {
 export function parseFeatures(search: string | undefined): string[] {
   if (!search) return [];
 
-  try {
-    const params = new URLSearchParams(search);
-    return (params.get('feature') ?? '')
-      .split(',')
-      .map((feature) => feature.trim().toLowerCase())
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
+  const params = new URLSearchParams(search);
+  return (params.get('feature') ?? '')
+    .split(',')
+    .map((feature) => feature.trim().toLowerCase())
+    .filter(Boolean);
 }
 
 /** The visibility rule of a gated tile: no feature field = always visible, otherwise the flag must match. */

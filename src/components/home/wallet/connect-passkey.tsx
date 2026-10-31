@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { ConnectProps } from '../connect-shared';
@@ -9,11 +8,10 @@ import { ConnectProps } from '../connect-shared';
 export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const { onCancel }: ConnectProps = props;
   const { translate } = useSettingsContext();
-  const [error] = useState<string>('Passkey login arrives with the wallet beta');
 
   return (
     <StyledVerticalStack gap={2} center>
-      {error && <p className="error">{error}</p>}
+      <p className="error">Passkey login arrives with the wallet beta</p>
 
       <StyledButton
         width={StyledButtonWidth.FULL}
