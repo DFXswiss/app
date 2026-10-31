@@ -23,6 +23,7 @@ input[type='number'] {
     @apply bg-white;
 
     font-family:
+      'Inter Variable',
       'Inter',
       system-ui,
       -apple-system,

@@ -184,8 +184,12 @@ describe('missing asset function', () => {
 // this file, so its content is pinned here on its own -- exactly, not just as a lower bound: an
 // unnoticed addition would run the Function's content check against a path public/_headers never
 // justified for it, so both directions have to fail this test, not only a removal.
+//
+// /csp-report is the one listed path this Function never sees: functions/csp-report.js claims it,
+// and Pages gives a specific route precedence over the catch-all [[path]]. It is covered by
+// csp-report-function.test.ts and security-headers.test.ts.
 describe('public/_routes.json include list', () => {
-  it('content-checks exactly /static/*, /widget/*, /favicon.ico, /logo.png, /robots.txt, /manifest.json, /asset-manifest.json and /version.json, and excludes nothing', () => {
+  it('content-checks exactly /static/*, /widget/*, /favicon.ico, /logo.png, /robots.txt, /manifest.json, /asset-manifest.json and /version.json, runs the CSP report Function on /csp-report, and excludes nothing', () => {
     const expectedInclude = [
       '/static/*',
       '/widget/*',
@@ -195,6 +199,7 @@ describe('public/_routes.json include list', () => {
       '/manifest.json',
       '/asset-manifest.json',
       '/version.json',
+      '/csp-report',
     ];
 
     expect([...routes.include].sort()).toEqual([...expectedInclude].sort());
