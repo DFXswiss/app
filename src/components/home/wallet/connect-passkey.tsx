@@ -1,11 +1,5 @@
 import { useState } from 'react';
-import {
-  Form,
-  StyledButton,
-  StyledButtonColor,
-  StyledButtonWidth,
-  StyledVerticalStack,
-} from '@dfx.swiss/react-components';
+import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { ConnectProps } from '../connect-shared';
 
@@ -13,26 +7,26 @@ import { ConnectProps } from '../connect-shared';
 // ceremony (PRF seed derivation, seed proofs, backup screen) lands with the @dfx.swiss/wallet beta; this
 // tile already wires the WalletType, the ConnectWrapper route and the session handling.
 export default function ConnectPasskey(props: ConnectProps): JSX.Element {
-  const { onClose }: ConnectProps = props;
+  const { onCancel }: ConnectProps = props;
   const { translate } = useSettingsContext();
   const [error] = useState<string>('Passkey login arrives with the wallet beta');
 
   return (
     <StyledVerticalStack gap={2} center>
-      <Form>{error && <p className="error">{error}</p>}</Form>
+      {error && <p className="error">{error}</p>}
 
       <StyledButton
-        width={StyledButtonWidth.full}
-        color={StyledButtonColor.gray}
-        label={translate('screens/home.seedTile')}
+        width={StyledButtonWidth.FULL}
+        color={StyledButtonColor.GRAY}
+        label={translate('screens/home', 'Passkey')}
         onClick={() => undefined}
         disabled
       />
       <StyledButton
-        width={StyledButtonWidth.full}
-        color={StyledButtonColor.red}
-        label={translate('generic/close')}
-        onClick={onClose}
+        width={StyledButtonWidth.FULL}
+        color={StyledButtonColor.RED}
+        label={translate('general/actions', 'Close')}
+        onClick={onCancel}
       />
     </StyledVerticalStack>
   );
