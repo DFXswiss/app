@@ -11,6 +11,7 @@ import { ConnectWrapper } from '../components/home/connect-wrapper';
 import { CloseType, useAppHandlingContext } from '../contexts/app-handling.context';
 import { useSettingsContext } from '../contexts/settings.context';
 import { supportsBlockchain, useWalletContext, WalletType } from '../contexts/wallet.context';
+import { useFeatureFlags } from '../hooks/feature-flag.hook';
 import { useAppParams } from '../hooks/app-params.hook';
 import { isWallet, Tile, useFeatureTree, Wallet } from '../hooks/feature-tree.hook';
 import { useNavigation } from '../hooks/navigation.hook';
