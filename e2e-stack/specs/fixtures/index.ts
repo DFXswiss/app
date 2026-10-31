@@ -98,11 +98,11 @@ function stackHosts(): Set<string> {
  * Answers every browser request that leaves the stack with an empty 200.
  *
  * The sandbox network has no route to the internet, so anything the app pulls from a third party
- * (index.html loads a Google Fonts stylesheet, for one) fails DNS resolution and shows up as a
+ * (the login tiles load their images from dfx.swiss, for one) fails DNS resolution and shows up as a
  * console error. Left alone, that noise would drown the console assertions every screen test wants
  * to make. Answering instead of aborting keeps the request from failing at all — an aborted request
- * logs an error of its own. Serving no fonts is also the honest state of affairs: the app has to
- * work without them.
+ * logs an error of its own. Serving no third-party content is also the honest state of affairs: the
+ * app has to work without it.
  */
 async function isolateFromExternalHosts(page: Page): Promise<void> {
   const allowed = stackHosts();

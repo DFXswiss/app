@@ -54,5 +54,7 @@ else
     sed -i "s|^REACT_APP_PUBLIC_URL=.*|REACT_APP_PUBLIC_URL=$PUBLIC_URL|" "$ENV_FILE"
 fi
 
-# Build
-CI=false react-app-rewired build
+# Build. INLINE_RUNTIME_CHUNK=false makes the webpack runtime a file under static/js instead of an
+# inline <script> in index.html, so the Content Security Policy in public/_headers can allow
+# scripts from 'self' only.
+INLINE_RUNTIME_CHUNK=false CI=false react-app-rewired build
