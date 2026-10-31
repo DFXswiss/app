@@ -5,7 +5,11 @@ import { useSettingsContext } from '../../contexts/settings.context';
 import { WalletType } from '../../contexts/wallet.context';
 
 export function InstallHint({ type, onConfirm }: { type: WalletType; onConfirm: () => void }): JSX.Element {
+  // passkey installs nothing: the platform sheet opens from the tile itself
   switch (type) {
+    case WalletType.PASSKEY:
+      return <></>;
+
     case WalletType.META_MASK:
       return <MetaMaskHint onConfirm={onConfirm} />;
 
