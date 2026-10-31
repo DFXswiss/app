@@ -17,6 +17,7 @@ const ConnectTrustTrx = lazy(() => import('./wallet/connect-trust-trx'));
 const ConnectTronLinkTrx = lazy(() => import('./wallet/connect-tronlink-trx'));
 const ConnectMail = lazy(() => import('./wallet/connect-mail'));
 const ConnectAddress = lazy(() => import('./wallet/connect-address'));
+const ConnectPasskey = lazy(() => import('./wallet/connect-passkey'));
 
 export function ConnectWrapper(props: ConnectProps): JSX.Element {
   switch (props.wallet) {
@@ -80,5 +81,8 @@ export function ConnectWrapper(props: ConnectProps): JSX.Element {
 
     case WalletType.ADDRESS:
       return <ConnectAddress {...props} />;
+
+    case WalletType.PASSKEY:
+      return <ConnectPasskey {...props} />;
   }
 }

@@ -2,6 +2,7 @@ import { Blockchain, Language } from '@dfx.swiss/react';
 import { useMemo } from 'react';
 import { FeatureTree } from '../config/feature-tree';
 import { AppParams, useAppHandlingContext } from '../contexts/app-handling.context';
+import { useFeatureFlags } from './feature-flag.hook';
 import { useSettingsContext } from '../contexts/settings.context';
 import { WalletType } from '../contexts/wallet.context';
 import { useAppParams } from './app-params.hook';
@@ -22,6 +23,8 @@ export interface BaseTile {
   id: string;
   img: string;
   disabled?: boolean;
+  /** URL feature flag that unlocks this tile (e.g. 'passkey' for ?feature=Passkey) */
+  feature?: string;
   next?: Next;
   wallet?: Wallet | WalletSelector;
 }
@@ -72,6 +75,7 @@ interface FeatureTreeInterface {
 
 export function useFeatureTree(): FeatureTreeInterface {
   const { language } = useSettingsContext();
+  const { isEnabled } = useFeatureFlags();
   const { setParams } = useAppParams();
   const { setRedirectPath } = useAppHandlingContext();
 
@@ -83,6 +87,7 @@ export function useFeatureTree(): FeatureTreeInterface {
     const nextPage = FeatureTree.find((p) => p.id === pageId) ?? FeatureTree[0];
     const tiles = nextPage.tiles
       .map((t) => ({ ...t, img: getImgUrl(t, language) }))
+      .filter((t) => !t.feature || isEnabled(t.feature))
       .filter((t) => !allowedTiles || allowedTiles.includes(t.id));
     return { ...nextPage, tiles };
   }
