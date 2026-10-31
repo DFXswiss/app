@@ -110,7 +110,12 @@ import { renderHook } from '@testing-library/react';
 import { FeatureTree } from '../config/feature-tree';
 import type { AppParams } from '../contexts/app-handling.context';
 import { WalletType } from '../contexts/wallet.context';
-import { isWallet, Tile, useFeatureTree, WalletTile } from '../hooks/feature-tree.hook';
+import { isWallet, Page, Tile, useFeatureTree, WalletTile } from '../hooks/feature-tree.hook';
+
+function definedPage(page: Page | undefined): Page {
+  if (!page) throw new Error('expected a page');
+  return page;
+}
 
 describe('FeatureTree', () => {
   it('gates the login-with-passkey tile behind the passkey feature', () => {
@@ -164,10 +169,9 @@ describe('useFeatureTree', () => {
     for (const symbol of ['EN', 'DE', 'IT', 'FR']) {
       mockState.language = { symbol };
       const { result, unmount } = renderHook(() => useFeatureTree());
-      const page = result.current.getPage('login');
-      expect(page).toBeDefined();
+      const page = definedPage(result.current.getPage('login'));
       const suffix = `_${symbol.toLowerCase()}.jpg`;
-      for (const tile of page!.tiles) {
+      for (const tile of page.tiles) {
         expect(tile.img.startsWith('https://dfx.swiss/images/app/')).toBe(true);
         expect(tile.img.endsWith(suffix)).toBe(true);
       }
@@ -176,9 +180,8 @@ describe('useFeatureTree', () => {
 
     mockState.language = { symbol: 'ES' };
     const { result } = renderHook(() => useFeatureTree());
-    const page = result.current.getPage('login');
-    expect(page).toBeDefined();
-    for (const tile of page!.tiles) {
+    const page = definedPage(result.current.getPage('login'));
+    for (const tile of page.tiles) {
       expect(tile.img.startsWith('https://dfx.swiss/images/app/')).toBe(true);
       expect(tile.img.endsWith('_en.jpg')).toBe(true);
     }
@@ -187,13 +190,13 @@ describe('useFeatureTree', () => {
   it('hides the passkey tile until the flag is enabled', () => {
     const { result } = renderHook(() => useFeatureTree());
 
-    const withoutFlag = result.current.getPage('login')!.tiles.map((tile) => tile.id);
+    const withoutFlag = definedPage(result.current.getPage('login')).tiles.map((tile) => tile.id);
     expect(withoutFlag).toContain('login-with-crypto-wallet');
     expect(withoutFlag).toContain('login-with-mail');
     expect(withoutFlag).not.toContain('login-with-passkey');
 
     mockState.enabled.add('passkey');
-    const withFlag = result.current.getPage('login')!.tiles.map((tile) => tile.id);
+    const withFlag = definedPage(result.current.getPage('login')).tiles.map((tile) => tile.id);
     expect(withFlag).toContain('login-with-passkey');
     expect(withFlag).toContain('login-with-crypto-wallet');
     expect(withFlag).toContain('login-with-mail');
@@ -202,19 +205,19 @@ describe('useFeatureTree', () => {
   it('keeps every visible tile without allowedTiles and filters when the list is set', () => {
     const { result } = renderHook(() => useFeatureTree());
 
-    const unrestricted = result.current.getPage('login')!.tiles.map((tile) => tile.id);
+    const unrestricted = definedPage(result.current.getPage('login')).tiles.map((tile) => tile.id);
     expect(unrestricted.length).toBeGreaterThan(1);
     expect(unrestricted).toContain('login-with-crypto-wallet');
     expect(unrestricted).toContain('login-with-mail');
 
-    const restricted = result.current.getPage('login', ['login-with-mail'])!.tiles.map((tile) => tile.id);
+    const restricted = definedPage(result.current.getPage('login', ['login-with-mail'])).tiles.map((tile) => tile.id);
     expect(restricted).toEqual(['login-with-mail']);
   });
 
   it('returns a known page by id and falls back to home for an unknown id', () => {
     const { result } = renderHook(() => useFeatureTree());
-    expect(result.current.getPage('login')!.id).toBe('login');
-    expect(result.current.getPage('no-such-page')!.id).toBe('home');
+    expect(definedPage(result.current.getPage('login')).id).toBe('login');
+    expect(definedPage(result.current.getPage('no-such-page')).id).toBe('home');
     expect(FeatureTree[0].id).toBe('home');
   });
 
