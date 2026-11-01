@@ -140,14 +140,19 @@ describe('deleted session address', () => {
     ).toBe(true);
   });
 
-  it('skips only the user-record wait on a login route and recognises those routes exactly', () => {
+  it('skips only the user-record wait on a login route and recognises those routes the way the router matches them', () => {
     expect(carriesLogin('/')).toBe(true);
     expect(carriesLogin('/login')).toBe(true);
+    expect(carriesLogin('/login/')).toBe(true);
+    expect(carriesLogin('/LOGIN')).toBe(true);
     expect(carriesLogin('/login/mail')).toBe(true);
     expect(carriesLogin('/login/wallet')).toBe(true);
     expect(carriesLogin('/connect')).toBe(true);
+    expect(carriesLogin('/Connect/')).toBe(true);
     expect(carriesLogin('/login/other')).toBe(false);
     expect(carriesLogin('/buy')).toBe(false);
+    expect(carriesLogin('/buy/')).toBe(false);
+    expect(carriesLogin('/BUY')).toBe(false);
 
     const waiting = {
       isInitialized: true,
