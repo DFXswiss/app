@@ -85,6 +85,11 @@
       "reason": "Deploy to DEV (Cloudflare Pages). Production/credentials path; not local author CI."
     },
     {
+      "workflow": ".github/workflows/stg.yml",
+      "job": "build",
+      "reason": "Deploy to STG (Cloudflare Pages). Production/credentials path; not local author CI."
+    },
+    {
       "workflow": ".github/workflows/prd.yml",
       "job": "build",
       "reason": "Deploy to PRD (Cloudflare Pages). Production/credentials path; not local author CI."
