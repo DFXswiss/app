@@ -171,6 +171,44 @@ test.describe('Auth area e2e', () => {
     await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
   });
 
+  test('command-line wallet login from a guarded /buy returns to /buy', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet();
+    await page.goto('/buy?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).not.toBe('/buy');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+    await page.waitForTimeout(3000);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/buy');
+  });
+
   // ---------------------------------------------------------------------------
   // /login/wallet — page id 'wallets' (icon grid, no description text)
   // ---------------------------------------------------------------------------

@@ -2,8 +2,8 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { ethers } from 'ethers';
 
 /**
- * Visual regression: a command-line wallet login on /login continues to /buy, a guarded /buy
- * returns there after login, and the same login on /connect continues to /account.
+ * Visual regression: a command-line wallet login on /login continues to /buy, and the same
+ * login on /connect continues to /account.
  *
  * Runs against a real local API (see CONTRIBUTING.md, "Visual regression tests", workflow step 2).
  * The browser signs the message the page shows with a fresh ethers wallet, and the API checks that
@@ -122,13 +122,6 @@ test.describe('login redirect against the local API', () => {
       mask: runDataMasks(page, address),
       timeout: 20_000,
     });
-  });
-
-  test('guarded /buy returns to /buy after login', async ({ page }) => {
-    await page.goto('/buy?blockchain=Ethereum&lang=en');
-    await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible({ timeout: 20_000 });
-    await loginWithCommandLine(page, true);
-    await expectStaysOn(page, '/buy');
   });
 
   test('command-line login on /connect continues to /account', async ({ page }) => {
