@@ -258,7 +258,7 @@ test.describe('Auth area e2e', () => {
   // /login/mail — ConnectMail form + real mail-login sequence
   // ---------------------------------------------------------------------------
 
-  test('/login/mail mail form → sent confirmation → OTP session → user_data.mail', async ({ page }) => {
+  test('/login/mail mail form → confirmation → login link visits /buy → session on /connect', async ({ page }) => {
     test.setTimeout(90000);
 
     const email = testEmail('auth-mail');
@@ -301,15 +301,24 @@ test.describe('Auth area e2e', () => {
       [email],
       20000,
     );
+    // A mail session has no address. After the link lands on /buy, useAddressGuard sends it on to
+    // /connect. Record main-frame paths so a pass still proves the link went through /buy.
+    const visited: string[] = [];
+    page.on('framenavigated', (frame) => {
+      if (frame !== page.mainFrame()) return;
+      visited.push(normPath(new URL(frame.url()).pathname));
+    });
     await page.goto(loginUrlFromNotification(row.data));
 
-    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 30000 }).toBe('/buy');
+    await expect.poll(() => visited.includes('/buy'), { timeout: 30000 }).toBe(true);
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 30000 }).toBe('/connect');
     await expect
       .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
         timeout: 20000,
       })
       .toBeTruthy();
-    expect(normPath(new URL(page.url()).pathname)).toBe('/buy');
+    await page.waitForTimeout(3000);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/connect');
 
     await waitForRow<{ id: number; mail: string }>(`SELECT id, mail FROM user_data WHERE mail = $1`, [email], 20000);
   });

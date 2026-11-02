@@ -53,16 +53,17 @@ function DeletedAddressNotice({ router }: { router: Router }): JSX.Element {
   const [error, setError] = useState<string>();
 
   // The user context swaps in the returned session token and reloads the user. With the
-  // address active again, the gate renders the app and, when there is a login target, the
-  // route moves there. After an error the user is loaded again and the route stays:
-  // when only the reload failed, the address is already active and a second attempt would be refused.
+  // address active again, the gate renders the app and the route moves to the login target,
+  // or to /account on a HomeScreen login route. After an error the user is loaded again and
+  // the route stays: when only the reload failed, the address is already active and a second
+  // attempt would be refused.
   function activate() {
     setIsLoading(true);
     setError(undefined);
     reactivateAddress()
       .then(() => {
         const pathname = router.state.location.pathname;
-        const target = loginTarget(redirectPath, pathname) ?? (pathname === '/connect' ? '/account' : undefined);
+        const target = loginTarget(redirectPath, pathname) ?? (carriesLogin(pathname) ? '/account' : undefined);
         if (target) {
           router.navigate(relativeUrl({ path: target, params: new URLSearchParams(router.state.location.search) }));
         }

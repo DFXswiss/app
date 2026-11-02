@@ -571,6 +571,26 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `ErrorHint`, labels and app contexts (translation returns the key), that the API returns those statuses,
   that the custody sign-up call reaches the real API, or the reporter's 60 s deduplication of identical
   reports, since the reporter is replaced.
+- **The home-screen unit test replaces the SDK, ConnectWrapper, the app contexts, the feature tree and
+  navigation.** `src/__tests__/home-screen.test.tsx` stubs `@dfx.swiss/react`, `ConnectWrapper`,
+  app-handling, settings, wallet and layout contexts, the feature tree and `useNavigation`, and drives
+  `HomeScreen` through a memory router. A green run proves, against that harness, that a completed login
+  on `/login` calls `navigate` toward `/buy` and on `/connect` toward `/account`. It does not prove a real
+  login, a real SDK session or user change, or the real interplay with the app router and navigation.
+- **The deleted-address unit test replaces the SDK user and session hooks and the app contexts.**
+  `src/__tests__/deleted-address.test.tsx` renders `DeletedAddressGate` against a memory router with
+  `useUserContext`, `useApiSession`, settings and app-handling replaced. A green run proves the hold, the
+  notice and the post-activation navigation against that harness. It does not prove a real reactivation, a
+  real SDK user load, or the real interplay with the app router and navigation.
+- **The connect-mail redirect unit test replaces the SDK auth hooks, the app contexts and navigation.**
+  `src/__tests__/connect-mail-redirect.test.tsx` stubs `useAuth`, session and wallet contexts, app-handling
+  and `useNavigation`, and asserts the `redirectUri` passed into `signInWithMail`. A green run does not
+  prove a real mail login, that the API accepts that `redirectUri`, or a real SDK session change.
+- **The connect-alby redirect unit test replaces the SDK session hooks, the Alby hook, the app contexts
+  and wallet login.** `src/__tests__/connect-alby-redirect.test.tsx` stubs session, user and wallet
+  contexts, `useAlby` and `window.location`, and asserts the Alby `redirect` query. A green run does not
+  prove a real Alby login, a real SDK session change, or the real interplay with the app router and
+  navigation.
 - **The KYC wallet-mismatch visual spec answers the user endpoint itself.**
   `e2e/kyc-wallet-mismatch.spec.ts` fulfils the user routes with a built user and the placeholder
   address `0x1111111111111111111111111111111111111111`, and does not call a live API. A green run

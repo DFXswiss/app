@@ -284,7 +284,21 @@ describe('deleted session address', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/buy'));
   });
 
-  it('stays on / after a successful activation when that route has no login target', async () => {
+  it('continues an activation on login-route spellings to /account and keeps the query', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+
+    for (const pathname of ['/LOGIN', '/login/', '/Connect/', '/']) {
+      const { router } = renderGate(`${pathname}?personal-iban=frick`);
+      await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+
+      await waitFor(() => expect(router.state.location.pathname).toBe('/account'));
+      expect(router.state.location.search).toBe('?personal-iban=frick');
+      expect(mockReloadUser).not.toHaveBeenCalled();
+      cleanup();
+    }
+  });
+
+  it('stays on a non-login route after a successful activation when that route has no login target', async () => {
     mockUser = userWithActiveAddress(UserStatus.DELETED);
     let resolveActivation: () => void = () => undefined;
     mockReactivateAddress.mockReturnValue(
@@ -293,17 +307,18 @@ describe('deleted session address', () => {
       }),
     );
 
-    const { router } = renderGate('/');
+    const { router } = renderGate('/buy?personal-iban=frick');
     await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
     expect(mockReactivateAddress).toHaveBeenCalledTimes(1);
-    expect(router.state.location.pathname).toBe('/');
+    expect(router.state.location.pathname).toBe('/buy');
 
     await act(async () => {
       resolveActivation();
       await Promise.resolve();
     });
 
-    expect(router.state.location.pathname).toBe('/');
+    expect(router.state.location.pathname).toBe('/buy');
+    expect(router.state.location.search).toBe('?personal-iban=frick');
     expect(mockReloadUser).not.toHaveBeenCalled();
   });
 

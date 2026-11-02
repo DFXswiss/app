@@ -10,7 +10,7 @@ import { ethers } from 'ethers';
  * signature. The dev server has to be started with REACT_APP_API_URL pointing at that same API.
  * E2E_API_URL is required and must be localhost or 127.0.0.1.
  *
- * The clock is pinned to Europe/Zurich so an unmasked timestamp does not move between runs.
+ * The timezone is pinned to Europe/Zurich so an unmasked timestamp does not move between runs.
  * UI language is pinned with `lang=en`.
  *
  * A green run does not prove a real wallet extension or production.
@@ -38,13 +38,26 @@ function assertLocalApi(): void {
   }
 }
 
+function assertLocalHostname(hostname: string, label: string): void {
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    throw new Error(`${label} must be localhost or 127.0.0.1. Refusing to call ${hostname}.`);
+  }
+}
+
 async function loginWithCommandLine(page: Page, openCryptoWallet: boolean): Promise<string> {
   const wallet = ethers.Wallet.createRandom();
   if (openCryptoWallet) await page.locator('img[src*="cryptowallet"]').click();
   await page.locator('img[src*="command"]').click();
+  const signMessage = page.waitForRequest((request) => {
+    return request.method() === 'GET' && new URL(request.url()).pathname === '/v1/auth/signMessage';
+  });
   const address = page.locator('input[name="address"]');
   await address.fill(wallet.address);
   await address.blur();
+  const signRequest = await signMessage;
+  const signUrl = new URL(signRequest.url());
+  assertLocalHostname(signUrl.hostname, 'GET /v1/auth/signMessage');
+  const apiOrigin = signUrl.origin;
   const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
   await expect(messageNode).toBeVisible({ timeout: 20_000 });
   const message = await messageNode.textContent();
@@ -55,7 +68,13 @@ async function loginWithCommandLine(page: Page, openCryptoWallet: boolean): Prom
   await signatureInput.blur();
   const login = page.getByRole('button', { name: 'Login' });
   await expect(login).toBeEnabled({ timeout: 20_000 });
+  const auth = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/v1/auth' && url.origin === apiOrigin;
+  });
   await login.click();
+  const authResponse = await auth;
+  expect(authResponse.ok(), `POST /v1/auth returned ${authResponse.status()}`).toBe(true);
   return wallet.address;
 }
 

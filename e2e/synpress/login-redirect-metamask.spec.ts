@@ -13,8 +13,6 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './custom-fixtures';
 import { loginWithRealMetaMask, requireApiOrigin, selectEthereumMainnet } from './login-redirect-metamask.helpers';
 
-requireApiOrigin();
-
 function pathOf(url: string): string {
   if (!url.startsWith('http://') && !url.startsWith('https://')) return url;
   return new URL(url).pathname;
@@ -51,6 +49,10 @@ async function shootApp(page: Page): Promise<void> {
 
 test.describe('real MetaMask login redirect', () => {
   test.setTimeout(360_000);
+
+  test.beforeAll(() => {
+    requireApiOrigin();
+  });
 
   test('continues from /login to /buy after a real MetaMask login', async ({
     page,
