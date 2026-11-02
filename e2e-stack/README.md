@@ -83,6 +83,10 @@ no longer forwards to the API once you move the published port elsewhere. Leave 
 at its default when you want to explore the app from a host browser; override it only to dodge a
 port conflict when you are not doing so.
 
+The browser inside the `tests` container opens the frontend at `http://frontend.e2e.test` (a
+`sandbox` alias, because `@IsUrl()` rejects a host without a top-level domain), which does not
+resolve on the host, so manual exploration stays on `http://localhost:3001`.
+
 ## Prerequisites
 
 - Docker with Compose v2

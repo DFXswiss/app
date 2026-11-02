@@ -45,7 +45,7 @@ export default defineConfig({
   expect: { timeout: 15000 },
   reporter: [['list'], ['html', { open: 'never', outputFolder: './playwright-report' }]],
   use: {
-    baseURL: process.env.E2E_FRONTEND_URL ?? 'http://frontend',
+    baseURL: process.env.E2E_FRONTEND_URL ?? 'http://frontend.e2e.test',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

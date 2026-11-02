@@ -1,183 +1,129 @@
-import { expect, Page, Route, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
+import { ethers } from 'ethers';
 
 /**
- * Visual regression: a command-line wallet login on a login page continues to /buy,
- * and the same login on /connect continues to /account.
+ * Visual regression: a command-line wallet login on /login continues to /buy, a guarded /buy
+ * returns there after login, and the same login on /connect continues to /account.
  *
- * Auth is a synthetic unsigned JWT (`alg: none`, role User) returned by the mocked
- * POST /v1/auth. Bootstrap GETs are mocked via page.route, so the suite does not need
- * a live API. GET /v2/user answers 401 until that login, then waits 800 ms and returns
- * a synthetic user. A green run does not prove production auth, a real signature check,
- * real user latency, or that /buy and /account show live data.
+ * Runs against a real local API (see CONTRIBUTING.md, "Visual regression tests", workflow step 2).
+ * The browser signs the message the page shows with a fresh ethers wallet, and the API checks that
+ * signature. The dev server has to be started with REACT_APP_API_URL pointing at that same API.
+ * E2E_API_URL is required and must be localhost or 127.0.0.1.
  *
- * User data is MOCKED with a synthetic fixture so the baselines are deterministic and
- * contain no production data. UI language is pinned with `lang=en`. Unmatched v1/v2
- * calls are fulfilled with 501 (not continued).
+ * The clock is pinned to Europe/Zurich so an unmasked timestamp does not move between runs.
+ * UI language is pinned with `lang=en`.
  *
- * Intercepted endpoints:
- *   - GET /v1/language, /v1/fiat, /v1/asset, /v1/bankAccount, /v1/country
- *   - GET /v1/setting/infoBanner  (no banner)
- *   - GET /v1/auth/signMessage
- *   - POST /v1/auth
- *   - GET /v2/user                (401 until login, then an active user after 800 ms)
+ * A green run does not prove a real wallet extension or production.
  */
 
-const ADDRESS = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
+const REQUIRED_ENV = ['E2E_API_URL'];
 
-async function json(route: Route, body: unknown, status = 200): Promise<void> {
-  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+function normPath(path: string): string {
+  return path !== '/' && path.endsWith('/') ? path.slice(0, -1) : path;
 }
 
-function jwt(): string {
-  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
-  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
-    account: 1,
-    user: 1,
-    address: ADDRESS,
-    role: 'User',
-    blockchains: ['Bitcoin'],
-    exp: Math.floor(Date.now() / 1000) + 3600,
-  })}.synthetic`;
-}
-
-function activeUser(): unknown {
-  const address = {
-    address: ADDRESS,
-    wallet: 'DFX',
-    explorerUrl: 'https://example.invalid',
-    status: 'Active',
-    blockchains: ['Bitcoin'],
-  };
-  return {
-    id: 1,
-    activeAddress: address,
-    addresses: [address],
-    mail: 'login-redirect@example.com',
-    currency: { id: 1, name: 'CHF' },
-    language: { id: 2, name: 'English', symbol: 'EN' },
-    kyc: { level: 20, status: 'Completed' },
-    tradingLimit: { limit: 1000, period: 'Month' },
-    volumes: {
-      buy: { total: 0, annual: 0 },
-      sell: { total: 0, annual: 0 },
-      swap: { total: 0, annual: 0 },
-    },
-    disabledAddresses: [],
-  };
-}
-
-async function installLoginRedirectRoutes(page: Page): Promise<void> {
-  let signedIn = false;
-
-  await page.route('**/v1/**', async (route: Route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    const method = request.method();
-
-    if (method === 'GET' && path === '/v1/language') {
-      return json(route, [
-        { id: 1, name: 'English', symbol: 'EN', foreignName: 'English', enable: true },
-        { id: 2, name: 'German', symbol: 'DE', foreignName: 'Deutsch', enable: true },
-      ]);
-    }
-
-    if (method === 'GET' && path === '/v1/fiat') {
-      return json(route, [
-        {
-          id: 1,
-          name: 'CHF',
-          buyable: true,
-          sellable: true,
-          cardBuyable: false,
-          cardSellable: false,
-          instantBuyable: false,
-          instantSellable: false,
-        },
-      ]);
-    }
-
-    if (method === 'GET' && ['/v1/asset', '/v1/bankAccount', '/v1/country'].includes(path)) {
-      return json(route, []);
-    }
-
-    if (method === 'GET' && path === '/v1/setting/infoBanner') {
-      return json(route, {});
-    }
-
-    if (method === 'GET' && path === '/v1/auth/signMessage') {
-      return json(route, { message: 'Sign this message to log in to DFX.' });
-    }
-
-    if (method === 'POST' && path === '/v1/auth') {
-      signedIn = true;
-      return json(route, { accessToken: jwt() });
-    }
-
-    await json(route, { error: `Unexpected ${method} ${path}` }, 501);
-  });
-
-  await page.route('**/v2/**', async (route: Route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    const method = request.method();
-
-    if (method === 'GET' && path === '/v2/user') {
-      if (!signedIn) return json(route, { statusCode: 401, message: 'Unauthorized' }, 401);
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      return json(route, activeUser());
-    }
-
-    await json(route, { error: `Unexpected ${method} ${path}` }, 501);
-  });
-}
-
-async function loginWithCommandLine(page: Page, startPath: string, openCryptoWallet: boolean): Promise<void> {
-  await page.goto(`${startPath}?lang=en`);
-
-  // /login opens on the login page, whose command-line tile is one step in.
-  // /connect opens on the wallets page, which already shows that tile.
-  if (openCryptoWallet) {
-    await page.locator('img[src*="cryptowallet"]').click();
+function assertLocalApi(): void {
+  const missing = REQUIRED_ENV.filter((name) => !process.env[name]);
+  if (missing.length > 0) throw new Error(`Set ${missing.join(', ')} to point this spec at the local API`);
+  const raw = process.env.E2E_API_URL;
+  if (!raw) throw new Error('Set E2E_API_URL to point this spec at the local API');
+  let host: string;
+  try {
+    host = new URL(raw).hostname;
+  } catch {
+    throw new Error('E2E_API_URL is not a URL. Refusing to run.');
   }
-
-  await page.locator('img[src*="command"]').click();
-
-  const address = page.locator('input[name="address"]');
-  await address.fill(ADDRESS);
-  await address.blur();
-
-  const signature = page.locator('input[type="password"]');
-  await expect(signature).toBeVisible({ timeout: 15_000 });
-  await signature.fill('signed');
-  await signature.blur();
-
-  const login = page.getByRole('button', { name: 'Login' });
-  await expect(login).toBeEnabled();
-  await login.click();
+  if (host !== 'localhost' && host !== '127.0.0.1') {
+    throw new Error(`E2E_API_URL must be localhost or 127.0.0.1. Refusing to call ${host}.`);
+  }
 }
 
-test.describe('Login redirect', () => {
-  test.use({ timezoneId: 'Europe/Zurich' });
+async function loginWithCommandLine(page: Page, openCryptoWallet: boolean): Promise<string> {
+  const wallet = ethers.Wallet.createRandom();
+  if (openCryptoWallet) await page.locator('img[src*="cryptowallet"]').click();
+  await page.locator('img[src*="command"]').click();
+  const address = page.locator('input[name="address"]');
+  await address.fill(wallet.address);
+  await address.blur();
+  const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+  await expect(messageNode).toBeVisible({ timeout: 20_000 });
+  const message = await messageNode.textContent();
+  if (message == null || message.length === 0) throw new Error('command-line sign message was empty');
+  const signature = await wallet.signMessage(message);
+  const signatureInput = page.locator('input[type="password"]');
+  await signatureInput.fill(signature);
+  await signatureInput.blur();
+  const login = page.getByRole('button', { name: 'Login' });
+  await expect(login).toBeEnabled({ timeout: 20_000 });
+  await login.click();
+  return wallet.address;
+}
 
-  test('a command-line login on /login continues to /buy', async ({ page }) => {
-    await installLoginRedirectRoutes(page);
-    await loginWithCommandLine(page, '/login', true);
+function runDataMasks(page: Page, address: string): Locator[] {
+  const tail = address.slice(-4);
+  return [
+    page.locator('#dropDownButton').filter({ hasText: tail }),
+    page.locator('input[name="targetAmount"]'),
+    page.locator('label').filter({ hasText: 'Exchange rate' }).locator('..'),
+  ];
+}
 
-    await page.waitForURL(/\/buy(\?|$)/);
-    await expect(page.getByText('You spend')).toBeVisible({ timeout: 15_000 });
+async function expectStaysOn(page: Page, pathname: string, stableText?: string): Promise<void> {
+  await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20_000 }).toBe(pathname);
+  if (stableText) await expect(page.getByText(stableText).first()).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(3_000);
+  expect(normPath(new URL(page.url()).pathname)).toBe(pathname);
+}
 
-    await page.waitForTimeout(500);
-    await expect(page).toHaveScreenshot('login-redirect-01-buy.png', { fullPage: true, maxDiffPixels: 1000 });
+test.use({ timezoneId: 'Europe/Zurich' });
+
+test.describe('login redirect against the local API', () => {
+  test.beforeAll(assertLocalApi);
+
+  test.beforeEach(() => {
+    test.setTimeout(90_000);
   });
 
-  test('a command-line login on /connect continues to /account', async ({ page }) => {
-    await installLoginRedirectRoutes(page);
-    await loginWithCommandLine(page, '/connect', false);
+  test('command-line login on /login continues to /buy', async ({ page }) => {
+    await page.goto('/login?blockchain=Ethereum&lang=en');
+    const address = await loginWithCommandLine(page, true);
+    await expectStaysOn(page, '/buy', 'You spend');
+    const addressMenu = page.locator('#dropDownButton').filter({ hasText: address.slice(-4) });
+    await expect(addressMenu).toBeVisible({ timeout: 15_000 });
+    // The local stack has no rate source. Below this menu the quote is a spinner or
+    // INTERNAL_SERVER_ERROR, depending on timing, so the shot stops here.
+    const box = await addressMenu.boundingBox();
+    if (box == null) throw new Error('address menu has no bounding box');
+    const viewport = page.viewportSize();
+    if (viewport == null) throw new Error('viewport size is missing');
+    await expect(page).toHaveScreenshot('login-redirect-01-buy.png', {
+      fullPage: false,
+      clip: { x: 0, y: 0, width: viewport.width, height: box.y + box.height + 16 },
+      maxDiffPixels: 1000,
+      mask: runDataMasks(page, address),
+      timeout: 20_000,
+    });
+  });
 
-    await page.waitForURL(/\/account(\?|$)/);
-    await expect(page.getByText('Total trading volume')).toBeVisible({ timeout: 15_000 });
+  test('guarded /buy returns to /buy after login', async ({ page }) => {
+    await page.goto('/buy?blockchain=Ethereum&lang=en');
+    await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible({ timeout: 20_000 });
+    await loginWithCommandLine(page, true);
+    await expectStaysOn(page, '/buy');
+  });
 
-    await page.waitForTimeout(500);
-    await expect(page).toHaveScreenshot('login-redirect-02-account.png', { fullPage: true, maxDiffPixels: 1000 });
+  test('command-line login on /connect continues to /account', async ({ page }) => {
+    await page.goto('/connect?blockchain=Ethereum&lang=en');
+    const address = await loginWithCommandLine(page, false);
+    await expectStaysOn(page, '/account', 'Total trading volume');
+    await expect(page.locator('#dropDownButton').filter({ hasText: address.slice(-4) })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page).toHaveScreenshot('login-redirect-02-account.png', {
+      fullPage: true,
+      maxDiffPixels: 1000,
+      mask: runDataMasks(page, address),
+      timeout: 20_000,
+    });
   });
 });

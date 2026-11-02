@@ -21,7 +21,7 @@ services:
       frontend-widget:
         condition: service_healthy
     environment:
-      E2E_FRONTEND_URL: ${E2E_FRONTEND_URL:-http://frontend}
+      E2E_FRONTEND_URL: ${E2E_FRONTEND_URL:-http://frontend.e2e.test}
       E2E_API_URL: ${E2E_API_URL:-http://api:3000}
       # images/playwright/entrypoint.sh reads this to pick the socat listen port; without the
       # passthrough the variable never reaches the container and an override is silently ignored.

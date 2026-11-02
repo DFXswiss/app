@@ -24,6 +24,7 @@ export default defineConfig({
     'sepolia-real-tx.spec.ts',
     'sell-complete.spec.ts',
     'sepolia-sell-e2e.spec.ts', // New complete E2E test
+    'login-redirect-metamask.spec.ts',
   ],
   snapshotDir: './e2e/screenshots',
   snapshotPathTemplate: '{snapshotDir}/{testFileName}-{arg}-{projectName}-{platform}{ext}',

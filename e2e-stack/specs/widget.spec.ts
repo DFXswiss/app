@@ -33,7 +33,8 @@ function widgetUrl(): string {
 }
 
 /**
- * The shared `page` fixture only allowlists `frontend` and `api`. Without this handler,
+ * The shared `page` fixture allowlists the frontend origin from `E2E_FRONTEND_URL`
+ * (default `http://frontend.e2e.test`), the API and localhost. Without this handler,
  * navigations to `frontend-widget` get an empty 200 text/plain substitute. Register
  * after the fixture's route so Playwright runs us first (most-recently-registered-first);
  * continue widget-host traffic, fallback everything else to the fixture.

@@ -49,6 +49,25 @@ function codeFromNotificationData(data: string): string {
   throw new Error('codeFromNotificationData: no texts[].params.code found');
 }
 
+/** Full login link from a Login notification. The first non-empty texts[].params.url wins. */
+function loginUrlFromNotification(data: string): string {
+  let parsed: { texts?: Array<{ params?: { url?: string } }> };
+  try {
+    parsed = JSON.parse(data) as typeof parsed;
+  } catch (e) {
+    throw new Error(`loginUrlFromNotification: failed to JSON.parse notification.data: ${e}`);
+  }
+  const texts = parsed.texts;
+  if (!Array.isArray(texts)) {
+    throw new Error('loginUrlFromNotification: notification.data.texts is not an array');
+  }
+  for (const entry of texts) {
+    const url = entry?.params?.url;
+    if (typeof url === 'string' && url.length > 0) return url;
+  }
+  throw new Error('loginUrlFromNotification: no texts[].params.url');
+}
+
 async function waitForVerificationCode(
   userDataId: number,
   context: 'VerificationMail' | 'EmailVerification',
@@ -252,44 +271,47 @@ test.describe('Auth area e2e', () => {
     await expect(page.getByPlaceholder('example@mail.com')).toBeVisible({ timeout: 15000 });
     await page.getByPlaceholder('example@mail.com').fill(email);
 
-    let redirectUri: string | undefined;
-    await page.route('**/v1/auth/mail', async (route) => {
-      const request = route.request();
-      if (request.method() !== 'POST' || new URL(request.url()).pathname !== '/v1/auth/mail') {
-        await route.continue();
-        return;
-      }
-      const parsed: unknown = request.postDataJSON();
-      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        await route.continue();
-        return;
-      }
-      const body = parsed as Record<string, unknown>;
-      if (typeof body.redirectUri === 'string') redirectUri = body.redirectUri;
-      const forwarded = { ...body };
-      // Remove redirectUri: @IsUrl() refuses the stack host, which has no top-level domain.
-      delete forwarded.redirectUri;
-      await route.continue({ postData: JSON.stringify(forwarded) });
+    const mailPost = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === 'POST' && new URL(request.url()).pathname === '/v1/auth/mail';
     });
-
     await page.getByRole('button', { name: 'Next' }).click();
+    const response = await mailPost;
+    expect(response.ok(), `POST /v1/auth/mail returned ${response.status()}`).toBe(true);
+
+    const sent: unknown = response.request().postDataJSON();
+    if (sent === null || typeof sent !== 'object' || Array.isArray(sent)) {
+      throw new Error('POST /v1/auth/mail body is not an object');
+    }
+    const redirectUri = (sent as { redirectUri?: unknown }).redirectUri;
+    if (typeof redirectUri !== 'string') throw new Error('the login page should send redirectUri');
+    expect(new URL(redirectUri).pathname).toBe('/buy');
 
     await expect(
       page.getByText('We have sent an email with further instructions to the address provided.', { exact: true }),
     ).toBeVisible({ timeout: 20000 });
-    expect(new URL(required(redirectUri, 'the login page should send redirectUri')).pathname).toBe('/buy');
     await expect(page.getByRole('button', { name: 'Back' })).toBeVisible();
 
-    // OTP lives in notification; completeMailLogin exchanges it for a session JWT.
-    const jwt = await completeMailLogin(email);
-    expect(jwt).toBeTruthy();
+    const row = await waitForRow<{ data: string }>(
+      `SELECT n.data
+       FROM notification n
+       JOIN user_data ud ON ud.id = n."userDataId"
+       WHERE ud.mail = $1 AND n.context = 'Login'
+       ORDER BY n.id DESC LIMIT 1`,
+      [email],
+      20000,
+    );
+    await page.goto(loginUrlFromNotification(row.data));
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 30000 }).toBe('/buy');
+    await expect
+      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+        timeout: 20000,
+      })
+      .toBeTruthy();
+    expect(normPath(new URL(page.url()).pathname)).toBe('/buy');
 
     await waitForRow<{ id: number; mail: string }>(`SELECT id, mail FROM user_data WHERE mail = $1`, [email], 20000);
-
-    await gotoWithSession(page, '/', jwt);
-    await page.waitForLoadState('networkidle');
-    const token = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
-    expect(token, 'mail session should land in localStorage').toBeTruthy();
   });
 
   // ---------------------------------------------------------------------------
@@ -331,7 +353,7 @@ test.describe('Auth area e2e', () => {
       const url = entry?.params?.url;
       if (typeof url === 'string') {
         try {
-          otp = new URL(url, process.env.E2E_FRONTEND_URL ?? 'http://frontend').searchParams.get('otp');
+          otp = new URL(url, process.env.E2E_FRONTEND_URL ?? 'http://frontend.e2e.test').searchParams.get('otp');
           if (otp) break;
         } catch {
           /* next */

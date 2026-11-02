@@ -72,7 +72,12 @@ services:
       context: ..
       dockerfile: e2e-stack/images/frontend/Dockerfile
     networks:
-      - sandbox
+      sandbox:
+        aliases:
+          # @IsUrl() rejects a host with no top-level domain, so a redirectUri of
+          # http://frontend/... never reaches the API. This alias is the browser origin;
+          # the service name stays `frontend` for proxy_pass.
+          - frontend.e2e.test
     healthcheck:
       # nginx:alpine ships both wget and curl; wget --spider only checks the response status,
       # it never writes a body anywhere. Target 127.0.0.1 explicitly, not "localhost": BusyBox
