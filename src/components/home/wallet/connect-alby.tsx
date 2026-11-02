@@ -45,7 +45,7 @@ export default function ConnectAlby(props: ConnectProps): JSX.Element {
       redirectUrl.searchParams.set('type', WalletType.ALBY);
       // Merge redirectPath with an allowlisted callback param set (only personal-iban when present).
       // Do not copy the entire live search into the Alby redirect.
-      const target = loginTarget(redirectPath, pathname);
+      const target = loginTarget(redirectPath, pathname) ?? (pathname === '/connect' ? '/account' : undefined);
       target &&
         redirectUrl.searchParams.set(
           'redirect',

@@ -209,6 +209,93 @@ test.describe('Auth area e2e', () => {
     expect(normPath(new URL(page.url()).pathname)).toBe('/buy');
   });
 
+  test('command-line wallet login on /connect continues to /account', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet();
+    await page.goto('/connect?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/account');
+    await page.waitForTimeout(3000);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/account');
+  });
+
+  test('command-line login on /login with a deleted address reactivates and continues to /buy', async ({ page }) => {
+    test.setTimeout(90000);
+
+    // Dedicated index so marking this address Deleted does not affect testWallet() / index 0.
+    const wallet = testWallet(51);
+    await signatureLogin(wallet);
+    const deleted = await queryOne<{ id: number; status: string }>(
+      `UPDATE "user" SET status = 'Deleted', "deactivationDate" = NOW() WHERE address = $1 RETURNING id, status`,
+      [wallet.address],
+    );
+    if (deleted == null || deleted.status !== 'Deleted') {
+      throw new Error(`failed to mark address ${wallet.address} as Deleted`);
+    }
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect(page.getByRole('button', { name: 'Activate address' })).toBeVisible({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Activate address' }).click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+    await page.waitForTimeout(3000);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/buy');
+    await expect
+      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+        timeout: 20000,
+      })
+      .toBeTruthy();
+  });
+
   // ---------------------------------------------------------------------------
   // /login/wallet — page id 'wallets' (icon grid, no description text)
   // ---------------------------------------------------------------------------

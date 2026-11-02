@@ -558,6 +558,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   sends the rejected switch once and shows the translated rejection sentence instead of the API's text. It
   does not prove how an account reaches that state in production or any other reason the API may reject the
   switch.
+- **The deleted-address reactivation full-stack case marks the address deleted with SQL.** In
+  `e2e-stack/specs/auth.spec.ts`, the command-line login on `/login` sets `"user".status` to `Deleted` after
+  a signature login has created the row, then the browser signs in and clicks Activate address. A green run
+  proves that `PUT /v2/user/reactivate` reopens that address and the app continues to `/buy`. It does not
+  prove how an address reaches that state in production.
 - **The address-switch unit test runs the SDK user context against replaced HTTP and session hooks.**
   `src/__tests__/address-switch.test.tsx` transpiles `UserContextProvider` from the installed
   `@dfx.swiss/react` build and wires it to hand-written `useUser` and `useApiSession` replacements, and
