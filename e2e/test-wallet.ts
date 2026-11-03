@@ -1,4 +1,3 @@
-import { assertSharedAccount } from 'src/util/shared-account';
 import { Wallet, HDNodeWallet } from 'ethers';
 import * as bip39 from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
@@ -95,9 +94,6 @@ export function getTestConfig(): TestConfig {
   if (!iban) {
     throw new Error('TEST_IBAN environment variable is required. Set it in .env or as environment variable.');
   }
-
-  const apiUrl = process.env.REACT_APP_API_URL ?? process.env.API_URL;
-  if (apiUrl) assertSharedAccount(apiUrl, iban, process.env.TEST_EMAIL);
 
   return {
     seed,

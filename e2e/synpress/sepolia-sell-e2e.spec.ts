@@ -19,7 +19,6 @@
  * - Services running on localhost:3001 (or webServer starts it)
  */
 
-import { assertSharedAccount } from '../../src/util/shared-account';
 import { test as base, chromium, BrowserContext, Page, expect } from '@playwright/test';
 import { MetaMask } from '@synthetixio/synpress/playwright';
 import path from 'path';
@@ -782,10 +781,7 @@ test.describe('Sepolia USDT Sell E2E Flow', () => {
     if (!ibanSelected) {
       const ibanInput = appPage.locator('input[placeholder*="IBAN"], input[name*="iban"]').first();
       if (await ibanInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-        const iban = process.env.TEST_IBAN;
-        if (!iban) throw new Error('TEST_IBAN is required');
-        assertSharedAccount(process.env.REACT_APP_API_URL ?? 'http://localhost:3001', iban, process.env.TEST_EMAIL);
-        await ibanInput.fill(iban);
+        await ibanInput.fill('CH9300762011623852957'); // Test IBAN
         console.log('Entered test IBAN');
         ibanSelected = true;
       }

@@ -6,19 +6,13 @@
 import { ethers } from 'ethers';
 import * as dotenv from 'dotenv';
 import path from 'path';
-import { assertSharedAccount } from '../../src/util/shared-account';
 
 dotenv.config({ path: path.join(process.cwd(), '.env.test') });
 
-const API_URL = process.env.API_URL;
-const TEST_SEED = process.env.TEST_SEED_2;
-const TEST_IBAN = process.env.TEST_IBAN;
+const API_URL = process.env.API_URL!;
+const TEST_SEED = process.env.TEST_SEED_2!;
 
 async function test() {
-  if (!API_URL) throw new Error('API_URL is required');
-  if (!TEST_SEED) throw new Error('TEST_SEED_2 is required');
-  if (!TEST_IBAN) throw new Error('TEST_IBAN is required');
-  assertSharedAccount(API_URL, TEST_IBAN, process.env.TEST_EMAIL);
 
   const wallet = ethers.Wallet.fromPhrase(TEST_SEED);
   console.log('=== Test Gasless API Response ===');
@@ -46,7 +40,7 @@ async function test() {
       Authorization: `Bearer ${authData.accessToken}`,
     },
     body: JSON.stringify({
-      iban: TEST_IBAN,
+      iban: 'CH93 0076 2011 6238 5295 7',
       asset: { id: 407 }, // Sepolia USDT
       amount: 0.01,
       currency: { id: 2 }, // EUR

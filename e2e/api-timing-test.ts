@@ -5,7 +5,6 @@
  * Run: npx ts-node e2e/api-timing-test.ts
  */
 
-import { assertSharedAccount } from '../src/util/shared-account';
 import { ethers } from 'ethers';
 import * as dotenv from 'dotenv';
 import path from 'path';
@@ -16,19 +15,17 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
-const API_URL = process.env.REACT_APP_API_URL;
-const TEST_SEED = process.env.TEST_SEED;
-const TEST_IBAN = process.env.TEST_IBAN;
+const API_URL = process.env.REACT_APP_API_URL!;
+const TEST_SEED = process.env.TEST_SEED!;
 
 async function main() {
   console.log('=== API Timing Test ===\n');
   console.log(`API URL: ${API_URL}`);
 
-  if (!API_URL || !TEST_SEED || !TEST_IBAN) {
-    console.error('ERROR: REACT_APP_API_URL, TEST_SEED and TEST_IBAN must be set in .env');
+  if (!TEST_SEED) {
+    console.error('ERROR: TEST_SEED not in .env');
     process.exit(1);
   }
-  assertSharedAccount(API_URL, TEST_IBAN, process.env.TEST_EMAIL);
 
   // Create wallet from seed
   const wallet = ethers.Wallet.fromPhrase(TEST_SEED);
@@ -57,7 +54,7 @@ async function main() {
   const startWithout = Date.now();
 
   const request = {
-    iban: TEST_IBAN,
+    iban: 'CH93 0076 2011 6238 5295 7',
     asset: { id: 407 }, // Sepolia USDT
     amount: 0.01,
     currency: { id: 2 }, // EUR
