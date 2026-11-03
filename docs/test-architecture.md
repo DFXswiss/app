@@ -579,6 +579,31 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   Passkey button, with and without the no-support sentence. It does not prove that the API
   returns those bootstrap payloads, that geolocation-db returns `CH`, or that this browser's
   real passkey support matches the stub.
+- **The passkey tile unit test replaces the wallet package and the session hooks.**
+  `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet`, including `checkPasskeyPlatform`,
+  plus `@dfx.swiss/react`, the component library, and the session, store, balance and settings hooks.
+  A green run proves the tile stays a disabled placeholder with the beta sentence and one no-support
+  sentence. It does not prove the real platform check, a passkey ceremony, or the published components.
+- **The connect-screen unit test replaces every wallet tile.**
+  `src/__tests__/connect-wrapper.test.tsx` replaces `@dfx.swiss/react` and each connect tile, including
+  the passkey tile, with a stub. A green run proves the wrapper renders the stub named by the wallet
+  type. It does not prove the real tiles or a real session.
+- **The wallet-context unit test replaces the SDK hooks.**
+  `src/__tests__/wallet.context.test.tsx` replaces `@dfx.swiss/react` auth, session and user hooks with
+  in-memory stubs. A green run proves the context calls those stubs for login, logout and storage.
+  It does not prove a real login or the published SDK.
+- **The feature-tree unit tests replace the flag hook and the SDK enum.**
+  `src/__tests__/feature-tree.test.tsx` and `src/__tests__/feature-tree-passkey.test.tsx` replace
+  `@dfx.swiss/react`, and the first file also replaces the feature-flag hook. A green run proves the
+  passkey node follows the stubbed flag. It does not prove the real flag service or the published SDK.
+- **The install-hint unit test replaces device detection and the component library.**
+  `src/__tests__/install-hint.test.tsx` replaces `react-device-detect`, `@dfx.swiss/react` and
+  `@dfx.swiss/react-components`. A green run proves the hint branch follows the stubbed device flags.
+  It does not prove a real browser or the published components.
+- **The entry unit test replaces the font package.**
+  `src/__tests__/index.test.ts` replaces `@fontsource-variable/inter` with an empty module.
+  A green run proves the entry imports that module before startup. It does not prove a browser loads
+  the font file.
 - **The KYC wallet-mismatch visual spec answers the user endpoint itself.**
   `e2e/kyc-wallet-mismatch.spec.ts` fulfils the user routes with a built user and the placeholder
   address `0x1111111111111111111111111111111111111111`, and does not call a live API. A green run

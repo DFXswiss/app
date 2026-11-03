@@ -210,6 +210,22 @@ describe('csp report function', () => {
     ]);
   });
 
+  it.each([
+    'https://dfx-app-prd.pages.dev/tx/T123/secret-value',
+    'https://abc123.dfx-app-stg.pages.dev/tx/T123/secret-value',
+    'https://preview.dfx-app-dev.pages.dev/tx/T123/secret-value',
+    'https://other.example/tx/T123/secret-value',
+  ])('does not log a transaction secret from %s', async (documentUri) => {
+    await onRequest(
+      post(cspReport({ 'document-uri': documentUri, 'effective-directive': 'img-src' }), 'application/csp-report'),
+    );
+
+    const line = JSON.stringify(logged());
+    expect(line).not.toContain('secret-value');
+    expect(line).not.toContain('T123');
+    expect(logged()[0].documentUrl).toBe(`${new URL(documentUri).origin}/tx/:id/:id`);
+  });
+
   it('stops reading a stream once the byte cap is passed', async () => {
     let cancelled = false;
     let sent = 0;
@@ -302,6 +318,26 @@ describe('csp report function', () => {
 
   it('refuses a body larger than the limit that did not declare its length', async () => {
     const result = await onRequest(post(`"${'a'.repeat(256 * 1024)}"`, 'application/csp-report'));
+
+    expect(result.status).toBe(413);
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it('refuses a no-stream body whose UTF-8 size exceeds the cap', async () => {
+    const marks = '€'.repeat(90_000);
+    const text = `{"csp-report":{"x":"${marks}"}}`;
+    // € is U+20AC: one UTF-16 unit and three UTF-8 bytes. The wrapper is ASCII.
+    const utf8Bytes = text.length + marks.length * 2;
+    expect(text.length).toBeLessThan(256 * 1024);
+    expect(utf8Bytes).toBeGreaterThan(256 * 1024);
+    const request = {
+      method: 'POST',
+      headers: new Headers({ 'content-type': 'application/csp-report' }),
+      body: {},
+      text: async () => text,
+    };
+
+    const result = await onRequest({ request });
 
     expect(result.status).toBe(413);
     expect(log).not.toHaveBeenCalled();

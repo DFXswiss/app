@@ -6,9 +6,10 @@
  * Two formats arrive here. `report-uri` sends one `application/csp-report` body per violation;
  * `report-to` (Reporting API, Chromium) sends `application/reports+json` with a batch of reports.
  * Only the fields needed to decide on the policy are kept. Every URL loses its query string,
- * fragment and credentials. On this application's own hosts the path is reduced to public route
- * words and file names, because a path can carry a transaction id and its secret. A violation
- * report is sent without the user doing anything.
+ * fragment and credentials. On this application's own hosts, including the Pages project hosts,
+ * the path is reduced to public route words and file names. A transaction path is reduced on
+ * every host, because it can carry an id and its secret. A violation report is sent without
+ * the user doing anything.
  *
  * public/_routes.json lists /csp-report so this Function runs for it. A specific route takes
  * precedence over functions/[[path]].js, so the missing-asset check never sees this path.
@@ -237,6 +238,13 @@ const PUBLIC_SEGMENTS = new Set([
 
 const APP_HOSTS = new Set(['app.dfx.swiss', 'dev.app.dfx.swiss', 'stg.app.dfx.swiss', 'localhost', '127.0.0.1']);
 
+// The same build is served on the Pages project domain and on one branch or deployment label under it.
+const PAGES_HOST = /^(?:[a-z0-9-]+\.)?dfx-app-(?:dev|prd|stg)\.pages\.dev$/;
+
+function isAppHost(hostname) {
+  return APP_HOSTS.has(hostname) || PAGES_HOST.test(hostname);
+}
+
 const FILE_SEGMENT =
   /^[A-Za-z0-9._-]{1,80}\.(?:js|mjs|css|map|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|json|txt|html|wasm)$/;
 
@@ -256,7 +264,8 @@ function sanitizeUrl(value) {
 
   if (!WEB_PROTOCOLS.has(url.protocol)) return url.protocol.slice(0, -1);
 
-  const pathname = APP_HOSTS.has(url.hostname) ? publicPath(url.pathname) : url.pathname;
+  const pathname =
+    isAppHost(url.hostname) || url.pathname.split('/').includes('tx') ? publicPath(url.pathname) : url.pathname;
   return `${url.origin}${pathname}`.slice(0, MAX_URL_LENGTH);
 }
 
@@ -305,10 +314,26 @@ async function readLimited(request) {
   return new TextDecoder().decode(bytes);
 }
 
+function utf8ByteLength(value) {
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code < 0xd800 || code > 0xdfff) bytes += 3;
+    else {
+      bytes += 4;
+      index += 1;
+    }
+  }
+  return bytes;
+}
+
 async function readText(request) {
   if (typeof request.text !== 'function') return '';
   const text = await request.text();
-  if (text.length > MAX_BODY_LENGTH) return undefined;
+  // The cap is bytes. A string length counts UTF-16 units, so a multi-byte body can pass it and still be logged.
+  if (utf8ByteLength(text) > MAX_BODY_LENGTH) return undefined;
   return text;
 }
 
