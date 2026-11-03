@@ -24,6 +24,7 @@ import {
   queryOne,
   queryRows,
   test,
+  TEST_IBAN,
   waitForRow,
 } from './fixtures';
 
@@ -520,7 +521,7 @@ test.describe('Payment links / routes / invoice', () => {
     const bankData = await queryOne<{ id: number }>(
       `INSERT INTO bank_data (iban, type, active, "default", "userDataId", label)
        VALUES ($1, 'User', true, false, $2, $3) RETURNING id`,
-      ['CH9300762011623852957;' + tag, user.userDataId, `e2e-pl-assign-ba-${tag}`],
+      [TEST_IBAN + ';' + tag, user.userDataId, `e2e-pl-assign-ba-${tag}`],
     );
     if (!bankData) throw new Error('failed to insert bank_data');
 
@@ -528,7 +529,7 @@ test.describe('Payment links / routes / invoice', () => {
       `INSERT INTO deposit_route
          (type, active, volume, "depositId", "userId", iban, "fiatId", "bankDataId", "annualVolume", "monthlyVolume", "routeId")
        VALUES ('Sell', true, 0, $1, $2, $3, $4, $5, 0, 0, $6) RETURNING id`,
-      [deposit.id, user.userId, 'CH9300762011623852957', fiat.id, bankData.id, baseRoute.id],
+      [deposit.id, user.userId, TEST_IBAN, fiat.id, bankData.id, baseRoute.id],
     );
     if (!route) throw new Error('failed to insert Lightning deposit_route for the unassigned link');
 

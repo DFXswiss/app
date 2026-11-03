@@ -35,8 +35,11 @@ export function testEmail(tag: string): string {
   return `e2e+${safe}-${testEmailCounter}-${entropy}@dfx.swiss`;
 }
 
-/** Public test IBAN (Swiss sample) for payment-related specs. */
-export const TEST_IBAN = 'CH9300762011623852957';
+/**
+ * Checksum-valid Swiss IBAN for payment specs. Clearing number 00000 is not a
+ * bank, so this account is not issued. It is not the public IBAN sample.
+ */
+export const TEST_IBAN = 'CH3600000000000000000';
 
 /**
  * Best-effort defaults from the standard API seed. A consuming test should confirm

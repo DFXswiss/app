@@ -340,6 +340,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   in the existing customer table, the empty state and the not-found error. It
   does not prove that the API returns those rows for a tag, that a tag setting
   exists, or that login and token verification succeed.
+- **The full-stack suite pays to a checksum-valid IBAN no bank issues.**
+  `TEST_IBAN` in `e2e-stack/specs/fixtures/test-data.ts` is `CH3600000000000000000`.
+  Clearing number 00000 is not a bank. A green run does not prove that a real bank
+  would accept this account, or that the number is absent from a shared database.
 - **Full-stack compliance specs SQL-seed a call-queue case.**
   `e2e-stack/specs/fixtures/factories.ts` (`createCallQueueEntry`) inserts a pending `buy_crypto`
   with AML reason `ManualCheckPhone` and SQL-writes `user_data.phoneCallStatus`,

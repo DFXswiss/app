@@ -129,7 +129,8 @@ test.describe('Compliance area (cases)', () => {
 
     await expect(page.getByText('Die Bank-Daten werden:', { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Checks', { exact: true })).toBeVisible();
-    await expect(page.getByText(/CH93\s*0076\s*2011\s*6238\s*5295\s*7|CH9300762011623852957/).first()).toBeVisible();
+    const shownIban = new RegExp(TEST_IBAN.split('').join('\\s*'));
+    await expect(page.getByText(shownIban).first()).toBeVisible();
 
     await page
       .getByText('Die Bank-Daten werden:', { exact: true })
