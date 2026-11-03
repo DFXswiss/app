@@ -5,6 +5,7 @@ import {
   VirtualIban,
   VirtualIbanStatus,
 } from '@dfx.swiss/react';
+import { toScorReference } from './scor-reference';
 
 /** Bank Frick personal-IBAN accounts are held by DFX AG (routing sub-account), never the customer. */
 export const FRICK_BANK_NAME = 'Bank Frick';
@@ -264,17 +265,18 @@ export function getOfferableCollectionIban(info: {
  * missing, or when the quote currency is not exactly EUR (callers pass quote fields through
  * unchanged; this function is the single gate — attribution and matching are impossible without
  * them, and the EPC069-12 GiroCode exists only for EUR). Also returns undefined unless the
- * payload is a well-formed SCT GiroCode (full 11-or-12-line shape, version 001/002, charset line
+ * payload is a well-formed SCT GiroCode (10-, 11- or 12-line shape, version 001/002, charset line
  * index 2 in '1'..'8') whose IBAN line matches the given personal IBAN (whitespace/case ignored),
  * whose amount line (line 7) is genuinely empty (the api omits it for target-amount quotes and
  * the personal QR carries the same absence) or exactly `EUR` followed by the quote amount as the
  * api renders it. Formatting variants are not this api's output and are refused. The payload's
- * remittance must be carried on the unstructured line 10 only and must equal the quote's
- * remittance info. This function does not implement ISO 11649 structured-reference validation;
- * the quote reference this frontend receives is a bankUsage string, not an ISO 11649 structured
- * reference. A populated structured-reference carrier (line 9) is therefore outside the shape
- * this function validates and is refused fail-closed — the worst case is no rewritten QR, while
- * manual IBAN entry and the original PDF invoice both remain available. The EPC069-12 GiroCode
+ * remittance is accepted in one of two shapes. The unstructured line equals the quote
+ * remittance and the structured line is empty, or the structured line is the ISO 11649
+ * creditor reference of that remittance and the unstructured line is empty. Both lines
+ * filled, or a structured line that is not that creditor reference, is refused. The
+ * checksum is checked here so a different reference is not copied onto the collection
+ * account. The worst case is no rewritten QR, while manual IBAN entry and the original
+ * PDF invoice both remain available. The EPC069-12 GiroCode
  * exists for EUR only — the quote currency must explicitly be `EUR`, and the rewrite always
  * targets the EUR collection row. Swiss QR-Bill SVG payloads are never rewritten — callers must
  * treat undefined as "no QR available".
@@ -299,7 +301,10 @@ export function toCollectionIbanGiroCode(
 
   const lines = paymentRequest.split(/\r?\n/);
   while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-  if (lines.length < 11) return undefined;
+  // Ten lines is a GiroCode whose empty unstructured remittance line was omitted.
+  // The field is still empty; a shorter payload is not a GiroCode.
+  if (lines.length < 10) return undefined;
+  if (lines.length === 10) lines.push('');
   // EPC069-12 defines twelve fields at indexes 0–11; longer payloads are not GiroCodes and must not be rebuilt.
   if (lines.length > 12) return undefined;
   if (lines[0] !== 'BCD') return undefined;
@@ -317,9 +322,14 @@ export function toCollectionIbanGiroCode(
   if (!trimmedRemittance) return undefined;
   const structuredReference = lines[9].trim();
   const unstructuredRemittance = lines[10].trim();
-  // No ISO 11649 validation here: bankUsage is unstructured; a populated structured carrier is out of shape.
-  if (structuredReference) return undefined;
-  if (unstructuredRemittance !== trimmedRemittance) return undefined;
+  // EPC069-12 uses one remittance line. A structured line must be the ISO 11649 creditor
+  // reference of this remittance, and the unstructured line must then be empty.
+  const creditorReference = toScorReference(trimmedRemittance);
+  if (structuredReference) {
+    if (structuredReference !== creditorReference || unstructuredRemittance !== '') return undefined;
+  } else if (unstructuredRemittance !== trimmedRemittance) {
+    return undefined;
+  }
 
   // Both accounts are held by DFX AG, which is why only the IBAN may change: retargeting a payload
   // that names anyone else would leave the wrong creditor on a DFX account, and the payer's bank

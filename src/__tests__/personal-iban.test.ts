@@ -1272,7 +1272,7 @@ describe('toCollectionIbanGiroCode', () => {
     ).toBeUndefined();
   });
 
-  it('returns undefined when the remittance is carried on the structured-reference line (outside the shape this function validates)', () => {
+  it('returns undefined when the raw remittance is placed on the structured-reference line', () => {
     expect(
       toCollectionIbanGiroCode(
         sampleGiroCode({ line9: SAMPLE_REMITTANCE, line10: '' }),
@@ -1284,7 +1284,63 @@ describe('toCollectionIbanGiroCode', () => {
     ).toBeUndefined();
   });
 
-  it('returns undefined for a 10-line payload — below the 11-line minimum', () => {
+  it('rewrites the IBAN when the structured line is the creditor reference and the unstructured line is empty', () => {
+    const input = sampleGiroCode({ line9: ' RF67AB12CD34EF56 ', line10: '' });
+    const result = toCollectionIbanGiroCode(input, PERSONAL_GIRO_IBAN, 'AB12-CD34-EF56', SAMPLE_AMOUNT, 'EUR');
+    const expected = input.split('\n');
+    expected[6] = FRICK_COLLECTION_IBANS.EUR;
+    expect(result).toBe(expected.join('\n'));
+  });
+
+  it('returns undefined when the structured reference has a wrong checksum', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line9: 'RF00AB12CD34EF56', line10: '' }),
+        PERSONAL_GIRO_IBAN,
+        'AB12-CD34-EF56',
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when both remittance lines are set even if the structured reference matches', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line9: 'RF67AB12CD34EF56', line10: 'AB12-CD34-EF56' }),
+        PERSONAL_GIRO_IBAN,
+        'AB12-CD34-EF56',
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when the structured reference belongs to a different remittance', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line9: 'RF86DFXBUY1', line10: '' }),
+        PERSONAL_GIRO_IBAN,
+        'AB12-CD34-EF56',
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when a structured line is set for a remittance that has no creditor reference', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line9: 'RF00HELLO', line10: '' }),
+        PERSONAL_GIRO_IBAN,
+        'hello!',
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when a 10-line payload puts the raw remittance on the structured line', () => {
     const tenLinePayload = [
       'BCD',
       '001',
