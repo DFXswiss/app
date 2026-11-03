@@ -343,6 +343,24 @@ describe('csp report function', () => {
     expect(log).not.toHaveBeenCalled();
   });
 
+  it('refuses a no-stream body when a lone surrogate would hide the real byte size', async () => {
+    const pairs = '\uD800€'.repeat(43_691);
+    const text = `{"x":"${pairs}"}`;
+    expect(text.length).toBeLessThan(256 * 1024);
+
+    const result = await onRequest({
+      request: {
+        method: 'POST',
+        headers: new Headers({ 'content-type': 'application/csp-report' }),
+        body: {},
+        text: async () => text,
+      },
+    });
+
+    expect(result.status).toBe(413);
+    expect(log).not.toHaveBeenCalled();
+  });
+
   it('refuses a body that is not JSON', async () => {
     const result = await onRequest(post('{"csp-report":', 'application/csp-report'));
 
