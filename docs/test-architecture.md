@@ -571,6 +571,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `ErrorHint`, labels and app contexts (translation returns the key), that the API returns those statuses,
   that the custody sign-up call reaches the real API, or the reporter's 60 s deduplication of identical
   reports, since the reporter is replaced.
+- **The passkey login visual spec stubs the browser and the bootstrap calls.**
+  `e2e/passkey-login.spec.ts` fulfils geolocation-db with country `CH`, fulfils the bootstrap
+  GETs with fixtures, and answers `/v2/**` with 401. The two placeholder shots replace WebAuthn,
+  so the platform report is either available or missing. A green run proves the Passkey tile is
+  shown for `?feature=Passkey` and that the placeholder keeps the beta sentence and a disabled
+  Passkey button, with and without the no-support sentence. It does not prove that the API
+  returns those bootstrap payloads, that geolocation-db returns `CH`, or that this browser's
+  real passkey support matches the stub.
 - **The KYC wallet-mismatch visual spec answers the user endpoint itself.**
   `e2e/kyc-wallet-mismatch.spec.ts` fulfils the user routes with a built user and the placeholder
   address `0x1111111111111111111111111111111111111111`, and does not call a live API. A green run

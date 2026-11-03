@@ -90,15 +90,16 @@ async function openLogin(page: Page): Promise<void> {
 test.describe('Passkey login', () => {
   test('shows the passkey tile when the feature flag is set', async ({ page }) => {
     await openLogin(page);
-    const passkeyTile = page.locator('img[src*="/key_"]');
+    const passkeyTile = page.locator('img[src$="login-passkey.jpg"]');
     await expect(passkeyTile).toBeVisible();
+    await expect.poll(async () => passkeyTile.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
     await expect(page).toHaveScreenshot('passkey-login-tiles.png', { fullPage: true });
   });
 
   test('opens the passkey placeholder when this browser can use passkeys', async ({ page }) => {
     await stubPasskeyPlatform(page, true);
     await openLogin(page);
-    await page.locator('img[src*="/key_"]').click();
+    await page.locator('img[src$="login-passkey.jpg"]').click();
     await page.waitForFunction(() => (window as unknown as { __passkeyPlatformReady?: boolean }).__passkeyPlatformReady === true);
     await expect(page.getByText('Passkey login arrives with the wallet beta')).toBeVisible();
     await expect(page.getByText('This browser has no passkey support')).toHaveCount(0);
@@ -109,7 +110,7 @@ test.describe('Passkey login', () => {
   test('opens the passkey placeholder when this browser has no passkeys', async ({ page }) => {
     await stubPasskeyPlatform(page, false);
     await openLogin(page);
-    await page.locator('img[src*="/key_"]').click();
+    await page.locator('img[src$="login-passkey.jpg"]').click();
     await expect(page.getByText('This browser has no passkey support')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Passkey' })).toBeDisabled();
     await expect(page).toHaveScreenshot('passkey-login-blocked.png', { fullPage: true });

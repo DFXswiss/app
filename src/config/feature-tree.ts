@@ -1628,7 +1628,7 @@ export const FeatureTree: Page[] = [
 
       {
         id: 'login-with-passkey',
-        img: 'key',
+        img: '/images/login-passkey.jpg',
         feature: 'passkey',
         wallet: { type: WalletType.PASSKEY },
       },

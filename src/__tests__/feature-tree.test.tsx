@@ -122,7 +122,9 @@ describe('FeatureTree', () => {
     const login = FeatureTree.find((page) => page.id === 'login');
     expect(login).toBeDefined();
     const passkey = login?.tiles.find((tile) => tile.id === 'login-with-passkey');
-    expect(passkey).toEqual(expect.objectContaining({ id: 'login-with-passkey', feature: 'passkey' }));
+    expect(passkey).toEqual(
+      expect.objectContaining({ id: 'login-with-passkey', feature: 'passkey', img: '/images/login-passkey.jpg' }),
+    );
   });
 
   it('resolves every functional wallet selector for each blockchain and for undefined', () => {
@@ -196,8 +198,10 @@ describe('useFeatureTree', () => {
     expect(withoutFlag).not.toContain('login-with-passkey');
 
     mockState.enabled.add('passkey');
-    const withFlag = definedPage(result.current.getPage('login')).tiles.map((tile) => tile.id);
+    const withFlagPage = definedPage(result.current.getPage('login'));
+    const withFlag = withFlagPage.tiles.map((tile) => tile.id);
     expect(withFlag).toContain('login-with-passkey');
+    expect(withFlagPage.tiles.find((tile) => tile.id === 'login-with-passkey')?.img).toBe('/images/login-passkey.jpg');
     expect(withFlag).toContain('login-with-crypto-wallet');
     expect(withFlag).toContain('login-with-mail');
   });

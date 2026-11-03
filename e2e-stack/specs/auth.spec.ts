@@ -116,7 +116,7 @@ test.describe('Auth area e2e', () => {
     await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible();
     await expect(page.locator('img[src*="mail"]')).toBeVisible();
-    await expect(page.locator('img[src*="/key_"]')).toHaveCount(0);
+    await expect(page.locator('img[src$="login-passkey.jpg"]')).toHaveCount(0);
   });
 
   test('/login?feature=Passkey shows the passkey tile beside crypto and mail', async ({ page }) => {
@@ -127,7 +127,7 @@ test.describe('Auth area e2e', () => {
     await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible();
     await expect(page.locator('img[src*="mail"]')).toBeVisible();
-    await expect(page.locator('img[src*="/key_"]')).toBeVisible();
+    await expect(page.locator('img[src$="login-passkey.jpg"]')).toBeVisible();
   });
 
   // ---------------------------------------------------------------------------
