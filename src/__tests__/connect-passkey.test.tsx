@@ -54,6 +54,17 @@ jest.mock('../contexts/settings.context', () => ({
   }),
 }));
 
+const mockCheckPasskeyPlatform = jest.fn(() => new Promise(() => undefined));
+
+jest.mock(
+  '@dfx.swiss/wallet',
+  () => ({
+    RP_IDS: { prd: 'app.dfx.swiss', dev: 'dev.app.dfx.swiss', loc: 'localhost' },
+    checkPasskeyPlatform: (...args: unknown[]) => mockCheckPasskeyPlatform(...args),
+  }),
+  { virtual: true },
+);
+
 jest.mock('@dfx.swiss/react-components', () => ({
   StyledVerticalStack: ({ children }: { children?: unknown }) => <div>{children}</div>,
   StyledButton: ({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) => (
@@ -65,14 +76,15 @@ jest.mock('@dfx.swiss/react-components', () => ({
   StyledButtonColor: { GRAY: 'GRAY', RED: 'RED' },
 }));
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createRef } from 'react';
-import ConnectPasskey from '../components/home/wallet/connect-passkey';
+import ConnectPasskey, { passkeyPlatformBlock, walletEnvForHost } from '../components/home/wallet/connect-passkey';
 import { WalletType } from '../contexts/wallet.context';
 
 describe('ConnectPasskey', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCheckPasskeyPlatform.mockImplementation(() => new Promise(() => undefined));
   });
 
   function renderPasskey() {
@@ -103,5 +115,77 @@ describe('ConnectPasskey', () => {
 
     expect(mockOnLogin).not.toHaveBeenCalled();
     expect(mockOnSwitch).not.toHaveBeenCalled();
+    expect(mockCheckPasskeyPlatform).toHaveBeenCalledWith('loc');
+  });
+
+  it('keeps the button disabled and shows the platform block when the browser cannot use passkeys', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'no-webauthn', prf: 'unknown' });
+
+    renderPasskey();
+
+    expect(await screen.findByText('This browser has no passkey support')).toBeInTheDocument();
+    expect(screen.getByText('Passkey login arrives with the wallet beta')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Passkey' })).toHaveAttribute('data-disabled', 'true');
+  });
+
+  it('shows no platform block when the browser can use passkeys', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+
+    renderPasskey();
+
+    await waitFor(() => expect(mockCheckPasskeyPlatform).toHaveBeenCalled());
+    expect(screen.queryByText('This browser has no passkey support')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Passkey' })).toHaveAttribute('data-disabled', 'true');
+  });
+
+  it('ignores a platform report that arrives after the tile unmounts', async () => {
+    let settle: (report: { available: boolean; reason: string; prf: string }) => void = () => undefined;
+    mockCheckPasskeyPlatform.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+
+    const { unmount } = renderPasskey();
+    unmount();
+
+    await act(async () => {
+      settle({ available: false, reason: 'no-webauthn', prf: 'unknown' });
+    });
+  });
+});
+
+describe('passkey platform helpers', () => {
+  it('maps the page host onto the wallet environment', () => {
+    expect(walletEnvForHost('localhost')).toBe('loc');
+    expect(walletEnvForHost('127.0.0.1')).toBe('loc');
+    expect(walletEnvForHost('dev.app.dfx.swiss')).toBe('dev');
+    expect(walletEnvForHost('app.dfx.swiss')).toBe('prd');
+    expect(walletEnvForHost('example.test')).toBe('prd');
+  });
+
+  it('explains only an unavailable platform', () => {
+    expect(passkeyPlatformBlock(undefined)).toBeUndefined();
+    expect(passkeyPlatformBlock({ available: true, prf: 'yes' })).toBeUndefined();
+    expect(passkeyPlatformBlock({ available: false, prf: 'unknown' })).toBeUndefined();
+    expect(passkeyPlatformBlock({ available: false, reason: 'no-webauthn', prf: 'unknown' })).toBe(
+      'This browser has no passkey support',
+    );
+    expect(passkeyPlatformBlock({ available: false, reason: 'no-prf', prf: 'no' })).toBe(
+      'This browser has no passkey PRF extension',
+    );
+    expect(passkeyPlatformBlock({ available: false, reason: 'in-app-browser', prf: 'unknown' })).toBe(
+      'Passkeys do not run inside this in-app browser',
+    );
+    expect(passkeyPlatformBlock({ available: false, reason: 'embedded', prf: 'unknown' })).toBe(
+      'Passkeys do not run in an embedded frame',
+    );
+    expect(passkeyPlatformBlock({ available: false, reason: 'wrong-origin', prf: 'unknown' })).toBe(
+      'Passkeys are not available on this host',
+    );
+    expect(passkeyPlatformBlock({ available: false, reason: 'os-too-old', prf: 'unknown', os: '17.5' })).toBe(
+      'This operating system is too old for passkeys',
+    );
   });
 });
