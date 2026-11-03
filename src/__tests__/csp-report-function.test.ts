@@ -181,6 +181,64 @@ describe('csp report function', () => {
     expect(logged()).toEqual([{ event: 'csp-violation' }]);
   });
 
+  it('does not log a transaction id or secret from an application path', async () => {
+    await onRequest(
+      post(
+        cspReport({
+          'document-uri': 'https://app.dfx.swiss/tx/T123/secret-value',
+          referrer: 'https://app.dfx.swiss/tx/T123/secret-value/assign',
+          'source-file': 'https://app.dfx.swiss/tx/T123/secret-value',
+          'blocked-uri': 'https://images.example/pixel.gif?uid=1',
+          'effective-directive': 'img-src',
+        }),
+        'application/csp-report',
+      ),
+    );
+
+    const line = JSON.stringify(logged());
+    expect(line).not.toContain('secret-value');
+    expect(line).not.toContain('T123');
+    expect(logged()).toEqual([
+      {
+        event: 'csp-violation',
+        directive: 'img-src',
+        documentUrl: 'https://app.dfx.swiss/tx/:id/:id',
+        blockedUrl: 'https://images.example/pixel.gif',
+        sourceFile: 'https://app.dfx.swiss/tx/:id/:id',
+        referrer: 'https://app.dfx.swiss/tx/:id/:id/assign',
+      },
+    ]);
+  });
+
+  it('stops reading a stream once the byte cap is passed', async () => {
+    let cancelled = false;
+    let sent = 0;
+    const chunk = new Uint8Array(128 * 1024);
+    const request = {
+      method: 'POST',
+      headers: new Headers({ 'content-type': 'application/csp-report' }),
+      body: {
+        getReader: () => ({
+          read: async () => {
+            if (sent >= 4) return { done: true, value: undefined };
+            sent += 1;
+            return { done: false, value: chunk };
+          },
+          cancel: async () => {
+            cancelled = true;
+          },
+        }),
+      },
+    };
+
+    const result = await onRequest({ request });
+
+    expect(result.status).toBe(413);
+    expect(cancelled).toBe(true);
+    expect(sent).toBe(3);
+    expect(log).not.toHaveBeenCalled();
+  });
+
   it('shortens a very long path', async () => {
     await onRequest(
       post(cspReport({ 'blocked-uri': `https://images.example/${'a'.repeat(1000)}` }), 'application/csp-report'),

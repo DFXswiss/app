@@ -5,9 +5,10 @@
  *
  * Two formats arrive here. `report-uri` sends one `application/csp-report` body per violation;
  * `report-to` (Reporting API, Chromium) sends `application/reports+json` with a batch of reports.
- * Only the fields needed to decide on the policy are kept, and every URL loses its query string,
- * fragment and credentials: those can carry session codes, addresses or other user data, and a
- * violation report is sent without the user doing anything.
+ * Only the fields needed to decide on the policy are kept. Every URL loses its query string,
+ * fragment and credentials. On this application's own hosts the path is reduced to public route
+ * words and file names, because a path can carry a transaction id and its secret. A violation
+ * report is sent without the user doing anything.
  *
  * public/_routes.json lists /csp-report so this Function runs for it. A specific route takes
  * precedence over functions/[[path]].js, so the missing-asset check never sees this path.
@@ -48,10 +49,8 @@ export async function onRequest(context) {
   const parse = FORMATS.get(contentType);
   if (!parse) return answer(415);
 
-  if (Number(request.headers.get('content-length')) > MAX_BODY_LENGTH) return answer(413);
-
-  const body = await request.text();
-  if (body.length > MAX_BODY_LENGTH) return answer(413);
+  const body = await readLimited(request);
+  if (body === undefined) return answer(413);
 
   let payload;
   try {
@@ -134,8 +133,116 @@ function directiveName(value) {
   return DIRECTIVE.test(name) ? name : 'unrecognised';
 }
 
-// Keeps origin and path of a web URL, the scheme alone of any other URL (a data: URL is its own
-// content, an extension URL names the extension), and the keywords browsers send instead of a URL.
+// Public route words and asset directories. Any other segment on an application host is an id or a
+// secret (a guest link is /tx/<id>/<secret>) and is not logged.
+const PUBLIC_SEGMENTS = new Set([
+  '2fa',
+  'account',
+  'account-merge',
+  'all',
+  'assets',
+  'assign',
+  'bank-tx',
+  'blockchain',
+  'buy',
+  'buyCrypto',
+  'call-queues',
+  'chat',
+  'compliance',
+  'connect',
+  'contact',
+  'create',
+  'css',
+  'custody-orders',
+  'dashboard',
+  'details',
+  'download',
+  'expenses',
+  'failure',
+  'file',
+  'financial',
+  'fonts',
+  'history',
+  'holders',
+  'icons',
+  'images',
+  'info',
+  'insights',
+  'invoice',
+  'issue',
+  'js',
+  'kundengelder',
+  'kyc',
+  'kyc-files',
+  'kyc-stats',
+  'kyc-step',
+  'lines',
+  'link',
+  'liquidity',
+  'live',
+  'locales',
+  'log',
+  'log-validity',
+  'login',
+  'mail',
+  'mail-login',
+  'manual',
+  'media',
+  'mros',
+  'notes',
+  'overview',
+  'payment-link',
+  'pending-chargebacks',
+  'personal-iban',
+  'pl',
+  'pos',
+  'profile',
+  'promo',
+  'public',
+  'quotes',
+  'realunit',
+  'recall',
+  'recalls',
+  'recommendation',
+  'recommendations',
+  'redirect',
+  'referral',
+  'refund',
+  'result',
+  'return',
+  'routes',
+  'safe',
+  'scorechain',
+  'sell',
+  'sepa',
+  'settings',
+  'sitemap',
+  'staff-kyc-required',
+  'static',
+  'stickers',
+  'success',
+  'support',
+  'support-issue',
+  'swap',
+  'templates',
+  'tickets',
+  'transactions',
+  'treasury',
+  'tx',
+  'unassigned',
+  'update',
+  'user',
+  'wallet',
+]);
+
+const APP_HOSTS = new Set(['app.dfx.swiss', 'dev.app.dfx.swiss', 'stg.app.dfx.swiss', 'localhost', '127.0.0.1']);
+
+const FILE_SEGMENT =
+  /^[A-Za-z0-9._-]{1,80}\.(?:js|mjs|css|map|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|json|txt|html|wasm)$/;
+
+// Keeps origin and the public path of a web URL, the scheme alone of any other URL (a data: URL is
+// its own content, an extension URL names the extension), and the keywords browsers send instead of
+// a URL. Query, fragment and credentials are already dropped by reading only origin and path.
 function sanitizeUrl(value) {
   if (typeof value !== 'string' || value === '') return undefined;
   if (KEYWORDS.has(value)) return value;
@@ -149,7 +256,60 @@ function sanitizeUrl(value) {
 
   if (!WEB_PROTOCOLS.has(url.protocol)) return url.protocol.slice(0, -1);
 
-  return `${url.origin}${url.pathname}`.slice(0, MAX_URL_LENGTH);
+  const pathname = APP_HOSTS.has(url.hostname) ? publicPath(url.pathname) : url.pathname;
+  return `${url.origin}${pathname}`.slice(0, MAX_URL_LENGTH);
+}
+
+function publicPath(pathname) {
+  return pathname
+    .split('/')
+    .map((segment) => {
+      if (segment === '' || PUBLIC_SEGMENTS.has(segment) || FILE_SEGMENT.test(segment)) return segment;
+      return ':id';
+    })
+    .join('/');
+}
+
+// Counts bytes as they arrive and stops once the cap is passed. A body with no stream (the unit
+// tests hand the bytes to text()) is capped after that read. request.text() is not used when a
+// stream is present, because it would buffer an unbounded body before the cap could apply.
+async function readLimited(request) {
+  const declared = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_BODY_LENGTH) return undefined;
+
+  const reader = request.body?.getReader?.();
+  if (!reader) return readText(request);
+
+  const chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+    received += bytes.byteLength;
+    if (received > MAX_BODY_LENGTH) {
+      await reader.cancel();
+      return undefined;
+    }
+    chunks.push(bytes);
+  }
+
+  if (received === 0) return readText(request);
+
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+async function readText(request) {
+  if (typeof request.text !== 'function') return '';
+  const text = await request.text();
+  if (text.length > MAX_BODY_LENGTH) return undefined;
+  return text;
 }
 
 function integer(value) {

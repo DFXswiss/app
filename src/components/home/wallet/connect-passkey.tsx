@@ -12,19 +12,14 @@ export function walletEnvForHost(hostname: string): WalletEnv {
   return 'prd';
 }
 
-const PLATFORM_BLOCK: Record<NonNullable<PlatformReport['reason']>, string> = {
-  'no-webauthn': 'This browser has no passkey support',
-  'no-prf': 'This browser has no passkey PRF extension',
-  'in-app-browser': 'Passkeys do not run inside this in-app browser',
-  embedded: 'Passkeys do not run in an embedded frame',
-  'wrong-origin': 'Passkeys are not available on this host',
-  'os-too-old': 'This operating system is too old for passkeys',
-};
+// One sentence for every unavailable reason. Six different sentences would be six visual variants,
+// and the login ceremony is still the same disabled placeholder.
+const PLATFORM_BLOCK = 'This browser has no passkey support';
 
-// The login ceremony stays disabled. The platform report only explains why this browser cannot use it.
+// The login ceremony stays disabled. The platform report only says that this browser cannot use it.
 export function passkeyPlatformBlock(report: PlatformReport | undefined): string | undefined {
   if (!report || report.available || !report.reason) return undefined;
-  return PLATFORM_BLOCK[report.reason];
+  return PLATFORM_BLOCK;
 }
 
 // The passkey login tile stays a placeholder behind ?feature=Passkey. @dfx.swiss/wallet checks the

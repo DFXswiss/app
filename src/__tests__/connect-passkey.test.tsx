@@ -177,19 +177,19 @@ describe('passkey platform helpers', () => {
       'This browser has no passkey support',
     );
     expect(passkeyPlatformBlock({ available: false, reason: 'no-prf', prf: 'no' })).toBe(
-      'This browser has no passkey PRF extension',
+      'This browser has no passkey support',
     );
     expect(passkeyPlatformBlock({ available: false, reason: 'in-app-browser', prf: 'unknown' })).toBe(
-      'Passkeys do not run inside this in-app browser',
+      'This browser has no passkey support',
     );
     expect(passkeyPlatformBlock({ available: false, reason: 'embedded', prf: 'unknown' })).toBe(
-      'Passkeys do not run in an embedded frame',
+      'This browser has no passkey support',
     );
     expect(passkeyPlatformBlock({ available: false, reason: 'wrong-origin', prf: 'unknown' })).toBe(
-      'Passkeys are not available on this host',
+      'This browser has no passkey support',
     );
     expect(passkeyPlatformBlock({ available: false, reason: 'os-too-old', prf: 'unknown', os: '17.5' })).toBe(
-      'This operating system is too old for passkeys',
+      'This browser has no passkey support',
     );
   });
 });
