@@ -177,7 +177,7 @@
   },
   "passkey-login": {
     "title": "Passkey-Login",
-    "description": "Login mit ?feature=Passkey zeigt die Passkey-Kachel. Die Kachel öffnet den Platzhalter, bis das Wallet-Beta den Login fertigstellt."
+    "description": "Login mit ?feature=Passkey zeigt die Passkey-Kachel. Die Kachel öffnet einen deaktivierten Platzhalter, einmal ohne Plattformhinweis und einmal mit dem Hinweis, dass der Browser keine Passkeys kann."
   },
   "signature-login": {
     "title": "Signatur-Login",
