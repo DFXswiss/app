@@ -6,6 +6,7 @@
  */
 
 import type { Locator, Page } from '@playwright/test';
+import { inflateSync } from 'zlib';
 import {
   expect,
   gotoWithSession,
@@ -48,6 +49,7 @@ interface PaymentInfoPayload {
   error?: string;
   currency?: { name?: string };
   asset?: { name?: string };
+  paymentRequest?: string;
 }
 
 const PROVISIONAL_ONBOARDING_ERRORS = [
@@ -248,8 +250,6 @@ async function openQuoteCapableBuy(page: Page, tag: string) {
   return user;
 }
 
-
-
 /** Capture the latest successful PUT /v1/buy/paymentInfos JSON body. */
 function attachPaymentInfoCapture(page: Page): { get: () => PaymentInfoPayload | undefined } {
   let last: PaymentInfoPayload | undefined;
@@ -387,6 +387,140 @@ async function twoDistinctBuyRoutes(jwt: string, tag: string): Promise<{ buyId: 
   const buy2 = await createBuy(otherUser.jwt, { assetId: anchor.id });
   expect(buy2.buyId).not.toBe(buy1.buyId);
   return { buyId: buy1.buyId, newBuyId: buy2.buyId };
+}
+
+const BANK_USAGE = /^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/;
+
+/** Same mod-97 as swissqrbill `calculateSCORReferenceChecksum`. This harness cannot import that package. */
+function scorReference(usage: string): string {
+  const body = usage.replace(/[\s-]/g, '').toUpperCase();
+  const checksum = 98 - mod97(`${body}RF00`);
+  return `RF${String(checksum).padStart(2, '0')}${body}`;
+}
+
+function mod97(input: string): number {
+  const expanded = input
+    .split('')
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return code >= 65 ? String(code - 55) : char;
+    })
+    .join('');
+  let remainder = 0;
+  for (const digit of expanded) remainder = (remainder * 10 + Number(digit)) % 97;
+  return remainder;
+}
+
+function groupedScor(reference: string): string {
+  return reference.match(/.{1,4}/g)?.join(' ') ?? reference;
+}
+
+/** A CH QR-IBAN (IID 30000–31999) cannot carry a SCOR. LI accounts are ordinary IBANs. */
+function isChQrIban(iban: string): boolean {
+  const compact = iban.replace(/\s+/g, '').toUpperCase();
+  if (!compact.startsWith('CH')) return false;
+  const iid = Number(compact.slice(4, 9));
+  return iid >= 30000 && iid <= 31999;
+}
+
+function inflatePdfStreams(pdf: Buffer): string {
+  // PDFKit writes each text run as WinAnsi hex inside a TJ array. The reference is not
+  // plaintext in the compressed stream.
+  const runs: string[] = [];
+  let idx = 0;
+  while (idx < pdf.length) {
+    const start = pdf.indexOf('stream', idx, 'latin1');
+    if (start === -1) break;
+    if (pdf.toString('latin1', Math.max(0, start - 3), start) === 'end') {
+      idx = start + 6;
+      continue;
+    }
+    let dataStart = start + 6;
+    if (pdf[dataStart] === 0x0d && pdf[dataStart + 1] === 0x0a) dataStart += 2;
+    else if (pdf[dataStart] === 0x0a) dataStart += 1;
+    const end = pdf.indexOf('endstream', dataStart, 'latin1');
+    if (end === -1) break;
+    idx = end + 9;
+    let content: string;
+    try {
+      content = inflateSync(pdf.subarray(dataStart, end)).toString('latin1');
+    } catch {
+      continue;
+    }
+    if (!content.includes('BT')) continue;
+    const tjArray = /\[([^\]]*)\]\s*TJ/g;
+    let match: RegExpExecArray | null;
+    while ((match = tjArray.exec(content))) {
+      const hexParts = match[1].match(/<([0-9A-Fa-f]*)>/g) ?? [];
+      runs.push(hexParts.map((part) => Buffer.from(part.slice(1, -1), 'hex').toString('latin1')).join(''));
+    }
+  }
+  return runs.join('');
+}
+
+/**
+ * Latest successful PUT /buy/paymentInfos for this currency and amount.
+ * The default /buy quote is a different amount, so it cannot satisfy the filter.
+ */
+function captureAmountQuote(
+  page: Page,
+  currency: 'EUR' | 'CHF',
+  amount: number,
+): { get: () => PaymentInfoPayload | undefined } {
+  let last: PaymentInfoPayload | undefined;
+  page.on('response', async (res) => {
+    try {
+      const url = res.url();
+      if (!url.includes('/buy/paymentInfos') || res.request().method() !== 'PUT') return;
+      if (url.includes('/confirm') || url.includes('/invoice')) return;
+      if (!res.ok()) return;
+      const body = (await res.json()) as PaymentInfoPayload;
+      if (body.currency?.name !== currency || body.amount !== amount) return;
+      if (typeof body.paymentRequest !== 'string') return;
+      last = body;
+    } catch {
+      /* ignore parse errors */
+    }
+  });
+  return { get: () => last };
+}
+
+async function openAmountQuote(page: Page, currency: 'EUR' | 'CHF', amount: number): Promise<PaymentInfoPayload> {
+  const capture = captureAmountQuote(page, currency, amount);
+  await page.goto(`/buy?asset-in=${currency}&asset-out=ETH&amount-in=${amount}&blockchain=Ethereum`);
+  const state = await waitForQuoteUi(page, 45000);
+  expect(state, `${currency} ${amount} ETH quote must reach Payment Information`).toBe('payment');
+  await expect
+    .poll(() => capture.get()?.remittanceInfo ?? '', {
+      timeout: 20000,
+      message: `${currency} paymentInfos response with a remittance`,
+    })
+    .not.toBe('');
+  const info = capture.get();
+  expect(info?.paymentRequest, `${currency} paymentRequest`).toBeTruthy();
+  expect(info?.iban, `${currency} iban`).toBeTruthy();
+  expect(info?.remittanceInfo?.toUpperCase(), `${currency} remittance`).toMatch(BANK_USAGE);
+  return info!;
+}
+
+async function expectQrLabel(page: Page, label: 'GiroCode' | 'QR-bill'): Promise<void> {
+  const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
+  const qrTab = paymentDetails.getByRole('tablist').filter({ hasText: /^QR Code$/ });
+  await qrTab.click();
+  await expect(paymentDetails.getByText(label, { exact: true })).toBeVisible();
+  await expect(
+    paymentDetails.getByText(
+      'No QR code is available for the collection account. Please enter the IBAN and the remittance info manually.',
+    ),
+  ).toHaveCount(0);
+}
+
+async function expectStoredBankUsage(userId: number, remittanceInfo: string): Promise<void> {
+  const row = await queryOne<{ bankUsage: string }>(
+    `SELECT "bankUsage" AS "bankUsage" FROM buy WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`,
+    [userId],
+  );
+  expect(row?.bankUsage).toBe(remittanceInfo);
 }
 
 // ---------------------------------------------------------------------------
@@ -726,7 +860,7 @@ test.describe('Buy flow', () => {
     );
     await confirmBtn.click();
     const confirmResponse = await confirmResponsePromise;
-    expect(confirmResponse.status(), 'the UI\'s own confirm call must receive the real 409').toBe(409);
+    expect(confirmResponse.status(), "the UI's own confirm call must receive the real 409").toBe(409);
 
     await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
   });
@@ -840,10 +974,10 @@ test.describe('Buy flow', () => {
     await expect(spendAmountInput(page)).toHaveValue('150');
 
     await expect
-      .poll(
-        () => capture.get()?.amount,
-        { timeout: 10000, message: 'PUT /buy/paymentInfos must quote the retyped amount' },
-      )
+      .poll(() => capture.get()?.amount, {
+        timeout: 10000,
+        message: 'PUT /buy/paymentInfos must quote the retyped amount',
+      })
       .toBeCloseTo(150, 2);
   });
 
@@ -1172,5 +1306,65 @@ test.describe('Buy flow', () => {
       15000,
     );
     expect(updated.buyId).toBe(newBuyId);
+  });
+
+  // Loc does not issue a personal IBAN, so the quote is already the collection account and the
+  // screen renders `paymentRequest` itself. The personal-to-collection rewrite stays on the unit
+  // tests: this stack never reaches that branch.
+  test('/buy: EUR payment QR carries the bank usage as a structured reference', async ({ page }) => {
+    test.setTimeout(180000);
+    const user = await openQuoteCapableBuy(page, 'buy-qr-eur');
+    const info = await openAmountQuote(page, 'EUR', 100);
+    const usage = info.remittanceInfo!;
+    const reference = scorReference(usage);
+    const lines = info.paymentRequest!.split('\n');
+
+    expect(lines[0]).toBe('BCD');
+    expect(lines[1]).toBe('002');
+    expect(lines[2]).toBe('1');
+    expect(lines[3]).toBe('SCT');
+    expect(lines[6]?.replace(/\s+/g, '').toUpperCase()).toBe(info.iban?.replace(/\s+/g, '').toUpperCase());
+    expect(lines[7]).toBe(`EUR${info.amount}`);
+    expect(lines[8]).toBe('');
+    expect(lines[9]).toBe(reference);
+    expect(lines.slice(10).join('')).toBe('');
+    expect(mod97(`${reference.slice(4)}${reference.slice(0, 4)}`)).toBe(1);
+
+    await expect(dataTableValue(page, 'Remittance info')).toContainText(usage);
+    await expectQrLabel(page, 'GiroCode');
+    await expectStoredBankUsage(user.userId, usage);
+  });
+
+  test('/buy: CHF payment QR bill carries the bank usage as a structured reference', async ({ page }) => {
+    test.setTimeout(180000);
+    const user = await openQuoteCapableBuy(page, 'buy-qr-chf');
+    const info = await openAmountQuote(page, 'CHF', 100);
+    const usage = info.remittanceInfo!;
+    const reference = scorReference(usage);
+
+    // The on-screen Swiss QR is an SVG of black rectangles. The reference is not plaintext there.
+    // The invoice is built from the same QR data and prints the reference.
+    expect(info.paymentRequest).toContain('<svg');
+    expect(info.paymentRequest).toContain('<rect');
+    expect(isChQrIban(info.iban ?? ''), 'a QR-IBAN cannot carry this SCOR').toBe(false);
+    await expect(dataTableValue(page, 'Remittance info')).toContainText(usage);
+    await expectQrLabel(page, 'QR-bill');
+    await expect(page.getByRole('img', { name: 'Swiss QR Bill' })).toBeVisible();
+    await expectStoredBankUsage(user.userId, usage);
+
+    expect(info.id, 'payment info id').toBeTruthy();
+    expect(info.isValid, 'CHF quote must be valid before the invoice').toBe(true);
+    const invoice = await apiPut<{ pdfData: string }>(`buy/paymentInfos/${info.id}/invoice`, undefined, {
+      jwt: user.jwt,
+    });
+    expect(typeof invoice.pdfData).toBe('string');
+    const pdf = Buffer.from(invoice.pdfData, 'base64');
+    expect(pdf.subarray(0, 4).toString('latin1')).toBe('%PDF');
+    const printed = inflatePdfStreams(pdf);
+    const needle = groupedScor(reference);
+    expect(
+      printed.includes(needle),
+      `invoice PDF must print ${needle}; nearby ${JSON.stringify(printed.slice(printed.indexOf('RF'), printed.indexOf('RF') + 80))}`,
+    ).toBe(true);
   });
 });

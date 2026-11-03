@@ -282,6 +282,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   from `global.setup.ts`), or EUR. It also does not prove that the IBAN in the document is the
   one the quote showed: every quote in this environment uses the collection account and stores
   no bank selection.
+- **The buy payment QR specs read the live quote payload.**
+  `e2e-stack/specs/buy.spec.ts` opens a EUR quote and a CHF quote of 100.
+  The EUR case reads `paymentRequest` and requires GiroCode version 002, encoding 1,
+  the quote IBAN, the amount line, and the ISO 11649 reference of the bank usage, with
+  the unstructured line empty. The CHF case requires a Swiss QR SVG, then reads the
+  invoice from `PUT /v1/buy/paymentInfos/:id/invoice` and requires the grouped creditor
+  reference in the PDFKit text runs. A green run does not prove a decoded SVG bitmap,
+  a scan in a banking app, the personal-IBAN collection rewrite, or that payload against
+  the develop API.
 - **The transaction-invoice visual spec answers the waiting buy row itself.**
   `e2e/transaction-invoice.spec.ts` fulfils `GET /v1/transaction/detail` with a synthetic CHF
   `WaitingForPayment` buy, signs in with an unsigned client-side session token, and answers
