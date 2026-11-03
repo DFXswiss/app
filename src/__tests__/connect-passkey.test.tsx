@@ -126,6 +126,8 @@ describe('ConnectPasskey', () => {
     expect(await screen.findByText('This browser has no passkey support')).toBeInTheDocument();
     expect(screen.getByText('Passkey login arrives with the wallet beta')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Passkey' })).toHaveAttribute('data-disabled', 'true');
+    expect(mockOnLogin).not.toHaveBeenCalled();
+    expect(mockOnSwitch).not.toHaveBeenCalled();
   });
 
   it('shows no platform block when the browser can use passkeys', async () => {
@@ -136,6 +138,8 @@ describe('ConnectPasskey', () => {
     await waitFor(() => expect(mockCheckPasskeyPlatform).toHaveBeenCalled());
     expect(screen.queryByText('This browser has no passkey support')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Passkey' })).toHaveAttribute('data-disabled', 'true');
+    expect(mockOnLogin).not.toHaveBeenCalled();
+    expect(mockOnSwitch).not.toHaveBeenCalled();
   });
 
   it('ignores a platform report that arrives after the tile unmounts', async () => {
