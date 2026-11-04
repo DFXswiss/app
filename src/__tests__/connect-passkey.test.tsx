@@ -2,6 +2,8 @@ jest.mock('@dfx.swiss/react/dist/definitions/auth', () => ({
   AuthWalletType: { METAMASK: 'MetaMask', ALBY: 'Alby', WALLET_BROWSER: 'WalletBrowser', RABBY: 'Rabby' },
 }));
 
+const mockLogout = jest.fn(() => Promise.resolve());
+
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: { ETHEREUM: 'Ethereum', BITCOIN: 'Bitcoin' },
   Utils: { isJwt: () => false },
@@ -10,7 +12,7 @@ jest.mock('@dfx.swiss/react', () => ({
   useSessionContext: () => ({
     isInitialized: false,
     isLoggedIn: false,
-    logout: () => undefined,
+    logout: () => mockLogout(),
     authenticate: () => undefined,
   }),
   useUserContext: () => ({ addSpecialCode: () => undefined, reloadUser: () => undefined }),
@@ -55,15 +57,36 @@ jest.mock('../contexts/settings.context', () => ({
 }));
 
 const mockCheckPasskeyPlatform = jest.fn(() => new Promise(() => undefined));
+const mockRegister = jest.fn();
+const mockLogin = jest.fn();
+const mockSetSession = jest.fn(() => Promise.resolve());
 
 jest.mock(
   '@dfx.swiss/wallet',
   () => ({
-    RP_IDS: { prd: 'app.dfx.swiss', dev: 'dev.app.dfx.swiss', loc: 'localhost' },
+    RP_IDS: { prd: 'app.dfx.swiss', dev: 'dev.app.dfx.swiss', stg: 'stg.app.dfx.swiss', loc: 'localhost' },
     checkPasskeyPlatform: (...args: unknown[]) => mockCheckPasskeyPlatform(...args),
+    PasskeyCeremonies: jest.fn(),
+    PasskeyAuth: jest.fn().mockImplementation(() => ({
+      register: (...args: unknown[]) => mockRegister(...args),
+      login: (...args: unknown[]) => mockLogin(...args),
+    })),
   }),
   { virtual: true },
 );
+
+jest.mock(
+  '@dfx.swiss/core',
+  () => ({
+    DfxApiClient: jest.fn(),
+  }),
+  { virtual: true },
+);
+
+jest.mock('../contexts/wallet.context', () => ({
+  WalletType: { PASSKEY: 'Passkey' },
+  useWalletContext: () => ({ setSession: (...args: unknown[]) => mockSetSession(...args) }),
+}));
 
 jest.mock('@dfx.swiss/react-components', () => ({
   StyledVerticalStack: ({ children }: { children?: unknown }) => <div>{children}</div>,
@@ -78,6 +101,7 @@ jest.mock('@dfx.swiss/react-components', () => ({
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createRef } from 'react';
+import { RP_IDS } from '@dfx.swiss/wallet';
 import ConnectPasskey, { passkeyPlatformBlock, walletEnvForHost } from '../components/home/wallet/connect-passkey';
 import { WalletType } from '../contexts/wallet.context';
 
@@ -130,16 +154,63 @@ describe('ConnectPasskey', () => {
     expect(mockOnSwitch).not.toHaveBeenCalled();
   });
 
-  it('shows no platform block when the browser can use passkeys', async () => {
+  it('registers a passkey and opens the session when the browser can use passkeys', async () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockRegister.mockResolvedValue({ accessToken: 'token', state: 'unlocked' });
 
     renderPasskey();
 
-    await waitFor(() => expect(mockCheckPasskeyPlatform).toHaveBeenCalled());
+    expect(await screen.findByRole('button', { name: 'Create passkey' })).toHaveAttribute('data-disabled', 'true');
+    expect(screen.queryByText('Passkey login arrives with the wallet beta')).not.toBeInTheDocument();
     expect(screen.queryByText('This browser has no passkey support')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Passkey' })).toHaveAttribute('data-disabled', 'true');
-    expect(mockOnLogin).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'user@example.com' } });
+    expect(screen.getByRole('button', { name: 'Create passkey' })).not.toHaveAttribute('data-disabled');
+    fireEvent.click(screen.getByRole('button', { name: 'Create passkey' }));
+
+    await waitFor(() => expect(mockRegister).toHaveBeenCalledWith({ mail: 'user@example.com' }));
+    await waitFor(() => expect(mockSetSession).toHaveBeenCalledWith('token', WalletType.PASSKEY));
+    expect(mockLogout).toHaveBeenCalledTimes(1);
+    expect(mockOnLogin).toHaveBeenCalledTimes(1);
     expect(mockOnSwitch).not.toHaveBeenCalled();
+  });
+
+  it('logs in with an existing passkey', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockResolvedValue({ accessToken: 'token', state: 'unlocked' });
+
+    renderPasskey();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+
+    await waitFor(() => expect(mockLogin).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockSetSession).toHaveBeenCalledWith('token', WalletType.PASSKEY));
+    expect(mockRegister).not.toHaveBeenCalled();
+    expect(mockOnLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not open a session when the passkey stays locked', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockResolvedValue({ accessToken: 'token', state: 'locked' });
+
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+
+    expect(await screen.findByText('This passkey did not unlock the wallet')).toBeInTheDocument();
+    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockOnLogin).not.toHaveBeenCalled();
+  });
+
+  it('shows the ceremony error and stays on the form', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockRejectedValue(new Error('The authenticator returned no credential'));
+
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+
+    expect(await screen.findByText('The authenticator returned no credential')).toBeInTheDocument();
+    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Log in' })).not.toHaveAttribute('data-disabled');
   });
 
   it('ignores a platform report that arrives after the tile unmounts', async () => {
@@ -165,8 +236,17 @@ describe('passkey platform helpers', () => {
     expect(walletEnvForHost('localhost')).toBe('loc');
     expect(walletEnvForHost('127.0.0.1')).toBe('loc');
     expect(walletEnvForHost('dev.app.dfx.swiss')).toBe('dev');
+    expect(String(walletEnvForHost('stg.app.dfx.swiss'))).toBe('stg');
     expect(walletEnvForHost('app.dfx.swiss')).toBe('prd');
     expect(walletEnvForHost('example.test')).toBe('prd');
+  });
+
+  it('keeps an older wallet package on the production check for the staging host', () => {
+    const ids = RP_IDS as { stg?: string };
+    const previous = ids.stg;
+    delete ids.stg;
+    expect(walletEnvForHost('stg.app.dfx.swiss')).toBe('prd');
+    ids.stg = previous;
   });
 
   it('explains only an unavailable platform', () => {
