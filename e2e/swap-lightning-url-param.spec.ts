@@ -1,40 +1,38 @@
-import { test, expect, request } from '@playwright/test';
-import { getCachedAuth, getLinkedLightningAuth } from './helpers/auth-cache';
+import { test, expect } from '@playwright/test';
+import { prepareLocalSwapVisuals } from './helpers/local-swap-auth';
 
 test.describe('Swap with Lightning URL Parameter', () => {
-  test('should show Lightning as target when asset-out=Lightning/BTC', async ({ page }) => {
-    const apiContext = await request.newContext();
+  test('shows the configured form when asset-out is Lightning/BTC', async ({ page }) => {
+    const session = await prepareLocalSwapVisuals();
 
-    // Authenticate Bitcoin wallet
-    const bitcoinAuth = await getCachedAuth(apiContext, 'bitcoin');
-    console.log('Bitcoin wallet authenticated');
-
-    // Link Lightning address to account
-    await getLinkedLightningAuth(apiContext, bitcoinAuth.token);
-    console.log('Lightning address linked');
-
-    // Navigate to swap with Lightning as target
     const baseUrl = process.env.REACT_APP_PUBLIC_URL!;
-    const url = `${baseUrl}/swap?session=${bitcoinAuth.token}&asset-out=Lightning/BTC&amount-in=0.001&lang=de`;
+    const url = `${baseUrl}/swap?session=${session.bitcoinToken}&asset-out=Lightning/BTC&amount-in=0.001&lang=de`;
     await page.goto(url);
 
-    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
+    const sourceInput = page.locator('input[name="sourceAsset"]');
+    await expect(sourceInput).toBeVisible({ timeout: 15000 });
+    await sourceInput.click();
+    const bitcoinOption = page.getByRole('button', { name: /^BTC(\s|$)/ }).filter({ hasText: 'Bitcoin' });
+    await expect
+      .poll(async () => bitcoinOption.count(), {
+        timeout: 15000,
+        message: 'native BTC on Bitcoin must be the only matching source option',
+      })
+      .toBe(1);
+    await bitcoinOption.click();
+
+    await expect(
+      page.locator('h2', { hasText: 'Du zahlst' }).locator('..').locator('input[type="number"]').first(),
+    ).toHaveValue('0.001', { timeout: 15000 });
+    await expect(page.locator('input[name="sourceAsset"]')).toHaveValue('BTC');
+    await expect(page.getByText('Senden auf Bitcoin')).toBeVisible();
+    await expect(page.locator('input[name="targetAsset"]')).toHaveValue('BTC');
+    await expect(page.getByRole('button', { name: 'Empfangsnetzwerk' })).toContainText('Lightning');
+    await expect(page.getByText(`Lightning · ${session.lightningAddress}`)).toBeVisible();
+    await expect(page.getByText('Wechselkurs', { exact: true })).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
     await page.screenshot({ path: 'e2e/screenshots/baseline/swap-lightning-url-param-01-loaded.png' });
-
-    // Check that Lightning is displayed as target
-    const pageContent = await page.textContent('body');
-    const hasLightning = pageContent?.includes('Lightning');
-    console.log('Page contains Lightning:', hasLightning);
-
-    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
-    await page.waitForTimeout(2000);
-
-    // Take final screenshot
     await page.screenshot({ path: 'e2e/screenshots/baseline/swap-lightning-url-param-02-complete.png' });
-
-    // Verify Lightning is shown
-    expect(pageContent).toContain('Lightning');
   });
 });

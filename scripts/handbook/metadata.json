@@ -161,7 +161,7 @@
   },
   "swap-btc-to-ln": {
     "title": "Swap Bitcoin → Lightning",
-    "description": "Manuelle Screenshots: Swap von Bitcoin zu Lightning (geladen und abgeschlossen)."
+    "description": "Manuelle Screenshots: Swap von Bitcoin zu Lightning (konfiguriertes Formular vor dem Absenden)."
   },
   "swap-ln-to-btc": {
     "title": "Swap Lightning → Bitcoin",

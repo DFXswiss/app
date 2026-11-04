@@ -1,13 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { getCachedAuth } from './helpers/auth-cache';
-
+import { prepareLocalSwapVisuals } from './helpers/local-swap-auth';
 
 test.describe('Swap Process - UI Flow', () => {
   let token: string;
 
-  test.beforeAll(async ({ request }) => {
-    const auth = await getCachedAuth(request, 'evm');
-    token = auth.token;
+  test.beforeAll(async () => {
+    const session = await prepareLocalSwapVisuals();
+    token = session.evmToken;
   });
 
   test('should load swap page with session token', async ({ page }) => {
@@ -32,32 +31,27 @@ test.describe('Swap Process - UI Flow', () => {
     });
   });
 
-  test('should display source and target asset selectors', async ({ page }) => {
+  test('should show at least one visible ETH or USDT asset label', async ({ page }) => {
     await page.goto(`/swap?session=${token}&blockchain=Ethereum&asset-in=ETH&asset-out=USDT`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
-    // Verify both assets are selected
+    // At least one of the ETH or USDT labels is visible
     const ethVisible = await page.locator('text=ETH').first().isVisible();
     const usdtVisible = await page.locator('text=USDT').first().isVisible();
 
     expect(ethVisible || usdtVisible).toBeTruthy();
   });
 
-  test('should handle swap flow with default amount', async ({ page }) => {
+  test('should wait for ETH text, show target USDT and Ethereum, and wait for Wechselkurs', async ({ page }) => {
     // ETH source should auto-fill 0.1 as default amount (like sell page)
     await page.goto(`/swap?session=${token}&blockchain=Ethereum&asset-in=ETH&asset-out=USDT`);
     await page.waitForLoadState('networkidle');
     // Wait for assets to load
     await page.waitForSelector('text=ETH', { timeout: 10000 });
-    await page.waitForSelector('text=Tether', { timeout: 10000 }); // USDT shows as "Tether"
-    // Try to wait for exchange rate, but don't fail if API is slow
-    try {
-      await page.waitForSelector('text=Wechselkurs', { timeout: 30000 });
-    } catch {
-      // API might be slow, continue with screenshot anyway
-      console.log('Warning: Exchange rate did not load within timeout');
-    }
+    await expect(page.locator('input[name="targetAsset"]')).toHaveValue('USDT');
+    await expect(page.getByRole('button', { name: 'Empfangsnetzwerk' })).toContainText('Ethereum');
+    await page.waitForSelector('text=Wechselkurs', { timeout: 30000 });
     await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot('swap-page-with-amount.png', {
@@ -65,7 +59,7 @@ test.describe('Swap Process - UI Flow', () => {
     });
   });
 
-  test('should show deposit address after form completion', async ({ page }) => {
+  test('should include one of the swap-related tokens in the page text', async ({ page }) => {
     await page.goto(`/swap?session=${token}&blockchain=Ethereum&asset-in=ETH&asset-out=USDT`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(3000);

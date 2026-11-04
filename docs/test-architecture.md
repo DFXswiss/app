@@ -609,6 +609,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the fixture still returns the same ids. A green run does not prove lightning.space
   ownership, a real Lightning invoice (the local LNbits stub can answer `mock: true` with no
   payment request `pr`), a quote, a payment, or a completed transfer.
+- **Reproducing the legacy native swap visuals uses the existing local stack.** The repository
+  root dependencies and the `e2e-stack` dependencies both have to be installed already. The native
+  fixture requires `REACT_APP_API_URL` and `E2E_API_URL` to each be `http://localhost:31380`, and
+  `REACT_APP_PUBLIC_URL` to be `http://localhost:31381`. The frontend image is built with that
+  same API origin. The external Playwright config for this run sets `baseURL` to port 31381 and
+  disables `webServer`; the default port 3001 is not used. The run's own disposable database
+  publishes Postgres on loopback port 31382 and attaches that database to the sandbox network and
+  the existing edge network, retaining the sandbox aliases. The remaining PostgreSQL, test-seed
+  and runtime `TEST_IBAN` guards are in `e2e/helpers/local-swap-auth.ts`.
 
 ## Known gaps
 
