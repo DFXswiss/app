@@ -1698,12 +1698,13 @@ describe('SwapScreen', () => {
     ).toBe(true);
   });
 
-  it('explains a missing receiving address and does not keep an Ethereum quote', async () => {
+  it('explains a filtered Polygon output with no receivable asset and does not keep an Ethereum quote', async () => {
     mockAssets = [eth, polygonDgc];
     mockHideTarget = true;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum'] };
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
     mockUseAppParams.mockReturnValue(
       polygonParams({
+        assets: 'Ethereum/ETH',
         assetOut: 'Polygon/DGC',
         blockchain: 'Ethereum',
         hideTargetSelection: true,
@@ -1712,7 +1713,8 @@ describe('SwapScreen', () => {
     );
     render(<SwapScreen />);
     await flushQuote();
-    expect(screen.getByText('No receiving address on Polygon is connected.')).toBeInTheDocument();
+    expect(screen.getByText('No asset on Polygon can be received with this account.')).toBeInTheDocument();
+    expect(screen.queryByText(/No receiving address/)).not.toBeInTheDocument();
     expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     expect(mockReceiveFor).not.toHaveBeenCalled();
     await act(async () => {
@@ -2092,16 +2094,21 @@ describe('SwapScreen', () => {
     expect(mockReceiveFor).not.toHaveBeenCalled();
   });
 
-  it('switches away from a receiving network that has no wallet without showing a quote', async () => {
+  it('switches away from a requested network that has no receivable asset without showing a quote', async () => {
     mockAssets = [eth, polygonDgc];
     mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum'] };
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
     mockUseAppParams.mockReturnValue(
-      polygonParams({ assetOut: 'Polygon/DGC', availableBlockchains: ['Ethereum', 'Polygon'] }),
+      polygonParams({
+        assets: 'Ethereum/ETH',
+        assetOut: 'Polygon/DGC',
+        availableBlockchains: ['Ethereum', 'Polygon'],
+      }),
     );
     render(<SwapScreen />);
     await flushQuote();
-    expect(screen.getByText('No receiving address on Polygon is connected.')).toBeInTheDocument();
+    expect(screen.getByText('No asset on Polygon can be received with this account.')).toBeInTheDocument();
+    expect(screen.queryByText(/No receiving address/)).not.toBeInTheDocument();
     expect(mockReceiveFor).not.toHaveBeenCalled();
     await act(async () => {
       screen.getByRole('button', { name: 'Ethereum' }).click();
@@ -2224,11 +2231,13 @@ describe('SwapScreen', () => {
     expect(screen.queryByTestId('dropdown-address')).not.toBeInTheDocument();
     expect(mockReceiveFor).toHaveBeenCalled();
     const callsBefore = mockReceiveFor.mock.calls.length;
-    mockSession = { blockchains: ['Ethereum', 'Bitcoin'] };
+    mockSession = { blockchains: [] };
+    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: true, availableBlockchains: [] }));
     view.rerender(<SwapScreen />);
     await flushQuote();
     expect(mockReceiveFor.mock.calls.length).toBe(callsBefore);
-    expect(screen.getByText('No receiving address on Ethereum is connected.')).toBeInTheDocument();
+    expect(screen.queryByText(/No receiving address/)).not.toBeInTheDocument();
+    expect(screen.getByText('No asset on Ethereum can be received with this account.')).toBeInTheDocument();
     expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     await act(async () => {
       resolveQuote({ ...quoteFor({ amount: 64, sourceAsset: eth, targetAsset: eth }), amount: 64 });
@@ -2274,11 +2283,20 @@ describe('SwapScreen', () => {
     expect(screen.getByText('Ethereum · 0xabc')).toBeInTheDocument();
     expect(screen.queryByTestId('dropdown-address')).not.toBeInTheDocument();
     const callsBefore = mockReceiveFor.mock.calls.length;
-    mockSession = { blockchains: ['Ethereum'] };
+    mockSession = { blockchains: [] };
+    mockUseAppParams.mockReturnValue(
+      baseAppParams({
+        hideTargetSelection: false,
+        assetOut: undefined,
+        blockchain: 'Ethereum',
+        availableBlockchains: [],
+      }),
+    );
     view.rerender(<SwapScreen />);
     await flushQuote();
     expect(screen.queryByText('Ethereum · 0xabc')).not.toBeInTheDocument();
-    expect(screen.getByText('No receiving address on Ethereum is connected.')).toBeInTheDocument();
+    expect(screen.queryByText(/No receiving address/)).not.toBeInTheDocument();
+    expect(screen.getByText('No asset on Ethereum can be received with this account.')).toBeInTheDocument();
     expect(mockReceiveFor.mock.calls.length).toBe(callsBefore);
     await act(async () => {
       rejectQuote({ statusCode: 500, message: 'old-receiver-failed' });
@@ -2294,8 +2312,9 @@ describe('SwapScreen', () => {
   });
 
   it('uses a linked wallet when the account session has no address and does not request a balance', async () => {
-    mockSession = { blockchains: ['Ethereum', 'Bitcoin'] };
+    mockSession = { blockchains: [] };
     mockUserAddresses = [{ address: '0xlinked', blockchains: ['Ethereum', 'Bitcoin'] }];
+    mockUseAppParams.mockReturnValue(baseAppParams({ availableBlockchains: [] }));
     render(<SwapScreen />);
     await flushQuote();
     expect(mockGetBalances).not.toHaveBeenCalled();
@@ -2449,5 +2468,241 @@ describe('SwapScreen', () => {
     });
     expect(screen.queryByTestId('swap-completion')).not.toBeInTheDocument();
     expect(mockReceiveFor.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('quotes the preserved spend amount after a completed quote when the receive network and target change', async () => {
+    mockAssets = [eth, btc, polygonDgc, polygonDsc];
+    mockHideTarget = false;
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon', 'Bitcoin'] };
+    mockUseAppParams.mockReturnValue(polygonParams({ assetIn: 'ETH', blockchain: 'Ethereum' }));
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.004');
+    await act(async () => {
+      screen.getByRole('button', { name: 'Polygon' }).click();
+    });
+    await act(async () => {
+      screen.getByTestId('select-targetAsset-DGC').click();
+    });
+    await flushQuote();
+    const quoted = mockReceiveFor.mock.calls
+      .map((call: any) => call[0])
+      .filter((req: any) => req.targetAsset?.name === 'DGC' && req.targetAsset?.blockchain === 'Polygon');
+    expect(quoted.length).toBeGreaterThan(0);
+    expect(quoted.every((req: any) => req.amount === 0.1 && req.targetAmount === undefined)).toBe(true);
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
+  });
+
+  it('quotes the preserved spend amount when the source chain changes the default receive network after a completed quote', async () => {
+    mockHideTarget = false;
+    mockUseAppParams.mockReturnValue(
+      baseAppParams({
+        assetIn: undefined,
+        assetOut: undefined,
+        blockchain: undefined,
+        hideTargetSelection: false,
+      }),
+    );
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
+    expect((screen.getByTestId('input-targetAmount') as HTMLInputElement).value).not.toBe('');
+    await act(async () => {
+      screen.getByTestId('select-sourceAsset-BTC').click();
+    });
+    await flushQuote();
+    const quoted = mockReceiveFor.mock.calls
+      .map((call: any) => call[0])
+      .filter((req: any) => req.sourceAsset?.name === 'BTC' && req.targetAsset?.name === 'BTC');
+    expect(quoted.length).toBeGreaterThan(0);
+    expect(quoted.every((req: any) => req.amount === 0.1 && req.targetAmount === undefined)).toBe(true);
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
+  });
+
+  it('keeps an explicit receive amount equal to the previous output when the receive network and target change', async () => {
+    mockAssets = [eth, btc, polygonDgc, polygonDsc];
+    mockHideTarget = false;
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon', 'Bitcoin'] };
+    mockUseAppParams.mockReturnValue(polygonParams({ assetIn: 'ETH', blockchain: 'Ethereum' }));
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.004');
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.0040' } });
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: 'Polygon' }).click();
+    });
+    await act(async () => {
+      screen.getByTestId('select-targetAsset-DGC').click();
+    });
+    await flushQuote();
+    const quoted = mockReceiveFor.mock.calls
+      .map((call: any) => call[0])
+      .filter((req: any) => req.targetAsset?.name === 'DGC' && req.targetAsset?.blockchain === 'Polygon');
+    expect(quoted.length).toBeGreaterThan(0);
+    expect(quoted.every((req: any) => req.targetAmount === 0.004 && req.amount === undefined)).toBe(true);
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.0040');
+  });
+
+  it('ignores a stale receive-side exact price and quotes the newer spend amount', async () => {
+    let resolveExact: (value: unknown) => void = () => undefined;
+    let hangExact = false;
+    mockReceiveFor.mockImplementation((req: any) => {
+      if (req.exactPrice && hangExact) {
+        return new Promise((resolve) => {
+          resolveExact = resolve;
+        });
+      }
+      return Promise.resolve(quoteFor(req));
+    });
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.004');
+    hangExact = true;
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.02' } });
+    });
+    await flushQuote();
+    const callsBefore = mockReceiveFor.mock.calls.length;
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '0.3' } });
+    });
+    await act(async () => {
+      resolveExact({ ...quoteFor({ amount: 99, targetAmount: 0.02 }), amount: 99 });
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.3');
+    await flushQuote();
+    const after = mockReceiveFor.mock.calls.slice(callsBefore).map((call: any) => call[0]);
+    expect(after.some((req: any) => req.amount === 0.3 && req.targetAmount === undefined)).toBe(true);
+    expect(after.every((req: any) => req.amount !== 99)).toBe(true);
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.3');
+  });
+
+  it('does not quote a cleared spend when receive intent is set and the source asset changes', async () => {
+    mockReceiveFor.mockImplementation((req: any) => {
+      if (req.exactPrice) return Promise.resolve(undefined);
+      return Promise.resolve(quoteFor(req));
+    });
+    render(<SwapScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.01' } });
+    });
+    await flushQuote();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '' } });
+    });
+    await flushQuote();
+    const callsBefore = mockReceiveFor.mock.calls.length;
+    await act(async () => {
+      screen.getByTestId('select-sourceAsset-BTC').click();
+    });
+    await flushQuote();
+    expect(screen.getByTestId('input-amount')).toHaveValue('');
+    expect(mockReceiveFor.mock.calls.slice(callsBefore)).toEqual([]);
+  });
+
+  it('quotes the available balance from MAX after a receive edit while that quote is still debouncing', async () => {
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.004');
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.02' } });
+    });
+    expect(screen.getByTestId('input-amount-max')).toBeInTheDocument();
+    const callsBefore = mockReceiveFor.mock.calls.length;
+    await act(async () => {
+      screen.getByTestId('input-amount-max').click();
+    });
+    await flushQuote();
+    expect(screen.getByTestId('input-amount')).toHaveValue('10');
+    const after = mockReceiveFor.mock.calls.slice(callsBefore).map((call: any) => call[0]);
+    expect(after.some((req: any) => req.amount === 10 && req.targetAmount === undefined)).toBe(true);
+    expect(after.every((req: any) => req.amount === 10 && req.targetAmount === undefined)).toBe(true);
+  });
+
+  it('reanchors MAX to the same displayed spend before a debounced receive quote can overwrite it', async () => {
+    mockGetBalances.mockResolvedValue([
+      { asset: eth, amount: 0.1 },
+      { asset: btc, amount: 1 },
+    ]);
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.004');
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.02' } });
+    });
+    expect(mockReceiveFor.mock.calls.some((call: any) => call[0]?.targetAmount === 0.02)).toBe(false);
+    expect(screen.getByTestId('input-amount-max')).toBeInTheDocument();
+    const callsBefore = mockReceiveFor.mock.calls.length;
+    await act(async () => {
+      screen.getByTestId('input-amount-max').click();
+    });
+    await flushQuote();
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
+    const after = mockReceiveFor.mock.calls.slice(callsBefore).map((call: any) => call[0]);
+    expect(after.some((req: any) => req.amount === 0.1 && req.targetAmount === undefined)).toBe(true);
+    expect(after.every((req: any) => req.targetAmount === undefined && req.amount === 0.1)).toBe(true);
+  });
+
+  it('does not let MAX quote over a cleared receive amount when the spend already equals the balance', async () => {
+    mockGetBalances.mockResolvedValue([
+      { asset: eth, amount: 0.1 },
+      { asset: btc, amount: 1 },
+    ]);
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '' } });
+    });
+    await flushQuote();
+    const callsBefore = mockReceiveFor.mock.calls.length;
+    expect(screen.getByTestId('input-amount-max')).toBeInTheDocument();
+    await act(async () => {
+      screen.getByTestId('input-amount-max').click();
+    });
+    await flushQuote();
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('');
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
+    expect(mockReceiveFor.mock.calls.slice(callsBefore)).toEqual([]);
+  });
+
+  it('keeps the edited receive amount when a constant amountIn is reapplied on a source change', async () => {
+    mockHideTarget = false;
+    mockUseAppParams.mockReturnValue(
+      baseAppParams({
+        amountIn: '0.5',
+        assetIn: undefined,
+        assetOut: undefined,
+        blockchain: undefined,
+        hideTargetSelection: false,
+      }),
+    );
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('input-amount')).toHaveValue('0.5');
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.02' } });
+    });
+    await flushQuote();
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.02');
+    await act(async () => {
+      screen.getByTestId('select-sourceAsset-BTC').click();
+    });
+    await flushQuote();
+    const quoted = mockReceiveFor.mock.calls
+      .map((call: any) => call[0])
+      .filter((req: any) => req.sourceAsset?.name === 'BTC');
+    expect(quoted.length).toBeGreaterThan(0);
+    expect(quoted.every((req: any) => req.targetAmount === 0.02 && req.amount === undefined)).toBe(true);
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.02');
   });
 });

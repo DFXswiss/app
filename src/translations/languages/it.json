@@ -683,8 +683,7 @@
     "Sending on {{chain}}": "Invio su {{chain}}",
     "Receiving network": "Rete di ricezione",
     "Receiving wallet": "Portafoglio di ricezione",
-    "No asset on {{chain}} can be received with this account.": "Con il vostro conto non è possibile ricevere alcuna attività su {{chain}}.",
-    "No receiving address on {{chain}} is connected.": "Nessun indirizzo di ricezione su {{chain}} è collegato."
+    "No asset on {{chain}} can be received with this account.": "Con il vostro conto non è possibile ricevere alcuna attività su {{chain}}."
   },
   "screens/payment": {
     "Payment Information": "Informazioni sul pagamento",

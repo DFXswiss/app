@@ -683,8 +683,7 @@
     "Sending on {{chain}}": "Senden auf {{chain}}",
     "Receiving network": "Empfangsnetzwerk",
     "Receiving wallet": "Empfangs-Wallet",
-    "No asset on {{chain}} can be received with this account.": "Mit Deinem Konto kann auf {{chain}} kein Asset empfangen werden.",
-    "No receiving address on {{chain}} is connected.": "Auf {{chain}} ist keine Empfangsadresse verbunden."
+    "No asset on {{chain}} can be received with this account.": "Mit Deinem Konto kann auf {{chain}} kein Asset empfangen werden."
   },
   "screens/payment": {
     "Payment Information": "Zahlungsinformation",

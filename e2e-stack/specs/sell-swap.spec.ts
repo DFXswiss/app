@@ -969,9 +969,15 @@ test.describe('Sell + Swap e2e', () => {
     page,
   }) => {
     // Proof scope: already-enabled Ethereum/ETH to Polygon/USDC, resolved from GET /v1/asset by
-    // name, chain and uniqueName. It shows the receive network changing from Ethereum to Polygon
-    // without a wallet click, and that the real paymentInfos request carries that source, target
-    // and receiver. It does not enable DSC or DGC and does not prove a Denario price or a transfer.
+    // name, chain and uniqueName. The spend field is cleared before Ethereum USDT is chosen.
+    // A distinct spend of 0.2 is then typed. The initial exact paymentInfos response is matched
+    // by Ethereum ETH, Ethereum USDT, the receiver and exactPrice, not by amount. That request
+    // must use 0.2 and omit targetAmount, and You-get must show its estimate before the spend
+    // is captured. The receive network then changes from Ethereum to Polygon without a wallet
+    // click. The next unintercepted paymentInfos call for that new pair is matched by source
+    // and target only. Its exactPrice request is checked to reuse the captured spend and to
+    // omit the previous output. The spend field is read after that exact response is visible.
+    // It does not enable DSC or DGC and does not prove a Denario price or a transfer.
     // The response is not rewritten. No completion click.
     test.setTimeout(90000);
     const user = await createUser({
@@ -984,11 +990,14 @@ test.describe('Sell + Swap e2e', () => {
     const assets = await fetchAssets();
     const eth = requireRuntimeAsset(assets, { name: 'ETH', blockchain: 'Ethereum', uniqueName: 'Ethereum/ETH' });
     const usdc = requireRuntimeAsset(assets, { name: 'USDC', blockchain: 'Polygon', uniqueName: 'Polygon/USDC' });
+    const usdt = requireRuntimeAsset(assets, { name: 'USDT', blockchain: 'Ethereum', uniqueName: 'Ethereum/USDT' });
     expect(eth.sellable, 'runtime Ethereum/ETH must be sellable').toBe(true);
     expect(eth.comingSoon, 'runtime Ethereum/ETH must not be coming soon').not.toBe(true);
     expect(usdc.buyable, 'runtime Polygon/USDC must be buyable').toBe(true);
     expect(usdc.sellable, 'runtime Polygon/USDC must be sellable').toBe(true);
     expect(usdc.comingSoon, 'runtime Polygon/USDC must not be coming soon').not.toBe(true);
+    expect(usdt.buyable, 'runtime Ethereum/USDT must be buyable').toBe(true);
+    expect(usdt.comingSoon, 'runtime Ethereum/USDT must not be coming soon').not.toBe(true);
 
     await openScreen(page, '/swap', user.jwt);
     const opened = new URL(page.url());
@@ -1028,11 +1037,97 @@ test.describe('Sell + Swap e2e', () => {
       })
       .not.toBe('');
 
-    const paymentInfos = page.waitForRequest(
-      (request) => {
-        if (request.method() !== 'PUT' || !request.url().includes('/swap/paymentInfos')) return false;
+    const quoteOutput = page
+      .locator('h2', { hasText: /You get/ })
+      .locator('..')
+      .locator('input[type="number"]')
+      .first();
+    await spend.click();
+    await spend.fill('');
+    await spend.blur();
+    await expect
+      .poll(async () => spend.inputValue(), {
+        timeout: 8000,
+        message: 'the spend field must be empty before Ethereum USDT is chosen',
+      })
+      .toBe('');
+
+    const initialTarget = page.locator('input[name="targetAsset"]');
+    await expect(initialTarget).toBeVisible({ timeout: 15000 });
+    await initialTarget.click();
+    const usdtOption = page.getByRole('button', { name: /^USDT(\s|$)/ }).filter({ hasText: 'Ethereum' });
+    await expect
+      .poll(async () => usdtOption.count(), {
+        timeout: 15000,
+        message: 'Ethereum USDT must be the only matching target option',
+      })
+      .toBe(1);
+    await usdtOption.click();
+    await expect(initialTarget).toHaveValue('USDT');
+    await expect(spend).toHaveValue('');
+
+    const initialExact = page.waitForResponse(
+      (response) => {
+        const request = response.request();
+        if (request.method() !== 'PUT' || !response.url().includes('/swap/paymentInfos')) return false;
         const body = paymentBody(request);
-        if (!body || typeof body.amount !== 'number' || !(body.amount > 0)) return false;
+        if (!body || body.exactPrice !== true) return false;
+        const source = body.sourceAsset ?? body.source;
+        const target = body.targetAsset ?? body.target;
+        const receiver = body.receiverAddress ?? body.receiver;
+        return (
+          sameRuntimeAsset(source, eth) &&
+          sameRuntimeAsset(target, usdt) &&
+          typeof receiver === 'string' &&
+          receiver.toLowerCase() === user.address.toLowerCase()
+        );
+      },
+      { timeout: 30000 },
+    );
+    await spend.click();
+    await spend.fill('0.2');
+    await spend.blur();
+
+    const initialResponse = await initialExact;
+    expect(initialResponse.ok(), 'the initial Ethereum USDT exact paymentInfos response must succeed').toBe(
+      true,
+    );
+    const initialBody = paymentBody(initialResponse.request());
+    expect(initialBody, 'initial exact paymentInfos body must be JSON').toBeTruthy();
+    expect(sameRuntimeAsset(initialBody?.sourceAsset ?? initialBody?.source, eth)).toBe(true);
+    expect(sameRuntimeAsset(initialBody?.targetAsset ?? initialBody?.target, usdt)).toBe(true);
+    const initialReceiver = initialBody?.receiverAddress ?? initialBody?.receiver;
+    expect(typeof initialReceiver === 'string' ? initialReceiver.toLowerCase() : '').toBe(
+      user.address.toLowerCase(),
+    );
+    expect(initialBody?.exactPrice).toBe(true);
+    expect(initialBody?.amount).toBe(0.2);
+    expect(initialBody?.targetAmount).toBeUndefined();
+    const initialResult = (await initialResponse.json()) as { estimatedAmount?: unknown };
+    const initialEstimate =
+      typeof initialResult?.estimatedAmount === 'number' || typeof initialResult?.estimatedAmount === 'string'
+        ? String(initialResult.estimatedAmount)
+        : '';
+    expect(initialEstimate, 'the initial exact paymentInfos response must include an estimated amount').not.toBe(
+      '',
+    );
+    await expect
+      .poll(async () => (await quoteOutput.inputValue()).trim(), {
+        timeout: 15000,
+        message: 'the exact Ethereum USDT result must be visible before the spend amount is captured',
+      })
+      .toBe(initialEstimate);
+    await expect(initialTarget).toHaveValue('USDT');
+    await expect(sourceInput).toHaveValue('ETH');
+    const capturedSpend = await spend.inputValue();
+    expect(capturedSpend.trim(), 'the completed quote must leave a spend amount in the form').not.toBe('');
+
+    const exactPayment = page.waitForResponse(
+      (response) => {
+        const request = response.request();
+        if (request.method() !== 'PUT' || !response.url().includes('/swap/paymentInfos')) return false;
+        const body = paymentBody(request);
+        if (!body || body.exactPrice !== true) return false;
         const source = body.sourceAsset ?? body.source;
         const target = body.targetAsset ?? body.target;
         const receiver = body.receiverAddress ?? body.receiver;
@@ -1072,13 +1167,29 @@ test.describe('Sell + Swap e2e', () => {
     await expect(targetInput).toHaveValue('USDC');
     await expect(networkButton).toContainText('Polygon');
 
-    const request = await paymentInfos;
-    const body = paymentBody(request);
-    expect(body, 'paymentInfos body must be JSON').toBeTruthy();
+    const response = await exactPayment;
+    const body = paymentBody(response.request());
+    expect(body, 'exact paymentInfos body must be JSON').toBeTruthy();
     expect(sameRuntimeAsset(body?.sourceAsset ?? body?.source, eth)).toBe(true);
     expect(sameRuntimeAsset(body?.targetAsset ?? body?.target, usdc)).toBe(true);
     const receiver = body?.receiverAddress ?? body?.receiver;
     expect(typeof receiver === 'string' ? receiver.toLowerCase() : '').toBe(user.address.toLowerCase());
+    expect(body?.exactPrice).toBe(true);
+    expect(body?.amount).toBe(Number(capturedSpend));
+    expect(body?.targetAmount).toBeUndefined();
+    const result = (await response.json()) as { estimatedAmount?: unknown };
+    const estimatedText =
+      typeof result?.estimatedAmount === 'number' || typeof result?.estimatedAmount === 'string'
+        ? String(result.estimatedAmount)
+        : '';
+    expect(estimatedText, 'the exact paymentInfos response must include an estimated amount').not.toBe('');
+    await expect
+      .poll(async () => (await quoteOutput.inputValue()).trim(), {
+        timeout: 15000,
+        message: 'the exact ETH to Polygon USDC result must be visible before the spend amount is checked',
+      })
+      .toBe(estimatedText);
+    await expect(spend).toHaveValue(capturedSpend);
   });
 
   // Sanity: incomplete personal data is redirected off /sell by the API/UI (Ident data incomplete).

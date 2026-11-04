@@ -208,6 +208,8 @@ export default function SwapScreen(): JSX.Element {
   const selectedAddressRef = useRef(selectedAddress);
   const selectedNetworkRef = useRef(selectedReceiveNetwork);
   const userReceiveNetworkRef = useRef<Blockchain | undefined>();
+  // False quotes from the spend amount. A non-empty Controller edit of the other amount flips it.
+  const receiveAmountIntentRef = useRef(false);
   const suppressSourceDefaultRef = useRef(false);
   const quoteNetworkRef = useRef<Blockchain | undefined>();
   const programmaticSourceRef = useRef<Asset | undefined>();
@@ -385,12 +387,23 @@ export default function SwapScreen(): JSX.Element {
     setVal('sourceAsset', next);
   }, [assetIn, walletBlockchain, sourceAssetKey, selectedSourceAsset]);
 
-  // A Controller selection emits type "change", including when the value is already selected.
-  // setValue does not, so a programmatic default is not recorded as a user choice.
+  // A Controller edit emits type "change", including when the same value is chosen again.
+  // setValue does not, so a quote write or programmatic default is not a user choice.
+  // Emptying a field does not switch amount intent; the clear latches already stop that quote.
   useEffect(() => {
     const subscription = watch((_formValues, info) => {
-      if (info.name !== 'receiveNetwork' || info.type !== 'change') return;
-      userReceiveNetworkRef.current = getValues('receiveNetwork');
+      if (info.type !== 'change') return;
+      if (info.name === 'receiveNetwork') {
+        userReceiveNetworkRef.current = getValues('receiveNetwork');
+        return;
+      }
+      if (info.name === 'amount') {
+        if (getValues('amount')) receiveAmountIntentRef.current = false;
+        return;
+      }
+      if (info.name === 'targetAmount' && getValues('targetAmount')) {
+        receiveAmountIntentRef.current = true;
+      }
     });
     return () => subscription.unsubscribe();
   }, [watch, getValues]);
@@ -546,7 +559,9 @@ export default function SwapScreen(): JSX.Element {
     }
 
     if (requiresUpdate) {
-      if (hasSpendData && !targetClearedByUserRef.current) {
+      if (receiveAmountIntentRef.current && hasGetData && !spendClearedByUserRef.current) {
+        updateData(Side.SPEND);
+      } else if (hasSpendData && !targetClearedByUserRef.current) {
         updateData(Side.GET);
       } else if (spendClearedByUserRef.current || targetClearedByUserRef.current) {
         setValidatedData(undefined);
@@ -602,13 +617,10 @@ export default function SwapScreen(): JSX.Element {
     }
 
     if (requiresUpdate) {
-      if (hasGetData && !spendClearedByUserRef.current) {
-        const addressOnlyChange =
-          Boolean(enteredAmount) &&
-          selectedAddress?.address !== validatedData?.receiverAddress &&
-          selectedTargetAmount === paymentInfo?.estimatedAmount?.toString() &&
-          selectedTargetAsset?.uniqueName === paymentInfo?.targetAsset?.uniqueName;
-        updateData(addressOnlyChange ? Side.GET : Side.SPEND);
+      if (!receiveAmountIntentRef.current && hasSpendData && !targetClearedByUserRef.current) {
+        updateData(Side.GET);
+      } else if (hasGetData && !spendClearedByUserRef.current) {
+        updateData(Side.SPEND);
       } else if (targetClearedByUserRef.current || spendClearedByUserRef.current) {
         setValidatedData(undefined);
         setPaymentInfo(undefined);
@@ -633,6 +645,22 @@ export default function SwapScreen(): JSX.Element {
     });
 
     setValidatedData(data ? { ...data, sideToUpdate } : undefined);
+  }
+
+  // MAX writes through setValue, so the amount watch does not see a Controller edit.
+  // The same displayed string also skips the spend effect, and a receive quote can still be
+  // waiting on the debounce. Replace that queued quote before it can overwrite this spend.
+  function applyMaxSpend(nextAmount: string): void {
+    receiveAmountIntentRef.current = false;
+    const sameSpend = getValues('amount') === nextAmount;
+    setVal('amount', nextAmount);
+    if (!sameSpend || targetClearedByUserRef.current) return;
+    quoteGeneration.current += 1;
+    isExactPriceWriteRef.current = false;
+    setIsQuoteFinal(false);
+    setPaymentInfo(undefined);
+    updateData(Side.GET);
+    setRetryToken((token) => token + 1);
   }
 
   useEffect(() => {
@@ -970,7 +998,6 @@ export default function SwapScreen(): JSX.Element {
     !!requestedChainName &&
     !eligibleNetworks.some((chain) => chain.toLowerCase() === requestedChainName.toLowerCase());
   const missingTarget = (!!selectedReceiveNetwork && targetAssets.length === 0) || requestedUnavailable;
-  const missingAddress = !!selectedReceiveNetwork && compatibleReceivers.length === 0;
   const explanationChain = (selectedReceiveNetwork ?? requestedChainName) as Blockchain | undefined;
   const showReceiveControls = !hideTargetSelection;
   const soleReceiver = compatibleReceivers.length === 1 ? compatibleReceivers.find((item) => item.address) : undefined;
@@ -980,7 +1007,7 @@ export default function SwapScreen(): JSX.Element {
       : selectedTargetAsset?.category === AssetCategory.PRIVATE
         ? selectedTargetAsset
         : undefined;
-  const showSwitch = showReceiveControls || missingTarget || missingAddress;
+  const showSwitch = showReceiveControls || missingTarget;
 
   return (
     <>
@@ -1016,7 +1043,7 @@ export default function SwapScreen(): JSX.Element {
                         prefix={selectedSourceAsset && selectedSourceAsset.name}
                         name="amount"
                         buttonLabel={availableBalance ? 'MAX' : undefined}
-                        buttonClick={() => availableBalance && setVal('amount', `${availableBalance}`)}
+                        buttonClick={() => availableBalance && applyMaxSpend(`${availableBalance}`)}
                         forceError={
                           (kycError &&
                             [
@@ -1152,14 +1179,6 @@ export default function SwapScreen(): JSX.Element {
                 <p className="w-full break-words text-dfxGray-700">
                   {translate('screens/swap', 'No asset on {{chain}} can be received with this account.', {
                     chain: chainName(explanationChain),
-                  })}
-                </p>
-              )}
-
-              {missingAddress && selectedReceiveNetwork && (
-                <p className="w-full break-words text-dfxGray-700">
-                  {translate('screens/swap', 'No receiving address on {{chain}} is connected.', {
-                    chain: chainName(selectedReceiveNetwork),
                   })}
                 </p>
               )}

@@ -590,8 +590,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The swap receive-network visual flips two catalog flags in the browser.** The component is the
   swap screen. `e2e/swap-network.spec.ts` fetches the real local `GET /v1/asset` response and, only
   in that returned browser catalog, sets `buyable` and `sellable` to true on the Polygon DSC and
-  Polygon DGC rows, matched by name, chain and unique name. It does not change database rows, invent
-  assets, or invent a Denario quote. Production supplies those two flags from the asset catalog and
+  Polygon DGC rows, matched by name and chain. A row with no uniqueName still matches. A present
+  uniqueName must be `Polygon/DSC` or `Polygon/DGC`. The route throws unless that response contains
+  exactly one Polygon DSC and exactly one Polygon DGC. It does not change database rows, invent
+  assets, or invent a Denario quote. The missing-asset case in the same file does not install that
+  catalog route. It opens `/swap` with the real `assets=Ethereum/ETH` filter and
+  `asset-out=Polygon/DGC`. Production supplies those two flags from the asset catalog and
   a Denario price for the pair. A green run does not prove backend enablement, Denario prices,
   liquidity, or transfers. The full-stack network test in `e2e-stack/specs/sell-swap.spec.ts` stays
   unintercepted and does not use this fixture.
@@ -608,7 +612,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `http://localhost:3000/v1/lnurlp/e2e-native-swap-ln`. A later real quote may route those rows;
   the fixture still returns the same ids. A green run does not prove lightning.space
   ownership, a real Lightning invoice (the local LNbits stub can answer `mock: true` with no
-  payment request `pr`), a quote, a payment, or a completed transfer.
+  payment request `pr`), a production or Denario price, a real payable invoice, a payment, or a
+  settlement.
 - **Reproducing the legacy native swap visuals uses the existing local stack.** The repository
   root dependencies and the `e2e-stack` dependencies both have to be installed already. The native
   fixture requires `REACT_APP_API_URL` and `E2E_API_URL` to each be `http://localhost:31380`, and

@@ -341,6 +341,48 @@ test('narrow mobile shows DSC to DGC', async ({ page }) => {
   await shoot(page, 'swap-network-mobile-configured.png', await formClip(page));
 });
 
+test('desktop and narrow show no receivable asset when the assets filter excludes Polygon output', async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  const assets = 'Ethereum/ETH';
+  const assetOut = 'Polygon/DGC';
+  const query = new URLSearchParams({
+    session: token,
+    lang: 'en',
+    assets,
+    'asset-in': assets,
+    'asset-out': assetOut,
+  });
+  const href = `/swap?${query.toString()}`;
+  const requested = new URL(href, 'http://127.0.0.1');
+  expect(requested.searchParams.get('assets')).toBe(assets);
+  expect(requested.searchParams.get('asset-in')).toBe(assets);
+  expect(requested.searchParams.get('asset-out')).toBe(assetOut);
+  await page.goto(href);
+  await expect
+    .poll(() => new URL(page.url()).pathname, { timeout: 20000, message: 'session must stay on /swap' })
+    .toMatch(/\/swap\/?$/);
+
+  const error = page.getByText('No asset on Polygon can be received with this account.', { exact: true });
+  const switchAddress = page.getByRole('button', { name: 'Switch address' });
+  await expect(error).toBeVisible({ timeout: 20000 });
+  await expect(switchAddress).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Payment Information', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toHaveCount(0);
+  await assertReadable(error);
+  await assertReadable(switchAddress);
+  await assertNoHorizontalOverflow(page);
+  await shoot(page, 'swap-network-desktop-missing-asset.png', await formClip(page));
+
+  await page.setViewportSize({ width: 390, height: 1400 });
+  await assertReadable(error);
+  await assertReadable(switchAddress);
+  await assertNoHorizontalOverflow(page);
+  await shoot(page, 'swap-network-mobile-missing-asset.png', await formClip(page));
+});
+
 test('desktop shows DSC to DGC with the receiving wallet dropdown', async ({ page, request }) => {
   // Stay last. The fresh database has one receiver; linking a second address changes that account.
   test.setTimeout(120000);
