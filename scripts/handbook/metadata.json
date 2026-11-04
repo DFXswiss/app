@@ -177,7 +177,7 @@
   },
   "passkey-login": {
     "title": "Passkey-Login",
-    "description": "Login mit ?feature=Passkey zeigt die Passkey-Kachel. Ein Browser mit Passkeys öffnet das Registrierungsformular. Ein Browser ohne Passkeys bleibt auf dem deaktivierten Platzhalter mit dem Hinweis, dass keine Passkeys möglich sind. Nach der Registrierung zeigt der Desk das entsperrte Wallet und die Wiederherstellungswörter. Ein Login ohne Schlüsselableitung bleibt gesperrt. Ein Login mit abweichender Seed-Prüfung zeigt den Abweichungssatz."
+    "description": "Login mit ?feature=Passkey zeigt die Passkey-Kachel. Ein Browser mit Passkeys öffnet das Registrierungsformular. Ein Browser ohne Passkeys bleibt auf dem deaktivierten Platzhalter mit dem Hinweis, dass keine Passkeys möglich sind. Nach der Registrierung zeigt der Desk das entsperrte Wallet mit EVM, Spark und der automatisch verknüpften Bitcoin-Login-Adresse, und die Wiederherstellungswörter. Ein Login ohne Schlüsselableitung bleibt gesperrt. Ein Login mit abweichender Seed-Prüfung zeigt den Abweichungssatz."
   },
   "signature-login": {
     "title": "Signatur-Login",

@@ -149,7 +149,7 @@ import { RP_IDS } from '@dfx.swiss/wallet';
 import ConnectPasskey, { passkeyPlatformBlock, walletEnvForHost } from '../components/home/wallet/connect-passkey';
 import PasskeyDesk from '../components/home/wallet/passkey-desk';
 import * as passkeySession from '../components/home/wallet/passkey-session';
-import { setOpenPasskey } from '../components/home/wallet/passkey-session';
+import { setOpenPasskey, type OpenPasskey } from '../components/home/wallet/passkey-session';
 import { WalletType } from '../contexts/wallet.context';
 
 const SEED = '0x1111111111111111111111111111111111111111';
@@ -339,6 +339,15 @@ describe('ConnectPasskey', () => {
     expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0);
     expect(await screen.findByText('Linked Bitcoin bc1qlogin.')).toBeInTheDocument();
     expect(screen.getByRole('list')).toHaveTextContent('bc1qlogin');
+  });
+
+  it('does not link bitcoin when the unlocked session has no wallet', () => {
+    act(() => {
+      setOpenPasskey({ ...authResult('unlocked', { id: 'keys' }), wallet: undefined } as OpenPasskey);
+    });
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    expect(screen.getByText('Passkey wallet')).toBeInTheDocument();
+    expect(mockLink).not.toHaveBeenCalled();
   });
 
   it('adds a passkey to the signed-in account without logging that account out', async () => {

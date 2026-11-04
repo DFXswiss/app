@@ -575,13 +575,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e/passkey-login.spec.ts` fulfils geolocation-db with country `CH`, fulfils the bootstrap
   GETs with fixtures, and answers `/v2/**` with 401. The tile shots replace WebAuthn, so the
   platform report is either available or missing. The desk shots install a fixed in-page
-  authenticator and fulfil the passkey routes with one wallet. A green run proves the Passkey
+  authenticator and fulfil the passkey routes with one wallet. The unlocked shots fulfil the
+  Bitcoin link and the wallet list with placeholder EVM, Spark and Bitcoin rows. A green run proves the Passkey
   tile is shown for `?feature=Passkey`, that an available browser opens the registration form
   without the beta sentence, that a browser without passkeys keeps the disabled placeholder and
-  the no-support sentence, and that the desk shows the unlocked wallet, the recovery words from
+  the no-support sentence, and that the desk shows the unlocked wallet with those three placeholder
+  rows, the recovery words from
   that fixed output, a login without PRF output, and a login whose seed-check address does not
   match. It does not prove a real WebAuthn signature, that the API returns those payloads, that
-  geolocation-db returns `CH`, or that this browser's real passkey support matches the stub.
+  the server stored the placeholder addresses, that geolocation-db returns `CH`, or that this browser's real passkey support matches the stub.
 - **The passkey ceremony full-stack case drives the real frontend, API and database.**
   In `e2e-stack/specs/auth.spec.ts`, the test skips when `POST /v1/auth/passkey/register/begin`
   answers 404, because that API image has no passkey controller. Any other status runs the
@@ -603,9 +605,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   session, store, balance and settings hooks, and `src/contexts/wallet.context`. That context's
   `useWalletContext` returns the test's `setSession`. A green run proves the disabled placeholder,
   the registration form, and the desk actions against those stubs, including that a link keeps the
-  ceremony token and that revoke-by-id uses a fresh login token. It does not prove a real
-  ceremony, a real `DfxApiClient`, the published components, or that `setSession` stores a passkey
-  session. WebAuthn stays a stub.
+  ceremony token, that an unlocked list without Bitcoin links once, and that revoke-by-id uses a fresh login token. It does not prove a real
+  ceremony, a real `DfxApiClient`, the published components, that `setSession` stores a passkey
+  session, that the server stored the mainnet login address, that `auth.link` is the real client, or that a Bitcoin row already in the list came from the API. WebAuthn stays a stub.
 - **The connect-screen unit test replaces every wallet tile.**
   `src/__tests__/connect-wrapper.test.tsx` replaces `@dfx.swiss/react` and each connect tile, including
   the passkey tile, with a stub. A green run proves the wrapper renders the stub named by the wallet
