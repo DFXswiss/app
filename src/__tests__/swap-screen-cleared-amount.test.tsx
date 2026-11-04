@@ -1804,10 +1804,38 @@ describe('SwapScreen', () => {
     render(<SwapScreen />);
     await flushQuote();
     await act(async () => { screen.getByTestId('select-address-1').click(); });
+    await flushQuote();
     expect(screen.getByTestId('selected-address')).toHaveTextContent('Polygon');
+    expect(screen.getByTestId('exchange-rate')).toBeInTheDocument();
+    const callsBeforeSwitch = mockReceiveFor.mock.calls.length;
     await act(async () => { screen.getByTestId('select-address-2').click(); });
     await act(async () => { screen.getByTestId('address-switch-cancel').click(); });
+    expect(screen.getByTestId('exchange-rate')).toBeInTheDocument();
+    await flushQuote();
     expect(screen.getByTestId('selected-address')).toHaveTextContent('Polygon');
+    expect(screen.getByTestId('exchange-rate')).toBeInTheDocument();
+    expect(
+      mockReceiveFor.mock.calls.slice(callsBeforeSwitch).some((call: any) => call[0].receiverAddress === undefined),
+    ).toBe(false);
+  });
+
+  it('does not request a quote without a receiver while the address switch is open', async () => {
+    mockAssets = [eth, polygonDgc];
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
+    mockUseAppParams.mockReturnValue(chainParams({ blockchain: 'Ethereum' }));
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('exchange-rate')).toBeInTheDocument();
+    expect(mockReceiveFor.mock.calls.some((call: any) => call[0].receiverAddress === '0xabc')).toBe(true);
+    const callsBeforeSwitch = mockReceiveFor.mock.calls.length;
+    await act(async () => { screen.getByTestId('select-address-2').click(); });
+    expect(screen.getByTestId('address-switch')).toBeInTheDocument();
+    await flushQuote();
+    await flushQuote();
+    expect(screen.getByTestId('address-switch')).toBeInTheDocument();
+    expect(
+      mockReceiveFor.mock.calls.slice(callsBeforeSwitch).some((call: any) => call[0].receiverAddress === undefined),
+    ).toBe(false);
   });
 
   it('selects the first sellable source asset when the start chain has none', async () => {

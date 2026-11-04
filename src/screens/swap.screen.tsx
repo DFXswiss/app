@@ -334,10 +334,11 @@ export default function SwapScreen(): JSX.Element {
   useEffect(() => {
     if (selectedAddress) {
       if (!selectedAddress.chain) {
+        setValue('address', previousAddressRef.current as Address, { shouldValidate: true });
         setShowsSwitchScreen(true);
       }
     }
-  }, [selectedAddress]);
+  }, [selectedAddress, setValue]);
 
   useEffect(() => {
     if (!enteredAmount) {
@@ -395,6 +396,7 @@ export default function SwapScreen(): JSX.Element {
 
   // GET data changed
   useEffect(() => {
+    if (selectedAddress && !selectedAddress.chain) return;
     const exactPriceWrite = isExactPriceWriteRef.current;
     const targetChanged =
       (previousTargetChainRef.current && previousTargetChainRef.current !== selectedAddress?.chain) ||
@@ -748,10 +750,7 @@ export default function SwapScreen(): JSX.Element {
         <AddressSwitch
           onClose={(r) => {
             if (r) onAddressSwitch();
-            else {
-              setValue('address', previousAddressRef.current as Address, { shouldValidate: true });
-              setShowsSwitchScreen(false);
-            }
+            else setShowsSwitchScreen(false);
           }}
         />
       ) : (
