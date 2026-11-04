@@ -17,7 +17,7 @@
             "CI": "true"
           },
           "npm": {
-            "node_major": 20,
+            "node_major": 24,
             "canaries": [
               "react-app-rewired/package.json",
               "react-scripts/package.json",
