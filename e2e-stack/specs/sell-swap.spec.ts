@@ -11,7 +11,7 @@
  * Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
  */
 
-import type { Page, Response } from '@playwright/test';
+import type { Page, Request, Response } from '@playwright/test';
 import { expect, gotoWithSession, normPath, openScreen, test, waitForRow } from './fixtures';
 import {
   cleanupCreatedData,
@@ -286,6 +286,72 @@ async function setupSwapFullUiFlow(
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
 
   return { user, paymentInfos };
+}
+
+function requireRuntimeAsset(
+  assets: AssetDto[],
+  identity: { name: string; blockchain: string; uniqueName: string },
+): AssetDto {
+  const matches = assets.filter((asset) => {
+    if (asset.name !== identity.name || asset.blockchain !== identity.blockchain) return false;
+    return asset.uniqueName == null || asset.uniqueName === identity.uniqueName;
+  });
+  if (matches.length !== 1) {
+    throw new Error(`expected exactly one ${identity.uniqueName} from GET /v1/asset, found ${matches.length}`);
+  }
+  return matches[0];
+}
+
+function paymentBody(request: Request): Record<string, unknown> | undefined {
+  const raw = request.postData();
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function sameRuntimeAsset(value: unknown, asset: AssetDto): boolean {
+  if (typeof value === 'number') return value === asset.id;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  const nameAgrees = row.name == null || row.name === asset.name;
+  const chainAgrees = row.blockchain == null || row.blockchain === asset.blockchain;
+  if (typeof row.id === 'number' && row.id === asset.id && nameAgrees && chainAgrees) return true;
+  if (row.name !== asset.name || row.blockchain !== asset.blockchain) return false;
+  return row.uniqueName == null || row.uniqueName === asset.uniqueName;
+}
+
+function spendAmountInput(page: Page) {
+  // StyledInput puts the form name on the controller, not on the DOM input.
+  return page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
+}
+
+async function receivingWalletText(page: Page): Promise<string> {
+  const dropdown = page.getByRole('button', { name: 'Receiving wallet' });
+  if ((await dropdown.count()) > 0) {
+    const block = dropdown.locator('xpath=ancestor::div[contains(@class,"min-w-0")][1]');
+    const detail = block.locator('p').last();
+    if ((await detail.count()) > 0) {
+      const text = (await detail.innerText()).replace(/\s+/g, ' ').trim();
+      if (/0x[a-fA-F0-9]{40}/.test(text)) return text;
+    }
+    return (await dropdown.innerText()).replace(/\s+/g, ' ').trim();
+  }
+  const label = page.getByText('Receiving wallet', { exact: true });
+  await expect(label).toBeVisible();
+  const line = label.locator('xpath=following-sibling::p[1]');
+  await expect(line).toBeVisible();
+  return (await line.innerText()).replace(/\s+/g, ' ').trim();
+}
+
+function addressIn(text: string): string {
+  const match = text.match(/0x[a-fA-F0-9]{40}/);
+  if (!match) throw new Error(`receiving wallet text has no address: ${text}`);
+  return match[0];
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -745,6 +811,16 @@ test.describe('Sell + Swap e2e', () => {
     await page.getByText('You spend', { exact: true }).click();
     await page.waitForTimeout(200);
 
+    const networkButton = page.getByRole('button', { name: 'Receiving network' });
+    await expect(networkButton).toBeVisible({ timeout: 15000 });
+    await networkButton.click();
+    const ethereum = page.getByRole('button', { name: 'Ethereum', exact: true });
+    await expect(ethereum, 'Ethereum must be offered as a receive network').toHaveCount(1);
+    await ethereum.scrollIntoViewIfNeeded();
+    await expect(ethereum).toBeVisible();
+    await ethereum.click();
+    await expect(networkButton).toContainText('Ethereum');
+
     const targetInput = page.locator('input[name="targetAsset"]');
     await expect(targetInput).toBeVisible({ timeout: 15000 });
     const targetSelected = (await targetInput.inputValue()).trim();
@@ -887,6 +963,122 @@ test.describe('Sell + Swap e2e', () => {
         { timeout: 8000, message: 'cleared swap spend amount must stay empty' },
       )
       .toEqual({ value: '', paymentVisible: false });
+  });
+
+  test('/swap switches the receive network from Ethereum to Polygon independently of the wallet and requests ETH to Polygon USDC', async ({
+    page,
+  }) => {
+    // Proof scope: already-enabled Ethereum/ETH to Polygon/USDC, resolved from GET /v1/asset by
+    // name, chain and uniqueName. It shows the receive network changing from Ethereum to Polygon
+    // without a wallet click, and that the real paymentInfos request carries that source, target
+    // and receiver. It does not enable DSC or DGC and does not prove a Denario price or a transfer.
+    // The response is not rewritten. No completion click.
+    test.setTimeout(90000);
+    const user = await createUser({
+      walletIndex: nextWalletIndex(),
+      tag: 'swap-receive-network',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const assets = await fetchAssets();
+    const eth = requireRuntimeAsset(assets, { name: 'ETH', blockchain: 'Ethereum', uniqueName: 'Ethereum/ETH' });
+    const usdc = requireRuntimeAsset(assets, { name: 'USDC', blockchain: 'Polygon', uniqueName: 'Polygon/USDC' });
+    expect(eth.sellable, 'runtime Ethereum/ETH must be sellable').toBe(true);
+    expect(eth.comingSoon, 'runtime Ethereum/ETH must not be coming soon').not.toBe(true);
+    expect(usdc.buyable, 'runtime Polygon/USDC must be buyable').toBe(true);
+    expect(usdc.sellable, 'runtime Polygon/USDC must be sellable').toBe(true);
+    expect(usdc.comingSoon, 'runtime Polygon/USDC must not be coming soon').not.toBe(true);
+
+    await openScreen(page, '/swap', user.jwt);
+    const opened = new URL(page.url());
+    expect(opened.searchParams.get('asset-in')).toBeNull();
+    expect(opened.searchParams.get('asset-out')).toBeNull();
+    expect(opened.searchParams.get('blockchain')).toBeNull();
+
+    const sourceInput = page.locator('input[name="sourceAsset"]');
+    await expect(sourceInput).toBeVisible({ timeout: 15000 });
+    await sourceInput.click();
+    const ethOption = page.getByRole('button', { name: /^ETH(\s|$)/ }).filter({ hasText: 'Ethereum' });
+    await expect
+      .poll(async () => ethOption.count(), {
+        timeout: 15000,
+        message: 'native ETH on Ethereum must be the only matching source option',
+      })
+      .toBe(1);
+    await ethOption.click();
+    const sendingOnEthereum = page.getByText('Sending on Ethereum', { exact: true });
+    await expect(sourceInput).toHaveValue('ETH');
+    await expect(sendingOnEthereum).toBeVisible();
+
+    const networkButton = page.getByRole('button', { name: 'Receiving network' });
+    await expect(networkButton).toBeVisible({ timeout: 15000 });
+    await expect(networkButton, 'selecting Ethereum ETH must set the receive network to Ethereum').toContainText(
+      'Ethereum',
+    );
+
+    const walletBefore = await receivingWalletText(page);
+    expect(addressIn(walletBefore).toLowerCase()).toBe(user.address.toLowerCase());
+
+    const spend = spendAmountInput(page);
+    await expect
+      .poll(async () => spend.inputValue(), {
+        timeout: 10000,
+        message: 'Ethereum ETH must initialize a spend amount so paymentInfos has an amount',
+      })
+      .not.toBe('');
+
+    const paymentInfos = page.waitForRequest(
+      (request) => {
+        if (request.method() !== 'PUT' || !request.url().includes('/swap/paymentInfos')) return false;
+        const body = paymentBody(request);
+        if (!body || typeof body.amount !== 'number' || !(body.amount > 0)) return false;
+        const source = body.sourceAsset ?? body.source;
+        const target = body.targetAsset ?? body.target;
+        const receiver = body.receiverAddress ?? body.receiver;
+        return (
+          sameRuntimeAsset(source, eth) &&
+          sameRuntimeAsset(target, usdc) &&
+          typeof receiver === 'string' &&
+          receiver.toLowerCase() === user.address.toLowerCase()
+        );
+      },
+      { timeout: 30000 },
+    );
+
+    await networkButton.click();
+    const polygon = page.getByRole('button', { name: 'Polygon', exact: true });
+    await expect(polygon, 'Polygon must be offered as a receive network').toHaveCount(1);
+    await polygon.scrollIntoViewIfNeeded();
+    await expect(polygon).toBeVisible();
+    await polygon.click();
+    await expect(networkButton).toContainText('Polygon');
+
+    const walletAfterNetwork = await receivingWalletText(page);
+    expect(addressIn(walletAfterNetwork).toLowerCase()).toBe(user.address.toLowerCase());
+    expect(addressIn(walletAfterNetwork).toLowerCase()).toBe(addressIn(walletBefore).toLowerCase());
+
+    const targetInput = page.locator('input[name="targetAsset"]');
+    await expect(targetInput).toBeVisible();
+    await targetInput.click();
+    const usdcOption = page.getByRole('button', { name: /^USDC(\s|$)/ }).filter({ hasText: 'Polygon' });
+    await expect
+      .poll(async () => usdcOption.count(), {
+        timeout: 10000,
+        message: 'Polygon USDC must be the only matching target option',
+      })
+      .toBe(1);
+    await usdcOption.click();
+    await expect(targetInput).toHaveValue('USDC');
+    await expect(networkButton).toContainText('Polygon');
+
+    const request = await paymentInfos;
+    const body = paymentBody(request);
+    expect(body, 'paymentInfos body must be JSON').toBeTruthy();
+    expect(sameRuntimeAsset(body?.sourceAsset ?? body?.source, eth)).toBe(true);
+    expect(sameRuntimeAsset(body?.targetAsset ?? body?.target, usdc)).toBe(true);
+    const receiver = body?.receiverAddress ?? body?.receiver;
+    expect(typeof receiver === 'string' ? receiver.toLowerCase() : '').toBe(user.address.toLowerCase());
   });
 
   // Sanity: incomplete personal data is redirected off /sell by the API/UI (Ident data incomplete).

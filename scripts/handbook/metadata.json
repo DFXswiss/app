@@ -171,6 +171,10 @@
     "title": "Swap Lightning (URL-Parameter)",
     "description": "Swap-Flow mit Lightning-URL-Parameter."
   },
+  "swap-network": {
+    "title": "Swap Empfangsnetz",
+    "description": "Swap ohne Asset- oder Chain-Hinweis in der URL: Desktop und schmales Mobilgerät mit einer Empfangsadresse, geöffnetes Empfangsnetz-Menü, sowie Desktop mit zwei Empfangsadressen und geöffnetem Empfangs-Wallet-Menü. Die zweite Adresse hängt die lokale Signatur-Anmeldung an das bestehende Konto. Im Browser werden nur die beiden lokalen Polygon-Katalogeinträge DSC und DGC als handelbar markiert. Ein grüner Lauf beweist weder Backend-Freigabe noch Denario-Kurse, Liquidität oder eine Überweisung."
+  },
   "login-process": {
     "title": "Login-Prozess",
     "description": "Login und Home-Seite nach Authentifizierung."
