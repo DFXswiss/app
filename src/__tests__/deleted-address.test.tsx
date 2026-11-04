@@ -13,6 +13,7 @@ let mockLoading = false;
 let mockLoggedIn = true;
 let mockInitialized = true;
 let mockRedirectPath: string | undefined;
+const mockSetRedirectPath = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
   UserStatus: { NA: 'NA', ACTIVE: 'Active', BLOCKED: 'Blocked', DELETED: 'Deleted' },
@@ -40,7 +41,7 @@ jest.mock('src/contexts/settings.context', () => ({
 }));
 
 jest.mock('src/contexts/app-handling.context', () => ({
-  useAppHandlingContext: () => ({ redirectPath: mockRedirectPath }),
+  useAppHandlingContext: () => ({ redirectPath: mockRedirectPath, setRedirectPath: mockSetRedirectPath }),
 }));
 
 function userWithActiveAddress(status: UserStatus): User {
@@ -60,6 +61,9 @@ function renderGate(pathname: string, element: JSX.Element = <div>app</div>) {
 describe('deleted session address', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSetRedirectPath.mockImplementation((path: string | undefined) => {
+      mockRedirectPath = path;
+    });
     mockUser = undefined;
     mockLoading = false;
     mockLoggedIn = true;
@@ -262,6 +266,45 @@ describe('deleted session address', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/settings'));
+  });
+
+  it('consumes the redirect after activation on /login navigates to it', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+    mockRedirectPath = '/settings';
+
+    const { router } = renderGate('/login?personal-iban=frick');
+    const navigate = jest.spyOn(router, 'navigate');
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/settings'));
+    expect(router.state.location.search).toBe('?personal-iban=frick');
+    expect(mockRedirectPath).toBeUndefined();
+    expect(navigate.mock.invocationCallOrder[0]).toBeLessThan(mockSetRedirectPath.mock.invocationCallOrder[0]);
+  });
+
+  it('keeps the redirect and stays on /buy after activation', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+    mockRedirectPath = '/settings';
+    let resolveActivation: () => void = () => undefined;
+    mockReactivateAddress.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveActivation = resolve;
+      }),
+    );
+
+    const { router } = renderGate('/buy?personal-iban=frick');
+    const navigate = jest.spyOn(router, 'navigate');
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+    await act(async () => {
+      resolveActivation();
+      await Promise.resolve();
+    });
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(router.state.location.pathname).toBe('/buy');
+    expect(router.state.location.search).toBe('?personal-iban=frick');
+    expect(mockRedirectPath).toBe('/settings');
+    expect(mockSetRedirectPath).not.toHaveBeenCalled();
   });
 
   it('continues an activation on /connect to /account when no screen asked to be returned to', async () => {

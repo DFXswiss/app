@@ -65,7 +65,8 @@ function HomeScreenContent(): JSX.Element {
   const { isLoggedIn } = useSessionContext();
   const { session } = useAuthContext();
   const { user, isUserLoading, hasAddress } = useUserContext();
-  const { hasSession, canClose, service, isEmbedded, redirectPath, closeServices } = useAppHandlingContext();
+  const { hasSession, canClose, service, isEmbedded, redirectPath, setRedirectPath, closeServices } =
+    useAppHandlingContext();
   const { isInitialized, activeWallet } = useWalletContext();
   const { navigate, goBack } = useNavigation();
   const { pathname } = useLocation();
@@ -170,7 +171,10 @@ function HomeScreenContent(): JSX.Element {
 
       default:
         const path = loginTarget(redirectPath, pathname) ?? (session?.address ? '/account' : undefined);
-        path && navigate(path);
+        if (path) {
+          navigate(path);
+          if (redirectPath) setRedirectPath(undefined);
+        }
         break;
     }
   }

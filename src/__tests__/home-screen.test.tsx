@@ -7,6 +7,7 @@ const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
 const mockSetOptions = jest.fn();
 const mockCloseServices = jest.fn();
+const mockSetRedirectPath = jest.fn();
 
 interface TestTile {
   id: string;
@@ -145,6 +146,7 @@ jest.mock('../contexts/app-handling.context', () => ({
     service: mockState.service,
     isEmbedded: mockState.isEmbedded,
     redirectPath: mockState.redirectPath,
+    setRedirectPath: mockSetRedirectPath,
     closeServices: mockCloseServices,
   }),
 }));
@@ -309,6 +311,10 @@ function reset(): void {
   mockGoBack.mockReset();
   mockSetOptions.mockReset();
   mockCloseServices.mockReset();
+  mockSetRedirectPath.mockClear();
+  mockSetRedirectPath.mockImplementation((path: string | undefined) => {
+    mockState.redirectPath = path;
+  });
   mockRedraw = undefined;
 }
 
@@ -451,6 +457,29 @@ describe('HomeScreen', () => {
     signIn(container, 'lw.jpg');
 
     expect(navigatedTo()).toEqual(['/', '/buy']);
+    expect(mockSetRedirectPath).not.toHaveBeenCalled();
+  });
+
+  it('consumes a redirect after navigating so a later login goes to /buy', () => {
+    mockState.isLoggedIn = true;
+    mockState.user = { id: 1 };
+    mockState.session = { address: 'bc1', blockchains: ['Bitcoin'] };
+    mockState.redirectPath = '/settings';
+    const first = setup('/login');
+
+    signIn(first.container, 'lw.jpg');
+
+    expect(navigatedTo()).toEqual(['/', '/settings']);
+    expect(mockState.redirectPath).toBeUndefined();
+    expect(mockNavigate.mock.invocationCallOrder[1]).toBeLessThan(mockSetRedirectPath.mock.invocationCallOrder[0]);
+    first.unmount();
+
+    mockNavigate.mockClear();
+    const second = setup('/login');
+    signIn(second.container, 'lw.jpg');
+
+    expect(navigatedTo()).toEqual(['/', '/buy']);
+    expect(mockSetRedirectPath).toHaveBeenCalledTimes(1);
   });
 
   it('navigates a /login sign-in with a redirect path to that path', () => {
