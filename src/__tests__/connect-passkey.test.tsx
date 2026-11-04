@@ -73,6 +73,9 @@ const mockRevokeById = jest.fn();
 const mockCredentialStatus = jest.fn();
 const mockDiagnostics = jest.fn();
 const mockSetSession = jest.fn(() => Promise.resolve());
+let mockBuildLoginRing = (_mnemonic: unknown): { wipe: () => void } => {
+  throw new Error('unexpected login ring');
+};
 
 // Plain constructors, not jest.fn(). This Jest drops mock implementations in clearAllMocks,
 // which runs before every test and would remove register, login and the account routes.
@@ -86,6 +89,9 @@ jest.mock(
     },
     CredentialCache: function CredentialCache() {
       return {};
+    },
+    KeyRing: {
+      fromMnemonic: (mnemonic: unknown) => mockBuildLoginRing(mnemonic),
     },
     PasskeyAuth: function PasskeyAuth() {
       return {
@@ -182,6 +188,9 @@ function authResult(state: string, keys?: unknown) {
 describe('ConnectPasskey', () => {
   beforeEach(() => {
     setOpenPasskey(undefined);
+    mockBuildLoginRing = () => {
+      throw new Error('unexpected login ring');
+    };
     jest.clearAllMocks();
     mockGetAuthToken.mockReturnValue(undefined);
     mockCheckPasskeyPlatform.mockImplementation(() => new Promise(() => undefined));
@@ -350,9 +359,7 @@ describe('ConnectPasskey', () => {
     expect(mockWallets).toHaveBeenCalledWith('token');
 
     fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
-    await waitFor(() =>
-      expect(mockDiagnostics).toHaveBeenCalledWith({ stage: 'Authentication', outcome: 'Success' }),
-    );
+    await waitFor(() => expect(mockDiagnostics).toHaveBeenCalledWith({ stage: 'Authentication', outcome: 'Success' }));
     expect(await screen.findByText('Diagnostic recorded.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Show recovery words' }));
@@ -360,6 +367,57 @@ describe('ConnectPasskey', () => {
     expect(mockExport).toHaveBeenCalledWith(Uint8Array.from(atob('cred'), (char) => char.charCodeAt(0)));
     fireEvent.click(screen.getByRole('button', { name: 'Hide recovery words' }));
     expect(screen.queryByTestId('passkey-recovery-words')).not.toBeInTheDocument();
+  });
+
+  it('links and checks the mainnet login ring when the open wallet uses testnet Bitcoin', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const wiped = jest.fn();
+    const loginRing = { bitcoinNetwork: 'mainnet', wipe: wiped };
+    const phrases: unknown[] = [];
+    mockBuildLoginRing = (mnemonic: unknown) => {
+      phrases.push(mnemonic);
+      return loginRing;
+    };
+    const keys = {
+      bitcoinNetwork: 'testnet4',
+      mnemonic: () => 'seed phrase',
+      wipe: jest.fn(),
+    };
+    mockLogin.mockResolvedValue(authResult('unlocked', keys));
+    mockLink.mockResolvedValue({
+      accessToken: 'linked-token',
+      address: { family: 'Bitcoin', address: 'bc1qlogin', path: "m/84'/0'/0'/0/0" },
+    });
+    mockWallets.mockResolvedValue([authResult('unlocked', keys).wallet]);
+
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    await screen.findByRole('button', { name: 'Link Bitcoin' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Link Bitcoin' }));
+    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', loginRing, 0));
+    expect(await screen.findByText('Linked Bitcoin bc1qlogin.')).toBeInTheDocument();
+    expect(wiped).toHaveBeenCalledTimes(1);
+    expect(keys.wipe).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Link Bitcoin' })).not.toHaveAttribute('data-disabled'),
+    );
+
+    mockLink.mockRejectedValueOnce(new Error('link failed'));
+    fireEvent.click(screen.getByRole('button', { name: 'Link Bitcoin' }));
+    expect(await screen.findByText('link failed')).toBeInTheDocument();
+    expect(wiped).toHaveBeenCalledTimes(2);
+    expect(keys.wipe).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Check server addresses' })).not.toHaveAttribute('data-disabled'),
+    );
+
+    mockVerify.mockReturnValue([{ address: 'bc1qlogin', family: 'Bitcoin', matches: true }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Check server addresses' }));
+    await waitFor(() => expect(mockVerify).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), loginRing));
+    expect(await screen.findByText('Checked 1 addresses.')).toBeInTheDocument();
+    expect(wiped).toHaveBeenCalledTimes(3);
+    expect(phrases).toEqual(['seed phrase', 'seed phrase', 'seed phrase']);
   });
 
   it('lists wallets, marks the backup and reads credential status', async () => {
@@ -433,7 +491,9 @@ describe('ConnectPasskey', () => {
 
     mockUnlock.mockResolvedValueOnce({ state: 'unlocked', keys });
     fireEvent.click(screen.getByRole('button', { name: 'Unlock wallet' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Link Bitcoin' })).not.toHaveAttribute('data-disabled'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Link Bitcoin' })).not.toHaveAttribute('data-disabled'),
+    );
 
     fireEvent.change(screen.getByLabelText('EVM account index'), { target: { value: 'nope' } });
     expect(screen.getByRole('button', { name: 'Link EVM account' })).toHaveAttribute('data-disabled', 'true');
@@ -448,7 +508,9 @@ describe('ConnectPasskey', () => {
     mockWallets.mockRejectedValueOnce(new Error('list failed'));
     fireEvent.click(screen.getByRole('button', { name: 'Link EVM account' }));
     await waitFor(() => expect(mockLink).toHaveBeenCalledWith('evm', 'token', keys, 2));
-    expect(await screen.findByText('Linked Evm 0x2222222222222222222222222222222222222222. list failed')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Linked Evm 0x2222222222222222222222222222222222222222. list failed'),
+    ).toBeInTheDocument();
     expect(mockWallets).toHaveBeenCalledWith('token');
   });
 
@@ -491,7 +553,9 @@ describe('ConnectPasskey', () => {
     mockVerify.mockReturnValue([{ address: SEED, family: 'Evm', matches: false }]);
     mockUnlock.mockResolvedValue({ state: 'unlocked', keys: ring(SEED) });
     fireEvent.click(screen.getByRole('button', { name: 'Unlock wallet' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Check server addresses' })).not.toHaveAttribute('data-disabled'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Check server addresses' })).not.toHaveAttribute('data-disabled'),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Check server addresses' }));
     expect(await screen.findByText('Checked 1 addresses.')).toBeInTheDocument();
     expect(screen.getByRole('list')).toHaveTextContent('differs');

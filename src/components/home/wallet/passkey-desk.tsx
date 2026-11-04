@@ -1,7 +1,7 @@
 import type { PasskeyWallet } from '@dfx.swiss/core';
 import { useAuthContext } from '@dfx.swiss/react';
 import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
-import type { KeyRing, WalletState } from '@dfx.swiss/wallet';
+import { KeyRing, type WalletState } from '@dfx.swiss/wallet';
 import { useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import {
@@ -36,6 +36,17 @@ function evmIndexOf(value: string): number | undefined {
 
 function canUseKeys(open: OpenPasskey): open is OpenPasskey & { keys: KeyRing } {
   return open.state === 'unlocked' && open.keys !== undefined;
+}
+
+function releaseNothing(): void {
+  return undefined;
+}
+
+// The API accepts only the mainnet BIP-84 login address. A testnet receive key is a different address.
+function bitcoinLoginRing(keys: KeyRing): { ring: KeyRing; release: () => void } {
+  if (keys.bitcoinNetwork !== 'testnet4') return { ring: keys, release: releaseNothing };
+  const ring = KeyRing.fromMnemonic(keys.mnemonic(), { bitcoinNetwork: 'mainnet' });
+  return { ring, release: () => ring.wipe() };
 }
 
 const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -112,7 +123,13 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
     const walletId = session.wallet.id;
     const accountIndex = family === 'evm' && index !== undefined ? index : 0;
     await run(async ({ auth, api }) => {
-      const linked = await auth.link(family, token, keys, accountIndex);
+      const login = family === 'bitcoin' ? bitcoinLoginRing(keys) : { ring: keys, release: releaseNothing };
+      let linked: Awaited<ReturnType<PasskeyClients['auth']['link']>>;
+      try {
+        linked = await auth.link(family, token, login.ring, accountIndex);
+      } finally {
+        login.release();
+      }
       // The link response is an address token. Further account routes still need the ceremony token.
       const linkedText = `Linked ${linked.address.family} ${linked.address.address}.`;
       try {
@@ -284,9 +301,14 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
         onClick={() =>
           void run(async ({ auth }, session) => {
             if (!canUseKeys(session)) return;
-            const rows = auth.verifyServerAddresses(session.wallet, session.keys);
-            setChecks(rows.map((row) => ({ address: row.address, matches: row.matches })));
-            setNote(`Checked ${rows.length} addresses.`);
+            const login = bitcoinLoginRing(session.keys);
+            try {
+              const rows = auth.verifyServerAddresses(session.wallet, login.ring);
+              setChecks(rows.map((row) => ({ address: row.address, matches: row.matches })));
+              setNote(`Checked ${rows.length} addresses.`);
+            } finally {
+              login.release();
+            }
           })
         }
         disabled={busy || !unlocked}
