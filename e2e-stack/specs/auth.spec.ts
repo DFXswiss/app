@@ -477,27 +477,46 @@ test.describe('Auth area e2e', () => {
     await expect(page.getByLabel('Email address')).toBeVisible({ timeout: 20000 });
     await page.getByLabel('Email address').fill(mail);
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
-    await expect(page.getByText('Passkey wallet', { exact: true })).toBeVisible();
 
-    const stored = await waitForRow<{ id: number; status: string }>(
-      `SELECT u.id, c.status FROM passkey_credential c
-       JOIN user_data u ON u.id = c."userDataId"
-       WHERE u.mail = $1`,
-      [mail],
-      20000,
-    );
-    trackRow('user_data', stored.id);
-    expect(stored.status).toBe('Active');
+    let trackedUser = false;
+    const trackPasskeyUser = async (): Promise<void> => {
+      if (trackedUser) return;
+      const row = await queryOne<{ id: number }>(
+        `SELECT u.id FROM passkey_credential c
+         JOIN user_data u ON u.id = c."userDataId"
+         WHERE u.mail = $1`,
+        [mail],
+      );
+      if (row === undefined) return;
+      trackRow('user_data', row.id);
+      trackedUser = true;
+    };
 
-    await page.getByRole('button', { name: 'Credential status' }).click();
-    await expect(page.getByText(/: Active/)).toBeVisible({ timeout: 20000 });
-    await page.getByRole('button', { name: 'Refresh wallets' }).click();
-    await expect(page.getByText('Wallets on this account: 1.', { exact: true })).toBeVisible({ timeout: 20000 });
+    try {
+      const stored = await waitForRow<{ id: number; status: string }>(
+        `SELECT u.id, c.status FROM passkey_credential c
+         JOIN user_data u ON u.id = c."userDataId"
+         WHERE u.mail = $1`,
+        [mail],
+        30000,
+      );
+      await trackPasskeyUser();
+      expect(stored.status).toBe('Active');
 
-    await page.getByRole('button', { name: 'Start another ceremony' }).click();
-    await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
-    await page.getByRole('button', { name: 'Log in' }).click();
-    await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
+      await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
+      await expect(page.getByText('Passkey wallet', { exact: true })).toBeVisible();
+
+      await page.getByRole('button', { name: 'Credential status' }).click();
+      await expect(page.getByText(/: Active/)).toBeVisible({ timeout: 20000 });
+      await page.getByRole('button', { name: 'Refresh wallets' }).click();
+      await expect(page.getByText('Wallets on this account: 1.', { exact: true })).toBeVisible({ timeout: 20000 });
+
+      await page.getByRole('button', { name: 'Start another ceremony' }).click();
+      await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+      await page.getByRole('button', { name: 'Log in' }).click();
+      await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
+    } finally {
+      await trackPasskeyUser();
+    }
   });
 });
