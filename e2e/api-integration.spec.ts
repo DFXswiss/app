@@ -108,20 +108,24 @@ test.describe('Static Assets', () => {
 });
 
 test.describe('External Resources', () => {
-  test('should load Google Fonts', async ({ page }) => {
+  test('should load the self-hosted Inter font and nothing from Google Fonts', async ({ page, baseURL }) => {
     const fontRequests: string[] = [];
-    
+    const googleRequests: string[] = [];
+
     page.on('request', (request) => {
-      if (request.url().includes('fonts.googleapis.com') || 
-          request.url().includes('fonts.gstatic.com')) {
-        fontRequests.push(request.url());
+      const url = request.url();
+      if (url.includes('fonts.googleapis.com') || url.includes('fonts.gstatic.com')) {
+        googleRequests.push(url);
+      } else if (request.resourceType() === 'font') {
+        fontRequests.push(url);
       }
     });
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    
-    expect(fontRequests.length).toBeGreaterThan(0);
+
+    expect(googleRequests).toEqual([]);
+    expect(fontRequests.some((url) => url.startsWith(`${baseURL}/`) && /inter-.*\.woff2/.test(url))).toBe(true);
   });
 
   test('should load DFX images', async ({ page }) => {

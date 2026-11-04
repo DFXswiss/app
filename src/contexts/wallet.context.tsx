@@ -41,6 +41,7 @@ export enum WalletType {
   TRONLINK_TRX = 'TronLinkTrx',
   MAIL = 'Mail',
   ADDRESS = 'Address',
+  PASSKEY = 'Passkey',
 }
 
 export const WalletBlockchains: { [w in WalletType]?: Blockchain[] } = {
@@ -148,6 +149,7 @@ const WalletTypeMap: { [k in WalletType]: AuthWalletType | undefined } = {
   [WalletType.MONERO]: undefined,
   [WalletType.MAIL]: undefined,
   [WalletType.ADDRESS]: undefined,
+  [WalletType.PASSKEY]: undefined,
 };
 
 interface WalletInterface {

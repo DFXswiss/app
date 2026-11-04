@@ -1625,6 +1625,13 @@ export const FeatureTree: Page[] = [
         img: 'mail',
         wallet: { type: WalletType.MAIL },
       },
+
+      {
+        id: 'login-with-passkey',
+        img: '/images/login-passkey.jpg',
+        feature: 'passkey',
+        wallet: { type: WalletType.PASSKEY },
+      },
     ],
   },
 

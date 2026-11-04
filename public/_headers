@@ -17,6 +17,51 @@
 # outcomes, depending only on whether that particular response gets cached.
 # Changing that is a CDN configuration matter; it cannot be fixed in this file.
 #
+# Security headers for every path. The two policies act only on documents and workers; on any
+# other file they are inert. Each header is set in this rule alone, because a header that several
+# matching rules set reaches the client with the values joined by commas (/widget/* only
+# detaches one, see there).
+#
+# Content-Security-Policy-Report-Only: the policy is not enforced yet. Browsers block nothing and
+# send what the policy would have refused to /csp-report (functions/csp-report.js, listed in
+# public/_routes.json), which logs one line per violation. Those logs are the inventory the
+# enforced Content-Security-Policy is built from, in a later change that also adds
+# upgrade-insecure-requests: browsers ignore that directive in a report-only policy and log a
+# console error for it on every page load. Browsers with the Reporting API send to the
+# Reporting-Endpoints entry named by report-to and ignore report-uri; the others use report-uri.
+#
+# frame-ancestors: partners embed the app in iframes (the README documents the iframe
+# integration), and no list of their origins exists. 'self' https: is what the enforced policy can
+# start from without breaking any partner page served over HTTPS; only a frame on a page outside
+# it (plain HTTP, for example) shows up in the reports. The allowlist of partner origins that
+# replaces https: when the policy is enforced therefore has to come from the logged requests for
+# documents loaded into frames, not from these reports.
+#
+# Permissions-Policy is enforced. It allows what the app uses today and turns other powerful
+# features off. A cross-origin frame gets a feature only if this policy allows it for the frame's
+# origin, so the frames the app opens are named here:
+#   - https://api.sumsub.com: the Sumsub ident frame (@sumsub/websdk-react) asks for camera,
+#     microphone, geolocation and clipboard-write; fullscreen is allowed for it as well.
+#   - https://connect.trezor.io: Trezor Connect runs in a hidden frame and reaches the device over
+#     WebUSB (src/hooks/wallets/trezor.hook.ts).
+# hid is for the Ledger and BitBox logins, which use WebHID in the app document. WebAuthn is
+# allowed for the app document only and never delegated into a frame. self is this document's
+# origin, so the policy reads the same when a partner embeds the app; the partner's iframe allow
+# attribute still decides what reaches the app at all. The KYC step that frames a URL from the API
+# (session type Browser in src/screens/kyc.screen.tsx) gets camera and microphone only for the
+# origins listed here; the API issues no such ident session today, so a provider that brings one
+# needs its origin added.
+#
+# Strict-Transport-Security covers the subdomains (dev.app.dfx.swiss and handbook.app.dfx.swiss
+# serve HTTPS) and leaves out preload, which only the apex domain can request.
+/*
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://dfx.swiss https://assets.website-files.com https://uploads-ssl.webflow.com https://explorer-api.walletconnect.com https://miro.medium.com https://logowik.com; font-src 'self'; connect-src 'self' https: wss:; frame-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self' https:; report-uri /csp-report; report-to csp-endpoint
+  Reporting-Endpoints: csp-endpoint="/csp-report"
+  Permissions-Policy: publickey-credentials-get=(self), publickey-credentials-create=(self), clipboard-read=(self), clipboard-write=(self "https://api.sumsub.com"), camera=(self "https://api.sumsub.com"), microphone=(self "https://api.sumsub.com"), fullscreen=(self "https://api.sumsub.com"), geolocation=("https://api.sumsub.com"), hid=(self), usb=("https://connect.trezor.io"), serial=(), bluetooth=(), payment=(), display-capture=(), midi=(), accelerometer=(), gyroscope=(), magnetometer=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
 # Fingerprinted build assets (content-hashed filenames) never change -> cache hard. The
 # max-age therefore stays at a year, but immutable is deliberately NOT set: immutable stops
 # a normal user-triggered reload from sending a conditional revalidation while max-age is
@@ -46,9 +91,15 @@
 
 # The embeddable widget is loaded cross-origin from third-party sites -> needs CORS.
 # Versioned in the path; match the previous CDN's 1h cache.
+#
+# X-Content-Type-Options from /* is detached here: the widget script /widget/v1.0 has no file
+# extension and is served as application/octet-stream, and browsers refuse to run a script with
+# that type under nosniff -- every partner page that loads the widget would break. The header can
+# return here once that file is served with a JavaScript content type.
 /widget/*
   Cache-Control: public, max-age=3600
   Access-Control-Allow-Origin: *
+  ! X-Content-Type-Options
 
 # Entry points must always revalidate so a new deploy goes live immediately. / and
 # index.html ARE the SPA fallback that functions/[[path]].js exists to catch elsewhere in

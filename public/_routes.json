@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "include": ["/static/*", "/widget/*", "/favicon.ico", "/logo.png", "/robots.txt", "/manifest.json", "/asset-manifest.json", "/version.json"],
+  "include": ["/static/*", "/widget/*", "/favicon.ico", "/logo.png", "/robots.txt", "/manifest.json", "/asset-manifest.json", "/version.json", "/csp-report"],
   "exclude": []
 }
