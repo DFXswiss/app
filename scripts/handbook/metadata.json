@@ -193,11 +193,11 @@
   },
   "deleted-address": {
     "title": "Gelöschte Adresse",
-    "description": "Ist die angemeldete Wallet-Adresse gelöscht, zeigt die App statt Kauf und Verkauf einen Hinweis mit dem Button zum Wiederaktivieren. Nach einer erfolgreichen Aktivierung verschwindet der Hinweis, und auf den Login-Seiten geht es weiter wie nach jeder Anmeldung: zum Screen, der zur Anmeldung geschickt hat, sonst von /login nach /buy und von /connect nach /account. Varianten: Hinweis mit Button und Hinweis nach einer fehlgeschlagenen Aktivierung mit der Fehlermeldung der API."
+    "description": "Ist die angemeldete Wallet-Adresse gelöscht, zeigt die App statt Kauf und Verkauf einen Hinweis mit dem Button zum Wiederaktivieren. Nach einer erfolgreichen Aktivierung verschwindet der Hinweis, und auf den Login-Seiten geht es weiter: zum Screen, der zur Anmeldung geschickt hat, sonst von /login nach /buy und von /connect nach /account, im eingebetteten Widget ebenso, statt es zu schließen. Varianten: Hinweis mit Button und Hinweis nach einer fehlgeschlagenen Aktivierung mit der Fehlermeldung der API."
   },
   "login-redirect": {
     "title": "Login-Weiterleitung",
-    "description": "Anmeldung auf /login per Wallet, Mail-Link oder Alby führt nach /buy. Hat ein Screen zur Anmeldung geschickt, geht es danach dorthin zurück. Dieselbe Anmeldung auf /connect endet auf /account. Die Bilder zeigen die Kommandozeilen-Wallet."
+    "description": "Anmeldung auf /login per Wallet oder Alby führt nach /buy. Der Mail-Link führt ebenfalls über /buy; weil eine Mail-Session keine Adresse hat, geht es danach weiter auf /connect. Hat ein Screen zur Anmeldung geschickt, geht es danach dorthin zurück. Dieselbe Anmeldung auf /connect endet auf /account. Die Bilder zeigen die Kommandozeilen-Wallet."
   },
   "tfa-merged-redirect": {
     "title": "2FA-Screen: Weiterleitung bei zusammengeführtem Account",
