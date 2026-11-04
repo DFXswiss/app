@@ -30,7 +30,7 @@ function stateText(state: WalletState): string {
 function evmIndexOf(value: string): number | undefined {
   if (!/^\d+$/.test(value.trim())) return undefined;
   const index = Number(value);
-  if (!Number.isSafeInteger(index) || index < 0 || index > 99) return undefined;
+  if (!Number.isSafeInteger(index) || index > 99) return undefined;
   return index;
 }
 
@@ -41,8 +41,8 @@ function canUseKeys(open: OpenPasskey): open is OpenPasskey & { keys: KeyRing } 
 const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 
 // Same rule as the wallet package: only a 20-byte hex address can be the seed check.
-function sameSeed(derived: string | undefined, expected: string | undefined): boolean {
-  if (!derived || !expected || !EVM_ADDRESS.test(derived) || !EVM_ADDRESS.test(expected)) return false;
+function sameSeed(derived: string | undefined, expected: string): boolean {
+  if (!derived || !EVM_ADDRESS.test(derived) || !EVM_ADDRESS.test(expected)) return false;
   return derived.toLowerCase() === expected.toLowerCase();
 }
 

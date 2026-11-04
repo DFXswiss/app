@@ -118,7 +118,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   if (open) {
     return (
       <StyledVerticalStack gap={2} center>
-        {notice ? <p className="text-dfxGray-700">{translate('screens/home', notice)}</p> : null}
         {error ? <p className="text-dfxRed-150">{translate('screens/home', error)}</p> : null}
         <PasskeyDesk
           onOpenApp={() => void openApp()}
