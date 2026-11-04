@@ -589,9 +589,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   synchronize does not run the wallet migration, installs a Chromium virtual authenticator, and
   adds PRF output only when that authenticator omits it. The page opens at `http://localhost:3001`
   through a forwarder to the frontend, because the relying party is `localhost` and the stack
-  hostname is not that host. A green run proves registration and a
-  later login both reach the unlocked desk, the credential row is `Active`, and credential
-  status plus the wallet list come from the API. It does not prove a hardware authenticator,
+  hostname is not that host. When that route does not answer 404, a green run proves
+  registration and a later login both reach the unlocked desk, the credential row is `Active`,
+  and credential status plus the wallet list come from the API. It does not prove the ceremony
+  when the test skips, the wallet migration (the row is copied with SQL), authenticator PRF
+  output (the harness inserts fixed bytes when they are missing), a hardware authenticator,
   the production relying party, or that background jobs run.
 - **The passkey tile unit test replaces the wallet package and the API client.**
   `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
@@ -643,12 +645,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 
 All four points below concern the full-stack harness.
 
-- **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*`
-  (`e2e-stack/env/api.env`); what that switches off in the API is described in the companion document
-  there — every process-gated cron job — so the processing chain never executes;
-  transaction states are inserted with SQL instead. What is verified is the synchronous path:
-  interaction, HTTP, validation, authorisation, persistence, display. (A cron without a `process` field
-  is not covered by that switch and keeps running — see the companion document in `DFXswiss/backend`.)
+- **No layer here verifies a payment end to end.** The harness sets an explicit
+  `DISABLED_PROCESSES` list in `e2e-stack/env/api.env` and leaves `PasskeyRegistration` off that
+  list on purpose, so the loc ceremony can register. The listed jobs do not run, and transaction
+  states are inserted with SQL instead. What is verified is the synchronous path: interaction,
+  HTTP, validation, authorisation, persistence, display. A green run does not prove that every
+  process is off, and it does not prove that a process added later and left off the list stays
+  off. A cron without a `process` field is not covered by that list and keeps running — see the
+  companion document in `DFXswiss/backend`.
 - **The harness does not exercise the migration chain.** It builds the schema from the entities,
   because one migration requires a seed row that does not exist at migration time on a fresh
   database. Migrations are covered in `DFXswiss/backend` instead.

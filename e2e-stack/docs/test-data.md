@@ -18,8 +18,9 @@ A local forwarder on `127.0.0.1:3000` (started by the tests image entrypoint) al
 The passkey ceremony opens `http://localhost:3001` and relays that port to the frontend. The relying party is `localhost`. The stack hostname `frontend` is not that host, so the form stays hidden there. Other specs stay on `http://frontend`.
 
 Master data (fiats, assets, countries, languages, banks, fees, one wallet) is seeded at API boot.
-`ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and lists every process except
-`PasskeyRegistration` in `DISABLED_PROCESSES` (no crons).
+`ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and names the processes this harness
+disables in `DISABLED_PROCESSES`. `PasskeyRegistration` is omitted from that list on purpose, so
+it stays enabled. A green run does not prove that every other process is off.
 
 **Staff KYC clearance (elevated roles)**
 
