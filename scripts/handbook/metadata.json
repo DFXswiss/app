@@ -177,7 +177,7 @@
   },
   "passkey-login": {
     "title": "Passkey-Login",
-    "description": "Login mit ?feature=Passkey zeigt die Passkey-Kachel. Die Kachel öffnet einen deaktivierten Platzhalter, einmal ohne Plattformhinweis und einmal mit dem Hinweis, dass der Browser keine Passkeys kann."
+    "description": "Login mit ?feature=Passkey zeigt die Passkey-Kachel. Ein Browser mit Passkeys öffnet das Registrierungsformular. Ein Browser ohne Passkeys bleibt auf dem deaktivierten Platzhalter mit dem Hinweis, dass keine Passkeys möglich sind."
   },
   "signature-login": {
     "title": "Signatur-Login",

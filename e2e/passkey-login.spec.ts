@@ -1,7 +1,8 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
-// Bootstrap calls are mocked so the login screen renders without a live API. The two placeholder
-// screenshots stub WebAuthn before navigation, so each variant settles on one platform report.
+// Bootstrap calls are mocked so the login screen renders without a live API. The shots stub
+// WebAuthn before navigation, so each variant settles on one platform report. The desk needs a
+// finished ceremony and is covered by the unit spec, not by these shots.
 
 const LANGUAGES = [
   { id: 1, name: 'Deutsch', symbol: 'DE', enable: true },
@@ -109,6 +110,7 @@ test.describe('Passkey login', () => {
     await expect(page.getByRole('button', { name: 'Create passkey' })).toBeDisabled();
     await page.getByLabel('Email address').fill('user@example.com');
     await expect(page.getByRole('button', { name: 'Create passkey' })).toBeEnabled();
+    await expect(page).toHaveScreenshot('passkey-login-available.png', { fullPage: true });
   });
 
   test('opens the passkey placeholder when this browser has no passkeys', async ({ page }) => {

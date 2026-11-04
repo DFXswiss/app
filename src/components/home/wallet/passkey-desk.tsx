@@ -1,4 +1,5 @@
 import type { PasskeyWallet } from '@dfx.swiss/core';
+import { useAuthContext } from '@dfx.swiss/react';
 import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
 import type { KeyRing, WalletState } from '@dfx.swiss/wallet';
 import { useRef, useState, useSyncExternalStore } from 'react';
@@ -37,10 +38,28 @@ function canUseKeys(open: OpenPasskey): open is OpenPasskey & { keys: KeyRing } 
   return open.state === 'unlocked' && open.keys !== undefined;
 }
 
+const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+
+// Same rule as the wallet package: only a 20-byte hex address can be the seed check.
+function sameSeed(derived: string | undefined, expected: string | undefined): boolean {
+  if (!derived || !expected || !EVM_ADDRESS.test(derived) || !EVM_ADDRESS.test(expected)) return false;
+  return derived.toLowerCase() === expected.toLowerCase();
+}
+
+function credentialBytes(id: string): Uint8Array {
+  const padded = id.replace(/-/g, '+').replace(/_/g, '/');
+  const text = padded + '='.repeat((4 - (padded.length % 4)) % 4);
+  const binary = atob(text);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
 // Every account route of the merged passkey wallet, after a ceremony has remembered the session.
 // Keys stay in tab memory. Opening the app is a separate step.
 export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyDeskProps): JSX.Element {
   const { translate } = useSettingsContext();
+  const { getAuthToken } = useAuthContext();
   const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
   const [evmIndex, setEvmIndex] = useState('1');
   const [busy, setBusy] = useState(false);
@@ -94,11 +113,10 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
     const accountIndex = family === 'evm' && index !== undefined ? index : 0;
     await run(async ({ auth, api }) => {
       const linked = await auth.link(family, token, keys, accountIndex);
-      const latest = getOpenPasskey();
-      if (latest) setOpenPasskey({ ...latest, accessToken: linked.accessToken });
+      // The link response is an address token. Further account routes still need the ceremony token.
       const linkedText = `Linked ${linked.address.family} ${linked.address.address}.`;
       try {
-        await refreshWallet(api, linked.accessToken, walletId);
+        await refreshWallet(api, token, walletId);
       } catch (caught) {
         setNote(`${linkedText} ${passkeyMessage(caught)}`);
         return;
@@ -119,10 +137,14 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
   async function onRevokeById(reason: 'Lost' | 'Compromised'): Promise<void> {
     const session = getOpenPasskey();
     if (!session || !session.wallet) return;
+    const fresh = getAuthToken();
+    if (!fresh) {
+      setNote('Revoke by id needs a fresh mail or wallet login.');
+      return;
+    }
     const walletId = session.wallet.id;
-    const token = session.accessToken;
     await run(async ({ api }) => {
-      const updated = await api.passkey.revoke(walletId, reason, token);
+      const updated = await api.passkey.revoke(walletId, reason, fresh);
       if (updated.status !== 'Active') {
         setWords(undefined);
         setOpenPasskey(undefined);
@@ -185,11 +207,23 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
             const unlockedSession = await auth.unlock();
             const latest = getOpenPasskey();
             if (!latest) return;
-            setOpenPasskey({
-              ...latest,
-              state: unlockedSession.state,
-              keys: unlockedSession.keys ?? (unlockedSession.state === 'unlocked' ? latest.keys : undefined),
-            });
+            const keys = unlockedSession.keys;
+            let address: string | undefined;
+            try {
+              address = keys?.evm(0).address;
+            } catch {
+              address = undefined;
+            }
+            const expected = latest.wallet?.seedCheckAddress;
+            if (unlockedSession.state !== 'unlocked' || !keys) {
+              setOpenPasskey({ ...latest, state: unlockedSession.state, keys: undefined });
+              return;
+            }
+            if (expected && !sameSeed(address, expected)) {
+              setOpenPasskey({ ...latest, state: 'seed-mismatch', keys: undefined });
+              return;
+            }
+            setOpenPasskey({ ...latest, state: 'unlocked', keys });
           })
         }
         disabled={busy}
@@ -293,7 +327,9 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
           const session = getOpenPasskey();
           if (!session || !canUseKeys(session)) return;
           void run(async ({ auth }) => {
-            const exported = await auth.exportMnemonic();
+            const current = getOpenPasskey();
+            const id = current?.wallet?.credentialId;
+            const exported = await auth.exportMnemonic(id ? credentialBytes(id) : undefined);
             setWords(exported);
             setNote('Recovery words stay on this page until you hide them.');
           });

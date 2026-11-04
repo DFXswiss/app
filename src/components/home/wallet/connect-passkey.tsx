@@ -77,6 +77,8 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     try {
       await setSession(session.accessToken, WalletType.PASSKEY);
       onLogin();
+      // The ceremony does not reload the page, so the connect step has to be left here.
+      onCancel();
     } catch (caught) {
       setError(passkeyMessage(caught));
     } finally {
@@ -115,11 +117,15 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
 
   if (open) {
     return (
-      <PasskeyDesk
-        onOpenApp={() => void openApp()}
-        onCancel={onCancel}
-        onRevoked={() => setNotice('The passkey wallet was revoked.')}
-      />
+      <StyledVerticalStack gap={2} center>
+        {notice ? <p className="text-dfxGray-700">{translate('screens/home', notice)}</p> : null}
+        {error ? <p className="text-dfxRed-150">{translate('screens/home', error)}</p> : null}
+        <PasskeyDesk
+          onOpenApp={() => void openApp()}
+          onCancel={onCancel}
+          onRevoked={() => setNotice('The passkey wallet was revoked.')}
+        />
+      </StyledVerticalStack>
     );
   }
 
