@@ -1,7 +1,7 @@
 /**
  * Financial dashboard screens (useAdminGuard: Admin only).
  *
- * Cron-fed financial_log data is empty under DISABLED_PROCESSES=* — empty charts/summary
+ * Cron-fed financial_log data is empty because those processes are listed in DISABLED_PROCESSES — empty charts/summary
  * cards are the expected normal state, not a bug. history / history/expenses lack .catch on
  * Promise.all; overview / live / liquidity catch load errors and degrade cleanly.
  */

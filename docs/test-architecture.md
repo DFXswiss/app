@@ -573,12 +573,26 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   reports, since the reporter is replaced.
 - **The passkey login visual spec stubs the browser and the bootstrap calls.**
   `e2e/passkey-login.spec.ts` fulfils geolocation-db with country `CH`, fulfils the bootstrap
-  GETs with fixtures, and answers `/v2/**` with 401. The shots replace WebAuthn, so the platform
-  report is either available or missing. A green run proves the Passkey tile is shown for
-  `?feature=Passkey`, that an available browser opens the registration form without the beta
-  sentence, and that a browser without passkeys keeps the disabled placeholder and the no-support
-  sentence. It does not prove a ceremony, the desk, that the API returns those bootstrap payloads,
-  that geolocation-db returns `CH`, or that this browser's real passkey support matches the stub.
+  GETs with fixtures, and answers `/v2/**` with 401. The tile shots replace WebAuthn, so the
+  platform report is either available or missing. The desk shots install a fixed in-page
+  authenticator and fulfil the passkey routes with one wallet. A green run proves the Passkey
+  tile is shown for `?feature=Passkey`, that an available browser opens the registration form
+  without the beta sentence, that a browser without passkeys keeps the disabled placeholder and
+  the no-support sentence, and that the desk shows the unlocked wallet, the recovery words from
+  that fixed output, a login without PRF output, and a login whose seed-check address does not
+  match. It does not prove a real WebAuthn signature, that the API returns those payloads, that
+  geolocation-db returns `CH`, or that this browser's real passkey support matches the stub.
+- **The passkey ceremony full-stack case drives the real frontend, API and database.**
+  In `e2e-stack/specs/auth.spec.ts`, the test skips when `POST /v1/auth/passkey/register/begin`
+  answers 404, because that API image has no passkey controller. Any other status runs the
+  ceremony. The test copies the default wallet row to the passkey wallet name, because
+  synchronize does not run the wallet migration, installs a Chromium virtual authenticator, and
+  adds PRF output only when that authenticator omits it. The page opens at `http://localhost:3001`
+  through a forwarder to the frontend, because the relying party is `localhost` and the stack
+  hostname is not that host. A green run proves registration and a
+  later login both reach the unlocked desk, the credential row is `Active`, and credential
+  status plus the wallet list come from the API. It does not prove a hardware authenticator,
+  the production relying party, or that background jobs run.
 - **The passkey tile unit test replaces the wallet package and the API client.**
   `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
   including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the

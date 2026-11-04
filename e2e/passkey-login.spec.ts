@@ -1,8 +1,9 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { DESK_CREDENTIAL_BYTES, deskBase64Url, installDeskAuthenticator } from './passkey-desk-authenticator';
 
-// Bootstrap calls are mocked so the login screen renders without a live API. The shots stub
-// WebAuthn before navigation, so each variant settles on one platform report. The desk needs a
-// finished ceremony and is covered by the unit spec, not by these shots.
+// Bootstrap calls are mocked so the login screen renders without a live API. The tile shots stub
+// WebAuthn before navigation, so each variant settles on one platform report. The desk shots use a
+// fixed in-page authenticator and fulfil the passkey routes. They do not prove a real signature.
 
 const LANGUAGES = [
   { id: 1, name: 'Deutsch', symbol: 'DE', enable: true },
@@ -88,6 +89,60 @@ async function openLogin(page: Page): Promise<void> {
   await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible();
 }
 
+const DESK_CHALLENGE = {
+  challengeId: '11111111-1111-4111-8111-111111111111',
+  challenge: deskBase64Url(Array.from({ length: 32 }, (_, index) => index + 1)),
+  rpId: 'localhost',
+  timeout: 600000,
+};
+
+const MISMATCH_ADDRESS = '0x0000000000000000000000000000000000000001';
+
+function deskWallet(seedCheckAddress: string): Record<string, unknown> {
+  return {
+    id: 7,
+    credentialId: deskBase64Url(DESK_CREDENTIAL_BYTES),
+    status: 'Active',
+    created: '2026-01-01T00:00:00.000Z',
+    derivationVersion: 'V1',
+    seedCheckAddress,
+    backupEligible: true,
+    backedUp: false,
+    backupRequired: false,
+    addresses: [],
+  };
+}
+
+function deskAuth(seedCheckAddress: string): Record<string, unknown> {
+  return { accessToken: 'visual-passkey-token', wallet: deskWallet(seedCheckAddress) };
+}
+
+async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<void> {
+  await page.route('**/v1/auth/passkey/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const method = route.request().method();
+    if (method === 'POST' && path.endsWith('/register/begin')) return fulfillJson(route, DESK_CHALLENGE);
+    if (method === 'POST' && path.endsWith('/register/finish')) return fulfillJson(route, deskAuth(''));
+    if (method === 'POST' && path.endsWith('/authenticate/begin')) return fulfillJson(route, DESK_CHALLENGE);
+    if (method === 'POST' && path.endsWith('/authenticate/finish')) {
+      return fulfillJson(route, deskAuth(seedCheckAddress));
+    }
+    return fulfillJson(route, []);
+  });
+}
+
+async function openDesk(page: Page, mode: 'unlocked' | 'locked' | 'mismatch'): Promise<void> {
+  await installDeskAuthenticator(page, mode !== 'locked');
+  await installLoginRoutes(page);
+  await installDeskRoutes(page, mode === 'mismatch' ? MISMATCH_ADDRESS : '');
+  await page.goto('/login?feature=Passkey&lang=en');
+  await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible();
+  await page.locator('img[src$="login-passkey.jpg"]').click();
+  await page.waitForFunction(
+    () => (window as unknown as { __passkeyPlatformReady?: boolean }).__passkeyPlatformReady === true,
+  );
+}
+
 test.describe('Passkey login', () => {
   test('shows the passkey tile when the feature flag is set', async ({ page }) => {
     await openLogin(page);
@@ -101,7 +156,9 @@ test.describe('Passkey login', () => {
     await stubPasskeyPlatform(page, true);
     await openLogin(page);
     await page.locator('img[src$="login-passkey.jpg"]').click();
-    await page.waitForFunction(() => (window as unknown as { __passkeyPlatformReady?: boolean }).__passkeyPlatformReady === true);
+    await page.waitForFunction(
+      () => (window as unknown as { __passkeyPlatformReady?: boolean }).__passkeyPlatformReady === true,
+    );
     await expect(page.getByText('Passkey login arrives with the wallet beta')).toHaveCount(0);
     await expect(page.getByText('This browser has no passkey support')).toHaveCount(0);
     await expect(page.getByLabel('Email address')).toBeVisible();
@@ -120,5 +177,38 @@ test.describe('Passkey login', () => {
     await expect(page.getByText('This browser has no passkey support')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Passkey' })).toBeDisabled();
     await expect(page).toHaveScreenshot('passkey-login-blocked.png', { fullPage: true });
+  });
+
+  test('shows the unlocked desk after registration', async ({ page }) => {
+    await openDesk(page, 'unlocked');
+    await page.getByLabel('Email address').fill('user@example.com');
+    await page.getByRole('button', { name: 'Create passkey' }).click();
+    await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Passkey wallet', { exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-desk-unlocked.png', { fullPage: true });
+  });
+
+  test('shows recovery words from the fixed authenticator output', async ({ page }) => {
+    await openDesk(page, 'unlocked');
+    await page.getByLabel('Email address').fill('user@example.com');
+    await page.getByRole('button', { name: 'Create passkey' }).click();
+    await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Show recovery words' }).click();
+    await expect(page.getByTestId('passkey-recovery-words')).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-desk-recovery.png', { fullPage: true });
+  });
+
+  test('shows a locked desk when login returns no PRF output', async ({ page }) => {
+    await openDesk(page, 'locked');
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await expect(page.getByText('This passkey did not unlock the wallet', { exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-desk-locked.png', { fullPage: true });
+  });
+
+  test('shows a seed mismatch when the server address differs', async ({ page }) => {
+    await openDesk(page, 'mismatch');
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await expect(page.getByText('This passkey does not match the wallet', { exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-desk-mismatch.png', { fullPage: true });
   });
 });

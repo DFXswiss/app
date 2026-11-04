@@ -977,7 +977,7 @@ async function userFromJwt(jwt: string): Promise<{ id: number; userDataId: numbe
 /**
  * Writes transaction (+ buy_crypto / buy_fiat / bank_tx / crypto_input) rows that the disabled
  * bank-tx / pay-in cron jobs would normally create. There is no public API to insert a completed
- * buy_crypto or buy_fiat under DISABLED_PROCESSES=*. `waiting_for_payment_buy` is the exception:
+ * buy_crypto or buy_fiat while those processes stay in DISABLED_PROCESSES. `waiting_for_payment_buy` is the exception:
  * that state is a confirmed TransactionRequest and is created through PUT /buy/paymentInfos plus
  * confirm, not SQL.
  */

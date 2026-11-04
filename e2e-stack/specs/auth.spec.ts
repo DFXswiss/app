@@ -28,6 +28,13 @@ import {
   waitForRow,
 } from './fixtures';
 import { cleanupCreatedData, createUser, e2eMail } from './fixtures/factories';
+import {
+  ensurePasskeyPage,
+  ensurePasskeyWallet,
+  installVirtualPasskey,
+  PASSKEY_PAGE_ORIGIN,
+  passkeyRegistrationRoute,
+} from './passkey-virtual-authenticator';
 
 /** Parse a 6-digit verification code from a notification row (VerificationMail / EmailVerification). */
 function codeFromNotificationData(data: string): string {
@@ -450,5 +457,45 @@ test.describe('Auth area e2e', () => {
       20000,
     );
     expect(slave.status).toBe('Merged');
+  });
+
+  test('/login?feature=Passkey registers, lists the wallet, and logs in to the desk', async ({ page }) => {
+    test.setTimeout(120000);
+    const route = await passkeyRegistrationRoute();
+    test.skip(route === 'absent', 'This API image has no passkey registration route');
+
+    await ensurePasskeyWallet();
+    await ensurePasskeyPage();
+    await installVirtualPasskey(page);
+    const mail = testEmail('passkey');
+
+    // `http://frontend` is not the loc relying party, so the form stays hidden there.
+    await page.goto(`${PASSKEY_PAGE_ORIGIN}/login?feature=Passkey&lang=en`);
+    await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible({ timeout: 20000 });
+    await page.locator('img[src$="login-passkey.jpg"]').click();
+    await expect(page.getByLabel('Email address')).toBeVisible({ timeout: 20000 });
+    await page.getByLabel('Email address').fill(mail);
+    await page.getByRole('button', { name: 'Create passkey' }).click();
+    await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText('Passkey wallet', { exact: true })).toBeVisible();
+
+    const stored = await waitForRow<{ status: string }>(
+      `SELECT c.status FROM passkey_credential c
+       JOIN user_data u ON u.id = c."userDataId"
+       WHERE u.mail = $1`,
+      [mail],
+      20000,
+    );
+    expect(stored.status).toBe('Active');
+
+    await page.getByRole('button', { name: 'Credential status' }).click();
+    await expect(page.getByText(/: Active/)).toBeVisible({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Refresh wallets' }).click();
+    await expect(page.getByText('Wallets on this account: 1.', { exact: true })).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Start another ceremony' }).click();
+    await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
   });
 });

@@ -119,6 +119,8 @@ The harness does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` other
 
 The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (override listen port with `E2E_LOOPBACK_PORT`, upstream with `E2E_API_URL`) that relays to the real API service. Under `Environment.LOC` the API builds some URLs (notably KYC-step endpoints) as `http://localhost:3000/...` because it assumes frontend and API share a host; without the forwarder, the browser inside the Playwright container would hit itself and fail with `net::ERR_CONNECTION_REFUSED`.
 
+The passkey ceremony starts a second forwarder on `127.0.0.1:3001` to the frontend. That page has to be the relying party `localhost`. The shared address `http://frontend` is a different host, and the ceremony form stays hidden there. The other specs keep using `http://frontend`.
+
 ## Relation to the existing suite under `e2e/`
 
 The suite under `e2e/` is visual-regression testing (screenshot baselines). It deliberately does not run in CI, because baselines are platform- and font-dependent.

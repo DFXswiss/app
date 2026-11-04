@@ -15,8 +15,11 @@ factories, auth, db, and the other helpers) or from a specific module such as
 
 A local forwarder on `127.0.0.1:3000` (started by the tests image entrypoint) also relays to the real API. That is why `http://localhost:3000` works from inside the container even though no API process runs there — code paths that hit `localhost` directly (e.g. server-built KYC-step URLs under `Environment.LOC`) need it.
 
+The passkey ceremony opens `http://localhost:3001` and relays that port to the frontend. The relying party is `localhost`. The stack hostname `frontend` is not that host, so the form stays hidden there. Other specs stay on `http://frontend`.
+
 Master data (fiats, assets, countries, languages, banks, fees, one wallet) is seeded at API boot.
-`ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and sets `DISABLED_PROCESSES=*` (no crons).
+`ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and lists every process except
+`PasskeyRegistration` in `DISABLED_PROCESSES` (no crons).
 
 **Staff KYC clearance (elevated roles)**
 
@@ -138,12 +141,12 @@ the "level 50 but no limit granted" case instead.
 
 ### `createTransaction(options?)`
 
-|             |                                                                                                                                                                                                                                                                                                                   |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Path**    | **SQL** for process rows (creates user/routes via other factories as needed). `waiting_for_payment_buy` is **API**: `PUT /buy/paymentInfos` + confirm.                                                                                                                                                            |
-| **Returns** | `{ transactionId?, uid, buyCryptoId?, buyFiatId?, bankTxId?, cryptoInputId?, buyId?, sellId?, userId?, userDataId?, remittanceInfo? }` (`transactionId` absent for `waiting_for_payment_buy`; `remittanceInfo` only for that state)                                                                               |
-| **Options** | `state`: `completed_buy` (default) \| `pending_buy` \| `waiting_for_payment_buy` \| `completed_sell` \| `pending_sell` \| `bank_tx_only`; `userId` / `userDataId` / `jwt`; `buyId` / `sellId`; amounts / AML fields                                                                                               |
-| **Why SQL** | In production, `buy_crypto` / `buy_fiat` are created by crons reacting to bank txs / crypto deposits. Here `DISABLED_PROCESSES=*` disables those jobs. There is no customer API to force a completed process row. `waiting_for_payment_buy` is reachable through the public confirm path, so it does not use SQL. |
+|             |                                                                                                                                                                                                                                                                                                                                  |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Path**    | **SQL** for process rows (creates user/routes via other factories as needed). `waiting_for_payment_buy` is **API**: `PUT /buy/paymentInfos` + confirm.                                                                                                                                                                           |
+| **Returns** | `{ transactionId?, uid, buyCryptoId?, buyFiatId?, bankTxId?, cryptoInputId?, buyId?, sellId?, userId?, userDataId?, remittanceInfo? }` (`transactionId` absent for `waiting_for_payment_buy`; `remittanceInfo` only for that state)                                                                                              |
+| **Options** | `state`: `completed_buy` (default) \| `pending_buy` \| `waiting_for_payment_buy` \| `completed_sell` \| `pending_sell` \| `bank_tx_only`; `userId` / `userDataId` / `jwt`; `buyId` / `sellId`; amounts / AML fields                                                                                                              |
+| **Why SQL** | In production, `buy_crypto` / `buy_fiat` are created by crons reacting to bank txs / crypto deposits. Here `DISABLED_PROCESSES` lists those jobs, so they do not run. There is no customer API to force a completed process row. `waiting_for_payment_buy` is reachable through the public confirm path, so it does not use SQL. |
 
 **Tables involved (completed buy)**
 
@@ -238,7 +241,7 @@ The self-reference check is deliberately conservative for a key spanning several
 
 | Goal                                                             | Why not                                                                                                                                                                                                                                                                 |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Real bank/crypto **arrival** → auto process                      | Crons disabled (`DISABLED_PROCESSES=*`)                                                                                                                                                                                                                                 |
+| Real bank/crypto **arrival** → auto process                      | Crons disabled (`DISABLED_PROCESSES` lists them; `PasskeyRegistration` stays enabled)                                                                                                                                                                                   |
 | Live **price-based** payment infos                               | Outbound HTTP is mocked. `global.setup.ts` backfills `price_rule` timestamps so `PUT /buy/paymentInfos` can complete from seed prices; without that backfill the path hangs or fails. Customer `WaitingForPayment` bank buys use this path (`waiting_for_payment_buy`). |
 | Full **Sumsub / IdNow** KYC completion                           | External ident providers mocked; use `createKycStep` + SQL `kycLevel`                                                                                                                                                                                                   |
 | Mail **verification codes** after first mail                     | Mail sending disabled; first `PUT /v2/user/mail` applies immediately when mail was null                                                                                                                                                                                 |
