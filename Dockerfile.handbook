@@ -4,7 +4,7 @@
 # Multi-stage: Node discovers baselines + docs and generates index.html;
 # nginx serves the result behind Basic Auth (credentials from env at start).
 
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /work
 
 ARG GIT_SHA=unknown

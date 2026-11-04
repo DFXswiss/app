@@ -235,7 +235,7 @@ jobs:
         if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           # The only `npm ci` in this job runs in e2e-stack/, so the cache key must hash that
           # lockfile — the repo-root one it defaults to belongs to a dependency set nothing here
