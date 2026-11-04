@@ -50,7 +50,7 @@ test.describe('Swap Process - UI Flow', () => {
     // Wait for assets to load
     await page.waitForSelector('text=ETH', { timeout: 10000 });
     await expect(page.locator('input[name="targetAsset"]')).toHaveValue('USDT');
-    await expect(page.getByRole('button', { name: 'Empfangsnetzwerk' })).toContainText('Ethereum');
+    await expect(page.getByRole('button', { name: 'Blockchain' })).toContainText('Ethereum');
     await page.waitForSelector('text=Wechselkurs', { timeout: 30000 });
     await page.waitForTimeout(1000);
 

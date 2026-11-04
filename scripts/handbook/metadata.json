@@ -172,8 +172,8 @@
     "description": "Swap-Flow mit Lightning-URL-Parameter."
   },
   "swap-network": {
-    "title": "Swap Empfangsnetz",
-    "description": "Swap ohne Asset- oder Chain-Hinweis in der URL: Desktop und schmales Mobilgerät mit einer Empfangsadresse, geöffnetes Empfangsnetz-Menü, sowie Desktop mit zwei Empfangsadressen und geöffnetem Empfangs-Wallet-Menü. Die zweite Adresse hängt die lokale Signatur-Anmeldung an das bestehende Konto. Im Browser werden nur die beiden lokalen Polygon-Katalogeinträge DSC und DGC als handelbar markiert. Zusätzlich Desktop und schmales Mobilgerät ohne empfangbares Asset: die URL lässt über den echten Parameter assets nur Ethereum/ETH zu und verlangt Polygon/DGC, ohne die DSC/DGC-Katalogmarkierung. Ein grüner Lauf beweist weder Backend-Freigabe noch Denario-Kurse, Liquidität oder eine Überweisung."
+    "title": "Swap Empfangs-Blockchain",
+    "description": "Swap ohne Asset- oder Chain-Hinweis in der URL: konfiguriert auf Desktop und schmalem Mobilgerät, mit geöffnetem Blockchain-Menü auf dem Desktop sowie mit geöffnetem Menü nach Verknüpfung einer zweiten Adresse, die dort nicht erscheint. Die zweite Adresse hängt die lokale Signatur-Anmeldung an das bestehende Konto. Im Browser werden nur die beiden lokalen Polygon-Katalogeinträge DSC und DGC als handelbar markiert. Ein grüner Lauf beweist weder Backend-Freigabe noch Denario-Kurse, Liquidität oder eine Überweisung."
   },
   "login-process": {
     "title": "Login-Prozess",

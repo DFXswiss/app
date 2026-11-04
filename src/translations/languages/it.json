@@ -680,10 +680,7 @@
     "Send the selected amount to the address below. This address can be used multiple times, it is always the same for swaps from {{sourceChain}} to {{asset}} on {{targetChain}}.": "Inviare l'importo selezionato all'indirizzo sottostante. Questo indirizzo può essere utilizzato più volte, è sempre lo stesso per gli swap da {{sourceChain}} a {{asset}} su {{targetChain}}.",
     "As soon as the transaction arrives in our wallet, we will transfer your asset to your wallet.": "Non appena la transazione arriva nel nostro portafoglio, trasferiremo l'asset nel vostro portafoglio.",
     "The output amount is computed as the input amount minus the DFX fee and the network fee over the base rate. That is, {{output}} {{outputSymbol}} = ({{input}} {{inputSymbol}} - {{dfxFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}) ÷ {{baseRate}}.": "L'importo di output è calcolato come l'importo di input meno la commissione DFX e la commissione di rete sul tasso base. Cioè, {{output}} {{outputSymbol}} = ({{input}} {{inputSymbol}} - {{dfxFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}) ÷ {{baseRate}}.",
-    "Sending on {{chain}}": "Invio su {{chain}}",
-    "Receiving network": "Rete di ricezione",
-    "Receiving wallet": "Portafoglio di ricezione",
-    "No asset on {{chain}} can be received with this account.": "Con il vostro conto non è possibile ricevere alcuna attività su {{chain}}."
+    "Blockchain": "Blockchain"
   },
   "screens/payment": {
     "Payment Information": "Informazioni sul pagamento",

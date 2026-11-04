@@ -13,10 +13,12 @@ test.describe('Swap Lightning to Bitcoin Onchain', () => {
       page.locator('h2', { hasText: 'Du zahlst' }).locator('..').locator('input[type="number"]').first(),
     ).toHaveValue('0.001', { timeout: 15000 });
     await expect(page.locator('input[name="sourceAsset"]')).toHaveValue('BTC');
-    await expect(page.getByText('Senden auf Lightning')).toBeVisible();
+    await expect(
+      page.locator('input[name="sourceAsset"]').locator('../..').getByText('Lightning', { exact: true }),
+    ).toBeVisible();
     await expect(page.locator('input[name="targetAsset"]')).toHaveValue('BTC');
-    await expect(page.getByRole('button', { name: 'Empfangsnetzwerk' })).toContainText('Bitcoin');
-    await expect(page.getByText(`Bitcoin · ${session.bitcoinAddress}`)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Blockchain' })).toContainText('Bitcoin');
+    await expect(page.getByRole('button', { name: 'Blockchain' })).toContainText(session.bitcoinAddress);
     await expect(page.getByText('Wechselkurs', { exact: true })).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 

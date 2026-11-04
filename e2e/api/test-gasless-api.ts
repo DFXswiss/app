@@ -11,8 +11,10 @@ dotenv.config({ path: path.join(process.cwd(), '.env.test') });
 
 const API_URL = process.env.API_URL!;
 const TEST_SEED = process.env.TEST_SEED_2!;
+const TEST_IBAN = process.env.TEST_IBAN;
 
 async function test() {
+  if (!TEST_IBAN?.trim()) throw new Error('TEST_IBAN is required');
 
   const wallet = ethers.Wallet.fromPhrase(TEST_SEED);
   console.log('=== Test Gasless API Response ===');
@@ -40,7 +42,7 @@ async function test() {
       Authorization: `Bearer ${authData.accessToken}`,
     },
     body: JSON.stringify({
-      iban: 'CH93 0076 2011 6238 5295 7',
+      iban: TEST_IBAN,
       asset: { id: 407 }, // Sepolia USDT
       amount: 0.01,
       currency: { id: 2 }, // EUR

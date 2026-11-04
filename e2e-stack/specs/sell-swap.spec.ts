@@ -331,21 +331,9 @@ function spendAmountInput(page: Page) {
 }
 
 async function receivingWalletText(page: Page): Promise<string> {
-  const dropdown = page.getByRole('button', { name: 'Receiving wallet' });
-  if ((await dropdown.count()) > 0) {
-    const block = dropdown.locator('xpath=ancestor::div[contains(@class,"min-w-0")][1]');
-    const detail = block.locator('p').last();
-    if ((await detail.count()) > 0) {
-      const text = (await detail.innerText()).replace(/\s+/g, ' ').trim();
-      if (/0x[a-fA-F0-9]{40}/.test(text)) return text;
-    }
-    return (await dropdown.innerText()).replace(/\s+/g, ' ').trim();
-  }
-  const label = page.getByText('Receiving wallet', { exact: true });
-  await expect(label).toBeVisible();
-  const line = label.locator('xpath=following-sibling::p[1]');
-  await expect(line).toBeVisible();
-  return (await line.innerText()).replace(/\s+/g, ' ').trim();
+  const button = page.getByRole('button', { name: 'Blockchain' });
+  await expect(button).toContainText(/0x[a-fA-F0-9]{40}/);
+  return (await button.innerText()).replace(/\s+/g, ' ').trim();
 }
 
 function addressIn(text: string): string {
@@ -786,10 +774,15 @@ test.describe('Sell + Swap e2e', () => {
     // in a text <input>, and only the OPEN list's items are <button>s (see StyledSearchDropdown).
     const sourceInput = page.locator('input[name="sourceAsset"]');
     await expect(sourceInput).toBeVisible({ timeout: 15000 });
+    await expect(sourceInput).not.toHaveValue(/^\s*$/);
     const sourceSelected = (await sourceInput.inputValue()).trim();
-    if (sourceSelected) {
-      expect(sellable.has(sourceSelected), `swap source asset "${sourceSelected}" must be sellable`).toBe(true);
-    }
+    expect(sellable.has(sourceSelected), `swap source asset "${sourceSelected}" must be sellable`).toBe(true);
+
+    const targetInput = page.locator('input[name="targetAsset"]');
+    await expect(targetInput).toBeVisible({ timeout: 15000 });
+    await expect(targetInput).not.toHaveValue(/^\s*$/);
+    const initialTarget = (await targetInput.inputValue()).trim();
+    expect(buyable.has(initialTarget), `swap target asset "${initialTarget}" must be buyable`).toBe(true);
 
     await sourceInput.click();
     await page.waitForTimeout(400);
@@ -811,22 +804,20 @@ test.describe('Sell + Swap e2e', () => {
     await page.getByText('You spend', { exact: true }).click();
     await page.waitForTimeout(200);
 
-    const networkButton = page.getByRole('button', { name: 'Receiving network' });
+    const networkButton = page.getByRole('button', { name: 'Blockchain' });
     await expect(networkButton).toBeVisible({ timeout: 15000 });
     await networkButton.click();
-    const ethereum = page.getByRole('button', { name: 'Ethereum', exact: true });
+    const ethereum = page.getByRole('button', { name: /^Ethereum\b/ });
     await expect(ethereum, 'Ethereum must be offered as a receive network').toHaveCount(1);
     await ethereum.scrollIntoViewIfNeeded();
     await expect(ethereum).toBeVisible();
     await ethereum.click();
     await expect(networkButton).toContainText('Ethereum');
 
-    const targetInput = page.locator('input[name="targetAsset"]');
     await expect(targetInput).toBeVisible({ timeout: 15000 });
+    await expect(targetInput).not.toHaveValue(/^\s*$/);
     const targetSelected = (await targetInput.inputValue()).trim();
-    if (targetSelected) {
-      expect(buyable.has(targetSelected), `swap target asset "${targetSelected}" must be buyable`).toBe(true);
-    }
+    expect(buyable.has(targetSelected), `swap target asset "${targetSelected}" must be buyable`).toBe(true);
 
     await targetInput.click();
     await page.waitForTimeout(400);
@@ -965,7 +956,7 @@ test.describe('Sell + Swap e2e', () => {
       .toEqual({ value: '', paymentVisible: false });
   });
 
-  test('/swap switches the receive network from Ethereum to Polygon independently of the wallet and requests ETH to Polygon USDC', async ({
+  test('/swap switches the receive chain from Ethereum to Polygon and requests ETH to Polygon USDC', async ({
     page,
   }) => {
     // Proof scope: already-enabled Ethereum/ETH to Polygon/USDC, resolved from GET /v1/asset by
@@ -973,8 +964,8 @@ test.describe('Sell + Swap e2e', () => {
     // A distinct spend of 0.2 is then typed. The initial exact paymentInfos response is matched
     // by Ethereum ETH, Ethereum USDT, the receiver and exactPrice, not by amount. That request
     // must use 0.2 and omit targetAmount, and You-get must show its estimate before the spend
-    // is captured. The receive network then changes from Ethereum to Polygon without a wallet
-    // click. The next unintercepted paymentInfos call for that new pair is matched by source
+    // is captured. The receive chain then changes from Ethereum to Polygon. The next
+    // unintercepted paymentInfos call for that new pair is matched by source
     // and target only. Its exactPrice request is checked to reuse the captured spend and to
     // omit the previous output. The spend field is read after that exact response is visible.
     // It does not enable DSC or DGC and does not prove a Denario price or a transfer.
@@ -1016,15 +1007,11 @@ test.describe('Sell + Swap e2e', () => {
       })
       .toBe(1);
     await ethOption.click();
-    const sendingOnEthereum = page.getByText('Sending on Ethereum', { exact: true });
     await expect(sourceInput).toHaveValue('ETH');
-    await expect(sendingOnEthereum).toBeVisible();
 
-    const networkButton = page.getByRole('button', { name: 'Receiving network' });
+    const networkButton = page.getByRole('button', { name: 'Blockchain' });
     await expect(networkButton).toBeVisible({ timeout: 15000 });
-    await expect(networkButton, 'selecting Ethereum ETH must set the receive network to Ethereum').toContainText(
-      'Ethereum',
-    );
+    await expect(networkButton, 'the initial receive chain must be Ethereum').toContainText('Ethereum');
 
     const walletBefore = await receivingWalletText(page);
     expect(addressIn(walletBefore).toLowerCase()).toBe(user.address.toLowerCase());
@@ -1055,7 +1042,7 @@ test.describe('Sell + Swap e2e', () => {
     const initialTarget = page.locator('input[name="targetAsset"]');
     await expect(initialTarget).toBeVisible({ timeout: 15000 });
     await initialTarget.click();
-    const usdtOption = page.getByRole('button', { name: /^USDT(\s|$)/ }).filter({ hasText: 'Ethereum' });
+    const usdtOption = page.getByRole('button', { name: /^USDT(\s|$)/ });
     await expect
       .poll(async () => usdtOption.count(), {
         timeout: 15000,
@@ -1064,6 +1051,7 @@ test.describe('Sell + Swap e2e', () => {
       .toBe(1);
     await usdtOption.click();
     await expect(initialTarget).toHaveValue('USDT');
+    await expect(networkButton).toContainText('Ethereum');
     await expect(spend).toHaveValue('');
 
     const initialExact = page.waitForResponse(
@@ -1142,12 +1130,13 @@ test.describe('Sell + Swap e2e', () => {
     );
 
     await networkButton.click();
-    const polygon = page.getByRole('button', { name: 'Polygon', exact: true });
+    const polygon = page.getByRole('button', { name: /^Polygon\b/ });
     await expect(polygon, 'Polygon must be offered as a receive network').toHaveCount(1);
     await polygon.scrollIntoViewIfNeeded();
     await expect(polygon).toBeVisible();
     await polygon.click();
     await expect(networkButton).toContainText('Polygon');
+    await expect(sourceInput).toHaveValue('ETH');
 
     const walletAfterNetwork = await receivingWalletText(page);
     expect(addressIn(walletAfterNetwork).toLowerCase()).toBe(user.address.toLowerCase());
@@ -1156,7 +1145,7 @@ test.describe('Sell + Swap e2e', () => {
     const targetInput = page.locator('input[name="targetAsset"]');
     await expect(targetInput).toBeVisible();
     await targetInput.click();
-    const usdcOption = page.getByRole('button', { name: /^USDC(\s|$)/ }).filter({ hasText: 'Polygon' });
+    const usdcOption = page.getByRole('button', { name: /^USDC(\s|$)/ });
     await expect
       .poll(async () => usdcOption.count(), {
         timeout: 10000,
@@ -1170,7 +1159,7 @@ test.describe('Sell + Swap e2e', () => {
     const response = await exactPayment;
     const body = paymentBody(response.request());
     expect(body, 'exact paymentInfos body must be JSON').toBeTruthy();
-    expect(sameRuntimeAsset(body?.sourceAsset ?? body?.source, eth)).toBe(true);
+    expect(sameRuntimeAsset(body?.sourceAsset, eth)).toBe(true);
     expect(sameRuntimeAsset(body?.targetAsset ?? body?.target, usdc)).toBe(true);
     const receiver = body?.receiverAddress ?? body?.receiver;
     expect(typeof receiver === 'string' ? receiver.toLowerCase() : '').toBe(user.address.toLowerCase());

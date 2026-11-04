@@ -101,7 +101,7 @@ test.describe('Swap Flow', () => {
     await page.waitForSelector('text=Du erhältst ungefähr', { timeout: 10000 });
     await page.waitForSelector('text=ETH', { timeout: 10000 });
     await expect(page.locator('input[name="targetAsset"]')).toHaveValue('USDT');
-    await expect(page.getByRole('button', { name: 'Empfangsnetzwerk' })).toContainText('Ethereum');
+    await expect(page.getByRole('button', { name: 'Blockchain' })).toContainText('Ethereum');
     // Wait for exchange rate to load (like sell page) - increased timeout for slow API
     await page.waitForSelector('text=Wechselkurs', { timeout: 60000 });
     await page.waitForTimeout(1000);

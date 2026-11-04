@@ -25,10 +25,12 @@ test.describe('Swap with Lightning URL Parameter', () => {
       page.locator('h2', { hasText: 'Du zahlst' }).locator('..').locator('input[type="number"]').first(),
     ).toHaveValue('0.001', { timeout: 15000 });
     await expect(page.locator('input[name="sourceAsset"]')).toHaveValue('BTC');
-    await expect(page.getByText('Senden auf Bitcoin')).toBeVisible();
+    await expect(sourceInput.locator('../..').getByText('Bitcoin', { exact: true })).toBeVisible();
     await expect(page.locator('input[name="targetAsset"]')).toHaveValue('BTC');
-    await expect(page.getByRole('button', { name: 'Empfangsnetzwerk' })).toContainText('Lightning');
-    await expect(page.getByText(`Lightning · ${session.lightningAddress}`)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Blockchain' })).toContainText('Lightning');
+    await expect(page.getByRole('button', { name: 'Blockchain' })).toContainText(
+      new RegExp(`${session.lightningAddress.slice(0, 10)}.*${session.lightningAddress.slice(-10)}`),
+    );
     await expect(page.getByText('Wechselkurs', { exact: true })).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 

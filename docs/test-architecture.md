@@ -587,15 +587,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   enums, the order hook, the debounce hook and the payment-info component. A green run proves the
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
-- **The swap receive-network visual flips two catalog flags in the browser.** The component is the
+- **The swap receive-chain visual flips two catalog flags in the browser.** The component is the
   swap screen. `e2e/swap-network.spec.ts` fetches the real local `GET /v1/asset` response and, only
   in that returned browser catalog, sets `buyable` and `sellable` to true on the Polygon DSC and
   Polygon DGC rows, matched by name and chain. A row with no uniqueName still matches. A present
   uniqueName must be `Polygon/DSC` or `Polygon/DGC`. The route throws unless that response contains
   exactly one Polygon DSC and exactly one Polygon DGC. It does not change database rows, invent
-  assets, or invent a Denario quote. The missing-asset case in the same file does not install that
-  catalog route. It opens `/swap` with the real `assets=Ethereum/ETH` filter and
-  `asset-out=Polygon/DGC`. Production supplies those two flags from the asset catalog and
+  assets, or invent a Denario quote. Production supplies those two flags from the asset catalog and
   a Denario price for the pair. A green run does not prove backend enablement, Denario prices,
   liquidity, or transfers. The full-stack network test in `e2e-stack/specs/sell-swap.spec.ts` stays
   unintercepted and does not use this fixture.

@@ -23,7 +23,6 @@ import {
   Form,
   SpinnerSize,
   StyledButton,
-  StyledButtonColor,
   StyledButtonWidth,
   StyledDropdown,
   StyledHorizontalStack,
@@ -33,7 +32,7 @@ import {
   StyledSearchDropdown,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FieldPath, FieldPathValue, useForm, useWatch } from 'react-hook-form';
 import { PaymentInformationContent } from 'src/components/payment/payment-info-sell';
 import { PrivateAssetHint } from 'src/components/private-asset-hint';
@@ -66,20 +65,19 @@ enum Side {
   GET = 'GET',
 }
 
-interface Receiver {
-  address: string;
+interface Address {
+  address?: string;
   addressLabel: string;
   label: string;
-  chain: Blockchain;
+  chain?: Blockchain;
 }
 
 interface FormData {
-  sourceAsset?: Asset;
-  targetAsset?: Asset;
+  sourceAsset: Asset;
+  targetAsset: Asset;
   amount: string;
   targetAmount: string;
-  address?: Receiver;
-  receiveNetwork?: Blockchain;
+  address: Address;
 }
 
 interface CustomAmountError {
@@ -91,54 +89,6 @@ interface CustomAmountError {
 
 interface ValidatedData extends SwapPaymentInfo {
   sideToUpdate?: Side;
-}
-
-interface WalletEntry {
-  address: string;
-  addressLabel: string;
-  blockchains: Blockchain[];
-}
-
-function chainFromAssetRef(ref?: string): string | undefined {
-  if (!ref) return undefined;
-  const slash = ref.indexOf('/');
-  if (slash <= 0) return undefined;
-  return ref.slice(0, slash);
-}
-
-function uniqueChains(chains: readonly Blockchain[]): Blockchain[] {
-  const unique: Blockchain[] = [];
-  for (const chain of chains) {
-    if (!unique.includes(chain)) unique.push(chain);
-  }
-  return unique;
-}
-
-function lowestIdAsset(list: readonly Asset[]): Asset | undefined {
-  let best: Asset | undefined;
-  for (const asset of list) {
-    if (!best || asset.id < best.id) best = asset;
-  }
-  return best;
-}
-
-function sameAsset(left?: Asset, right?: Asset): boolean {
-  return !!left && !!right && left.id === right.id && left.blockchain === right.blockchain;
-}
-
-function asEligibleChain(chain: string | undefined, eligible: readonly Blockchain[]): Blockchain | undefined {
-  if (!chain) return undefined;
-  const lowered = chain.toLowerCase();
-  return eligible.find((item) => item.toLowerCase() === lowered);
-}
-
-function embedAllows(chain: Blockchain, embed?: string): boolean {
-  if (!embed) return true;
-  return embed
-    .split(',')
-    .map((part) => part.trim().toLowerCase())
-    .filter((part) => part.length > 0)
-    .includes(chain.toLowerCase());
 }
 
 export default function SwapScreen(): JSX.Element {
@@ -161,16 +111,18 @@ export default function SwapScreen(): JSX.Element {
     assetOut,
     amountIn,
     blockchain,
-    blockchains: blockchainFilter,
+    blockchains,
+    availableBlockchains,
     hideTargetSelection,
     externalTransactionId,
     flags,
-    availableBlockchains,
   } = useAppParams();
   const { receiveFor } = useSwap();
   const { toString } = useBlockchain();
   const { rootRef } = useLayoutContext();
 
+  const [sourceAssets, setSourceAssets] = useState<Asset[]>();
+  const [targetAssets, setTargetAssets] = useState<Asset[]>([]);
   const [customAmountError, setCustomAmountError] = useState<CustomAmountError>();
   const [errorMessage, setErrorMessage] = useState<string>();
   const [kycError, setKycError] = useState<TransactionError>();
@@ -186,164 +138,47 @@ export default function SwapScreen(): JSX.Element {
   const [retryToken, setRetryToken] = useState(0);
 
   // form
-  const { control, handleSubmit, setValue, getValues, watch } = useForm<FormData>({ mode: 'onTouched' });
+  const { control, handleSubmit, setValue, watch } = useForm<FormData>({ mode: 'onTouched' });
 
   const enteredAmount = useWatch({ control, name: 'amount' });
   const selectedSourceAsset = useWatch({ control, name: 'sourceAsset' });
   const selectedTargetAmount = useWatch({ control, name: 'targetAmount' });
   const selectedTargetAsset = useWatch({ control, name: 'targetAsset' });
   const selectedAddress = useWatch({ control, name: 'address' });
-  const selectedReceiveNetwork = useWatch({ control, name: 'receiveNetwork' });
 
+  const userSelectedSourceRef = useRef(false);
+  const userSelectedChainRef = useRef(false);
+  const previousAddressRef = useRef<Address>();
   const previousAmountRef = useRef<string>();
   const previousTargetAmountRef = useRef<string>();
+  const previousTargetAssetRef = useRef<Asset>();
+  const previousTargetChainRef = useRef<Blockchain>();
   const spendClearedByUserRef = useRef(false);
   const targetClearedByUserRef = useRef(false);
   const isExactPriceWriteRef = useRef(false);
   const quoteGeneration = useRef(0);
   const enteredAmountLiveRef = useRef(enteredAmount);
   const selectedTargetAmountLiveRef = useRef(selectedTargetAmount);
-  const selectedSourceRef = useRef(selectedSourceAsset);
-  const selectedTargetRef = useRef(selectedTargetAsset);
-  const selectedAddressRef = useRef(selectedAddress);
-  const selectedNetworkRef = useRef(selectedReceiveNetwork);
-  const userReceiveNetworkRef = useRef<Blockchain | undefined>();
-  // False quotes from the spend amount. A non-empty Controller edit of the other amount flips it.
-  const receiveAmountIntentRef = useRef(false);
-  const suppressSourceDefaultRef = useRef(false);
-  const quoteNetworkRef = useRef<Blockchain | undefined>();
-  const programmaticSourceRef = useRef<Asset | undefined>();
-  const acknowledgedSourceRef = useRef<Asset | undefined>();
-  const userSourceRef = useRef<Asset | undefined>();
-  const staleSourceGuardRef = useRef<string | undefined>();
-  const staleNetworkGuardRef = useRef<string | undefined>();
-  const staleTargetGuardRef = useRef<string | undefined>();
-  const staleReceiverGuardRef = useRef<string | undefined>();
   enteredAmountLiveRef.current = enteredAmount;
   selectedTargetAmountLiveRef.current = selectedTargetAmount;
-  selectedSourceRef.current = selectedSourceAsset;
-  selectedTargetRef.current = selectedTargetAsset;
-  selectedAddressRef.current = selectedAddress;
-  selectedNetworkRef.current = selectedReceiveNetwork;
-  // A dropdown write is a manual source. setVal marks itself first, so the default asset is not treated as one.
-  if (selectedSourceAsset !== acknowledgedSourceRef.current) {
-    if (programmaticSourceRef.current && sameAsset(programmaticSourceRef.current, selectedSourceAsset)) {
-      programmaticSourceRef.current = undefined;
-      acknowledgedSourceRef.current = selectedSourceAsset;
-    } else if (selectedSourceAsset) {
-      userSourceRef.current = selectedSourceAsset;
-      acknowledgedSourceRef.current = selectedSourceAsset;
-    } else {
-      acknowledgedSourceRef.current = undefined;
-    }
-  }
   if (!enteredAmount && previousAmountRef.current) spendClearedByUserRef.current = true;
   if (!selectedTargetAmount && previousTargetAmountRef.current) targetClearedByUserRef.current = true;
 
-  function setVal(field: FieldPath<FormData>, value: FieldPathValue<FormData, FieldPath<FormData>>) {
-    setValue(field, value, { shouldValidate: true });
-  }
-
-  // setValue writes the form value even when no Controller mounted. resetField does not.
-  function clearVal(field: 'sourceAsset' | 'targetAsset' | 'address' | 'receiveNetwork'): void {
-    if (field === 'sourceAsset') setValue('sourceAsset', undefined);
-    else if (field === 'targetAsset') setValue('targetAsset', undefined);
-    else if (field === 'address') setValue('address', undefined);
-    else setValue('receiveNetwork', undefined);
-  }
-
-  function filterAssets(assetList: Asset[], filter?: string): Asset[] {
-    if (!filter) return assetList;
-    const allowedAssets = filter.split(',');
-    return assetList.filter((asset) => allowedAssets.some((candidate) => isSameAsset(asset, candidate)));
-  }
-
-  function chainName(chain: Blockchain): string {
-    return toString(chain) || chain;
-  }
-
-  const assetMapKey = assets
-    ? Array.from(assets.values())
-        .flat()
-        .map(
-          (asset) =>
-            `${asset.id}:${asset.blockchain}:${String(asset.buyable)}:${String(asset.sellable)}:${String(asset.comingSoon)}`,
-        )
-        .join(',')
-    : '';
-
-  const userSessions = [session, ...userAddresses].filter(
-    (entry, index, all) => entry && all.findIndex((other) => other?.address === entry.address) === index,
-  ) as (Session | UserAddress)[];
-
-  const userAddressItems: WalletEntry[] = userSessions.flatMap((entry) => {
-    if (!entry.address) return [];
-    return [
-      {
-        address: entry.address,
-        addressLabel: addressLabel(entry),
-        blockchains: entry.blockchains,
-      },
-    ];
-  });
-
-  const addressKey = userAddressItems
-    .map((item) => `${item.address}:${[...item.blockchains].sort().join(',')}`)
-    .join('|');
-
-  // Session chains plus linked address chains (Lightning is often only on the linked address).
-  const accountChains = uniqueChains([...(availableBlockchains ?? []), ...userAddressItems.flatMap((item) => item.blockchains)]).filter(
-    (chain) => embedAllows(chain, blockchainFilter),
-  );
-  const accountChainKey = accountChains.join('|');
-
-  const sourceAssets = useMemo(
-    () => filterAssets(getAssets(accountChains, { sellable: true, comingSoon: false }), assetFilter),
-    // accountChainKey, assetFilter, and assetMapKey stand in for getAssets and filterAssets.
-    [accountChainKey, assetFilter, assetMapKey],
-  );
-  const sourceAssetKey = sourceAssets.map((asset) => `${asset.id}:${asset.blockchain}`).join(',');
-  const sourceSelectionKey = selectedSourceAsset ? `${selectedSourceAsset.id}:${selectedSourceAsset.blockchain}` : '';
-
-  const buyableAssets = useMemo(
-    () => filterAssets(getAssets(accountChains, { buyable: true, comingSoon: false }), assetFilter),
-    [accountChainKey, assetFilter, assetMapKey],
-  );
-  const eligibleNetworks = useMemo(
-    () => accountChains.filter((chain) => buyableAssets.some((asset) => asset.blockchain === chain)),
-    [accountChainKey, buyableAssets],
-  );
-  const eligibleKey = eligibleNetworks.join('|');
-
-  const targetAssets = useMemo(() => {
-    if (!selectedReceiveNetwork) return [];
-    return filterAssets(getAssets([selectedReceiveNetwork], { buyable: true, comingSoon: false }), assetFilter);
-  }, [selectedReceiveNetwork, assetFilter, assetMapKey]);
-
-  function receiversFor(chain: Blockchain): Receiver[] {
-    const receivers: Receiver[] = [];
-    for (const item of userAddressItems) {
-      if (!item.blockchains.includes(chain)) continue;
-      receivers.push({
-        address: item.address,
-        addressLabel: item.addressLabel,
-        label: chainName(chain),
-        chain,
-      });
-    }
-    return receivers;
-  }
-
-  const compatibleReceivers = useMemo(
-    () => (selectedReceiveNetwork ? receiversFor(selectedReceiveNetwork) : []),
-    // addressKey is the address set receiversFor reads.
-    [selectedReceiveNetwork, addressKey],
-  );
-
-  const availableBalance = selectedSourceAsset && findBalance(selectedSourceAsset);
+  useEffect(() => {
+    const subscription = watch((values, { name, type }) => {
+      if (type !== 'change') return;
+      if (name === 'sourceAsset') userSelectedSourceRef.current = true;
+      if (name === 'address' && values.address?.chain) userSelectedChainRef.current = true;
+    });
+    return () => subscription.unsubscribe();
+  }, [watch]);
 
   useEffect(() => {
-    if (sourceAssets.length && session?.address) {
+    if (selectedAddress?.chain) previousAddressRef.current = selectedAddress;
+  }, [selectedAddress]);
+
+  useEffect(() => {
+    if (sourceAssets && session?.address) {
       const assetMap = sourceAssets.reduce<Record<Blockchain, Asset[]>>(
         (acc, asset) => {
           if (!acc[asset.blockchain]) acc[asset.blockchain] = [];
@@ -355,155 +190,117 @@ export default function SwapScreen(): JSX.Element {
 
       Promise.all(
         Object.entries(assetMap).map(
-          ([chain, chainAssets]) => session.address && getBalances(chainAssets, session.address, chain as Blockchain),
+          ([chain, assets]) => session.address && getBalances(assets, session.address, chain as Blockchain),
         ),
-      ).then((results) => setBalances(results.flat().filter((item) => item) as AssetBalance[]));
+      ).then((results) => setBalances(results.flat().filter((b) => b) as AssetBalance[]));
     }
-  }, [getBalances, sourceAssetKey, session?.address]);
+  }, [getBalances, sourceAssets]);
+
+  // default params
+  function setVal(field: FieldPath<FormData>, value: FieldPathValue<FormData, FieldPath<FormData>>) {
+    setValue(field, value, { shouldValidate: true });
+  }
+
+  const availableBalance = selectedSourceAsset && findBalance(selectedSourceAsset);
+
+  const filteredAssets = assets && filterAssets(Array.from(assets.values()).flat(), assetFilter);
+
+  const userSessions = [session, ...userAddresses].filter(
+    (a, i, arr) => a && arr.findIndex((b) => b?.address === a.address) === i,
+  ) as (Session | UserAddress)[];
+
+  const userAddressItems = userSessions.map((a) => ({
+    address: a.address,
+    addressLabel: addressLabel(a),
+    blockchains: a.blockchains,
+  }));
+
+  // Source blockchains: all blockchains from user addresses (including linked addresses like Lightning)
+  const sourceBlockchains = userAddressItems
+    .flatMap((a) => a.blockchains)
+    .filter((b, i, arr) => arr.indexOf(b) === i)
+    .filter((b) => filteredAssets?.some((a) => a.blockchain === b));
+
+  const linkedBitcoinAddresses = session?.blockchains.some((chain) =>
+    [Blockchain.BITCOIN, Blockchain.LIGHTNING].includes(chain),
+  )
+    ? userAddresses.filter((a) => a.address !== session?.address)
+    : [];
+  const chainAddresses: (Address & { chain: Blockchain })[] = session
+    ? [
+        ...(availableBlockchains ?? []).map((chain) => ({
+          address: session.address,
+          addressLabel: addressLabel(session),
+          label: toString(chain),
+          chain,
+        })),
+        ...linkedBitcoinAddresses.flatMap((a) =>
+          a.blockchains
+            .filter(
+              (chain) =>
+                [Blockchain.BITCOIN, Blockchain.LIGHTNING].includes(chain) &&
+                (!blockchains || blockchains.split(',').some((b) => b.toLowerCase() === chain.toLowerCase())),
+            )
+            .map((chain) => ({ address: a.address, addressLabel: addressLabel(a), label: toString(chain), chain })),
+        ),
+      ].filter(
+        (item, index, items) =>
+          items.findIndex((other) => other.chain === item.chain) === index &&
+          filterAssets(getAssets([item.chain], { buyable: true, comingSoon: false }), assetFilter).length > 0,
+      )
+    : [];
+  const addressItems: Address[] = chainAddresses.length
+    ? [
+        ...chainAddresses,
+        {
+          addressLabel: translate('screens/buy', 'Switch address'),
+          label: translate('screens/buy', 'Login with a different address'),
+        },
+      ]
+    : [];
 
   useEffect(() => {
-    const current = selectedSourceRef.current;
-    const manual = userSourceRef.current;
-    const manualMatch = manual ? sourceAssets.find((asset) => sameAsset(asset, manual)) : undefined;
-    let next: Asset | undefined;
-    if (manualMatch) {
-      next = manualMatch;
-    } else {
-      if (manual) userSourceRef.current = undefined;
-      next =
-        getAsset(sourceAssets, assetIn) ??
-        (walletBlockchain ? sourceAssets.find((asset) => asset.blockchain === walletBlockchain) : undefined);
-    }
+    const blockchainSourceAssets = getAssets(sourceBlockchains, { sellable: true, comingSoon: false });
+    const activeSourceAssets = filterAssets(blockchainSourceAssets, assetFilter);
+    setSourceAssets(activeSourceAssets);
 
-    if (!next) {
-      if (current) {
-        programmaticSourceRef.current = undefined;
-        clearVal('sourceAsset');
-      }
-      return;
-    }
-    if (sameAsset(current, next)) return;
-    programmaticSourceRef.current = next;
-    setVal('sourceAsset', next);
-  }, [assetIn, walletBlockchain, sourceAssetKey, selectedSourceAsset]);
-
-  // A Controller edit emits type "change", including when the same value is chosen again.
-  // setValue does not, so a quote write or programmatic default is not a user choice.
-  // Emptying a field does not switch amount intent; the clear latches already stop that quote.
-  useEffect(() => {
-    const subscription = watch((_formValues, info) => {
-      if (info.type !== 'change') return;
-      if (info.name === 'receiveNetwork') {
-        userReceiveNetworkRef.current = getValues('receiveNetwork');
-        return;
-      }
-      if (info.name === 'amount') {
-        if (getValues('amount')) receiveAmountIntentRef.current = false;
-        return;
-      }
-      if (info.name === 'targetAmount' && getValues('targetAmount')) {
-        receiveAmountIntentRef.current = true;
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, getValues]);
-
-  // URL chain and an explicit receive-network choice outrank the source chain.
-  // The source chain is only the default while neither of those exists.
-  useEffect(() => {
-    if (userReceiveNetworkRef.current && !eligibleNetworks.includes(userReceiveNetworkRef.current)) {
-      suppressSourceDefaultRef.current = true;
-      userReceiveNetworkRef.current = undefined;
-    }
-
-    const watchedNow = selectedNetworkRef.current;
-    if (watchedNow && !eligibleNetworks.includes(watchedNow)) {
-      suppressSourceDefaultRef.current = true;
-    }
-
-    const requestedAssetChain = chainFromAssetRef(assetOut);
-    const eligibleAssetChain = asEligibleChain(requestedAssetChain, eligibleNetworks);
-    const eligibleParamChain = !requestedAssetChain ? asEligibleChain(blockchain, eligibleNetworks) : undefined;
-
-    let nextNetwork: Blockchain | undefined;
-    const choice = userReceiveNetworkRef.current;
-    if (choice && eligibleNetworks.includes(choice)) {
-      nextNetwork = choice;
-    } else if (eligibleAssetChain) {
-      nextNetwork = eligibleAssetChain;
-    } else if (eligibleParamChain) {
-      nextNetwork = eligibleParamChain;
-    } else if (!requestedAssetChain && !blockchain && !suppressSourceDefaultRef.current) {
-      const activeSource = sourceAssets.find((asset) => sameAsset(asset, selectedSourceRef.current));
-      const fallbackSource =
-        getAsset(sourceAssets, assetIn) ??
-        (walletBlockchain ? sourceAssets.find((asset) => asset.blockchain === walletBlockchain) : undefined);
-      const resolvedSource = activeSource ?? fallbackSource;
-      if (resolvedSource && eligibleNetworks.includes(resolvedSource.blockchain)) {
-        nextNetwork = resolvedSource.blockchain;
-      }
-    }
-
-    if (!nextNetwork) {
-      if (selectedNetworkRef.current) clearVal('receiveNetwork');
-    } else if (selectedNetworkRef.current !== nextNetwork) {
-      setVal('receiveNetwork', nextNetwork);
-    }
-
-    const userOwnsNetwork = !!nextNetwork && userReceiveNetworkRef.current === nextNetwork;
-    const targets = nextNetwork
-      ? filterAssets(getAssets([nextNetwork], { buyable: true, comingSoon: false }), assetFilter)
-      : [];
-    const currentTarget = selectedTargetRef.current;
-    const targetOk =
-      !!nextNetwork &&
-      !!currentTarget &&
-      currentTarget.blockchain === nextNetwork &&
-      targets.some((asset) => asset.id === currentTarget.id);
-
-    if (!targetOk) {
-      const picked =
-        nextNetwork && !userOwnsNetwork
-          ? ((assetOut ? getAsset(targets, assetOut) : undefined) ?? lowestIdAsset(targets))
-          : undefined;
-      if (picked) {
-        setVal('targetAsset', picked);
-      } else if (currentTarget) {
-        clearVal('targetAsset');
-      }
-    }
-
-    const receivers = nextNetwork ? receiversFor(nextNetwork) : [];
-    const currentAddress = selectedAddressRef.current;
-    const reused = currentAddress?.address
-      ? receivers.find((item) => item.address === currentAddress.address && item.chain === nextNetwork)
-      : undefined;
-    let nextAddress: Receiver | undefined;
-    if (reused) {
-      nextAddress = reused;
-    } else if (receivers.length === 1) {
-      nextAddress = receivers.find((item) => item.address);
-    } else if (!userOwnsNetwork) {
-      nextAddress = receivers.find((item) => item.address === session?.address);
-    }
-
-    if (!nextAddress) {
-      if (currentAddress) clearVal('address');
-    } else if (currentAddress?.address !== nextAddress.address || currentAddress.chain !== nextAddress.chain) {
-      setVal('address', nextAddress);
+    if (!selectedSourceAsset || (assetIn && !userSelectedSourceRef.current)) {
+      const startChain = getStartAddress()?.chain;
+      const sourceAsset =
+        getAsset(activeSourceAssets, assetIn) ??
+        selectedSourceAsset ??
+        activeSourceAssets.find((a) => a.blockchain === walletBlockchain) ??
+        activeSourceAssets.find((a) => a.blockchain === startChain) ??
+        activeSourceAssets[0];
+      if (sourceAsset && sourceAsset.uniqueName !== selectedSourceAsset?.uniqueName) setVal('sourceAsset', sourceAsset);
     }
   }, [
-    eligibleKey,
-    addressKey,
-    assetOut,
-    blockchain,
+    assetFilter,
     assetIn,
+    getAsset,
+    getAssets,
     walletBlockchain,
-    selectedReceiveNetwork,
-    sourceAssetKey,
-    sourceSelectionKey,
-    assetMapKey,
+    sourceBlockchains.join(','),
+    chainAddresses.map((a) => `${a.chain}:${a.address}`).join(','),
   ]);
+
+  useEffect(() => {
+    if (!chainAddresses.length) {
+      setTargetAssets([]);
+      return;
+    }
+    if (!selectedAddress?.chain) return;
+    const activeTargetAssets = filterAssets(
+      getAssets([selectedAddress.chain], { buyable: true, comingSoon: false }),
+      assetFilter,
+    );
+    setTargetAssets(activeTargetAssets);
+    const targetAsset =
+      getAsset(activeTargetAssets, assetOut) ??
+      activeTargetAssets.find((a) => a.name === selectedTargetAsset?.name) ??
+      activeTargetAssets[0];
+    if (targetAsset && targetAsset.uniqueName !== selectedTargetAsset?.uniqueName) setVal('targetAsset', targetAsset);
+  }, [selectedAddress?.chain, chainAddresses.length, assetFilter, assetOut, getAsset, getAssets]);
 
   useEffect(() => {
     if (amountIn) {
@@ -519,6 +316,28 @@ export default function SwapScreen(): JSX.Element {
       setVal('amount', isStablecoin ? '100' : '0.1');
     }
   }, [amountIn, selectedSourceAsset]);
+
+  useEffect(() => {
+    if (!userSelectedChainRef.current) setAddress();
+  }, [
+    session?.address,
+    blockchain,
+    assetOut,
+    walletBlockchain,
+    selectedSourceAsset,
+    getAsset,
+    getAssets,
+    assetFilter,
+    chainAddresses.map((a) => `${a.chain}:${a.address}`).join(','),
+  ]);
+
+  useEffect(() => {
+    if (selectedAddress) {
+      if (!selectedAddress.chain) {
+        setShowsSwitchScreen(true);
+      }
+    }
+  }, [selectedAddress]);
 
   useEffect(() => {
     if (!enteredAmount) {
@@ -559,9 +378,7 @@ export default function SwapScreen(): JSX.Element {
     }
 
     if (requiresUpdate) {
-      if (receiveAmountIntentRef.current && hasGetData && !spendClearedByUserRef.current) {
-        updateData(Side.SPEND);
-      } else if (hasSpendData && !targetClearedByUserRef.current) {
+      if (hasSpendData && !targetClearedByUserRef.current) {
         updateData(Side.GET);
       } else if (spendClearedByUserRef.current || targetClearedByUserRef.current) {
         setValidatedData(undefined);
@@ -579,6 +396,23 @@ export default function SwapScreen(): JSX.Element {
   // GET data changed
   useEffect(() => {
     const exactPriceWrite = isExactPriceWriteRef.current;
+    const targetChanged =
+      (previousTargetChainRef.current && previousTargetChainRef.current !== selectedAddress?.chain) ||
+      (previousTargetAssetRef.current && previousTargetAssetRef.current.uniqueName !== selectedTargetAsset?.uniqueName);
+    previousTargetChainRef.current = selectedAddress?.chain;
+    previousTargetAssetRef.current = selectedTargetAsset;
+    if (targetChanged && enteredAmount) {
+      quoteGeneration.current += 1;
+      setIsQuoteFinal(false);
+      setPaymentInfo(undefined);
+      setValidatedData(undefined);
+      previousTargetAmountRef.current = undefined;
+      targetClearedByUserRef.current = false;
+      isExactPriceWriteRef.current = false;
+      setVal('targetAmount', '');
+      if (selectedTargetAsset?.blockchain === selectedAddress?.chain) updateData(Side.GET);
+      return;
+    }
     if (selectedTargetAmount) {
       targetClearedByUserRef.current = false;
       if (selectedTargetAmount !== previousTargetAmountRef.current && !exactPriceWrite) {
@@ -591,17 +425,10 @@ export default function SwapScreen(): JSX.Element {
     previousTargetAmountRef.current = selectedTargetAmount;
 
     const isSameTargetAmount = selectedTargetAmount === paymentInfo?.estimatedAmount?.toString();
-    const chainAgrees = isEligibleQuote(
-      selectedSourceAsset,
-      selectedTargetAsset,
-      selectedAddress,
-      selectedReceiveNetwork,
-    );
     const requiresUpdate =
       !isSameTargetAmount ||
       selectedTargetAsset?.uniqueName !== paymentInfo?.targetAsset?.uniqueName ||
-      selectedAddress?.address !== validatedData?.receiverAddress ||
-      !chainAgrees;
+      selectedAddress?.address !== validatedData?.receiverAddress;
 
     const hasSpendData = enteredAmount && selectedSourceAsset;
     const hasGetData = selectedTargetAmount && selectedTargetAsset && selectedAddress;
@@ -617,9 +444,7 @@ export default function SwapScreen(): JSX.Element {
     }
 
     if (requiresUpdate) {
-      if (!receiveAmountIntentRef.current && hasSpendData && !targetClearedByUserRef.current) {
-        updateData(Side.GET);
-      } else if (hasGetData && !spendClearedByUserRef.current) {
+      if (hasGetData && !spendClearedByUserRef.current) {
         updateData(Side.SPEND);
       } else if (targetClearedByUserRef.current || spendClearedByUserRef.current) {
         setValidatedData(undefined);
@@ -632,7 +457,7 @@ export default function SwapScreen(): JSX.Element {
         updateData(Side.GET);
       }
     }
-  }, [selectedTargetAmount, selectedTargetAsset, selectedAddress, selectedReceiveNetwork]);
+  }, [selectedTargetAmount, selectedTargetAsset, selectedAddress]);
 
   function updateData(sideToUpdate: Side) {
     const data = validateData({
@@ -641,26 +466,9 @@ export default function SwapScreen(): JSX.Element {
       targetAsset: selectedTargetAsset,
       targetAmount: sideToUpdate === Side.SPEND || enteredAmount === undefined ? selectedTargetAmount : undefined,
       address: selectedAddress,
-      receiveNetwork: selectedReceiveNetwork,
     });
 
     setValidatedData(data ? { ...data, sideToUpdate } : undefined);
-  }
-
-  // MAX writes through setValue, so the amount watch does not see a Controller edit.
-  // The same displayed string also skips the spend effect, and a receive quote can still be
-  // waiting on the debounce. Replace that queued quote before it can overwrite this spend.
-  function applyMaxSpend(nextAmount: string): void {
-    receiveAmountIntentRef.current = false;
-    const sameSpend = getValues('amount') === nextAmount;
-    setVal('amount', nextAmount);
-    if (!sameSpend || targetClearedByUserRef.current) return;
-    quoteGeneration.current += 1;
-    isExactPriceWriteRef.current = false;
-    setIsQuoteFinal(false);
-    setPaymentInfo(undefined);
-    updateData(Side.GET);
-    setRetryToken((token) => token + 1);
   }
 
   useEffect(() => {
@@ -736,71 +544,6 @@ export default function SwapScreen(): JSX.Element {
     };
   }, [useDebounce(validatedData, 500), retryToken]);
 
-  // Bump the generation during render so an in-flight quote cannot land between this render and an effect.
-  function discardStaleQuote() {
-    quoteGeneration.current += 1;
-    if (paymentInfo || validatedData || isQuoteFinal || kycError || errorMessage || customAmountError || isLoading) {
-      setPaymentInfo(undefined);
-      setValidatedData(undefined);
-      setIsQuoteFinal(false);
-      setKycError(undefined);
-      setErrorMessage(undefined);
-      setCustomAmountError(undefined);
-      setIsLoading(undefined);
-    }
-  }
-
-  const staleSourceId = selectedSourceAsset ? `${selectedSourceAsset.id}:${selectedSourceAsset.blockchain}` : undefined;
-  const sourceIsStale =
-    !!staleSourceId && !sourceAssets.some((asset) => `${asset.id}:${asset.blockchain}` === staleSourceId);
-  if (!sourceIsStale) {
-    staleSourceGuardRef.current = undefined;
-  } else if (staleSourceGuardRef.current !== staleSourceId) {
-    staleSourceGuardRef.current = staleSourceId;
-    discardStaleQuote();
-  }
-
-  if (selectedReceiveNetwork !== quoteNetworkRef.current) {
-    const previousNetwork = quoteNetworkRef.current;
-    quoteNetworkRef.current = selectedReceiveNetwork;
-    if (previousNetwork) discardStaleQuote();
-  }
-
-  const networkIsEligible = !!selectedReceiveNetwork && eligibleNetworks.includes(selectedReceiveNetwork);
-  if (!selectedReceiveNetwork || networkIsEligible) {
-    staleNetworkGuardRef.current = undefined;
-  } else if (staleNetworkGuardRef.current !== selectedReceiveNetwork) {
-    staleNetworkGuardRef.current = selectedReceiveNetwork;
-    discardStaleQuote();
-  }
-
-  const targetKey = selectedTargetAsset ? `${selectedTargetAsset.id}:${selectedTargetAsset.blockchain}` : undefined;
-  const targetIsEligible =
-    !!targetKey &&
-    networkIsEligible &&
-    !!selectedTargetAsset &&
-    targetAssets.some((asset) => asset.id === selectedTargetAsset.id && asset.blockchain === selectedReceiveNetwork);
-  if (!selectedTargetAsset || targetIsEligible) {
-    staleTargetGuardRef.current = undefined;
-  } else if (staleTargetGuardRef.current !== targetKey) {
-    staleTargetGuardRef.current = targetKey;
-    discardStaleQuote();
-  }
-
-  const receiverKey =
-    selectedAddress && selectedReceiveNetwork ? `${selectedReceiveNetwork}:${selectedAddress.address}` : undefined;
-  const receiverIsEligible =
-    !!receiverKey &&
-    compatibleReceivers.some(
-      (item) => item.address === selectedAddress?.address && item.chain === selectedReceiveNetwork,
-    );
-  if (!selectedAddress || receiverIsEligible) {
-    staleReceiverGuardRef.current = undefined;
-  } else if (staleReceiverGuardRef.current !== receiverKey) {
-    staleReceiverGuardRef.current = receiverKey;
-    discardStaleQuote();
-  }
-
   function validateSwap(swap: Swap): void {
     setCustomAmountError(undefined);
     setKycError(undefined);
@@ -864,49 +607,26 @@ export default function SwapScreen(): JSX.Element {
     }
   }
 
-  function isEligibleQuote(
-    source: Asset | undefined,
-    target: Asset | undefined,
-    receiver: Receiver | undefined,
-    network: Blockchain | undefined,
-  ): boolean {
-    if (!source || !target || !receiver || !network) return false;
-    if (!eligibleNetworks.includes(network)) return false;
-    if (target.blockchain !== network || receiver.chain !== network) return false;
-    if (!sourceAssets.some((asset) => sameAsset(asset, source))) return false;
-    if (!targetAssets.some((asset) => asset.id === target.id && asset.blockchain === network)) return false;
-    return compatibleReceivers.some((item) => item.address === receiver.address && item.chain === network);
-  }
-
   function validateData({
     amount: amountStr,
     sourceAsset,
     targetAsset,
     targetAmount: targetAmountStr,
     address,
-    receiveNetwork,
   }: Partial<FormData>): SwapPaymentInfo | undefined {
     const amount = Number(amountStr);
     const targetAmount = Number(targetAmountStr);
-    if (
-      !sourceAsset ||
-      !targetAsset ||
-      !address ||
-      !isEligibleQuote(sourceAsset, targetAsset, address, receiveNetwork)
-    ) {
-      return undefined;
+    if (sourceAsset != null && targetAsset != null && address != null) {
+      return amount > 0
+        ? { amount, sourceAsset, targetAsset, receiverAddress: address.address }
+        : targetAmount > 0
+          ? { sourceAsset, targetAsset, targetAmount, receiverAddress: address.address }
+          : undefined;
     }
-    if (amount > 0) {
-      return { amount, sourceAsset, targetAsset, receiverAddress: address.address };
-    }
-    if (targetAmount > 0) {
-      return { sourceAsset, targetAsset, targetAmount, receiverAddress: address.address };
-    }
-    return undefined;
   }
 
   function findBalance(asset: Asset): number | undefined {
-    return balances?.find((item) => item.asset.id === asset.id)?.amount;
+    return balances?.find((b) => b.asset.id === asset.id)?.amount;
   }
 
   function findBalanceString(asset: Asset): string {
@@ -914,25 +634,28 @@ export default function SwapScreen(): JSX.Element {
     return balance != null ? Utils.formatAmountCrypto(balance) : '';
   }
 
-  function getPaymentInfoString(info: Swap): string {
+  // misc
+  function filterAssets(assets: Asset[], filter?: string): Asset[] {
+    if (!filter) return assets;
+
+    const allowedAssets = filter.split(',');
+    return assets.filter((a) => allowedAssets.some((f) => isSameAsset(a, f)));
+  }
+
+  function getPaymentInfoString(paymentInfo: Swap): string {
     return translate(
       'screens/swap',
       'Send the selected amount to the address below. This address can be used multiple times, it is always the same for swaps from {{sourceChain}} to {{asset}} on {{targetChain}}.',
       {
-        sourceChain: toString(info.sourceAsset.blockchain),
-        targetChain: toString(info.targetAsset.blockchain),
-        asset: info.targetAsset.name,
+        sourceChain: toString(paymentInfo.sourceAsset.blockchain),
+        targetChain: toString(paymentInfo.targetAsset.blockchain),
+        asset: paymentInfo.targetAsset.name,
       },
     );
   }
 
   function onSubmit(_data?: FormData) {
     if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
-    if (
-      !isEligibleQuote(selectedSourceAsset, selectedTargetAsset, selectedAddress, selectedReceiveNetwork)
-    ) {
-      return;
-    }
     if (!paymentInfo || !isQuoteFinal || kycError || errorMessage || customAmountError?.hideInfos || isProcessing)
       return;
     if (
@@ -943,6 +666,32 @@ export default function SwapScreen(): JSX.Element {
       return;
     }
     void handleNext(paymentInfo);
+  }
+
+  function getStartAddress(): Address | undefined {
+    const initialSourceAsset =
+      selectedSourceAsset ??
+      getAsset(filterAssets(getAssets(sourceBlockchains, { sellable: true, comingSoon: false }), assetFilter), assetIn);
+    const outputAsset = getAsset(
+      filterAssets(
+        getAssets(chainAddresses.map((a) => a.chain), { buyable: true, comingSoon: false }),
+        assetFilter,
+      ),
+      assetOut,
+    );
+    return (
+      chainAddresses.find((a) => a.chain === outputAsset?.blockchain) ??
+      chainAddresses.find((a) => a.chain === blockchain) ??
+      chainAddresses.find((a) => a.chain === walletBlockchain) ??
+      chainAddresses.find((a) => a.chain === initialSourceAsset?.blockchain) ??
+      chainAddresses[0]
+    );
+  }
+
+  function setAddress() {
+    const address = getStartAddress();
+    if (address && (address.chain !== selectedAddress?.chain || address.address !== selectedAddress?.address))
+      setVal('address', address);
   }
 
   function onAddressSwitch() {
@@ -991,103 +740,93 @@ export default function SwapScreen(): JSX.Element {
 
   useLayoutOptions({ title: translate('navigation/links', 'Swap'), textStart: true });
 
-  const orderedSourceAssets = [...sourceAssets].sort((a, b) => (findBalance(b) || 0) - (findBalance(a) || 0));
-  const requestedChainName = chainFromAssetRef(assetOut) ?? blockchain;
-  const requestedUnavailable =
-    !selectedReceiveNetwork &&
-    !!requestedChainName &&
-    !eligibleNetworks.some((chain) => chain.toLowerCase() === requestedChainName.toLowerCase());
-  const missingTarget = (!!selectedReceiveNetwork && targetAssets.length === 0) || requestedUnavailable;
-  const explanationChain = (selectedReceiveNetwork ?? requestedChainName) as Blockchain | undefined;
-  const showReceiveControls = !hideTargetSelection;
-  const soleReceiver = compatibleReceivers.length === 1 ? compatibleReceivers.find((item) => item.address) : undefined;
-  const privateAsset =
-    selectedSourceAsset?.category === AssetCategory.PRIVATE
-      ? selectedSourceAsset
-      : selectedTargetAsset?.category === AssetCategory.PRIVATE
-        ? selectedTargetAsset
-        : undefined;
-  const showSwitch = showReceiveControls || missingTarget;
-
   return (
     <>
       {paymentInfo && isTxDone ? (
         <SwapCompletion paymentInfo={paymentInfo} navigateOnClose={true} txId={swapTxId} />
       ) : showsSwitchScreen ? (
-        <AddressSwitch onClose={(confirmed) => (confirmed ? onAddressSwitch() : setShowsSwitchScreen(false))} />
+        <AddressSwitch
+          onClose={(r) => {
+            if (r) onAddressSwitch();
+            else {
+              setValue('address', previousAddressRef.current as Address, { shouldValidate: true });
+              setShowsSwitchScreen(false);
+            }
+          }}
+        />
       ) : (
         <form
-          className="w-full min-w-0"
+          className="w-full"
           onSubmit={(event) => {
             event.preventDefault();
             onSubmit();
           }}
         >
-          <Form
-            control={control}
-            rules={rules}
-            errors={{}}
-            onSubmit={handleSubmit(onSubmit)}
-            translate={translateError}
-            hasFormElement={false}
-          >
-            <StyledVerticalStack gap={8} full center className="relative w-full min-w-0">
+        <Form
+          control={control}
+          rules={rules}
+          errors={{}}
+          onSubmit={handleSubmit(onSubmit)}
+          translate={translateError}
+          hasFormElement={false}
+        >
+          {sourceAssets && targetAssets && (
+            <StyledVerticalStack gap={8} full center className="relative">
               <StyledVerticalStack gap={2} full>
                 <h2 className="text-dfxGray-700">{translate('screens/buy', 'You spend')}</h2>
-                <div className="w-full min-w-0">
-                  <StyledHorizontalStack gap={1}>
-                    <div className="flex-[3_1_9rem] min-w-0">
-                      <StyledInput
-                        type="number"
-                        placeholder="0.00"
-                        prefix={selectedSourceAsset && selectedSourceAsset.name}
-                        name="amount"
-                        buttonLabel={availableBalance ? 'MAX' : undefined}
-                        buttonClick={() => availableBalance && applyMaxSpend(`${availableBalance}`)}
-                        forceError={
-                          (kycError &&
-                            [
-                              TransactionError.BANK_TRANSACTION_MISSING,
-                              TransactionError.BANK_TRANSACTION_OR_VIDEO_MISSING,
-                            ].includes(kycError)) ||
-                          customAmountError != null
-                        }
-                        forceErrorMessage={
-                          customAmountError &&
-                          translate(customAmountError.key, customAmountError.defaultValue, customAmountError.interpolation)
-                        }
-                        loading={isLoading === Side.SPEND}
-                        disabled={isLoading === Side.SPEND}
-                        full
-                      />
-                    </div>
+                <StyledHorizontalStack gap={1}>
+                  <div className="flex-[3_1_9rem]">
+                    <StyledInput
+                      type="number"
+                      placeholder="0.00"
+                      prefix={selectedSourceAsset && selectedSourceAsset.name}
+                      name="amount"
+                      buttonLabel={availableBalance ? 'MAX' : undefined}
+                      buttonClick={() => availableBalance && setVal('amount', `${availableBalance}`)}
+                      forceError={
+                        (kycError &&
+                          [
+                            TransactionError.BANK_TRANSACTION_MISSING,
+                            TransactionError.BANK_TRANSACTION_OR_VIDEO_MISSING,
+                          ].includes(kycError)) ||
+                        customAmountError != null
+                      }
+                      forceErrorMessage={
+                        customAmountError &&
+                        translate(
+                          customAmountError.key,
+                          customAmountError.defaultValue,
+                          customAmountError.interpolation,
+                        )
+                      }
+                      loading={isLoading === Side.SPEND}
+                      disabled={isLoading === Side.SPEND}
+                      full
+                    />
+                  </div>
 
-                    {orderedSourceAssets.length > 0 && (
-                      <div className="flex-[1_1_9rem] min-w-0">
-                        <StyledSearchDropdown<Asset>
-                          rootRef={rootRef}
-                          name="sourceAsset"
-                          placeholder={translate('general/actions', 'Select') + '...'}
-                          items={orderedSourceAssets}
-                          labelFunc={(item) => item.name}
-                          balanceFunc={findBalanceString}
-                          assetIconFunc={(item) => item.name as AssetIconVariant}
-                          descriptionFunc={(item) => chainName(item.blockchain)}
-                          filterFunc={(item: Asset, search?: string | undefined) =>
-                            !search || item.name.toLowerCase().includes(search.toLowerCase())
-                          }
-                          hideBalanceWhenClosed
-                          full
-                        />
-                      </div>
-                    )}
-                  </StyledHorizontalStack>
-                </div>
-                {selectedSourceAsset && (
-                  <p className="text-dfxGray-700 text-sm break-words">
-                    {translate('screens/swap', 'Sending on {{chain}}', { chain: chainName(selectedSourceAsset.blockchain) })}
-                  </p>
-                )}
+                  <div className="flex-[1_0_9rem]">
+                    <StyledSearchDropdown<Asset>
+                      rootRef={rootRef}
+                      name="sourceAsset"
+                      placeholder={translate('general/actions', 'Select') + '...'}
+                      items={sourceAssets.sort((a, b) => {
+                        const balanceA = findBalance(a) || 0;
+                        const balanceB = findBalance(b) || 0;
+                        return balanceB - balanceA;
+                      })}
+                      labelFunc={(item) => item.name}
+                      balanceFunc={findBalanceString}
+                      assetIconFunc={(item) => item.name as AssetIconVariant}
+                      descriptionFunc={(item) => toString(item.blockchain)}
+                      filterFunc={(item: Asset, search?: string | undefined) =>
+                        !search || item.name.toLowerCase().includes(search.toLowerCase())
+                      }
+                      hideBalanceWhenClosed
+                      full
+                    />
+                  </div>
+                </StyledHorizontalStack>
               </StyledVerticalStack>
 
               <StyledVerticalStack gap={2} full>
@@ -1095,104 +834,53 @@ export default function SwapScreen(): JSX.Element {
                   {translate('screens/buy', paymentInfo?.rate === 1 ? 'You get' : 'You get about')}
                 </h2>
 
-                <div className="w-full min-w-0">
-                  <StyledHorizontalStack gap={1}>
-                    <div className="flex-[3_1_9rem] min-w-0">
-                      <StyledInput
-                        type="number"
-                        name="targetAmount"
-                        loading={isLoading === Side.GET}
-                        disabled={isLoading === Side.GET}
+                <StyledHorizontalStack gap={1}>
+                  <div className="flex-[3_1_9rem]">
+                    <StyledInput
+                      type="number"
+                      name="targetAmount"
+                      loading={isLoading === Side.GET}
+                      disabled={isLoading === Side.GET}
+                      full
+                    />
+                  </div>
+                  <div className="flex-[1_0_9rem]">
+                    <div className="flex-[1_0_9rem]">
+                      <StyledSearchDropdown<Asset>
+                        rootRef={rootRef}
+                        name="targetAsset"
+                        placeholder={translate('general/actions', 'Select') + '...'}
+                        items={targetAssets}
+                        labelFunc={(item) => item.name}
+                        balanceFunc={findBalanceString}
+                        assetIconFunc={(item) => item.name as AssetIconVariant}
+                        descriptionFunc={(item) => item.description}
+                        filterFunc={(item: Asset, search?: string | undefined) =>
+                          !search || item.name.toLowerCase().includes(search.toLowerCase())
+                        }
+                        hideBalanceWhenClosed
                         full
                       />
                     </div>
-                    {targetAssets.length > 0 && (
-                      <div className="flex-[1_1_9rem] min-w-0">
-                        <StyledSearchDropdown<Asset>
-                          rootRef={rootRef}
-                          name="targetAsset"
-                          placeholder={translate('general/actions', 'Select') + '...'}
-                          items={targetAssets}
-                          labelFunc={(item) => item.name}
-                          balanceFunc={findBalanceString}
-                          assetIconFunc={(item) => item.name as AssetIconVariant}
-                          descriptionFunc={(item) => chainName(item.blockchain)}
-                          filterFunc={(item: Asset, search?: string | undefined) =>
-                            !search || item.name.toLowerCase().includes(search.toLowerCase())
-                          }
-                          hideBalanceWhenClosed
-                          full
-                        />
-                      </div>
-                    )}
-                  </StyledHorizontalStack>
-                </div>
-              </StyledVerticalStack>
+                  </div>
+                </StyledHorizontalStack>
 
-              {showReceiveControls && eligibleNetworks.length > 0 && (
-                <div className="w-full min-w-0">
-                  <StyledDropdown<Blockchain>
-                    rootRef={rootRef}
-                    name="receiveNetwork"
-                    label={translate('screens/swap', 'Receiving network')}
-                    aria-label={translate('screens/swap', 'Receiving network')}
-                    placeholder={translate('general/actions', 'Select') + '...'}
-                    items={eligibleNetworks}
-                    labelFunc={(item) => chainName(item)}
-                    full
-                    forceEnable
-                  />
-                </div>
-              )}
-
-              {showReceiveControls && selectedReceiveNetwork && soleReceiver && (
-                <div className="w-full min-w-0">
-                  <p className="text-dfxBlue-800 text-base font-semibold ml-3.5 mb-2.5">
-                    {translate('screens/swap', 'Receiving wallet')}
-                  </p>
-                  <p className="ml-3.5 break-all text-dfxGray-800">
-                    {chainName(soleReceiver.chain)} · {soleReceiver.address}
-                  </p>
-                </div>
-              )}
-
-              {showReceiveControls && selectedReceiveNetwork && compatibleReceivers.length > 1 && (
-                <div className="w-full min-w-0">
-                  <StyledDropdown<Receiver>
+                {!hideTargetSelection && (
+                  <StyledDropdown<Address>
                     rootRef={rootRef}
                     name="address"
-                    label={translate('screens/swap', 'Receiving wallet')}
-                    aria-label={translate('screens/swap', 'Receiving wallet')}
-                    items={compatibleReceivers}
-                    labelFunc={(item) => displayWalletAddress(item.addressLabel, { width })}
-                    descriptionFunc={(item) => `${chainName(item.chain)} ${item.address}`}
+                    label={translate('screens/swap', 'Blockchain')}
+                    aria-label={translate('screens/swap', 'Blockchain')}
+                    items={addressItems}
+                    labelFunc={(item) => (item.chain ? item.label : item.addressLabel)}
+                    descriptionFunc={(item) =>
+                      item.chain ? displayWalletAddress(item.addressLabel, { width }) : item.label
+                    }
                     full
                     forceEnable
                   />
-                  {selectedAddress?.chain === selectedReceiveNetwork && (
-                    <p className="mt-2 break-all text-sm text-dfxGray-700">{selectedAddress.address}</p>
-                  )}
-                </div>
-              )}
-
-              {missingTarget && explanationChain && (
-                <p className="w-full break-words text-dfxGray-700">
-                  {translate('screens/swap', 'No asset on {{chain}} can be received with this account.', {
-                    chain: chainName(explanationChain),
-                  })}
-                </p>
-              )}
-
-              {showSwitch && (
-                <StyledButton
-                  type="button"
-                  width={StyledButtonWidth.FULL}
-                  color={StyledButtonColor.STURDY_WHITE}
-                  caps={false}
-                  label={translate('screens/buy', 'Switch address')}
-                  onClick={() => setShowsSwitchScreen(true)}
-                />
-              )}
+                )}
+              </StyledVerticalStack>
 
               {isLoading ? (
                 <StyledVerticalStack center>
@@ -1210,8 +898,16 @@ export default function SwapScreen(): JSX.Element {
                     !kycError &&
                     !errorMessage &&
                     !customAmountError?.hideInfos &&
-                    (privateAsset && !flags?.includes('private') ? (
-                      <PrivateAssetHint asset={privateAsset} />
+                    ((selectedSourceAsset?.category === AssetCategory.PRIVATE ||
+                      selectedTargetAsset?.category === AssetCategory.PRIVATE) &&
+                    !flags?.includes('private') ? (
+                      <PrivateAssetHint
+                        asset={
+                          selectedSourceAsset?.category === AssetCategory.PRIVATE
+                            ? selectedSourceAsset
+                            : selectedTargetAsset
+                        }
+                      />
                     ) : (
                       <>
                         <ExchangeRate
@@ -1261,7 +957,8 @@ export default function SwapScreen(): JSX.Element {
                 </>
               )}
             </StyledVerticalStack>
-          </Form>
+          )}
+        </Form>
         </form>
       )}
     </>

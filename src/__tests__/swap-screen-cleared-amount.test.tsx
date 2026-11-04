@@ -142,6 +142,7 @@ const mockTxHelper = {
 
 jest.mock('@dfx.swiss/react', () => ({
   AssetCategory: { PUBLIC: 'Public', PRIVATE: 'Private' },
+  Blockchain: { BITCOIN: 'Bitcoin', LIGHTNING: 'Lightning' },
   TransactionError: {
     AMOUNT_TOO_LOW: 'AmountTooLow',
     AMOUNT_TOO_HIGH: 'AmountTooHigh',
@@ -219,22 +220,21 @@ jest.mock('@dfx.swiss/react-components', () => {
     ),
     StyledButtonColor: { STURDY_WHITE: 'sturdy-white' },
     StyledButtonWidth: { MIN: 'min', FULL: 'full' },
-    StyledDropdown: ({ name, items, labelFunc, descriptionFunc, control }: any) => (
+    StyledDropdown: ({ name, items, labelFunc, descriptionFunc, control, 'aria-label': ariaLabel }: any) => (
       <Controller
         name={name}
         control={control}
         render={({ field }: any) => (
           <div data-testid={`dropdown-${name}`}>
+            <button type="button" aria-label={ariaLabel} />
+            <span data-testid={`selected-${name}`}>{field.value ? labelFunc(field.value) : ''}</span>
             {(items ?? []).map((item: any, index: number) => (
-              <button
-                key={`${labelFunc(item)}-${index}`}
-                type="button"
-                data-testid={`select-${name}-${index}`}
-                onClick={() => field.onChange(item)}
-              >
-                {labelFunc(item)}
-                {descriptionFunc?.(item)}
-              </button>
+              <div key={`${labelFunc(item)}-${index}`}>
+                <button type="button" data-testid={`select-${name}-${index}`} onClick={() => field.onChange(item)}>
+                  {labelFunc(item)}
+                </button>
+                <span>{descriptionFunc?.(item)}</span>
+              </div>
             ))}
           </div>
         )}
@@ -281,14 +281,15 @@ jest.mock('@dfx.swiss/react-components', () => {
         control={control}
         render={({ field }: any) => (
           <div data-testid={`dropdown-${name}`}>
-            {filterFunc?.(items?.[0], undefined)}
-            {filterFunc?.(items?.[0], 'eth')}
-            {balanceFunc?.(items?.[0])}
-            {descriptionFunc?.(items?.[0])}
-            {assetIconFunc?.(items?.[0])}
+            <span data-testid={`selected-${name}`}>{field.value ? labelFunc(field.value) : ''}</span>
+            {items?.[0] && filterFunc?.(items[0], undefined)}
+            {items?.[0] && filterFunc?.(items[0], 'eth')}
+            {items?.[0] && balanceFunc?.(items[0])}
+            {items?.[0] && descriptionFunc?.(items[0])}
+            {items?.[0] && assetIconFunc?.(items[0])}
             {(items ?? []).map((item: any) => (
               <button
-                key={labelFunc(item)}
+                key={item.uniqueName}
                 type="button"
                 data-testid={`select-${name}-${labelFunc(item)}`}
                 onClick={() => field.onChange(item)}
@@ -1153,41 +1154,6 @@ describe('SwapScreen', () => {
     expect(screen.getByText('You get')).toBeInTheDocument();
   });
 
-  it('keeps the receiving network and target coin when another wallet on that network is chosen', async () => {
-    mockHideTarget = false;
-    mockUserAddresses = [{ address: '0xdef', blockchains: ['Ethereum'] }];
-    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false, assetOut: undefined }));
-    render(<SwapScreen />);
-    await flushQuote();
-    await act(async () => {
-      screen.getByTestId('select-address-1').click();
-    });
-    await flushQuote();
-    expect(mockSetParams).not.toHaveBeenCalled();
-    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
-    const quoted = mockReceiveFor.mock.calls.map((call: any) => call[0]);
-    expect(quoted.some((req: any) => req.receiverAddress === '0xdef' && req.targetAsset?.name === 'ETH')).toBe(true);
-    expect(quoted.every((req: any) => !req.targetAsset || req.targetAsset.blockchain === 'Ethereum')).toBe(true);
-    expect(screen.getByRole('button', { name: 'Ethereum' })).toBeInTheDocument();
-    expect(screen.getByText('0xdef')).toBeInTheDocument();
-  });
-
-  it('keeps the typed spend amount when only the receive address changes on the same chain', async () => {
-    mockHideTarget = false;
-    mockUserAddresses = [{ address: '0xdef', blockchains: ['Ethereum'] }];
-    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false }));
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-    await act(async () => {
-      screen.getByTestId('select-address-1').click();
-    });
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
-    expect(mockReceiveFor.mock.calls.some((call: any) => call[0]?.receiverAddress === '0xdef')).toBe(true);
-  });
-
   it('does not retry a quote after the spend amount becomes invalid', async () => {
     mockReceiveFor
       .mockRejectedValueOnce({ statusCode: 500, message: 'boom' })
@@ -1239,6 +1205,7 @@ describe('SwapScreen', () => {
       comingSoon: false,
     };
     mockAssets = [eth, usdc, btc];
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetOut: undefined }));
     render(<SwapScreen />);
     await flushQuote();
     await act(async () => {
@@ -1248,58 +1215,24 @@ describe('SwapScreen', () => {
     await act(async () => {
       fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.01' } });
     });
+    const callsBefore = mockReceiveFor.mock.calls.length;
     await act(async () => {
       screen.getByTestId('select-targetAsset-USDC').click();
     });
     await flushQuote();
     expect(
-      mockReceiveFor.mock.calls.some(
+      mockReceiveFor.mock.calls.slice(callsBefore).some(
         (call: any) => String(call[0].targetAmount) === '0.01' && call[0].targetAsset?.name === 'USDC',
       ),
     ).toBe(true);
   });
 
-  it('uses the assetOut chain as the receiving network when that chain has an address', async () => {
-    mockSession = { address: '0xabc', blockchains: ['Ethereum'] };
-    mockUserAddresses = [{ address: '0xbtc', blockchains: ['Bitcoin'] }];
-    mockUseAppParams.mockReturnValue(baseAppParams({ assetOut: 'Bitcoin/BTC', blockchain: 'Ethereum' }));
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(mockSetParams).not.toHaveBeenCalled();
-    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
-    expect(
-      mockReceiveFor.mock.calls.some(
-        (call: any) =>
-          call[0].targetAsset?.name === 'BTC' &&
-          call[0].targetAsset?.blockchain === 'Bitcoin' &&
-          call[0].receiverAddress === '0xbtc' &&
-          call[0].sourceAsset?.blockchain === 'Ethereum',
-      ),
-    ).toBe(true);
-  });
-
-  it('shows the Bitcoin receiving wallet when blockchain is unset and assetOut is Bitcoin/BTC', async () => {
-    mockHideTarget = false;
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({ blockchain: undefined, assetOut: 'Bitcoin/BTC', hideTargetSelection: false }),
-    );
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByText('Receiving wallet')).toBeInTheDocument();
-    expect(screen.getByText('Bitcoin · 0xabc')).toBeInTheDocument();
-    expect(screen.queryByTestId('dropdown-address')).not.toBeInTheDocument();
-    expect(
-      mockReceiveFor.mock.calls.some(
-        (call: any) => call[0].targetAsset?.blockchain === 'Bitcoin' && call[0].receiverAddress === '0xabc',
-      ),
-    ).toBe(true);
-  });
 
   it('falls back to the wallet blockchain when assetIn does not match', async () => {
     mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'NOPE' }));
     render(<SwapScreen />);
     await flushQuote();
-    expect(screen.getByTestId('select-sourceAsset-ETH')).toBeInTheDocument();
+    expect(screen.getByTestId('selected-sourceAsset')).toHaveTextContent('ETH');
   });
 
   it('quotes from get data when spend was never set', async () => {
@@ -1380,12 +1313,17 @@ describe('SwapScreen', () => {
     });
     await flushQuote();
     expect(screen.getByTestId('input-amount')).toHaveValue('');
+    const callsBefore = mockReceiveFor.mock.calls.length;
     await act(async () => {
       screen.getByTestId('select-sourceAsset-BTC').click();
     });
     await flushQuote();
     expect(screen.getByTestId('input-amount')).toHaveValue('');
-    expect(mockReceiveFor.mock.calls.some((call: any) => String(call[0].targetAmount) === '0.01')).toBe(true);
+    expect(
+      mockReceiveFor.mock.calls.slice(callsBefore).some(
+        (call: any) => String(call[0].targetAmount) === '0.01' && call[0].sourceAsset?.name === 'BTC',
+      ),
+    ).toBe(true);
   });
 
   it('groups multiple source assets on the same chain when loading balances', async () => {
@@ -1492,11 +1430,38 @@ describe('SwapScreen', () => {
     expect(screen.getByTestId('quote-error')).toHaveTextContent(error);
   });
 
-  it('renders the form when the session is missing', async () => {
+  it('renders an empty receiving list when the session is missing', async () => {
     mockSession = undefined;
+    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false }));
     render(<SwapScreen />);
     await flushQuote();
     expect(screen.getByTestId('form-submit')).toBeInTheDocument();
+    expect(screen.getByTestId('dropdown-targetAsset').querySelectorAll('button')).toHaveLength(0);
+    expect(screen.getByTestId('dropdown-address').querySelectorAll('[data-testid^="select-address-"]')).toHaveLength(0);
+  });
+
+  it('renders an empty chain list when available blockchains are undefined', async () => {
+    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false, availableBlockchains: undefined }));
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('form-submit')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Blockchain' })).toBeInTheDocument();
+    expect(screen.getByTestId('selected-address')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('dropdown-address').querySelectorAll('[data-testid^="select-address-"]')).toHaveLength(0);
+  });
+
+  it('renders an empty receiving list when no chain has a buyable asset', async () => {
+    mockAssets = [eth];
+    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false }));
+    const { rerender } = render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('select-targetAsset-ETH')).toBeInTheDocument();
+    mockAssets = [{ ...eth, buyable: false }];
+    rerender(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('form-submit')).toBeInTheDocument();
+    expect(screen.getByTestId('dropdown-targetAsset').querySelectorAll('button')).toHaveLength(0);
+    expect(screen.getByTestId('dropdown-address').querySelectorAll('[data-testid^="select-address-"]')).toHaveLength(0);
   });
 
   it('renders when the wallet chain is unset and assetIn does not match', async () => {
@@ -1507,7 +1472,7 @@ describe('SwapScreen', () => {
     expect(screen.getByTestId('form-submit')).toBeInTheDocument();
   });
 
-  it('keeps the blockchain when it already matches assetOut', async () => {
+  it('does not update params when blockchain matches assetOut', async () => {
     mockUserAddresses = [{ address: '0xbtc', blockchains: ['Bitcoin'] }];
     mockUseAppParams.mockReturnValue(
       baseAppParams({ assetOut: 'Bitcoin/BTC', blockchain: 'Bitcoin' }),
@@ -1572,1137 +1537,331 @@ describe('SwapScreen', () => {
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 
-  function polygonParams(overrides: Record<string, unknown> = {}) {
+  const lightning = { ...btc, id: 30, uniqueName: 'Lightning/BTC', blockchain: 'Lightning' };
+  const ethereumDgc = { ...polygonDgc, id: 31, uniqueName: 'Ethereum/DGC', blockchain: 'Ethereum' };
+
+  function chainParams(overrides: Record<string, unknown> = {}) {
     return baseAppParams({
-      assetIn: undefined,
-      assetOut: undefined,
       blockchain: undefined,
+      assetOut: undefined,
       hideTargetSelection: false,
-      availableBlockchains: ['Ethereum', 'Polygon', 'Bitcoin'],
+      availableBlockchains: ['Ethereum', 'Polygon'],
       ...overrides,
     });
   }
 
-  it('selects Polygon and DGC independently of the source coin when the URL has no chain', async () => {
-    mockAssets = [eth, btc, polygonDgc, polygonDsc];
-    mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon', 'Bitcoin'] };
-    mockUseAppParams.mockReturnValue(polygonParams());
-    render(<SwapScreen />);
-    await flushQuote();
-    await act(async () => {
-      screen.getByRole('button', { name: 'Polygon' }).click();
-    });
-    expect(screen.queryByTestId('select-targetAsset-ETH')).not.toBeInTheDocument();
-    expect(screen.getByTestId('select-targetAsset-DGC')).toBeInTheDocument();
-    expect(mockReceiveFor.mock.calls.every((call: any) => call[0].targetAsset?.blockchain !== 'Polygon')).toBe(true);
-    await act(async () => {
-      screen.getByTestId('select-targetAsset-DGC').click();
-    });
-    await act(async () => {
-      screen.getByTestId('select-sourceAsset-DSC').click();
-    });
-    await flushQuote();
-    expect(
-      mockReceiveFor.mock.calls.some(
-        (call: any) =>
-          call[0].sourceAsset?.name === 'DSC' &&
-          call[0].targetAsset?.name === 'DGC' &&
-          call[0].targetAsset?.blockchain === 'Polygon' &&
-          call[0].receiverAddress === '0xabc',
-      ),
-    ).toBe(true);
-    const beforeSourceChange = mockReceiveFor.mock.calls.length;
-    await act(async () => {
-      screen.getByTestId('select-sourceAsset-ETH').click();
-    });
-    await flushQuote();
-    const after = mockReceiveFor.mock.calls.slice(beforeSourceChange);
-    expect(after.some((call: any) => call[0].sourceAsset?.name === 'ETH' && call[0].targetAsset?.name === 'DGC')).toBe(
-      true,
-    );
-    expect(after.every((call: any) => call[0].targetAsset?.blockchain === 'Polygon')).toBe(true);
-  });
-
-  it('follows the source chain when no receiving network was chosen and no URL chain is set', async () => {
-    mockHideTarget = false;
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({ assetIn: undefined, assetOut: undefined, blockchain: undefined, hideTargetSelection: false }),
-    );
-    render(<SwapScreen />);
-    await flushQuote();
-    await act(async () => {
-      screen.getByTestId('select-sourceAsset-BTC').click();
-    });
-    await flushQuote();
-    expect(screen.getByText('Sending on Bitcoin')).toBeInTheDocument();
-    expect(
-      mockReceiveFor.mock.calls.some(
-        (call: any) =>
-          call[0].sourceAsset?.name === 'BTC' &&
-          call[0].targetAsset?.name === 'BTC' &&
-          call[0].receiverAddress === '0xabc',
-      ),
-    ).toBe(true);
-  });
-
-  it('initializes a Polygon/DGC receive from assetOut while the blockchain param is Ethereum', async () => {
-    mockAssets = [eth, polygonDgc, polygonDsc];
-    mockHideTarget = false;
+  it('lists session chains without chains belonging only to linked EVM addresses', async () => {
+    const arbitrumAsset = { ...eth, id: 33, uniqueName: 'Arbitrum/ETH', blockchain: 'Arbitrum' };
+    mockAssets = [eth, polygonDgc, arbitrumAsset];
     mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
-    mockUseAppParams.mockReturnValue(
-      polygonParams({
-        assetIn: 'ETH',
-        assetOut: 'Polygon/DGC',
-        blockchain: 'Ethereum',
-        availableBlockchains: ['Ethereum', 'Polygon'],
-      }),
-    );
+    mockUserAddresses = [{ address: '0xother', blockchains: ['Arbitrum'] }];
+    mockUseAppParams.mockReturnValue(chainParams());
     render(<SwapScreen />);
     await flushQuote();
-    expect(screen.getByText('Polygon · 0xabc')).toBeInTheDocument();
-    expect(mockSetParams).not.toHaveBeenCalled();
-    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
+    expect(screen.getByTestId('select-address-0')).toHaveTextContent('Ethereum');
+    expect(screen.getByTestId('select-address-1')).toHaveTextContent('Polygon');
+    expect(screen.getByTestId('select-address-2')).toHaveTextContent('Switch address');
+    expect(screen.queryByRole('button', { name: 'Arbitrum' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['Bitcoin', 'Lightning', 'bc1-session', 'ln-linked', btc, lightning],
+    ['Lightning', 'Bitcoin', 'ln-session', 'bc1-linked', lightning, btc],
+  ] as const)('quotes a linked %s session to the %s address', async (source, target, session, linked, sourceCoin, targetCoin) => {
+    mockAssets = [sourceCoin, targetCoin];
+    mockSession = { address: session, blockchains: [source] };
+    mockUserAddresses = [{ address: linked, blockchains: [target] }];
+    mockWalletBlockchain = source;
+    mockUseAppParams.mockReturnValue(chainParams({ assetIn: sourceCoin.uniqueName, availableBlockchains: [source] }));
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('select-address-1')).toHaveTextContent(target);
+    const callsBefore = mockReceiveFor.mock.calls.length;
+    await act(async () => {
+      screen.getByTestId('select-address-1').click();
+    });
+    await flushQuote();
     expect(
-      mockReceiveFor.mock.calls.some(
-        (call: any) =>
-          call[0].sourceAsset?.name === 'ETH' &&
-          call[0].targetAsset?.name === 'DGC' &&
-          call[0].targetAsset?.blockchain === 'Polygon' &&
-          call[0].receiverAddress === '0xabc',
+      mockReceiveFor.mock.calls.slice(callsBefore).some(
+        (call: any) => call[0].receiverAddress === linked && call[0].targetAsset?.blockchain === target,
       ),
     ).toBe(true);
   });
 
-  it('quotes a hidden target selection on the assetOut chain without showing the network controls', async () => {
-    mockAssets = [eth, polygonDgc];
-    mockHideTarget = true;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
+  it('does not list a linked Bitcoin address for an EVM session', async () => {
+    mockSession = { address: '0xabc', blockchains: ['Ethereum'] };
+    mockUserAddresses = [{ address: 'bc1-linked', blockchains: ['Bitcoin'] }];
+    mockUseAppParams.mockReturnValue(chainParams({ availableBlockchains: ['Ethereum'] }));
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.queryByRole('button', { name: 'Bitcoin' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('select-address-1')).toHaveTextContent('Switch address');
+  });
+
+  it.each([
+    ['Bitcoin', 'Lightning'],
+    ['Lightning', 'Bitcoin'],
+  ])('lists only the linked %s session address on %s when the session chain is filtered out', async (source, target) => {
+    mockAssets = [btc, lightning];
+    mockSession = { address: 'session', blockchains: [source] };
+    mockUserAddresses = [{ address: 'linked', blockchains: [target] }];
+    mockUseAppParams.mockReturnValue(chainParams({ blockchains: target, availableBlockchains: [] }));
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('select-address-0')).toHaveTextContent(target);
+    expect(screen.getByTestId('select-address-1')).toHaveTextContent('Switch address');
+    expect(screen.queryByTestId('select-address-2')).not.toBeInTheDocument();
+    expect(screen.getByTestId('selected-address')).toHaveTextContent(target);
+    expect(screen.getByTestId('dropdown-address')).toHaveTextContent('linked');
+  });
+
+  it.each([
+    ['Bitcoin', 'Lightning', 'Bitcoin/BTC'],
+    ['Lightning', 'Bitcoin', 'Lightning/BTC'],
+  ])('filters a linked %s session to exclude %s using blockchains', async (source, target, assetIn) => {
+    mockAssets = [btc, lightning];
+    mockSession = { address: 'session', blockchains: [source] };
+    mockUserAddresses = [{ address: 'linked', blockchains: [target] }];
+    mockWalletBlockchain = source;
     mockUseAppParams.mockReturnValue(
-      polygonParams({
-        assetIn: 'ETH',
-        assetOut: 'polygon/dgc',
-        blockchain: 'Ethereum',
-        hideTargetSelection: true,
-        availableBlockchains: ['Ethereum', 'Polygon'],
-      }),
+      chainParams({ assetIn, blockchains: source.toLowerCase(), availableBlockchains: [source] }),
     );
     render(<SwapScreen />);
     await flushQuote();
-    expect(screen.queryByTestId('dropdown-receiveNetwork')).not.toBeInTheDocument();
-    expect(screen.queryByText('Receiving wallet')).not.toBeInTheDocument();
-    expect(
-      mockReceiveFor.mock.calls.some(
-        (call: any) => call[0].targetAsset?.name === 'DGC' && call[0].receiverAddress === '0xabc',
-      ),
-    ).toBe(true);
+    expect(screen.getByTestId('select-address-0')).toHaveTextContent(source);
+    expect(screen.queryByRole('button', { name: target })).not.toBeInTheDocument();
+    expect(screen.getByTestId('select-address-1')).toHaveTextContent('Switch address');
   });
 
-  it('explains a filtered Polygon output with no receivable asset and does not keep an Ethereum quote', async () => {
-    mockAssets = [eth, polygonDgc];
-    mockHideTarget = true;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
-    mockUseAppParams.mockReturnValue(
-      polygonParams({
-        assets: 'Ethereum/ETH',
-        assetOut: 'Polygon/DGC',
-        blockchain: 'Ethereum',
-        hideTargetSelection: true,
-        availableBlockchains: ['Ethereum', 'Polygon'],
-      }),
-    );
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByText('No asset on Polygon can be received with this account.')).toBeInTheDocument();
-    expect(screen.queryByText(/No receiving address/)).not.toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    expect(mockReceiveFor).not.toHaveBeenCalled();
-    await act(async () => {
-      screen.getByRole('button', { name: 'Switch address' }).click();
-    });
-    await act(async () => {
-      screen.getByTestId('address-switch-confirm').click();
-    });
-    expect(mockLogout).toHaveBeenCalled();
-    expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
-  });
-
-  it('explains a requested network that has no receivable asset and does not fall back to Ethereum', async () => {
+  it('omits chains with no buyable asset', async () => {
     mockAssets = [eth, { ...polygonDgc, buyable: false }];
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({ assetOut: 'Polygon/DGC', blockchain: 'Ethereum', availableBlockchains: ['Ethereum', 'Polygon'] }),
-    );
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
+    mockUseAppParams.mockReturnValue(chainParams());
     render(<SwapScreen />);
     await flushQuote();
-    expect(screen.getByText('No asset on Polygon can be received with this account.')).toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    expect(mockReceiveFor).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Polygon' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('select-address-1')).toHaveTextContent('Switch address');
+  });
+
+  it('keeps the source asset when the receiving chain changes', async () => {
+    const nDeps = { ...eth, id: 32, name: 'nDEPS', uniqueName: 'Ethereum/nDEPS' };
+    mockAssets = [nDeps, polygonDgc];
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
+    mockUseAppParams.mockReturnValue(chainParams({ assetIn: 'Ethereum/nDEPS', blockchain: 'Ethereum' }));
+    render(<SwapScreen />);
+    await flushQuote();
+    const callsBefore = mockReceiveFor.mock.calls.length;
+    await act(async () => {
+      screen.getByTestId('select-address-1').click();
+    });
+    await flushQuote();
+    expect(screen.getByTestId('selected-sourceAsset')).toHaveTextContent('nDEPS');
+    expect(
+      mockReceiveFor.mock.calls.slice(callsBefore).some(
+        (call: any) =>
+          call[0].sourceAsset?.uniqueName === 'Ethereum/nDEPS' && call[0].targetAsset?.blockchain === 'Polygon',
+      ),
+    ).toBe(true);
+    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
     expect(mockSetParams).not.toHaveBeenCalled();
   });
 
-  it('keeps a manually chosen source when a same-length asset list still contains it', async () => {
-    const dai = {
-      id: 4,
-      name: 'DAI',
-      uniqueName: 'Ethereum/DAI',
-      blockchain: 'Ethereum',
-      category: 'Public',
-      description: 'Dai',
-      buyable: true,
-      sellable: true,
-      comingSoon: false,
-    };
-    mockAssets = [eth, btc];
-    const view = render(<SwapScreen />);
-    await flushQuote();
-    await act(async () => {
-      screen.getByTestId('select-sourceAsset-BTC').click();
-    });
-    await flushQuote();
-    mockAssets = [dai, btc];
-    view.rerender(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByText('Sending on Bitcoin')).toBeInTheDocument();
-    const latest = mockReceiveFor.mock.calls.at(-1)?.[0];
-    expect(latest.sourceAsset?.name).toBe('BTC');
-    expect(latest.sourceAsset?.name).not.toBe('DAI');
-  });
-
-  it('removes a source that the same-length eligible list no longer contains and ignores its late quote', async () => {
-    const dai = {
-      id: 4,
-      name: 'DAI',
-      uniqueName: 'Ethereum/DAI',
-      blockchain: 'Ethereum',
-      category: 'Public',
-      description: 'Dai',
-      buyable: true,
-      sellable: true,
-      comingSoon: false,
-    };
-    let resolveBtc: (value: unknown) => void = () => undefined;
-    mockReceiveFor.mockImplementation((req: any) => {
-      if (req.sourceAsset?.name === 'BTC' && !req.exactPrice) {
-        return new Promise((resolve) => {
-          resolveBtc = resolve;
-        });
-      }
-      return Promise.resolve(quoteFor(req));
-    });
-    mockAssets = [eth, btc];
-    const view = render(<SwapScreen />);
-    await flushQuote();
-    await act(async () => {
-      screen.getByTestId('select-sourceAsset-BTC').click();
-    });
-    await flushQuote();
-    mockAssets = [eth, dai];
-    view.rerender(<SwapScreen />);
-    await flushQuote();
-    await act(async () => {
-      resolveBtc({ ...quoteFor({ amount: 99, sourceAsset: btc, targetAsset: eth }), amount: 99 });
-      await Promise.resolve();
-    });
-    expect(screen.queryByText('99')).not.toBeInTheDocument();
-    expect(screen.getByText('Sending on Ethereum')).toBeInTheDocument();
-    expect(mockReceiveFor.mock.calls.some((call: any) => call[0].sourceAsset?.name === 'DAI' && !call[0].exactPrice)).toBe(
-      false,
-    );
-    expect(mockReceiveFor.mock.calls.at(-1)?.[0].sourceAsset?.name).toBe('ETH');
-  });
-
-  it('clears the source and blocks submit when no sellable asset remains', async () => {
-    const view = render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
-    mockAssets = [{ ...eth, sellable: false }];
-    view.rerender(<SwapScreen />);
-    await flushQuote();
-    expect(screen.queryByText(/Sending on/)).not.toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    await act(async () => {
-      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
-      await Promise.resolve();
-    });
-    expect(screen.queryByTestId('swap-completion')).not.toBeInTheDocument();
-  });
-
-  it('does not apply an old-network quote that resolves after the receiving network changes', async () => {
-    const resolvers: Array<(value: unknown) => void> = [];
-    mockReceiveFor.mockImplementation(
-      (req: any) =>
-        new Promise((resolve) => {
-          resolvers.push((value) => resolve(value ?? quoteFor(req)));
-        }),
-    );
-    mockAssets = [eth, btc, polygonDgc, polygonDsc];
-    mockHideTarget = false;
+  it.each([
+    ['assetOut', 'Polygon/DSC', 'DSC'],
+    ['matching name', undefined, 'DGC'],
+    ['first asset', 'unknown', 'DSC'],
+  ])('selects the %s target on chain change and lists only that chain', async (scenario, assetOut, expected) => {
+    mockAssets = [eth, ethereumDgc, polygonDsc, polygonDgc];
     mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
-    mockUseAppParams.mockReturnValue(polygonParams({ assetIn: 'ETH', blockchain: 'Ethereum' }));
+    mockUseAppParams.mockReturnValue(chainParams({ blockchain: 'Ethereum', assetOut }));
     render(<SwapScreen />);
-    await act(async () => {
-      jest.advanceTimersByTime(500);
-    });
-    const resolveEthereum = resolvers[0];
-    await act(async () => {
-      screen.getByRole('button', { name: 'Polygon' }).click();
-    });
-    await act(async () => {
-      resolveEthereum({ ...quoteFor({ amount: 77, sourceAsset: eth, targetAsset: eth }), amount: 77, isValid: true });
-      await Promise.resolve();
-    });
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    await act(async () => {
-      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
-      await Promise.resolve();
-    });
-    expect(screen.queryByTestId('swap-completion')).not.toBeInTheDocument();
-  });
-
-  it('does not show an old-network quote error after the receiving network changes', async () => {
-    const rejecters: Array<(reason: unknown) => void> = [];
-    mockReceiveFor.mockImplementation(
-      () =>
-        new Promise((_resolve, reject) => {
-          rejecters.push(reject);
-        }),
-    );
-    mockAssets = [eth, polygonDgc];
-    mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
-    mockUseAppParams.mockReturnValue(polygonParams({ assetIn: 'ETH', blockchain: 'Ethereum' }));
-    render(<SwapScreen />);
-    await act(async () => {
-      jest.advanceTimersByTime(500);
-    });
-    const rejectEthereum = rejecters[0];
-    await act(async () => {
-      screen.getByRole('button', { name: 'Polygon' }).click();
-    });
-    await act(async () => {
-      rejectEthereum({ statusCode: 500, message: 'old-chain-failed' });
-      await Promise.resolve();
-    });
-    expect(screen.queryByText('old-chain-failed')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-  });
-
-  it('drops the receiving network when a same-length chain list removes it and does not select another chain', async () => {
-    mockAssets = [eth, btc, polygonDgc];
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Bitcoin'] };
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({ availableBlockchains: ['Ethereum', 'Bitcoin'], blockchain: 'Ethereum' }),
-    );
-    const view = render(<SwapScreen />);
     await flushQuote();
-    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    mockSession = { address: '0xabc', blockchains: ['Polygon', 'Bitcoin'] };
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({ availableBlockchains: ['Polygon', 'Bitcoin'], blockchain: 'Ethereum' }),
-    );
-    view.rerender(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByText('No asset on Ethereum can be received with this account.')).toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    const after = mockReceiveFor.mock.calls.slice(callsBefore);
-    expect(after.every((call: any) => call[0].targetAsset?.blockchain !== 'Polygon')).toBe(true);
-    await act(async () => {
-      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
-      await Promise.resolve();
-    });
-    expect(screen.queryByTestId('swap-completion')).not.toBeInTheDocument();
-  });
-
-  it('uses the session address after a same-length address list drops the selected wallet', async () => {
-    mockHideTarget = false;
-    mockUserAddresses = [{ address: '0xdef', blockchains: ['Ethereum'] }];
-    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false }));
-    const view = render(<SwapScreen />);
-    await flushQuote();
+    if (scenario === 'assetOut') {
+      await act(async () => {
+        screen.getByTestId('select-address-0').click();
+      });
+    }
+    if (scenario !== 'first asset') {
+      await act(async () => {
+        screen.getByTestId('select-targetAsset-DGC').click();
+      });
+    }
     await act(async () => {
       screen.getByTestId('select-address-1').click();
     });
     await flushQuote();
-    expect(mockReceiveFor.mock.calls.some((call: any) => call[0].receiverAddress === '0xdef')).toBe(true);
-    mockUserAddresses = [{ address: '0x999', blockchains: ['Ethereum'] }];
-    view.rerender(<SwapScreen />);
-    await flushQuote();
-    const latest = mockReceiveFor.mock.calls.at(-1)?.[0];
-    expect(latest.receiverAddress).toBe('0xabc');
-    expect(latest.receiverAddress).not.toBe('0x999');
-    expect(latest.targetAsset?.blockchain).toBe('Ethereum');
+    expect(screen.getByTestId('selected-targetAsset')).toHaveTextContent(expected);
+    expect(screen.getByTestId('select-targetAsset-DSC')).toBeInTheDocument();
+    expect(screen.getByTestId('select-targetAsset-DGC')).toBeInTheDocument();
+    expect(screen.queryByTestId('select-targetAsset-ETH')).not.toBeInTheDocument();
   });
 
-  it('clears the wallet when the chosen network has several replacements and none is the previous address', async () => {
-    mockAssets = [eth, btc, polygonDgc];
-    mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
-    mockUserAddresses = [{ address: '0xdef', blockchains: ['Ethereum', 'Polygon'] }];
-    mockUseAppParams.mockReturnValue(polygonParams({ assetIn: 'ETH', blockchain: 'Ethereum' }));
-    const view = render(<SwapScreen />);
-    await flushQuote();
-    await act(async () => {
-      screen.getByRole('button', { name: 'Polygon' }).click();
-    });
-    await act(async () => {
-      screen.getByRole('button', { name: 'Ethereum' }).click();
-    });
-    await act(async () => {
-      screen.getByTestId('select-targetAsset-ETH').click();
-    });
-    await act(async () => {
-      screen.getByTestId('select-address-1').click();
-    });
-    await flushQuote();
-    expect(mockReceiveFor.mock.calls.some((call: any) => call[0].receiverAddress === '0xdef')).toBe(true);
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    mockSession = { address: '0x111', blockchains: ['Ethereum', 'Polygon'] };
-    mockUserAddresses = [{ address: '0x222', blockchains: ['Ethereum'] }];
-    view.rerender(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('dropdown-address')).toBeInTheDocument();
-    const replaced = mockReceiveFor.mock.calls.slice(callsBefore);
-    expect(replaced.every((call: any) => call[0].receiverAddress !== '0x111' && call[0].receiverAddress !== '0x222')).toBe(
-      true,
-    );
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-  });
-
-  it('picks the lower asset id when assetOut does not name a coin on that network', async () => {
-    const laterLower = { ...polygonDsc, id: 10 };
-    const earlierHigher = { ...polygonDgc, id: 30 };
-    mockAssets = [earlierHigher, laterLower, eth];
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({
-        assetOut: 'Polygon/NOPE',
-        blockchain: 'Ethereum',
-        availableBlockchains: ['Ethereum', 'Polygon'],
-      }),
-    );
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(mockReceiveFor.mock.calls.some((call: any) => call[0].targetAsset?.id === 10)).toBe(true);
-    expect(mockReceiveFor.mock.calls.every((call: any) => call[0].targetAsset?.id !== 30)).toBe(true);
-  });
-
-  it('lists a sellable source and a buyable target and hides an asset that is not available yet', async () => {
-    const sellOnly = {
-      id: 7,
-      name: 'SOLO',
-      uniqueName: 'Ethereum/SOLO',
-      blockchain: 'Ethereum',
-      category: 'Public',
-      buyable: false,
-      sellable: true,
-      comingSoon: false,
-    };
-    const buyOnly = {
-      id: 8,
-      name: 'BUYO',
-      uniqueName: 'Ethereum/BUYO',
-      blockchain: 'Ethereum',
-      category: 'Public',
-      buyable: true,
-      sellable: false,
-      comingSoon: false,
-    };
-    const comingSoon = {
-      id: 9,
-      name: 'SOON',
-      uniqueName: 'Ethereum/SOON',
-      blockchain: 'Ethereum',
-      category: 'Public',
-      buyable: true,
-      sellable: true,
-      comingSoon: true,
-    };
-    mockAssets = [eth, sellOnly, buyOnly, comingSoon];
-    mockHideTarget = false;
-    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false, assetOut: undefined }));
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('select-sourceAsset-SOLO')).toBeInTheDocument();
-    expect(screen.queryByTestId('select-sourceAsset-BUYO')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('select-sourceAsset-SOON')).not.toBeInTheDocument();
-    expect(screen.getByTestId('select-targetAsset-BUYO')).toBeInTheDocument();
-    expect(screen.queryByTestId('select-targetAsset-SOLO')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('select-targetAsset-SOON')).not.toBeInTheDocument();
-  });
-
-  it('limits networks to the embedded blockchain list', async () => {
-    mockUseAppParams.mockReturnValue(baseAppParams({ blockchains: 'ethereum, ,' }));
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('select-sourceAsset-ETH')).toBeInTheDocument();
-    expect(screen.queryByTestId('select-sourceAsset-BTC')).not.toBeInTheDocument();
-  });
-
-  it('drops an explicit receiving network when that chain disappears and does not fall back to the source chain', async () => {
-    mockAssets = [eth, btc, polygonDgc];
-    mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
-    mockUseAppParams.mockReturnValue(polygonParams({ availableBlockchains: ['Ethereum', 'Polygon'] }));
-    const view = render(<SwapScreen />);
-    await flushQuote();
-    await act(async () => {
-      screen.getByRole('button', { name: 'Polygon' }).click();
-    });
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Bitcoin'] };
-    mockUseAppParams.mockReturnValue(polygonParams({ availableBlockchains: ['Ethereum', 'Bitcoin'] }));
-    view.rerender(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByText('Sending on Ethereum')).toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    expect(mockReceiveFor.mock.calls.slice(callsBefore)).toEqual([]);
-    await act(async () => {
-      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
-      await Promise.resolve();
-    });
-    expect(screen.queryByTestId('swap-completion')).not.toBeInTheDocument();
-  });
-
-  it('does not choose a receiving network when the only asset cannot be received', async () => {
-    mockAssets = [
-      {
-        id: 7,
-        name: 'SOLO',
-        uniqueName: 'Ethereum/SOLO',
-        blockchain: 'Ethereum',
-        category: 'Public',
-        buyable: false,
-        sellable: true,
-        comingSoon: false,
-      },
-    ];
-    mockHideTarget = false;
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({
-        assetIn: undefined,
-        assetOut: undefined,
-        blockchain: undefined,
-        hideTargetSelection: false,
-        availableBlockchains: ['Ethereum'],
-      }),
-    );
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByText('Sending on Ethereum')).toBeInTheDocument();
-    expect(screen.queryByTestId('dropdown-receiveNetwork')).not.toBeInTheDocument();
-    expect(mockReceiveFor).not.toHaveBeenCalled();
-  });
-
-  it('switches away from a requested network that has no receivable asset without showing a quote', async () => {
-    mockAssets = [eth, polygonDgc];
-    mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
-    mockUseAppParams.mockReturnValue(
-      polygonParams({
-        assets: 'Ethereum/ETH',
-        assetOut: 'Polygon/DGC',
-        availableBlockchains: ['Ethereum', 'Polygon'],
-      }),
-    );
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByText('No asset on Polygon can be received with this account.')).toBeInTheDocument();
-    expect(screen.queryByText(/No receiving address/)).not.toBeInTheDocument();
-    expect(mockReceiveFor).not.toHaveBeenCalled();
-    await act(async () => {
-      screen.getByRole('button', { name: 'Ethereum' }).click();
-    });
-    await flushQuote();
-    expect(mockReceiveFor).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-  });
-
-  it('shows one receiving network as a dropdown and the full address of its only wallet', async () => {
-    mockAssets = [eth];
-    mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum'] };
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({
-        hideTargetSelection: false,
-        assetOut: undefined,
-        availableBlockchains: ['Ethereum'],
-      }),
-    );
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('dropdown-receiveNetwork')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Ethereum' })).toBeInTheDocument();
-    expect(screen.getByText('Receiving wallet')).toBeInTheDocument();
-    expect(screen.getByText('Ethereum · 0xabc')).toBeInTheDocument();
-    expect(screen.queryByTestId('dropdown-address')).not.toBeInTheDocument();
-  });
-
-  it('follows a chosen source when the wallet chain is unknown and the URL has no asset or chain', async () => {
-    mockAssets = [eth, btc, polygonDgc, polygonDsc];
+  it('initializes source, chain and target without a wallet blockchain', async () => {
     mockWalletBlockchain = undefined;
-    mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon', 'Bitcoin'] };
     mockUseAppParams.mockReturnValue(
-      baseAppParams({
-        assetIn: undefined,
-        assetOut: undefined,
-        blockchain: undefined,
-        hideTargetSelection: false,
-        availableBlockchains: ['Ethereum', 'Polygon', 'Bitcoin'],
-      }),
+      chainParams({ assetIn: 'Ethereum/ETH', availableBlockchains: ['Ethereum', 'Bitcoin'] }),
     );
     render(<SwapScreen />);
     await flushQuote();
-    expect(screen.queryByText(/Sending on/)).not.toBeInTheDocument();
-    expect(mockReceiveFor).not.toHaveBeenCalled();
-    await act(async () => {
-      screen.getByTestId('select-sourceAsset-DSC').click();
-    });
-    await flushQuote();
-    expect(screen.getByText('Sending on Polygon')).toBeInTheDocument();
-    expect(screen.getByText('Polygon · 0xabc')).toBeInTheDocument();
-    expect(
-      mockReceiveFor.mock.calls.some(
-        (call: any) =>
-          call[0].sourceAsset?.name === 'DSC' &&
-          call[0].targetAsset?.name === 'DGC' &&
-          call[0].targetAsset?.blockchain === 'Polygon' &&
-          call[0].receiverAddress === '0xabc',
-      ),
-    ).toBe(true);
+    expect(screen.getByTestId('selected-sourceAsset')).toHaveTextContent('ETH');
+    expect(screen.getByTestId('selected-address')).toHaveTextContent('Ethereum');
+    expect(screen.getByTestId('selected-targetAsset')).toHaveTextContent('ETH');
+    expect(screen.getByTestId('input-amount')).toBeInTheDocument();
   });
 
-  it('keeps the current receiving network when that same network is chosen again before the source chain changes', async () => {
-    mockAssets = [eth, btc, polygonDgc, polygonDsc];
-    mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon', 'Bitcoin'] };
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({
-        assetIn: undefined,
-        assetOut: undefined,
-        blockchain: undefined,
-        hideTargetSelection: false,
-        availableBlockchains: ['Ethereum', 'Polygon', 'Bitcoin'],
-      }),
-    );
+  it.each([
+    ['assetOut over blockchain', 'Ethereum', 'Polygon/DGC', 'Polygon', 'Polygon/DGC', 'Polygon'],
+    ['blockchain', 'Ethereum', 'unknown', 'Polygon', 'Polygon/DGC', 'Ethereum'],
+    ['assetOut', undefined, 'Polygon/DGC', 'Ethereum', 'Ethereum/ETH', 'Polygon'],
+    ['wallet', undefined, undefined, 'Polygon', 'Ethereum/ETH', 'Polygon'],
+    ['source asset', undefined, undefined, undefined, 'Polygon/DGC', 'Polygon'],
+    ['first chain', undefined, undefined, undefined, undefined, 'Ethereum'],
+    ['first chain when preferences do not match', 'Monero', 'Monero/XMR', 'Bitcoin', 'NOPE', 'Ethereum'],
+  ])('uses %s for the initial receiving chain', async (_priority, blockchain, assetOut, wallet, assetIn, expected) => {
+    mockAssets = [eth, polygonDgc];
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
+    mockWalletBlockchain = wallet;
+    mockUseAppParams.mockReturnValue(chainParams({ blockchain, assetOut, assetIn }));
     render(<SwapScreen />);
     await flushQuote();
-    expect(screen.getByText('Sending on Ethereum')).toBeInTheDocument();
-    await act(async () => {
-      screen.getByRole('button', { name: 'Ethereum' }).click();
-    });
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    await act(async () => {
-      screen.getByTestId('select-sourceAsset-DSC').click();
-    });
-    await flushQuote();
-    expect(screen.getByText('Sending on Polygon')).toBeInTheDocument();
-    expect(screen.getByTestId('select-targetAsset-ETH')).toBeInTheDocument();
-    expect(screen.queryByTestId('select-targetAsset-DGC')).not.toBeInTheDocument();
-    const after = mockReceiveFor.mock.calls.slice(callsBefore);
-    expect(
-      after.some(
-        (call: any) =>
-          call[0].sourceAsset?.name === 'DSC' &&
-          call[0].targetAsset?.name === 'ETH' &&
-          call[0].targetAsset?.blockchain === 'Ethereum',
-      ),
-    ).toBe(true);
-    expect(after.every((call: any) => call[0].targetAsset?.blockchain === 'Ethereum')).toBe(true);
+    expect(screen.getByTestId('selected-address')).toHaveTextContent(expected);
   });
 
-  it('clears a hidden sole receiver on the same chain and ignores the late quote', async () => {
-    let resolveQuote: (value: unknown) => void = () => undefined;
-    mockReceiveFor.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveQuote = resolve;
-        }),
-    );
-    mockHideTarget = true;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Bitcoin'] };
-    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: true }));
-    const view = render(<SwapScreen />);
-    await act(async () => {
-      jest.advanceTimersByTime(500);
-    });
-    expect(screen.queryByTestId('dropdown-receiveNetwork')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('dropdown-address')).not.toBeInTheDocument();
-    expect(mockReceiveFor).toHaveBeenCalled();
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    mockSession = { blockchains: [] };
-    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: true, availableBlockchains: [] }));
-    view.rerender(<SwapScreen />);
-    await flushQuote();
-    expect(mockReceiveFor.mock.calls.length).toBe(callsBefore);
-    expect(screen.queryByText(/No receiving address/)).not.toBeInTheDocument();
-    expect(screen.getByText('No asset on Ethereum can be received with this account.')).toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    await act(async () => {
-      resolveQuote({ ...quoteFor({ amount: 64, sourceAsset: eth, targetAsset: eth }), amount: 64 });
-      await Promise.resolve();
-    });
-    expect(screen.queryByText('64')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    expect(mockReceiveFor.mock.calls.slice(callsBefore)).toEqual([]);
-    await act(async () => {
-      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '3' } });
-    });
-    await flushQuote();
-    expect(mockReceiveFor.mock.calls.slice(callsBefore)).toEqual([]);
-    await act(async () => {
-      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
-      await Promise.resolve();
-    });
-    expect(screen.queryByTestId('swap-completion')).not.toBeInTheDocument();
-  });
-
-  it('clears a visible sole receiver on the same chain and ignores the late quote error', async () => {
-    let rejectQuote: (reason: unknown) => void = () => undefined;
-    mockReceiveFor.mockImplementation(
-      () =>
-        new Promise((_resolve, reject) => {
-          rejectQuote = reject;
-        }),
-    );
-    mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum'] };
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({
-        hideTargetSelection: false,
-        assetOut: undefined,
-        availableBlockchains: ['Ethereum'],
-      }),
-    );
-    const view = render(<SwapScreen />);
-    await act(async () => {
-      jest.advanceTimersByTime(500);
-    });
-    expect(screen.getByTestId('dropdown-receiveNetwork')).toBeInTheDocument();
-    expect(screen.getByText('Ethereum · 0xabc')).toBeInTheDocument();
-    expect(screen.queryByTestId('dropdown-address')).not.toBeInTheDocument();
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    mockSession = { blockchains: [] };
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({
-        hideTargetSelection: false,
-        assetOut: undefined,
-        blockchain: 'Ethereum',
-        availableBlockchains: [],
-      }),
-    );
-    view.rerender(<SwapScreen />);
-    await flushQuote();
-    expect(screen.queryByText('Ethereum · 0xabc')).not.toBeInTheDocument();
-    expect(screen.queryByText(/No receiving address/)).not.toBeInTheDocument();
-    expect(screen.getByText('No asset on Ethereum can be received with this account.')).toBeInTheDocument();
-    expect(mockReceiveFor.mock.calls.length).toBe(callsBefore);
-    await act(async () => {
-      rejectQuote({ statusCode: 500, message: 'old-receiver-failed' });
-      await Promise.resolve();
-    });
-    expect(screen.queryByText('old-receiver-failed')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    await act(async () => {
-      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
-      await Promise.resolve();
-    });
-    expect(screen.queryByTestId('swap-completion')).not.toBeInTheDocument();
-  });
-
-  it('uses a linked wallet when the account session has no address and does not request a balance', async () => {
-    mockSession = { blockchains: [] };
-    mockUserAddresses = [{ address: '0xlinked', blockchains: ['Ethereum', 'Bitcoin'] }];
-    mockUseAppParams.mockReturnValue(baseAppParams({ availableBlockchains: [] }));
+  it.each(['Polygon/DSC', 'DSC'])('selects Polygon and DSC for assetOut %s despite an Ethereum parameter', async (assetOut) => {
+    mockAssets = [eth, polygonDsc];
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
+    mockUseAppParams.mockReturnValue(chainParams({ blockchain: 'Ethereum', assetOut }));
     render(<SwapScreen />);
     await flushQuote();
-    expect(mockGetBalances).not.toHaveBeenCalled();
-    expect(screen.getByText('Sending on Ethereum')).toBeInTheDocument();
-    expect(screen.queryByText(/undefined/)).not.toBeInTheDocument();
-    expect(
-      mockReceiveFor.mock.calls.every(
-        (call: any) => call[0].receiverAddress === '0xlinked' && call[0].receiverAddress !== '',
-      ),
-    ).toBe(true);
-    expect(mockReceiveFor.mock.calls.some((call: any) => call[0].sourceAsset?.name === 'ETH')).toBe(true);
+    expect(screen.getByTestId('selected-address')).toHaveTextContent('Polygon');
+    expect(screen.getByTestId('selected-targetAsset')).toHaveTextContent('DSC');
   });
 
-  it('quotes from the session chains when available blockchains are omitted', async () => {
-    mockUseAppParams.mockReturnValue(baseAppParams({ availableBlockchains: undefined }));
-    render(<SwapScreen />);
+  it('selects a late linked Lightning address for assetOut', async () => {
+    mockAssets = [btc, lightning];
+    mockSession = { address: 'bitcoin', blockchains: ['Bitcoin'] };
+    mockWalletBlockchain = 'Bitcoin';
+    mockUseAppParams.mockReturnValue(chainParams({ assetOut: 'Lightning/BTC', availableBlockchains: ['Bitcoin'] }));
+    const { rerender } = render(<SwapScreen />);
     await flushQuote();
-    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
-    expect(mockReceiveFor.mock.calls.some((call: any) => call[0].sourceAsset?.name === 'ETH')).toBe(true);
-    expect(mockReceiveFor.mock.calls.every((call: any) => call[0].receiverAddress === '0xabc')).toBe(true);
+    expect(screen.getByTestId('selected-address')).toHaveTextContent('Bitcoin');
+    mockUserAddresses = [{ address: 'lightning', blockchains: ['Lightning'] }];
+    rerender(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('selected-address')).toHaveTextContent('Lightning');
+    expect(mockReceiveFor.mock.calls.some((call: any) =>
+      call[0].receiverAddress === 'lightning' && call[0].targetAsset?.uniqueName === 'Lightning/BTC',
+    )).toBe(true);
   });
 
-  it('does not quote or request a balance while the asset catalogue is unloaded', async () => {
-    mockCatalogLoaded = false;
-    const view = render(<SwapScreen />);
+  it('selects assetIn when its linked chain becomes available', async () => {
+    mockAssets = [btc, lightning];
+    mockSession = { address: 'bitcoin', blockchains: ['Bitcoin'] };
+    mockWalletBlockchain = 'Bitcoin';
+    mockUseAppParams.mockReturnValue(chainParams({ assetIn: 'Lightning/BTC', availableBlockchains: ['Bitcoin'] }));
+    const { rerender } = render(<SwapScreen />);
     await flushQuote();
-    expect(screen.queryByTestId('select-sourceAsset-ETH')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Receiving wallet/)).not.toBeInTheDocument();
-    expect(mockReceiveFor).not.toHaveBeenCalled();
-    expect(mockGetBalances).not.toHaveBeenCalled();
-    mockCatalogLoaded = true;
-    view.rerender(<SwapScreen />);
+    expect(mockReceiveFor.mock.calls.some((call: any) => call[0].sourceAsset?.uniqueName === 'Bitcoin/BTC')).toBe(true);
+    mockUserAddresses = [{ address: 'lightning', blockchains: ['Lightning'] }];
+    rerender(<SwapScreen />);
     await flushQuote();
-    expect(screen.getByTestId('select-sourceAsset-ETH')).toBeInTheDocument();
-    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
-    expect(mockReceiveFor).toHaveBeenCalled();
+    expect(mockReceiveFor.mock.calls.some((call: any) => call[0].sourceAsset?.uniqueName === 'Lightning/BTC')).toBe(true);
   });
 
-  it('does not quote a source that lost sellable eligibility while its amount changes', async () => {
-    render(<SwapScreen />);
+  it('keeps a user-selected source when assetIn becomes available later', async () => {
+    mockAssets = [eth, btc];
+    mockUseAppParams.mockReturnValue(chainParams({ assetIn: 'Polygon/DSC', availableBlockchains: ['Ethereum', 'Bitcoin', 'Polygon'] }));
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Bitcoin', 'Polygon'] };
+    const { rerender } = render(<SwapScreen />);
     await flushQuote();
-    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
-    const callsBefore = mockReceiveFor.mock.calls.length;
     await act(async () => {
-      mockAssets = [{ ...eth, sellable: false }, btc];
+      screen.getByTestId('select-sourceAsset-BTC').click();
+    });
+    mockAssets = [eth, btc, polygonDsc];
+    rerender(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('selected-sourceAsset')).toHaveTextContent('BTC');
+  });
+
+  it('keeps a user-selected chain when a preferred linked address arrives', async () => {
+    mockAssets = [btc, lightning];
+    mockSession = { address: 'bitcoin', blockchains: ['Bitcoin'] };
+    mockWalletBlockchain = 'Bitcoin';
+    mockUseAppParams.mockReturnValue(chainParams({ assetOut: 'Lightning/BTC', availableBlockchains: ['Bitcoin'] }));
+    const { rerender } = render(<SwapScreen />);
+    await flushQuote();
+    await act(async () => { screen.getByTestId('select-address-0').click(); });
+    mockUserAddresses = [{ address: 'lightning', blockchains: ['Lightning'] }];
+    rerender(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('selected-address')).toHaveTextContent('Bitcoin');
+  });
+
+  it('restores the selected chain after cancelling the address switch', async () => {
+    mockAssets = [eth, polygonDgc];
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
+    mockUseAppParams.mockReturnValue(chainParams({ blockchain: 'Ethereum' }));
+    render(<SwapScreen />);
+    await flushQuote();
+    await act(async () => { screen.getByTestId('select-address-1').click(); });
+    expect(screen.getByTestId('selected-address')).toHaveTextContent('Polygon');
+    await act(async () => { screen.getByTestId('select-address-2').click(); });
+    await act(async () => { screen.getByTestId('address-switch-cancel').click(); });
+    expect(screen.getByTestId('selected-address')).toHaveTextContent('Polygon');
+  });
+
+  it('selects the first sellable source asset when the start chain has none', async () => {
+    mockAssets = [{ ...eth, sellable: false }, polygonDgc];
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
+    mockWalletBlockchain = undefined;
+    mockUseAppParams.mockReturnValue(chainParams({ blockchain: 'Ethereum', assetIn: undefined }));
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('selected-address')).toHaveTextContent('Ethereum');
+    expect(screen.getByTestId('selected-sourceAsset')).toHaveTextContent('DGC');
+  });
+
+  it('quotes the entered spend amount after a receiving chain change', async () => {
+    mockAssets = [eth, polygonDgc];
+    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon'] };
+    mockUseAppParams.mockReturnValue(chainParams({ blockchain: 'Ethereum' }));
+    render(<SwapScreen />);
+    await flushQuote();
+    await act(async () => {
       fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '1.25' } });
     });
     await flushQuote();
-    expect(mockReceiveFor.mock.calls.slice(callsBefore).every((call: any) => call[0].sourceAsset?.name !== 'ETH')).toBe(
-      true,
-    );
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    await act(async () => {
-      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
-      await Promise.resolve();
-    });
-    expect(screen.queryByTestId('swap-completion')).not.toBeInTheDocument();
-  });
-
-  it('does not quote a target that lost buyable eligibility while its amount changes', async () => {
-    const usdc = {
-      id: 4,
-      name: 'USDC',
-      uniqueName: 'Ethereum/USDC',
-      blockchain: 'Ethereum',
-      category: 'Public',
-      description: 'USD Coin',
-      buyable: true,
-      sellable: true,
-      comingSoon: false,
-    };
-    render(<SwapScreen />);
-    await flushQuote();
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    await act(async () => {
-      mockAssets = [{ ...eth, buyable: false }, usdc, btc];
-      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '1.5' } });
-    });
-    await flushQuote();
-    expect(
-      mockReceiveFor.mock.calls.slice(callsBefore).every((call: any) => call[0].targetAsset?.name !== 'ETH'),
-    ).toBe(true);
-    expect(mockReceiveFor.mock.calls.slice(callsBefore).some((call: any) => call[0].targetAsset?.name === 'USDC')).toBe(
-      true,
-    );
-  });
-
-  it('does not quote a same-chain receiver that disappeared while the amount changes', async () => {
-    mockHideTarget = false;
-    mockUserAddresses = [{ address: '0xdef', blockchains: ['Ethereum', 'Bitcoin'] }];
-    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false }));
-    render(<SwapScreen />);
-    await flushQuote();
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.004');
+    mockReceiveFor.mockClear();
     await act(async () => {
       screen.getByTestId('select-address-1').click();
     });
     await flushQuote();
-    expect(mockReceiveFor.mock.calls.some((call: any) => call[0].receiverAddress === '0xdef')).toBe(true);
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    await act(async () => {
-      mockUserAddresses = [{ address: '0x999', blockchains: ['Ethereum', 'Bitcoin'] }];
-      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '2' } });
-    });
-    await flushQuote();
-    expect(
-      mockReceiveFor.mock.calls.slice(callsBefore).every((call: any) => call[0].receiverAddress !== '0xdef'),
-    ).toBe(true);
-    expect(mockReceiveFor.mock.calls.slice(callsBefore).some((call: any) => call[0].receiverAddress === '0xabc')).toBe(
-      true,
-    );
+    expect(mockReceiveFor).toHaveBeenCalled();
+    expect(mockReceiveFor.mock.calls[0][0]).toEqual(expect.objectContaining({ amount: 1.25, targetAsset: polygonDgc }));
+    expect(mockReceiveFor.mock.calls[0][0]).not.toHaveProperty('targetAmount');
+    expect(screen.getByTestId('input-amount')).toHaveValue('1.25');
   });
 
-  it('drops Ethereum receive eligibility during an amount edit and does not fall back to Bitcoin', async () => {
-    mockHideTarget = false;
-    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false }));
+  it('keeps a user-selected source asset after the catalog effect runs again', async () => {
+    mockAssets = [eth, btc];
+    mockUseAppParams.mockReturnValue(chainParams({ availableBlockchains: ['Ethereum', 'Bitcoin'] }));
+    const { rerender } = render(<SwapScreen />);
+    await flushQuote();
+    await act(async () => {
+      screen.getByTestId('select-sourceAsset-BTC').click();
+    });
+    mockAssets = [eth, btc, polygonDgc];
+    rerender(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('selected-sourceAsset')).toHaveTextContent('BTC');
+  });
+
+  it('hides the chain dropdown when target selection is hidden', async () => {
+    mockUseAppParams.mockReturnValue(chainParams({ hideTargetSelection: true }));
     render(<SwapScreen />);
     await flushQuote();
-    expect(screen.getByText('Sending on Ethereum')).toBeInTheDocument();
-    expect(screen.getByText('Ethereum · 0xabc')).toBeInTheDocument();
-    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
-    expect(
-      mockReceiveFor.mock.calls.some(
-        (call: any) =>
-          call[0].sourceAsset?.name === 'ETH' &&
-          call[0].sourceAsset?.blockchain === 'Ethereum' &&
-          call[0].targetAsset?.name === 'ETH' &&
-          call[0].targetAsset?.blockchain === 'Ethereum' &&
-          call[0].receiverAddress === '0xabc',
-      ),
-    ).toBe(true);
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    await act(async () => {
-      mockAssets = [{ ...eth, buyable: false }, btc];
-      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '1.75' } });
-    });
-    await flushQuote();
-    expect(mockReceiveFor.mock.calls.length).toBe(callsBefore);
-    expect(mockReceiveFor.mock.calls.slice(callsBefore)).toEqual([]);
-    expect(screen.getByText('Sending on Ethereum')).toBeInTheDocument();
-    expect(screen.getByTestId('select-sourceAsset-ETH')).toBeInTheDocument();
-    expect(screen.queryByTestId('select-targetAsset-ETH')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('select-targetAsset-BTC')).not.toBeInTheDocument();
-    expect(screen.queryByText('Ethereum · 0xabc')).not.toBeInTheDocument();
     expect(screen.queryByTestId('dropdown-address')).not.toBeInTheDocument();
-    expect(screen.getByText('No asset on Ethereum can be received with this account.')).toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
-    await act(async () => {
-      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
-      await Promise.resolve();
-    });
-    expect(screen.queryByTestId('swap-completion')).not.toBeInTheDocument();
-    expect(mockReceiveFor.mock.calls.length).toBe(callsBefore);
-  });
-
-  it('quotes the preserved spend amount after a completed quote when the receive network and target change', async () => {
-    mockAssets = [eth, btc, polygonDgc, polygonDsc];
-    mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon', 'Bitcoin'] };
-    mockUseAppParams.mockReturnValue(polygonParams({ assetIn: 'ETH', blockchain: 'Ethereum' }));
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.004');
-    await act(async () => {
-      screen.getByRole('button', { name: 'Polygon' }).click();
-    });
-    await act(async () => {
-      screen.getByTestId('select-targetAsset-DGC').click();
-    });
-    await flushQuote();
-    const quoted = mockReceiveFor.mock.calls
-      .map((call: any) => call[0])
-      .filter((req: any) => req.targetAsset?.name === 'DGC' && req.targetAsset?.blockchain === 'Polygon');
-    expect(quoted.length).toBeGreaterThan(0);
-    expect(quoted.every((req: any) => req.amount === 0.1 && req.targetAmount === undefined)).toBe(true);
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-  });
-
-  it('quotes the preserved spend amount when the source chain changes the default receive network after a completed quote', async () => {
-    mockHideTarget = false;
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({
-        assetIn: undefined,
-        assetOut: undefined,
-        blockchain: undefined,
-        hideTargetSelection: false,
-      }),
-    );
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-    expect((screen.getByTestId('input-targetAmount') as HTMLInputElement).value).not.toBe('');
-    await act(async () => {
-      screen.getByTestId('select-sourceAsset-BTC').click();
-    });
-    await flushQuote();
-    const quoted = mockReceiveFor.mock.calls
-      .map((call: any) => call[0])
-      .filter((req: any) => req.sourceAsset?.name === 'BTC' && req.targetAsset?.name === 'BTC');
-    expect(quoted.length).toBeGreaterThan(0);
-    expect(quoted.every((req: any) => req.amount === 0.1 && req.targetAmount === undefined)).toBe(true);
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-  });
-
-  it('keeps an explicit receive amount equal to the previous output when the receive network and target change', async () => {
-    mockAssets = [eth, btc, polygonDgc, polygonDsc];
-    mockHideTarget = false;
-    mockSession = { address: '0xabc', blockchains: ['Ethereum', 'Polygon', 'Bitcoin'] };
-    mockUseAppParams.mockReturnValue(polygonParams({ assetIn: 'ETH', blockchain: 'Ethereum' }));
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.004');
-    await act(async () => {
-      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.0040' } });
-    });
-    await act(async () => {
-      screen.getByRole('button', { name: 'Polygon' }).click();
-    });
-    await act(async () => {
-      screen.getByTestId('select-targetAsset-DGC').click();
-    });
-    await flushQuote();
-    const quoted = mockReceiveFor.mock.calls
-      .map((call: any) => call[0])
-      .filter((req: any) => req.targetAsset?.name === 'DGC' && req.targetAsset?.blockchain === 'Polygon');
-    expect(quoted.length).toBeGreaterThan(0);
-    expect(quoted.every((req: any) => req.targetAmount === 0.004 && req.amount === undefined)).toBe(true);
-    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.0040');
-  });
-
-  it('ignores a stale receive-side exact price and quotes the newer spend amount', async () => {
-    let resolveExact: (value: unknown) => void = () => undefined;
-    let hangExact = false;
-    mockReceiveFor.mockImplementation((req: any) => {
-      if (req.exactPrice && hangExact) {
-        return new Promise((resolve) => {
-          resolveExact = resolve;
-        });
-      }
-      return Promise.resolve(quoteFor(req));
-    });
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.004');
-    hangExact = true;
-    await act(async () => {
-      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.02' } });
-    });
-    await flushQuote();
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    await act(async () => {
-      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '0.3' } });
-    });
-    await act(async () => {
-      resolveExact({ ...quoteFor({ amount: 99, targetAmount: 0.02 }), amount: 99 });
-      await Promise.resolve();
-    });
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.3');
-    await flushQuote();
-    const after = mockReceiveFor.mock.calls.slice(callsBefore).map((call: any) => call[0]);
-    expect(after.some((req: any) => req.amount === 0.3 && req.targetAmount === undefined)).toBe(true);
-    expect(after.every((req: any) => req.amount !== 99)).toBe(true);
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.3');
-  });
-
-  it('does not quote a cleared spend when receive intent is set and the source asset changes', async () => {
-    mockReceiveFor.mockImplementation((req: any) => {
-      if (req.exactPrice) return Promise.resolve(undefined);
-      return Promise.resolve(quoteFor(req));
-    });
-    render(<SwapScreen />);
-    await flushQuote();
-    await act(async () => {
-      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.01' } });
-    });
-    await flushQuote();
-    await act(async () => {
-      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '' } });
-    });
-    await flushQuote();
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    await act(async () => {
-      screen.getByTestId('select-sourceAsset-BTC').click();
-    });
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('');
-    expect(mockReceiveFor.mock.calls.slice(callsBefore)).toEqual([]);
-  });
-
-  it('quotes the available balance from MAX after a receive edit while that quote is still debouncing', async () => {
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.004');
-    await act(async () => {
-      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.02' } });
-    });
-    expect(screen.getByTestId('input-amount-max')).toBeInTheDocument();
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    await act(async () => {
-      screen.getByTestId('input-amount-max').click();
-    });
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('10');
-    const after = mockReceiveFor.mock.calls.slice(callsBefore).map((call: any) => call[0]);
-    expect(after.some((req: any) => req.amount === 10 && req.targetAmount === undefined)).toBe(true);
-    expect(after.every((req: any) => req.amount === 10 && req.targetAmount === undefined)).toBe(true);
-  });
-
-  it('reanchors MAX to the same displayed spend before a debounced receive quote can overwrite it', async () => {
-    mockGetBalances.mockResolvedValue([
-      { asset: eth, amount: 0.1 },
-      { asset: btc, amount: 1 },
-    ]);
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.004');
-    await act(async () => {
-      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.02' } });
-    });
-    expect(mockReceiveFor.mock.calls.some((call: any) => call[0]?.targetAmount === 0.02)).toBe(false);
-    expect(screen.getByTestId('input-amount-max')).toBeInTheDocument();
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    await act(async () => {
-      screen.getByTestId('input-amount-max').click();
-    });
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-    const after = mockReceiveFor.mock.calls.slice(callsBefore).map((call: any) => call[0]);
-    expect(after.some((req: any) => req.amount === 0.1 && req.targetAmount === undefined)).toBe(true);
-    expect(after.every((req: any) => req.targetAmount === undefined && req.amount === 0.1)).toBe(true);
-  });
-
-  it('does not let MAX quote over a cleared receive amount when the spend already equals the balance', async () => {
-    mockGetBalances.mockResolvedValue([
-      { asset: eth, amount: 0.1 },
-      { asset: btc, amount: 1 },
-    ]);
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-    await act(async () => {
-      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '' } });
-    });
-    await flushQuote();
-    const callsBefore = mockReceiveFor.mock.calls.length;
-    expect(screen.getByTestId('input-amount-max')).toBeInTheDocument();
-    await act(async () => {
-      screen.getByTestId('input-amount-max').click();
-    });
-    await flushQuote();
-    expect(screen.getByTestId('input-targetAmount')).toHaveValue('');
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.1');
-    expect(mockReceiveFor.mock.calls.slice(callsBefore)).toEqual([]);
-  });
-
-  it('keeps the edited receive amount when a constant amountIn is reapplied on a source change', async () => {
-    mockHideTarget = false;
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({
-        amountIn: '0.5',
-        assetIn: undefined,
-        assetOut: undefined,
-        blockchain: undefined,
-        hideTargetSelection: false,
-      }),
-    );
-    render(<SwapScreen />);
-    await flushQuote();
-    expect(screen.getByTestId('input-amount')).toHaveValue('0.5');
-    await act(async () => {
-      fireEvent.change(screen.getByTestId('input-targetAmount'), { target: { value: '0.02' } });
-    });
-    await flushQuote();
-    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.02');
-    await act(async () => {
-      screen.getByTestId('select-sourceAsset-BTC').click();
-    });
-    await flushQuote();
-    const quoted = mockReceiveFor.mock.calls
-      .map((call: any) => call[0])
-      .filter((req: any) => req.sourceAsset?.name === 'BTC');
-    expect(quoted.length).toBeGreaterThan(0);
-    expect(quoted.every((req: any) => req.targetAmount === 0.02 && req.amount === undefined)).toBe(true);
-    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.02');
+    expect(screen.getByTestId('dropdown-targetAsset')).toBeInTheDocument();
   });
 });

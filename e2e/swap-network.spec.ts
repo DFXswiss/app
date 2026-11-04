@@ -105,25 +105,8 @@ function targetAmount(page: Page): Locator {
   return page.locator('h2', { hasText: /You get/ }).locator('..').locator('input[type="number"]').first();
 }
 
-function walletTrigger(page: Page): Locator {
-  return page.getByRole('button', { name: 'Receiving wallet' });
-}
-
-function staticWalletLine(page: Page): Locator {
-  return page.getByText('Receiving wallet', { exact: true }).locator('xpath=following-sibling::p[1]');
-}
-
-function selectedAddressLine(page: Page): Locator {
-  return walletTrigger(page).locator('xpath=ancestor::div[contains(@class,"relative")][1]/following-sibling::p[1]');
-}
-
-function walletMenu(page: Page): Locator {
-  return walletTrigger(page).locator('xpath=following-sibling::div[1]');
-}
-
-function walletOption(page: Page, address: string): Locator {
-  const escaped = address.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return walletMenu(page).getByRole('button', { name: new RegExp(`Polygon\\s+${escaped}`, 'i') });
+function chainTrigger(page: Page): Locator {
+  return page.getByRole('button', { name: 'Blockchain' });
 }
 
 async function assertReadable(locator: Locator): Promise<void> {
@@ -188,11 +171,7 @@ async function shoot(page: Page, name: string, clip: Box): Promise<void> {
   });
 }
 
-async function configureDscToDgc(
-  page: Page,
-  viewport: { width: number; height: number },
-  wallets: { kind: 'static' } | { kind: 'two' },
-): Promise<void> {
+async function configureDscToDgc(page: Page, viewport: { width: number; height: number }): Promise<void> {
   await page.setViewportSize(viewport);
   const catalog = await installCatalogFlagRoute(page);
   await page.goto(`/swap?session=${encodeURIComponent(token)}&lang=en`);
@@ -213,7 +192,14 @@ async function configureDscToDgc(
     .toBe(true);
 
   const sourceInput = page.locator('input[name="sourceAsset"]');
+  const targetInput = page.locator('input[name="targetAsset"]');
+  const networkButton = chainTrigger(page);
   await expect(sourceInput).toBeVisible({ timeout: 15000 });
+  await expect(sourceInput).not.toHaveValue('');
+  await expect(targetInput).not.toHaveValue('');
+  await expect(networkButton).toBeVisible();
+  const sessionAddress = new RegExp(`${accountAddress.slice(0, 10)}.*${accountAddress.slice(-10)}`, 'i');
+  await expect(networkButton).toContainText(sessionAddress);
   await sourceInput.click();
   const ethOption = page.getByRole('button', { name: /^ETH(\s|$)/ }).filter({ hasText: 'Ethereum' });
   await expect
@@ -224,7 +210,6 @@ async function configureDscToDgc(
     .toBe(1);
   await ethOption.click();
   await expect(sourceInput).toHaveValue('ETH');
-  await expect(page.getByText('Sending on Ethereum', { exact: true })).toBeVisible();
 
   const spend = spendAmount(page);
   const received = targetAmount(page);
@@ -249,22 +234,19 @@ async function configureDscToDgc(
     .toBe(1);
   await dsc.click();
   await expect(sourceInput).toHaveValue('DSC');
-  await expect(page.getByText('Sending on Polygon', { exact: true })).toBeVisible();
-
-  const networkButton = page.getByRole('button', { name: 'Receiving network' });
   await expect(networkButton).toBeVisible({ timeout: 15000 });
   await networkButton.click();
-  const polygon = page.getByRole('button', { name: 'Polygon', exact: true });
+  const polygon = page.getByRole('button', { name: /^Polygon\b/ });
   await expect(polygon, 'Polygon must be offered as a receive network').toHaveCount(1);
   await polygon.scrollIntoViewIfNeeded();
   await expect(polygon).toBeVisible();
   await polygon.click();
   await expect(networkButton).toContainText('Polygon');
+  await expect(sourceInput).toHaveValue('DSC');
 
-  const targetInput = page.locator('input[name="targetAsset"]');
   await expect(targetInput).toBeVisible();
   await targetInput.click();
-  const dgc = page.getByRole('button', { name: /^DGC(\s|$)/ }).filter({ hasText: 'Polygon' });
+  const dgc = page.getByRole('button', { name: /^DGC(\s|$)/ });
   await expect
     .poll(async () => dgc.count(), { timeout: 10000, message: 'Polygon DGC must be the only matching target option' })
     .toBe(1);
@@ -281,25 +263,8 @@ async function configureDscToDgc(
   await expect(page.getByRole('heading', { name: 'Payment Information', exact: true })).toHaveCount(0);
   await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toHaveCount(0);
 
-  const wallet = wallets.kind === 'static' ? staticWalletLine(page) : selectedAddressLine(page);
-  if (wallets.kind === 'static') {
-    await expect(wallet).toBeVisible({ timeout: 15000 });
-    const walletText = (await wallet.innerText()).replace(/\s+/g, ' ');
-    expect(walletText).toContain('Polygon');
-    expect(walletText).toContain('·');
-    expect(walletText.toLowerCase()).toContain(accountAddress.toLowerCase());
-    await expect(walletTrigger(page), 'one receiver must stay a static wallet line').toHaveCount(0);
-  } else {
-    const trigger = walletTrigger(page);
-    await expect(trigger, 'two receivers must show the receiving wallet dropdown').toHaveCount(1, { timeout: 15000 });
-    await expect(trigger).toContainText('Polygon');
-    await expect(wallet).toBeVisible();
-    expect((await wallet.innerText()).replace(/\s+/g, '').toLowerCase()).toBe(accountAddress.toLowerCase());
-    await assertReadable(trigger);
-  }
+  await expect(networkButton).toContainText(sessionAddress);
   await assertReadable(networkButton);
-  await assertReadable(wallet);
-  await assertReadable(page.getByText('Sending on Polygon', { exact: true }));
   await assertReadable(sourceInput);
   await assertReadable(targetInput);
   await assertNoHorizontalOverflow(page);
@@ -317,14 +282,14 @@ test.beforeAll(async ({ request }) => {
   }
 });
 
-test('desktop shows DSC to DGC with the receive network chooser', async ({ page }) => {
+test('desktop shows DSC to DGC with the receive chain chooser', async ({ page }) => {
   test.setTimeout(90000);
-  await configureDscToDgc(page, { width: 1280, height: 1400 }, { kind: 'static' });
+  await configureDscToDgc(page, { width: 1280, height: 1400 });
   await shoot(page, 'swap-network-desktop-configured.png', await formClip(page));
 
-  const networkButton = page.getByRole('button', { name: 'Receiving network' });
+  const networkButton = chainTrigger(page);
   await networkButton.click();
-  const polygon = page.getByRole('button', { name: 'Polygon', exact: true });
+  const polygon = page.getByRole('button', { name: /^Polygon\b/ });
   await expect(polygon, 'open receive-network chooser must show Polygon').toHaveCount(1);
   await polygon.scrollIntoViewIfNeeded();
   await expect(polygon).toBeVisible();
@@ -332,58 +297,16 @@ test('desktop shows DSC to DGC with the receive network chooser', async ({ page 
   const optionBox = await polygon.boundingBox();
   const viewport = page.viewportSize();
   if (!formBox || !optionBox || !viewport) throw new Error('open receive-network option has no clip');
-  await shoot(page, 'swap-network-desktop-network-open.png', clampClip(unionBox(formBox, optionBox), viewport));
+  await shoot(page, 'swap-network-desktop-chain-open.png', clampClip(unionBox(formBox, optionBox), viewport));
 });
 
 test('narrow mobile shows DSC to DGC', async ({ page }) => {
   test.setTimeout(90000);
-  await configureDscToDgc(page, { width: 390, height: 1400 }, { kind: 'static' });
+  await configureDscToDgc(page, { width: 390, height: 1400 });
   await shoot(page, 'swap-network-mobile-configured.png', await formClip(page));
 });
 
-test('desktop and narrow show no receivable asset when the assets filter excludes Polygon output', async ({
-  page,
-}) => {
-  test.setTimeout(90000);
-  await page.setViewportSize({ width: 1280, height: 1400 });
-  const assets = 'Ethereum/ETH';
-  const assetOut = 'Polygon/DGC';
-  const query = new URLSearchParams({
-    session: token,
-    lang: 'en',
-    assets,
-    'asset-in': assets,
-    'asset-out': assetOut,
-  });
-  const href = `/swap?${query.toString()}`;
-  const requested = new URL(href, 'http://127.0.0.1');
-  expect(requested.searchParams.get('assets')).toBe(assets);
-  expect(requested.searchParams.get('asset-in')).toBe(assets);
-  expect(requested.searchParams.get('asset-out')).toBe(assetOut);
-  await page.goto(href);
-  await expect
-    .poll(() => new URL(page.url()).pathname, { timeout: 20000, message: 'session must stay on /swap' })
-    .toMatch(/\/swap\/?$/);
-
-  const error = page.getByText('No asset on Polygon can be received with this account.', { exact: true });
-  const switchAddress = page.getByRole('button', { name: 'Switch address' });
-  await expect(error).toBeVisible({ timeout: 20000 });
-  await expect(switchAddress).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Payment Information', exact: true })).toHaveCount(0);
-  await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toHaveCount(0);
-  await assertReadable(error);
-  await assertReadable(switchAddress);
-  await assertNoHorizontalOverflow(page);
-  await shoot(page, 'swap-network-desktop-missing-asset.png', await formClip(page));
-
-  await page.setViewportSize({ width: 390, height: 1400 });
-  await assertReadable(error);
-  await assertReadable(switchAddress);
-  await assertNoHorizontalOverflow(page);
-  await shoot(page, 'swap-network-mobile-missing-asset.png', await formClip(page));
-});
-
-test('desktop shows DSC to DGC with the receiving wallet dropdown', async ({ page, request }) => {
+test('desktop receive chain menu excludes the linked EVM address', async ({ page, request }) => {
   // Stay last. The fresh database has one receiver; linking a second address changes that account.
   test.setTimeout(120000);
   requireLoopbackApi();
@@ -393,72 +316,25 @@ test('desktop shows DSC to DGC with the receiving wallet dropdown', async ({ pag
   expect(linkedAddress).toMatch(/^0x[a-fA-F0-9]{40}$/);
   expect(linkedAddress.toLowerCase()).not.toBe(accountAddress.toLowerCase());
 
-  await configureDscToDgc(page, { width: 1280, height: 1400 }, { kind: 'two' });
-
-  const trigger = walletTrigger(page);
+  await configureDscToDgc(page, { width: 1280, height: 1400 });
+  const trigger = chainTrigger(page);
   await trigger.click();
-  const menu = walletMenu(page);
-  const options = menu.getByRole('button');
-  const originalOption = walletOption(page, accountAddress);
-  const linkedOption = walletOption(page, linkedAddress);
-  await expect(options, 'receiving wallet menu must list exactly the two EVM receivers').toHaveCount(2);
-  await expect(originalOption).toHaveCount(1);
-  await expect(linkedOption).toHaveCount(1);
-  await originalOption.scrollIntoViewIfNeeded();
-  await linkedOption.scrollIntoViewIfNeeded();
-  await expect(originalOption).toBeVisible();
-  await expect(linkedOption).toBeVisible();
-  await linkedOption.click();
-
-  const networkButton = page.getByRole('button', { name: 'Receiving network' });
-  await expect(networkButton).toContainText('Polygon');
-  await expect(page.locator('input[name="sourceAsset"]')).toHaveValue('DSC');
-  await expect(page.locator('input[name="targetAsset"]')).toHaveValue('DGC');
-  await expect(page.getByText('Sending on Polygon', { exact: true })).toBeVisible();
-  await expect(trigger).toContainText('Polygon');
-  await expect(trigger).toContainText(new RegExp(linkedAddress, 'i'));
-  const selected = selectedAddressLine(page);
-  await expect
-    .poll(async () => (await selected.innerText()).replace(/\s+/g, '').toLowerCase(), {
-      timeout: 8000,
-      message: 'the full linked receiver address must be the selected address line',
-    })
-    .toBe(linkedAddress.toLowerCase());
-  expect(await selected.innerText()).not.toContain('Polygon');
-  const spend = spendAmount(page);
-  const received = targetAmount(page);
-  await expect
-    .poll(async () => ({ spend: await spend.inputValue(), target: await received.inputValue() }), {
-      timeout: 8000,
-      message: 'choosing the linked receiver must keep both amounts empty',
-    })
-    .toEqual({ spend: '', target: '' });
-  await expect(page.getByRole('heading', { name: 'Payment Information', exact: true })).toHaveCount(0);
-  await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toHaveCount(0);
-  await assertReadable(networkButton);
-  await assertReadable(trigger);
-  await assertReadable(selected);
-  await assertReadable(page.getByText('Sending on Polygon', { exact: true }));
-  await assertReadable(page.locator('input[name="sourceAsset"]'));
-  await assertReadable(page.locator('input[name="targetAsset"]'));
-  await assertNoHorizontalOverflow(page);
-  await shoot(page, 'swap-network-desktop-multiple-configured.png', await formClip(page));
-
-  await trigger.click();
-  await expect(options, 'reopened receiving wallet menu must still list exactly two receivers').toHaveCount(2);
-  await expect(originalOption).toHaveCount(1);
-  await expect(linkedOption).toHaveCount(1);
-  await originalOption.scrollIntoViewIfNeeded();
-  await linkedOption.scrollIntoViewIfNeeded();
-  await expect(originalOption).toBeVisible();
-  await expect(linkedOption).toBeVisible();
+  const menu = trigger.locator('xpath=following-sibling::div[1]');
+  const options = menu.getByRole('button').filter({ hasNotText: 'Switch address' });
+  await expect(options.first()).toBeVisible();
+  const optionTexts = await options.allInnerTexts();
+  for (const text of optionTexts) {
+    expect(text.toLowerCase()).toContain(accountAddress.toLowerCase());
+    expect(text.toLowerCase()).not.toContain(linkedAddress.toLowerCase());
+  }
+  await expect(menu).not.toContainText(new RegExp(linkedAddress, 'i'));
   const formBox = await page.locator('form').first().boundingBox();
   const menuBox = await menu.boundingBox();
   const viewport = page.viewportSize();
-  if (!formBox || !menuBox || !viewport) throw new Error('open receiving-wallet menu has no clip');
+  if (!formBox || !menuBox || !viewport) throw new Error('open receive-chain menu has no clip');
   await shoot(
     page,
-    'swap-network-desktop-multiple-wallet-open.png',
+    'swap-network-desktop-linked-chain-open.png',
     clampClip(unionBox(formBox, menuBox), viewport),
   );
 });
