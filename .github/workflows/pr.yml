@@ -24,6 +24,8 @@ on:
     branches:
       - main
       - develop
+      # Staging is an enforced base, and this workflow is a required check there.
+      - staging
     types:
       - opened
       - synchronize

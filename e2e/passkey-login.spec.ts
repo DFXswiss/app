@@ -1,7 +1,8 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
-// Bootstrap calls are mocked so the login screen renders without a live API. The two placeholder
-// screenshots stub WebAuthn before navigation, so each variant settles on one platform report.
+// Bootstrap calls are mocked so the login screen renders without a live API. The shots stub
+// WebAuthn before navigation, so each variant settles on one platform report. The desk needs a
+// finished ceremony and is covered by the unit spec, not by these shots.
 
 const LANGUAGES = [
   { id: 1, name: 'Deutsch', symbol: 'DE', enable: true },
@@ -96,14 +97,19 @@ test.describe('Passkey login', () => {
     await expect(page).toHaveScreenshot('passkey-login-tiles.png', { fullPage: true });
   });
 
-  test('opens the passkey placeholder when this browser can use passkeys', async ({ page }) => {
+  test('opens registration and login when this browser can use passkeys', async ({ page }) => {
     await stubPasskeyPlatform(page, true);
     await openLogin(page);
     await page.locator('img[src$="login-passkey.jpg"]').click();
     await page.waitForFunction(() => (window as unknown as { __passkeyPlatformReady?: boolean }).__passkeyPlatformReady === true);
-    await expect(page.getByText('Passkey login arrives with the wallet beta')).toBeVisible();
+    await expect(page.getByText('Passkey login arrives with the wallet beta')).toHaveCount(0);
     await expect(page.getByText('This browser has no passkey support')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Passkey' })).toBeDisabled();
+    await expect(page.getByLabel('Email address')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create passkey' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create passkey' })).toBeDisabled();
+    await page.getByLabel('Email address').fill('user@example.com');
+    await expect(page.getByRole('button', { name: 'Create passkey' })).toBeEnabled();
     await expect(page).toHaveScreenshot('passkey-login-available.png', { fullPage: true });
   });
 
