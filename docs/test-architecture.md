@@ -14,7 +14,7 @@ built yet; nothing here may describe a capability as existing when it does not.
 | ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
 | Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts run (forks may wait as `action_required`); suite full / related / none                    |
 | Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                |
-| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts run (job `mode=none` without `ci:full`); stack only with `ci:full` / main / bare dispatch |
+| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — listed jobs are off, `PasskeyRegistration` stays on, and a green run does not prove every process is off | drafts run (job `mode=none` without `ci:full`); stack only with `ci:full` / main / bare dispatch |
 | Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                           | no                                                                                               |
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
@@ -592,9 +592,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   hostname is not that host. When that route does not answer 404, a green run proves
   registration and a later login both reach the unlocked desk, the credential row is `Active`,
   and credential status plus the wallet list come from the API. It does not prove the ceremony
-  when the test skips, the wallet migration (the row is copied with SQL), authenticator PRF
-  output (the harness inserts fixed bytes when they are missing), a hardware authenticator,
-  the production relying party, or that background jobs run.
+  when the test skips, the wallet migration (the row is copied with SQL, forces
+  `autoTradeApproval`, and clears `ownerId` and `address`), authenticator PRF output (the
+  harness inserts fixed bytes when they are missing and forces `extension:prf` when the browser
+  reports false), a real user activation (the harness reports it active), a hardware
+  authenticator, the production relying party, or that background jobs run.
 - **The passkey tile unit test replaces the wallet package and the API client.**
   `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
   including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the
