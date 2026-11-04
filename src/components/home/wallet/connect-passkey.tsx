@@ -1,69 +1,40 @@
-import { DfxApiClient } from '@dfx.swiss/core';
-import { useSessionContext } from '@dfx.swiss/react';
+import { useAuthContext, useSessionContext } from '@dfx.swiss/react';
 import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
-import {
-  PasskeyAuth,
-  PasskeyCeremonies,
-  checkPasskeyPlatform,
-  RP_IDS,
-  type AuthResult,
-  type PlatformReport,
-  type WalletEnv,
-} from '@dfx.swiss/wallet';
-import { useEffect, useRef, useState } from 'react';
-import { Api } from '../../../config/api';
+import { checkPasskeyPlatform, type AuthResult, type PlatformReport } from '@dfx.swiss/wallet';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { useWalletContext, WalletType } from '../../../contexts/wallet.context';
 import { ConnectProps } from '../connect-shared';
+import PasskeyDesk from './passkey-desk';
+import {
+  createPasskeyClients,
+  passkeyMessage,
+  passkeyPlatformBlock,
+  PASSKEY_NO_ACCOUNT,
+  walletEnvForHost,
+} from './passkey-host';
+import { getOpenPasskey, setOpenPasskey, subscribeOpenPasskey } from './passkey-session';
 
-const STG_HOST = 'stg.app.dfx.swiss';
-const PLATFORM_BLOCK = 'This browser has no passkey support';
-const GENERIC_ERROR = 'Something went wrong. Please try again.';
-const LOCKED = 'This passkey did not unlock the wallet';
-const SEED_MISMATCH = 'This passkey does not match the wallet';
-
-// Host of this page, mapped onto the wallet package's relying-party environments. Staging is its own
-// relying party only when the installed package lists that host. An older package has no such entry, so
-// the host stays on the production check and the platform report stays unavailable.
-export function walletEnvForHost(hostname: string): WalletEnv {
-  if (hostname === RP_IDS.loc || hostname === '127.0.0.1') return 'loc';
-  if (hostname === RP_IDS.dev) return 'dev';
-  if (hostname === STG_HOST && RP_IDS['stg' as WalletEnv] === STG_HOST) return 'stg' as WalletEnv;
-  return 'prd';
-}
-
-// One sentence for every unavailable reason. The ceremony does not start when the platform cannot run it.
-export function passkeyPlatformBlock(report: PlatformReport | undefined): string | undefined {
-  if (!report || report.available || !report.reason) return undefined;
-  return PLATFORM_BLOCK;
-}
+export { passkeyPlatformBlock, walletEnvForHost };
 
 function isMail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
-function messageOf(error: unknown): string {
-  if (error instanceof Error && error.message.trim() !== '') return error.message;
-  return GENERIC_ERROR;
-}
-
-function passkeyAuthForThisPage(): PasskeyAuth {
-  const env = walletEnvForHost(window.location.hostname);
-  const api = new DfxApiClient({ apiUrl: `${Api.url.replace(/\/$/, '')}/${Api.version}` });
-  return new PasskeyAuth({ api, ceremonies: new PasskeyCeremonies(env), env });
-}
-
-// Register and log in on the page host. The tile stays behind ?feature=Passkey. A browser that cannot run
-// the ceremony keeps the disabled placeholder.
+// Register, log in and claim on the page host, then keep the account in this tab so the rest of the
+// merged passkey routes can be tried. The tile stays behind ?feature=Passkey. Opening the app is separate.
 export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const { isConnect, onLogin, onCancel }: ConnectProps = props;
   const { translate } = useSettingsContext();
   const { setSession } = useWalletContext();
   const { logout } = useSessionContext();
+  const { getAuthToken } = useAuthContext();
+  const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
   const [report, setReport] = useState<PlatformReport | undefined>();
   const [mail, setMail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const busyRef = useRef(false);
 
   useEffect(() => {
@@ -76,42 +47,83 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     };
   }, []);
 
-  const block = passkeyPlatformBlock(report);
-
-  async function finish(result: AuthResult): Promise<void> {
-    if (result.state === 'seed-mismatch') {
-      setError(SEED_MISMATCH);
-      return;
-    }
-    if (result.state !== 'unlocked') {
-      setError(LOCKED);
-      return;
-    }
-    if (!isConnect) await logout();
-    await setSession(result.accessToken, WalletType.PASSKEY);
-    onLogin();
+  async function remember(result: AuthResult, endPreviousSession: boolean): Promise<void> {
+    if (endPreviousSession && !isConnect) await logout();
+    setOpenPasskey(result);
   }
 
-  async function run(action: (auth: PasskeyAuth) => Promise<AuthResult>): Promise<void> {
+  async function run(action: () => Promise<void>): Promise<void> {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     setError(undefined);
+    setNotice(undefined);
     try {
-      await finish(await action(passkeyAuthForThisPage()));
+      await action();
     } catch (caught) {
-      setError(messageOf(caught));
+      setError(passkeyMessage(caught));
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
   }
 
+  async function openApp(): Promise<void> {
+    if (busyRef.current) return;
+    const session = getOpenPasskey();
+    if (!session) return;
+    busyRef.current = true;
+    setError(undefined);
+    try {
+      await setSession(session.accessToken, WalletType.PASSKEY);
+      onLogin();
+    } catch (caught) {
+      setError(passkeyMessage(caught));
+    } finally {
+      busyRef.current = false;
+    }
+  }
+
   async function onRegister(): Promise<void> {
     const address = mail.trim();
     if (!isMail(address)) return;
-    await run((auth) => auth.register({ mail: address }));
+    await run(async () => {
+      const result = await createPasskeyClients().auth.register({ mail: address });
+      await remember(result, true);
+    });
   }
+
+  async function onLoginWithPasskey(): Promise<void> {
+    await run(async () => {
+      const result = await createPasskeyClients().auth.login();
+      await remember(result, true);
+    });
+  }
+
+  async function onClaim(): Promise<void> {
+    const token = getAuthToken();
+    if (!token) {
+      setError(PASSKEY_NO_ACCOUNT);
+      setNotice(undefined);
+      return;
+    }
+    await run(async () => {
+      const result = await createPasskeyClients().auth.claim(token);
+      await remember(result, false);
+    });
+  }
+
+  if (open) {
+    return (
+      <PasskeyDesk
+        onOpenApp={() => void openApp()}
+        onCancel={onCancel}
+        onRevoked={() => setNotice('The passkey wallet was revoked.')}
+      />
+    );
+  }
+
+  const block = passkeyPlatformBlock(report);
 
   if (!report?.available) {
     return (
@@ -155,6 +167,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
         />
       </label>
 
+      {notice ? <p className="text-dfxGray-700">{translate('screens/home', notice)}</p> : null}
       {error ? <p className="text-dfxRed-150">{translate('screens/home', error)}</p> : null}
 
       <StyledButton
@@ -167,7 +180,14 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
         width={StyledButtonWidth.FULL}
         color={StyledButtonColor.GRAY}
         label={translate('screens/home', 'Log in')}
-        onClick={() => void run((auth) => auth.login())}
+        onClick={() => void onLoginWithPasskey()}
+        disabled={busy}
+      />
+      <StyledButton
+        width={StyledButtonWidth.FULL}
+        color={StyledButtonColor.GRAY}
+        label={translate('screens/home', 'Add passkey to this account')}
+        onClick={() => void onClaim()}
         disabled={busy}
       />
       <StyledButton
