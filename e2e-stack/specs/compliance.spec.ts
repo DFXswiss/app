@@ -536,7 +536,7 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText('UserData ID', { exact: true })).toBeVisible();
     await expect(page.getByText('User Name', { exact: true })).toBeVisible();
     await expect(page.getByText('Actions', { exact: true })).toBeVisible();
-    // Empty state is expected under DISABLED_PROCESSES=*
+    // Empty state is expected: the order jobs are listed in DISABLED_PROCESSES.
     await expect(
       page.getByText('No orders found', { exact: true }).or(page.locator('tbody tr').first()).first(),
     ).toBeVisible();
