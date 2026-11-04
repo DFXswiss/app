@@ -165,7 +165,7 @@ function requireWallet() {
   return { session, wallet: session.wallet };
 }
 
-function authResult(state: string, keys?: unknown) {
+function authResult(state: string, keys?: unknown, includeBitcoin = true) {
   return {
     accessToken: 'token',
     state,
@@ -180,7 +180,12 @@ function authResult(state: string, keys?: unknown) {
       backupEligible: true,
       backedUp: false,
       backupRequired: true,
-      addresses: [{ address: SEED, family: 'Evm', path: "m/44'/60'/0'/0/0", status: 'Active', blockchains: [] }],
+      addresses: [
+        { address: SEED, family: 'Evm', path: "m/44'/60'/0'/0/0", status: 'Active', blockchains: [] },
+        ...(includeBitcoin
+          ? [{ address: 'bc1qlogin', family: 'Bitcoin', path: "m/84'/0'/0'/0/0", status: 'Active', blockchains: [] }]
+          : []),
+      ],
     },
   };
 }
@@ -315,6 +320,25 @@ describe('ConnectPasskey', () => {
     await waitFor(() => expect(mockSetSession).toHaveBeenCalledWith('token', WalletType.PASSKEY));
     expect(mockOnLogin).toHaveBeenCalledTimes(1);
     expect(mockOnCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('links bitcoin once when the unlocked server list has no bitcoin address', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const keys = { id: 'keys' };
+    mockLogin.mockResolvedValue(authResult('unlocked', keys, false));
+    mockLink.mockResolvedValue({
+      accessToken: 'linked-token',
+      address: { family: 'Bitcoin', address: 'bc1qlogin', path: "m/84'/0'/0'/0/0" },
+    });
+    mockWallets.mockResolvedValue([authResult('unlocked', keys).wallet]);
+
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+
+    await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(1));
+    expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0);
+    expect(await screen.findByText('Linked Bitcoin bc1qlogin.')).toBeInTheDocument();
+    expect(screen.getByRole('list')).toHaveTextContent('bc1qlogin');
   });
 
   it('adds a passkey to the signed-in account without logging that account out', async () => {
@@ -812,6 +836,9 @@ describe('ConnectPasskey', () => {
       });
     });
     expect(screen.getByText('Wallet 7, unknown, unlocked.')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Refresh wallets' })).not.toHaveAttribute('data-disabled'),
+    );
 
     const current = requireWallet();
     act(() => {
