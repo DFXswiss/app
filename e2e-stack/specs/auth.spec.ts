@@ -27,7 +27,7 @@ import {
   testWallet,
   waitForRow,
 } from './fixtures';
-import { cleanupCreatedData, createUser, e2eMail } from './fixtures/factories';
+import { cleanupCreatedData, createUser, e2eMail, trackRow } from './fixtures/factories';
 import {
   ensurePasskeyPage,
   ensurePasskeyWallet,
@@ -464,7 +464,8 @@ test.describe('Auth area e2e', () => {
     const route = await passkeyRegistrationRoute();
     test.skip(route === 'absent', 'This API image has no passkey registration route');
 
-    await ensurePasskeyWallet();
+    const walletId = await ensurePasskeyWallet();
+    if (walletId !== undefined) trackRow('wallet', walletId);
     await ensurePasskeyPage();
     await installVirtualPasskey(page);
     const mail = testEmail('passkey');
@@ -479,13 +480,14 @@ test.describe('Auth area e2e', () => {
     await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
     await expect(page.getByText('Passkey wallet', { exact: true })).toBeVisible();
 
-    const stored = await waitForRow<{ status: string }>(
-      `SELECT c.status FROM passkey_credential c
+    const stored = await waitForRow<{ id: number; status: string }>(
+      `SELECT u.id, c.status FROM passkey_credential c
        JOIN user_data u ON u.id = c."userDataId"
        WHERE u.mail = $1`,
       [mail],
       20000,
     );
+    trackRow('user_data', stored.id);
     expect(stored.status).toBe('Active');
 
     await page.getByRole('button', { name: 'Credential status' }).click();

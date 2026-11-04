@@ -148,10 +148,11 @@ export async function passkeyRegistrationRoute(): Promise<'absent' | 'present'> 
 /**
  * Synchronize creates the wallet table and does not run the passkey wallet migration.
  * Copy the default wallet's compliance columns and name the row the API looks up.
+ * Returns the new wallet id, or undefined when the row already exists and must not be tracked.
  */
-export async function ensurePasskeyWallet(): Promise<void> {
+export async function ensurePasskeyWallet(): Promise<number | undefined> {
   const existing = await queryOne<{ id: number }>(`SELECT id FROM wallet WHERE name = $1`, ['DFX Passkey']);
-  if (existing) return;
+  if (existing) return undefined;
 
   const columns = await queryRows<{ column_name: string }>(
     `SELECT column_name FROM information_schema.columns
@@ -171,5 +172,10 @@ export async function ensurePasskeyWallet(): Promise<void> {
     if (name === 'created' || name === 'updated') return 'NOW()';
     return `"${name.replace(/"/g, '')}"`;
   });
-  await queryRows(`INSERT INTO wallet (${quoted.join(', ')}) SELECT ${selected.join(', ')} FROM wallet WHERE id = 1`);
+  const inserted = await queryRows<{ id: number }>(
+    `INSERT INTO wallet (${quoted.join(', ')}) SELECT ${selected.join(', ')} FROM wallet WHERE id = 1 RETURNING id`,
+  );
+  const id = inserted[0]?.id;
+  if (typeof id !== 'number') throw new Error('passkey wallet insert returned no id');
+  return id;
 }
