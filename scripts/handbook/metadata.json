@@ -255,6 +255,14 @@
     "title": "KYC Wallet-Hinweis",
     "description": "Die KYC-Seite, wenn die verbundene Wallet nicht die Adresse aus dem Link ist. Der Hinweis nennt die verlangte Adresse und bietet Abmelden. Einwilligung und Ident starten nicht."
   },
+  "payment-qr-device": {
+    "title": "Zahlungs-QR geräteabhängig",
+    "description": "Zahlungsseite mit fester Quote: Desktop zeigt grossen QR und Scan-Satz, Handheld nur Wallet-Auswahl. Die Nicht-OpenCryptoPay-Variante Pay to Address auf dem Desktop zeigt keine QR-Zeile und keinen Scan-Satz."
+  },
+  "payment-routes-qr-label": {
+    "title": "Payment-Routen QR-Einstellung",
+    "description": "Payment-Routen: Default-Konfiguration mit dem Label „Always show QR code“ statt „Display QR code“, und dasselbe Label im geöffneten Formular zum Bearbeiten der Default-Konfiguration."
+  },
   "docs": {
     "docs/EIP7702-Implementierungsplan.md": {
       "title": "EIP-7702 Implementierungsplan"
