@@ -581,11 +581,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   that geolocation-db returns `CH`, or that this browser's real passkey support matches the stub.
 - **The passkey tile unit test replaces the wallet package and the API client.**
   `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
-  including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, and
-  the session, store, balance and settings hooks. A green run proves the disabled placeholder, the
-  registration form, and the desk actions against those stubs, including that a link keeps the
+  including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the
+  session, store, balance and settings hooks, and `src/contexts/wallet.context`. That context's
+  `useWalletContext` returns the test's `setSession`. A green run proves the disabled placeholder,
+  the registration form, and the desk actions against those stubs, including that a link keeps the
   ceremony token and that revoke-by-id uses a fresh login token. It does not prove a real
-  ceremony, a real `DfxApiClient`, or the published components. WebAuthn stays a stub.
+  ceremony, a real `DfxApiClient`, the published components, or that `setSession` stores a passkey
+  session. WebAuthn stays a stub.
 - **The connect-screen unit test replaces every wallet tile.**
   `src/__tests__/connect-wrapper.test.tsx` replaces `@dfx.swiss/react` and each connect tile, including
   the passkey tile, with a stub. A green run proves the wrapper renders the stub named by the wallet
