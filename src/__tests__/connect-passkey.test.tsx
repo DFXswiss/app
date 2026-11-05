@@ -1375,7 +1375,9 @@ describe('ConnectPasskey', () => {
       await screen.findByText('Sign in with mail first. The passkey is added to that account.'),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Open a new account' }));
-    expect(screen.queryByText('Sign in with mail first. The passkey is added to that account.')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Sign in with mail first. The passkey is added to that account.'),
+    ).not.toBeInTheDocument();
   });
 
   it('hides the other controls while a ceremony is preparing', async () => {

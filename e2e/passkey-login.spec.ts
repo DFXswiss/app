@@ -784,7 +784,9 @@ test.describe('Passkey login', () => {
       try {
         Object.defineProperty(window, 'PublicKeyCredential', { configurable: true, value: PublicKeyCredential });
       } catch {
-        const existing = window.PublicKeyCredential as { getClientCapabilities?: () => Promise<Record<string, boolean>> };
+        const existing = window.PublicKeyCredential as {
+          getClientCapabilities?: () => Promise<Record<string, boolean>>;
+        };
         if (existing) existing.getClientCapabilities = PublicKeyCredential.getClientCapabilities;
       }
       const create = () => Promise.resolve(null);
