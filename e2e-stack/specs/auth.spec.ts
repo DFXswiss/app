@@ -516,6 +516,7 @@ test.describe('Auth area e2e', () => {
         throw new Error(`Bitcoin list row is not family, address and path: ${JSON.stringify(rendered)}`);
       }
       const address = matched[1];
+      const sameBitcoinRow = page.locator('li', { hasText: `Bitcoin ${address} ${path}` });
       await expect(page.getByText(`Linked Bitcoin ${address}.`, { exact: true })).toBeVisible({ timeout: 30000 });
 
       const bitcoinAddressSql = `SELECT u.address AS address, a.family AS family, a.path AS path
@@ -543,13 +544,13 @@ test.describe('Auth area e2e', () => {
       await expect(page.getByText(/: Active/)).toBeVisible({ timeout: 20000 });
       await page.getByRole('button', { name: 'Refresh wallets' }).click();
       await expect(page.getByText('Wallets on this account: 1.', { exact: true })).toBeVisible({ timeout: 20000 });
-      await expect(bitcoinRow).toBeVisible();
+      await expect(sameBitcoinRow).toHaveCount(1);
 
       await page.getByRole('button', { name: 'Start another ceremony' }).click();
       await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
       await page.getByRole('button', { name: 'Log in' }).click();
       await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
-      await expect(bitcoinRow).toBeVisible();
+      await expect(sameBitcoinRow).toHaveCount(1);
     } finally {
       await trackPasskeyUser();
     }
