@@ -193,7 +193,7 @@
   },
   "deleted-address": {
     "title": "Gelöschte Adresse",
-    "description": "Ist die angemeldete Wallet-Adresse gelöscht, zeigt die App statt Kauf und Verkauf einen Hinweis mit dem Button zum Wiederaktivieren. Nach einer erfolgreichen Aktivierung verschwindet der Hinweis, und auf den Login-Seiten geht es weiter: zum Screen, der zur Anmeldung geschickt hat, sonst von /login nach /buy und von /connect nach /account, im eingebetteten Widget ebenso, statt es zu schließen. Varianten: Hinweis mit Button und Hinweis nach einer fehlgeschlagenen Aktivierung mit der Fehlermeldung der API."
+    "description": "Ist die angemeldete Wallet-Adresse gelöscht, zeigt die App statt Kauf und Verkauf einen Hinweis mit dem Button zum Wiederaktivieren. Nach einer erfolgreichen Aktivierung verschwindet der Hinweis, und auf den Login-Seiten geht es weiter: zum Screen, der zur Anmeldung geschickt hat, sonst von /login nach /buy und von /connect nach /account; im eingebetteten Widget mit service=connect schließt sich stattdessen das Widget. Varianten: Hinweis mit Button und Hinweis nach einer fehlgeschlagenen Aktivierung mit der Fehlermeldung der API."
   },
   "login-redirect": {
     "title": "Login-Weiterleitung",
