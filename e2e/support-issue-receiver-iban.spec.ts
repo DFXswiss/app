@@ -39,7 +39,7 @@ import { getCachedAuth } from './helpers/auth-cache';
  */
 
 // Example Swiss IBAN (21 alphanumerics once normalized); length is above ReceiverIbanCheckMinLength (15).
-const EXAMPLE_RECEIVER_IBAN = 'CH36 0000 0000 0000 0000 0';
+const EXAMPLE_RECEIVER_IBAN = 'CH93 0076 2011 6238 5295 7';
 
 const RECEIVE_IBAN_RE = /\/v1\/bank\/receiveIban(?:\?|$)/;
 
