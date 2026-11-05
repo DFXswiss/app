@@ -249,7 +249,7 @@ export default function SwapScreen(): JSX.Element {
           filterAssets(getAssets([item.chain], { buyable: true, comingSoon: false }), assetFilter).length > 0,
       )
     : [];
-  const addressItems: Address[] = chainAddresses.length
+  const addressItems: Address[] = session
     ? [
         ...chainAddresses,
         {

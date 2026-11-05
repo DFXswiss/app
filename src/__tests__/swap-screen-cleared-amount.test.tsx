@@ -1440,17 +1440,18 @@ describe('SwapScreen', () => {
     expect(screen.getByTestId('dropdown-address').querySelectorAll('[data-testid^="select-address-"]')).toHaveLength(0);
   });
 
-  it('renders an empty chain list when available blockchains are undefined', async () => {
+  it('offers address switching when available blockchains are undefined', async () => {
     mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false, availableBlockchains: undefined }));
     render(<SwapScreen />);
     await flushQuote();
     expect(screen.getByTestId('form-submit')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Blockchain' })).toBeInTheDocument();
     expect(screen.getByTestId('selected-address')).toBeEmptyDOMElement();
-    expect(screen.getByTestId('dropdown-address').querySelectorAll('[data-testid^="select-address-"]')).toHaveLength(0);
+    expect(screen.getByTestId('select-address-0')).toHaveTextContent('Switch address');
+    expect(screen.queryByTestId('select-address-1')).not.toBeInTheDocument();
   });
 
-  it('renders an empty receiving list when no chain has a buyable asset', async () => {
+  it('offers address switching when no chain has a buyable asset', async () => {
     mockAssets = [eth];
     mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false }));
     const { rerender } = render(<SwapScreen />);
@@ -1461,7 +1462,8 @@ describe('SwapScreen', () => {
     await flushQuote();
     expect(screen.getByTestId('form-submit')).toBeInTheDocument();
     expect(screen.getByTestId('dropdown-targetAsset').querySelectorAll('button')).toHaveLength(0);
-    expect(screen.getByTestId('dropdown-address').querySelectorAll('[data-testid^="select-address-"]')).toHaveLength(0);
+    expect(screen.getByTestId('select-address-0')).toHaveTextContent('Switch address');
+    expect(screen.queryByTestId('select-address-1')).not.toBeInTheDocument();
   });
 
   it('renders when the wallet chain is unset and assetIn does not match', async () => {
@@ -1596,6 +1598,32 @@ describe('SwapScreen', () => {
     await flushQuote();
     expect(screen.queryByRole('button', { name: 'Bitcoin' })).not.toBeInTheDocument();
     expect(screen.getByTestId('select-address-1')).toHaveTextContent('Switch address');
+  });
+
+  it('opens and cancels address switching without a receiving chain or quote', async () => {
+    mockSession = { address: '0xabc', blockchains: ['Ethereum'] };
+    mockUserAddresses = [{ address: 'bc1-linked', blockchains: ['Bitcoin'] }];
+    mockUseAppParams.mockReturnValue(chainParams({ assets: 'Bitcoin/BTC', availableBlockchains: ['Ethereum'] }));
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('select-address-0')).toHaveTextContent('Switch address');
+    expect(screen.queryByTestId('select-address-1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('selected-address')).toBeEmptyDOMElement();
+    expect(mockReceiveFor).not.toHaveBeenCalled();
+
+    await act(async () => {
+      screen.getByTestId('select-address-0').click();
+    });
+    expect(screen.getByTestId('address-switch')).toBeInTheDocument();
+    await flushQuote();
+    expect(mockReceiveFor).not.toHaveBeenCalled();
+    await act(async () => {
+      screen.getByTestId('address-switch-cancel').click();
+    });
+    await flushQuote();
+    expect(screen.queryByTestId('address-switch')).not.toBeInTheDocument();
+    expect(screen.getByTestId('selected-address')).toBeEmptyDOMElement();
+    expect(mockReceiveFor).not.toHaveBeenCalled();
   });
 
   it.each([
