@@ -107,6 +107,10 @@ function HomeScreenContent(): JSX.Element {
       setConnectTo({ type: WalletType.MAIL });
     } else if (specialMode === SpecialMode.WALLET && isSessionInitialized && !isLoggedIn) {
       setConnectTo({ type: WalletType.PASSKEY });
+    } else if (specialMode === SpecialMode.WALLET && isLoggedIn && connectTo?.type === WalletType.PASSKEY) {
+      // A sign-in that finishes on this page must leave the form. connectTo stays out of the
+      // dependency list so closing the form does not open it again.
+      setConnectTo(undefined);
     }
   }, [specialMode, isLoggedIn, session, hasAddress, isSessionInitialized]);
 

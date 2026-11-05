@@ -85,8 +85,8 @@ jest.mock('../hooks/resize-observer.hook', () => ({
   useResizeObserver: () => () => undefined,
 }));
 
-function renderWallet(): void {
-  render(
+function renderWallet() {
+  return render(
     <MemoryRouter initialEntries={['/wallet']}>
       <HomeScreen />
     </MemoryRouter>,
@@ -103,6 +103,22 @@ describe('/wallet passkey entry', () => {
     renderWallet();
 
     expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+  });
+
+  it('closes the passkey screen when the session signs in', () => {
+    const view = renderWallet();
+
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+
+    mockSessionState.isLoggedIn = true;
+    view.rerender(
+      <MemoryRouter initialEntries={['/wallet']}>
+        <HomeScreen />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="/buy.jpg"]')).not.toBeNull();
   });
 
   it('shows the home tiles when the session is already logged in', () => {
