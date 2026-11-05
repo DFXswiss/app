@@ -197,7 +197,7 @@
   },
   "login-redirect": {
     "title": "Login-Weiterleitung",
-    "description": "Anmeldung auf /login per Wallet oder Alby führt nach /buy. Der Mail-Link führt ebenfalls über /buy; weil eine Mail-Session keine Adresse hat, geht es danach weiter auf /connect. Hat ein Screen zur Anmeldung geschickt, geht es danach dorthin zurück. Dieselbe Anmeldung auf /connect endet auf /account. Die Bilder zeigen die Kommandozeilen-Wallet."
+    "description": "Anmeldung auf /login per Wallet oder Alby führt nach /buy. Der Mail-Link führt ebenfalls über /buy; weil eine Mail-Session keine Adresse hat, geht es danach weiter auf /connect. Hat ein Screen zur Anmeldung geschickt, geht es danach dorthin zurück. Ohne einen solchen Screen endet dieselbe Anmeldung auf /connect auf /account; im eingebetteten Widget mit service=connect schließt sich stattdessen das Widget. Die Bilder zeigen die Kommandozeilen-Wallet."
   },
   "tfa-merged-redirect": {
     "title": "2FA-Screen: Weiterleitung bei zusammengeführtem Account",
