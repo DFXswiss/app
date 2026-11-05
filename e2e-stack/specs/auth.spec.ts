@@ -543,13 +543,15 @@ test.describe('Auth area e2e', () => {
       await expect(page.getByText(/: Active/)).toBeVisible({ timeout: 20000 });
       await page.getByRole('button', { name: 'Refresh wallets' }).click();
       await expect(page.getByText('Wallets on this account: 1.', { exact: true })).toBeVisible({ timeout: 20000 });
-      await expect(bitcoinRow).toBeVisible();
+      await expect(bitcoinRow).toHaveCount(1);
+      await expect(bitcoinRow).toHaveText(`Bitcoin ${address} ${path}`);
 
       await page.getByRole('button', { name: 'Start another ceremony' }).click();
       await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
       await page.getByRole('button', { name: 'Log in' }).click();
       await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
-      await expect(bitcoinRow).toBeVisible();
+      await expect(bitcoinRow).toHaveCount(1);
+      await expect(bitcoinRow).toHaveText(`Bitcoin ${address} ${path}`);
     } finally {
       await trackPasskeyUser();
     }

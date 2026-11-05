@@ -596,8 +596,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and credential status plus the wallet list come from the API. It also proves that the first
   unlock shows a Bitcoin row with path `m/84'/0'/0'/0/0`, that the sentence `Linked Bitcoin
   <address>.` names that same `bc1q` address, that `passkey_address` together with
-  `"user".address` stores that address once for the registered mail, and that the second
-  unlock shows the same row. It does not prove the ceremony when the test skips, the wallet
+  `"user".address` stores that address once for the registered mail, that after Refresh
+  wallets and after the second unlock exactly one list row shows that same `bc1q` address,
+  and that a different address at that path does not pass. It does not prove the ceremony
+  when the test skips, the wallet
   migration (the row is copied with SQL, forces `autoTradeApproval`, and clears `ownerId` and
   `address`), authenticator PRF output (the harness inserts fixed bytes when they are missing
   and forces `extension:prf` when the browser reports false), a real user activation (the
