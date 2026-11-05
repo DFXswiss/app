@@ -216,12 +216,17 @@ beforeEach(() => {
 });
 
 describe('ConnectCli auto-connect', () => {
-  it('does not log in, switch blockchain or log out on connect with the active wallet', async () => {
+  it('does not log in, switch, log out, load or show an error on connect with the active wallet', async () => {
     mockActiveWallet = WalletType.CLI_BTC;
     await ready({ isConnect: true });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(mockLogin).not.toHaveBeenCalled();
     expect(mockSwitchBlockchain).not.toHaveBeenCalled();
     expect(mockLogout).not.toHaveBeenCalled();
+    expect(screen.queryByText('Connection failed!')).not.toBeInTheDocument();
+    expect(screen.queryByText('Login loading')).not.toBeInTheDocument();
   });
 
   it('switches blockchain without logging in outside connect with the active wallet', async () => {
@@ -339,6 +344,48 @@ describe('ConnectCli content', () => {
       expect(mockLogin).toHaveBeenCalledWith(wallet, encoded, blockchain, expect.any(Function), undefined),
     );
     await expect(mockLogin.mock.calls[0][3](encoded, 'message')).resolves.toBe('signature');
+  });
+
+  it('logs in with the entered address and signature without logging out when the wallet is active on connect', async () => {
+    mockActiveWallet = WalletType.CLI_LN;
+    mockSession = { address: 'session-address' };
+    await ready({ wallet: WalletType.CLI_LN, blockchain: Blockchain.LIGHTNING, isConnect: true });
+    await change('Address', 'alice@example.com');
+    await screen.findByText('sign this');
+    await change('Signature', 'signature');
+    await clickLogin();
+    await waitFor(() =>
+      expect(mockLogin).toHaveBeenCalledWith(
+        WalletType.CLI_LN,
+        'encoded:alice@example.com',
+        Blockchain.LIGHTNING,
+        expect.any(Function),
+        undefined,
+      ),
+    );
+    await expect(mockLogin.mock.calls[0][3]('encoded:alice@example.com', 'message')).resolves.toBe('signature');
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('logs in with the entered address and signature outside connect when another wallet is active', async () => {
+    mockActiveWallet = WalletType.CLI_ETH;
+    mockSession = { address: 'session-address' };
+    await ready();
+    const address = `1${'A'.repeat(25)}`;
+    await change('Address', address);
+    await screen.findByText('sign this');
+    await change('Signature', 'signature');
+    await clickLogin();
+    await waitFor(() =>
+      expect(mockLogin).toHaveBeenCalledWith(
+        WalletType.CLI_BTC,
+        address,
+        Blockchain.BITCOIN,
+        expect.any(Function),
+        undefined,
+      ),
+    );
+    await expect(mockLogin.mock.calls[0][3](address, 'message')).resolves.toBe('signature');
   });
 
   it('submits form values when the active wallet has no session address', async () => {

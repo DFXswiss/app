@@ -62,7 +62,7 @@ export default function ConnectCli(props: ConnectProps): JSX.Element {
   });
 
   async function getAccount(_w: WalletType, _b: Blockchain, isReconnect: boolean): Promise<Account> {
-    if (isReconnect && session?.address) return { address: session.address };
+    if (isReconnect && session?.address && !props.isConnect) return { address: session.address };
 
     const values = form.getValues();
     values.address = encodeAddress(values.address);
@@ -87,7 +87,7 @@ export default function ConnectCli(props: ConnectProps): JSX.Element {
 
 interface ContentProps extends ConnectContentProps {
   wallet: WalletType;
-  form: UseFormReturn<FormData, any>;
+  form: UseFormReturn<FormData>;
 }
 
 function Content({ wallet, isConnecting, connect, error, form, onSwitch, rootRef }: ContentProps): JSX.Element {
