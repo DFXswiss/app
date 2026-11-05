@@ -54,14 +54,52 @@ async function installRoutes(page: Page, holdUser?: Promise<void>): Promise<void
   });
 }
 
-async function stubPasskeyPlatform(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+async function stubPasskeyPlatform(page: Page, available = true): Promise<void> {
+  await page.addInitScript((isAvailable) => {
+    if (!isAvailable) {
+      try {
+        Object.defineProperty(window, 'PublicKeyCredential', { configurable: true, value: undefined });
+      } catch {
+        const credentials = navigator.credentials;
+        if (credentials) {
+          Object.defineProperty(credentials, 'create', { configurable: true, value: undefined });
+          Object.defineProperty(credentials, 'get', { configurable: true, value: undefined });
+        }
+      }
+      return;
+    }
+
     class PublicKeyCredential {
       static getClientCapabilities(): Promise<Record<string, boolean>> {
         return Promise.resolve({ 'extension:prf': true });
       }
     }
     Object.defineProperty(window, 'PublicKeyCredential', { configurable: true, value: PublicKeyCredential });
+  }, available);
+}
+
+// Playwright freezes CSS animations on the first frame. That frame of this spinner has a
+// one-unit dash, and the real circle is 30px on a full-page shot. The shot enlarges it,
+// draws the track, and pins a visible arc.
+async function showSpinnerStroke(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const svg = document.querySelector('svg[viewBox="0 0 66 66"]');
+    if (!(svg instanceof SVGElement)) return;
+    svg.style.setProperty('width', '96px', 'important');
+    svg.style.setProperty('height', '96px', 'important');
+    svg.style.setProperty('margin', '48px', 'important');
+    svg.style.setProperty('display', 'block', 'important');
+    const circles = Array.from(svg.querySelectorAll('circle'));
+    const track = circles[0];
+    const arc = circles.at(-1);
+    if (track instanceof SVGElement) {
+      track.style.setProperty('stroke', 'rgba(7, 36, 64, 0.25)', 'important');
+    }
+    if (!(arc instanceof SVGElement)) return;
+    arc.style.setProperty('animation', 'none', 'important');
+    arc.style.setProperty('stroke', '#F5516C', 'important');
+    arc.style.setProperty('stroke-dasharray', '90, 174', 'important');
+    arc.style.setProperty('stroke-dashoffset', '0', 'important');
   });
 }
 
@@ -77,7 +115,12 @@ async function expectWalletAddress(page: Page): Promise<void> {
 
 // The login layout clips inside overflow-auto. Expanding those nodes and growing the viewport is
 // what makes each control fully visible instead of a 1280×720 crop.
-async function shoot(page: Page, name: string, controls: Locator[]): Promise<void> {
+async function shoot(
+  page: Page,
+  name: string,
+  controls: Locator[],
+  prepare?: (page: Page) => Promise<void>,
+): Promise<void> {
   await page.evaluate(() => {
     const expanded: HTMLElement[] = [];
     const collect = (): HTMLElement[] =>
@@ -115,6 +158,7 @@ async function shoot(page: Page, name: string, controls: Locator[]): Promise<voi
       );
     }
   }
+  if (prepare) await prepare(page);
   await expect(page).toHaveScreenshot(name, { fullPage: true, animations: 'disabled' });
 }
 
@@ -132,8 +176,23 @@ test.describe('/wallet passkey entry', () => {
     await expect(spinner).toBeVisible();
     await expect(page.getByLabel('Email address')).toHaveCount(0);
     await expectWalletAddress(page);
-    await shoot(page, 'wallet-entry-loading.png', [spinner]);
+    await shoot(page, 'wallet-entry-loading.png', [spinner], showSpinnerStroke);
     release();
+  });
+
+  test('shows the disabled placeholder when this browser has no passkeys', async ({ page }) => {
+    await stubPasskeyPlatform(page, false);
+    await installRoutes(page);
+    await page.goto('/wallet?lang=en');
+
+    const notice = page.getByText('This browser has no passkey support');
+    const passkey = page.getByRole('button', { name: 'Passkey' });
+    await expect(notice).toBeVisible();
+    await expect(page.getByText('Passkey login arrives with the wallet beta')).toBeVisible();
+    await expect(passkey).toBeDisabled();
+    await expect(page.getByLabel('Email address')).toHaveCount(0);
+    await expectWalletAddress(page);
+    await shoot(page, 'wallet-entry-blocked.png', [notice, passkey]);
   });
 
   test('opens the passkey form without leaving /wallet', async ({ page }) => {

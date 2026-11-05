@@ -598,6 +598,21 @@ describe('/wallet passkey entry', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
     otherChain.unmount();
 
+    mockNavigate.mockClear();
+    mockParamsState.blockchain = undefined;
+    const missingChain = renderAt('/');
+    expect(screen.getByText('Wallets')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    missingChain.unmount();
+
+    mockAuthState.session = { address: 'bc1q', blockchains: ['Ethereum'] };
+    mockParamsState.blockchain = 'Ethereum';
+    mockNavigate.mockClear();
+    const loginWallet = renderAt('/login/wallet');
+    expect(screen.getByText('Wallets')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    loginWallet.unmount();
+
     mockAuthState.session = undefined;
     mockParamsState.blockchain = undefined;
     mockHomePage = { id: 'home', description: 'Home', tiles: [] };
@@ -615,5 +630,41 @@ describe('/wallet passkey entry', () => {
 
     expect(mockLayoutOptions?.title).toBe('Embedded');
     expect(mockLayoutOptions?.backButton).toBe(false);
+  });
+
+  it('opens a page with several tiles and stops back on a page that is not a single tile', () => {
+    mockPages.wide = {
+      id: 'wide',
+      description: 'Wide',
+      tiles: [
+        { id: 'a', img: '/a.jpg' },
+        { id: 'b', img: '/b.jpg' },
+      ],
+    };
+    mockPages.leaf = { id: 'leaf', description: 'Leaf', tiles: [{ id: 'end', img: '/end.jpg' }] };
+    mockHomePage = {
+      id: 'home',
+      description: 'Home',
+      tiles: [
+        { id: 'to-wide', img: '/wide.jpg', next: { page: 'wide' } },
+        { id: 'to-leaf', img: '/leaf.jpg', next: { page: 'leaf' } },
+      ],
+    };
+    mockParamsState.mode = 'home';
+
+    renderAt('/');
+    fireEvent.click(document.querySelector('img[src="/wide.jpg"]') as Element);
+    expect(screen.getByText('Wide')).toBeInTheDocument();
+    act(() => {
+      mockLayoutOptions?.onBack?.();
+    });
+    expect(screen.getByText('Home')).toBeInTheDocument();
+
+    fireEvent.click(document.querySelector('img[src="/leaf.jpg"]') as Element);
+    expect(screen.getByText('Leaf')).toBeInTheDocument();
+    act(() => {
+      mockLayoutOptions?.onBack?.();
+    });
+    expect(screen.getByText('Home')).toBeInTheDocument();
   });
 });

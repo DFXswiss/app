@@ -181,7 +181,11 @@
   },
   "wallet-entry": {
     "title": "Passkey über /wallet",
-    "description": "/wallet bleibt auf dieser Adresse. Ohne Anmeldung öffnet sich das Passkey-Formular. Während das Konto noch lädt, zeigt die Seite den Ladekreis. Mit Anmeldung erscheinen die Dienste der Startseite, ohne das Formular."
+    "description": "/wallet bleibt auf dieser Adresse. Ohne Anmeldung öffnet sich das Passkey-Formular. Hat der Browser keine Passkeys, bleibt der Platzhalter deaktiviert. Während das Konto noch lädt, zeigt die Seite den Ladekreis. Mit Anmeldung erscheinen die Dienste der Startseite, ohne das Formular."
+  },
+  "sitemap": {
+    "title": "Sitemap",
+    "description": "Die Sitemap listet die Seiten. Unter Auth & Account steht der Eintrag Passkey login (/wallet)."
   },
   "signature-login": {
     "title": "Signatur-Login",
