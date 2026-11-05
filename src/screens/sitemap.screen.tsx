@@ -26,6 +26,7 @@ const sections: PageSection[] = [
       { path: '/login', label: 'Login' },
       { path: '/login/mail', label: 'Login (Mail)' },
       { path: '/login/wallet', label: 'Login (Wallet)' },
+      { path: '/wallet', label: 'Passkey login' },
       { path: '/connect', label: 'Connect' },
       { path: '/mail-login', label: 'Mail Login' },
       { path: '/account-merge', label: 'Add wallet address' },
