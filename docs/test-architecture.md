@@ -609,6 +609,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and forces `extension:prf` when the browser reports false), a real user activation (the
   harness reports it active), a hardware authenticator, the production relying party, or that
   background jobs run.
+- **The wallet route full-stack case opens the passkey form on the loc relying party.**
+  In `e2e-stack/specs/auth.spec.ts`, the `/wallet` test installs the same Chromium virtual
+  authenticator as the ceremony, including fixed PRF bytes when that output is missing, and
+  opens `http://localhost:3001` through the forwarder, because the relying party is
+  `localhost` and the stack hostname is not that host. The init script forces
+  `extension:prf` when the browser reports false and reports user activation as active.
+  A green run proves the email field and the Log in button are visible, the address stays
+  `/wallet`, and the login heading is absent. It does not prove a completed ceremony, a
+  hardware authenticator, the production relying party, a real user activation, authenticator
+  PRF output, or that the email field appears on the stack hostname or when the browser
+  reports `extension:prf` as false.
 - **The passkey tile unit test replaces the wallet package and the API client.**
   `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
   including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the
