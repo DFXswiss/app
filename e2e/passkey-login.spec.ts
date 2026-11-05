@@ -98,7 +98,35 @@ const DESK_CHALLENGE = {
 
 const MISMATCH_ADDRESS = '0x0000000000000000000000000000000000000001';
 
-function deskWallet(seedCheckAddress: string): Record<string, unknown> {
+const DESK_EVM = {
+  address: '0x00000000000000000000000000000000000000aa',
+  family: 'Evm',
+  path: "m/44'/60'/0'/0/0",
+  status: 'Active',
+  blockchains: [],
+};
+const DESK_SPARK = {
+  address: 'spark1desklogin',
+  family: 'Spark',
+  path: "m/8797555'/1'/0'",
+  status: 'Active',
+  blockchains: [],
+};
+const DESK_BITCOIN = {
+  address: 'bc1qdesklogin',
+  family: 'Bitcoin',
+  path: "m/84'/0'/0'/0/0",
+  status: 'Active',
+  blockchains: [],
+};
+
+async function expectDeskRows(page: Page): Promise<void> {
+  await expect(page.locator('li', { hasText: `${DESK_EVM.family} ${DESK_EVM.address}` })).toBeVisible();
+  await expect(page.locator('li', { hasText: `${DESK_SPARK.family} ${DESK_SPARK.address}` })).toBeVisible();
+  await expect(page.locator('li', { hasText: `${DESK_BITCOIN.family} ${DESK_BITCOIN.address}` })).toBeVisible();
+}
+
+function deskWallet(seedCheckAddress: string, addresses: Record<string, unknown>[] = []): Record<string, unknown> {
   return {
     id: 7,
     credentialId: deskBase64Url(DESK_CREDENTIAL_BYTES),
@@ -109,20 +137,28 @@ function deskWallet(seedCheckAddress: string): Record<string, unknown> {
     backupEligible: true,
     backedUp: false,
     backupRequired: false,
-    addresses: [],
+    addresses,
   };
 }
 
-function deskAuth(seedCheckAddress: string): Record<string, unknown> {
-  return { accessToken: 'visual-passkey-token', wallet: deskWallet(seedCheckAddress) };
+function deskAuth(seedCheckAddress: string, addresses: Record<string, unknown>[] = []): Record<string, unknown> {
+  return { accessToken: 'visual-passkey-token', wallet: deskWallet(seedCheckAddress, addresses) };
 }
 
 async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<void> {
+  await page.route('**/v1/passkey/wallets**', async (route) => {
+    return fulfillJson(route, [deskWallet(seedCheckAddress, [DESK_EVM, DESK_SPARK, DESK_BITCOIN])]);
+  });
   await page.route('**/v1/auth/passkey/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
     if (method === 'POST' && path.endsWith('/register/begin')) return fulfillJson(route, DESK_CHALLENGE);
-    if (method === 'POST' && path.endsWith('/register/finish')) return fulfillJson(route, deskAuth(''));
+    if (method === 'POST' && path.endsWith('/register/finish')) {
+      return fulfillJson(route, deskAuth('', [DESK_EVM, DESK_SPARK]));
+    }
+    if (method === 'POST' && path.endsWith('/link')) {
+      return fulfillJson(route, { accessToken: 'visual-passkey-token', address: DESK_BITCOIN });
+    }
     if (method === 'POST' && path.endsWith('/authenticate/begin')) return fulfillJson(route, DESK_CHALLENGE);
     if (method === 'POST' && path.endsWith('/authenticate/finish')) {
       return fulfillJson(route, deskAuth(seedCheckAddress));
@@ -185,6 +221,8 @@ test.describe('Passkey login', () => {
     await page.getByRole('button', { name: 'Create passkey' }).click();
     await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible();
     await expect(page.getByText('Passkey wallet', { exact: true })).toBeVisible();
+    await expect(page.getByText('Linked Bitcoin bc1qdesklogin.')).toBeVisible();
+    await expectDeskRows(page);
     await expect(page).toHaveScreenshot('passkey-desk-unlocked.png', { fullPage: true });
   });
 
@@ -193,8 +231,21 @@ test.describe('Passkey login', () => {
     await page.getByLabel('Email address').fill('user@example.com');
     await page.getByRole('button', { name: 'Create passkey' }).click();
     await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Linked Bitcoin bc1qdesklogin.')).toBeVisible();
+    await expectDeskRows(page);
+    await expect(page.getByRole('button', { name: 'Show recovery words' })).toBeEnabled();
     await page.getByRole('button', { name: 'Show recovery words' }).click();
     await expect(page.getByTestId('passkey-recovery-words')).toBeVisible();
+    await page.getByText('Passkey wallet', { exact: true }).evaluate((heading) => {
+      let node: HTMLElement | null = heading.parentElement;
+      while (node) {
+        if (node.scrollHeight > node.clientHeight + 1) node.scrollTop = 0;
+        node = node.parentElement;
+      }
+      window.scrollTo(0, 0);
+    });
+    await expect(page.getByTestId('passkey-recovery-words')).toBeVisible();
+    await expectDeskRows(page);
     await expect(page).toHaveScreenshot('passkey-desk-recovery.png', { fullPage: true });
   });
 

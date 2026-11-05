@@ -506,15 +506,50 @@ test.describe('Auth area e2e', () => {
       await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
       await expect(page.getByText('Passkey wallet', { exact: true })).toBeVisible();
 
+      // The address also appears in "Linked Bitcoin <address>.", so the row is this li.
+      const path = "m/84'/0'/0'/0/0";
+      const bitcoinRow = page.locator('li', { hasText: new RegExp(`Bitcoin bc1q[a-z0-9]+ ${path}`) });
+      await expect(bitcoinRow).toHaveCount(1, { timeout: 30000 });
+      const rendered = (await bitcoinRow.innerText()).trim().replace(/\s+/g, ' ');
+      const matched = new RegExp(`^Bitcoin (bc1q[a-z0-9]+) ${path}$`).exec(rendered);
+      if (matched === null) {
+        throw new Error(`Bitcoin list row is not family, address and path: ${JSON.stringify(rendered)}`);
+      }
+      const address = matched[1];
+      await expect(page.getByText(`Linked Bitcoin ${address}.`, { exact: true })).toBeVisible({ timeout: 30000 });
+
+      const bitcoinAddressSql = `SELECT u.address AS address, a.family AS family, a.path AS path
+        FROM passkey_address a
+        JOIN "user" u ON u.id = a."userId"
+        JOIN passkey_credential c ON c.id = a."credentialId"
+        JOIN user_data d ON d.id = c."userDataId"
+        WHERE d.mail = $1 AND a.family = 'Bitcoin' AND a.path = $2 AND u.address = $3`;
+      const row = await waitForRow<{ address: string; family: string; path: string }>(
+        bitcoinAddressSql,
+        [mail, path, address],
+        30000,
+      );
+      expect(row.address).toBe(address);
+      expect(row.family).toBe('Bitcoin');
+      expect(row.path).toBe(path);
+      const rows = await queryRows<{ address: string; family: string; path: string }>(bitcoinAddressSql, [
+        mail,
+        path,
+        address,
+      ]);
+      expect(rows.length).toBe(1);
+
       await page.getByRole('button', { name: 'Credential status' }).click();
       await expect(page.getByText(/: Active/)).toBeVisible({ timeout: 20000 });
       await page.getByRole('button', { name: 'Refresh wallets' }).click();
       await expect(page.getByText('Wallets on this account: 1.', { exact: true })).toBeVisible({ timeout: 20000 });
+      await expect(bitcoinRow).toBeVisible();
 
       await page.getByRole('button', { name: 'Start another ceremony' }).click();
       await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
       await page.getByRole('button', { name: 'Log in' }).click();
       await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
+      await expect(bitcoinRow).toBeVisible();
     } finally {
       await trackPasskeyUser();
     }

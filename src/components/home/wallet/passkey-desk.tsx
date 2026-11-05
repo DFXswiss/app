@@ -2,7 +2,7 @@ import type { PasskeyWallet } from '@dfx.swiss/core';
 import { useAuthContext } from '@dfx.swiss/react';
 import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { KeyRing, type WalletState } from '@dfx.swiss/wallet';
-import { useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import {
   createPasskeyClients,
@@ -173,11 +173,23 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
     });
   }
 
+  const unlocked = open !== undefined && canUseKeys(open);
+  const addresses = open?.wallet?.addresses ?? [];
+  const sessionWallet = open?.wallet;
+  const bitcoinLinkStarted = useRef(false);
+
+  useEffect(() => {
+    if (bitcoinLinkStarted.current) return;
+    if (!unlocked) return;
+    if (sessionWallet === undefined) return;
+    if (addresses.some((address) => address.family === 'Bitcoin')) return;
+    bitcoinLinkStarted.current = true;
+    void onLink('bitcoin');
+  }, [unlocked, sessionWallet, addresses, onLink]);
+
   if (!open) return <StyledVerticalStack gap={2} center />;
 
-  const unlocked = canUseKeys(open);
   const index = evmIndexOf(evmIndex);
-  const addresses = open.wallet?.addresses ?? [];
 
   return (
     <StyledVerticalStack gap={2} center>
