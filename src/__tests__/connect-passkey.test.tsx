@@ -1408,6 +1408,58 @@ describe('ConnectPasskey', () => {
     await Promise.resolve();
     expect(settled).toBe(false);
   });
+
+  it('A login that resolves after unmount does not log out and does not store a session.', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const gate: { promise?: Promise<unknown>; resolve?: (value: ReturnType<typeof authResult>) => void } = {};
+    mockLogin.mockImplementation(() => {
+      gate.promise = new Promise((resolve) => {
+        gate.resolve = resolve;
+      });
+      return gate.promise;
+    });
+    const { unmount } = renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText('Preparing your login…')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(mockOnCancel).toHaveBeenCalledTimes(1);
+    expect(mockLogout).not.toHaveBeenCalled();
+    unmount();
+    const resolve = gate.resolve;
+    if (resolve === undefined) throw new Error('login gate was not opened');
+    await act(async () => {
+      resolve(authResult('unlocked'));
+      await Promise.resolve();
+    });
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(passkeySession.getOpenPasskey()).toBeUndefined();
+  });
+
+  it('A login that rejects after unmount does not log out and does not store a session.', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const gate: { promise?: Promise<unknown>; reject?: (reason: unknown) => void } = {};
+    mockLogin.mockImplementation(() => {
+      gate.promise = new Promise((_resolve, reject) => {
+        gate.reject = reject;
+      });
+      return gate.promise;
+    });
+    const { unmount } = renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText('Preparing your login…')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(mockOnCancel).toHaveBeenCalledTimes(1);
+    expect(mockLogout).not.toHaveBeenCalled();
+    unmount();
+    const reject = gate.reject;
+    if (reject === undefined) throw new Error('login gate was not opened');
+    await act(async () => {
+      reject(new Error('login failed'));
+      await Promise.resolve();
+    });
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(passkeySession.getOpenPasskey()).toBeUndefined();
+  });
 });
 
 describe('passkey platform helpers', () => {

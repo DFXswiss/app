@@ -101,6 +101,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const busyRef = useRef(false);
   const unknownOfferedRef = useRef(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout>>();
+  const abandonedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +115,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
 
   useEffect(() => {
     return () => {
+      abandonedRef.current = true;
       if (copiedTimer.current !== undefined) clearTimeout(copiedTimer.current);
     };
   }, []);
@@ -128,6 +130,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   }
 
   async function remember(result: AuthResult, endPreviousSession: boolean): Promise<void> {
+    if (abandonedRef.current) return;
     if (endPreviousSession && !isConnect) await logout();
     setOpenPasskey(result);
   }
@@ -170,13 +173,15 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     setChoiceAlert(undefined);
     try {
       await action();
+      if (abandonedRef.current) return;
       unknownOfferedRef.current = false;
       setView('idle');
     } catch (caught) {
+      if (abandonedRef.current) return;
       applyCeremonyError(nextEntry, caught);
     } finally {
       busyRef.current = false;
-      setBusy(false);
+      if (!abandonedRef.current) setBusy(false);
     }
   }
 
