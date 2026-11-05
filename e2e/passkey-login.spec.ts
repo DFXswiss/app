@@ -249,10 +249,13 @@ async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<
 }
 
 // A 500 is not a 4xx, so the client retries begin and finish once. Both finish calls must stay 500.
+// Login posts authenticate/begin before credentials.get. An empty body there is a generic error
+// and never reaches the dismissed prompt that opens the account choice.
 async function installRegisterErrorRoutes(page: Page): Promise<void> {
   await page.route('**/v1/auth/passkey/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
+    if (method === 'POST' && path.endsWith('/authenticate/begin')) return fulfillJson(route, DESK_CHALLENGE);
     if (method === 'POST' && path.endsWith('/register/begin')) return fulfillJson(route, DESK_CHALLENGE);
     if (method === 'POST' && path.endsWith('/register/finish')) {
       await route.fulfill({
