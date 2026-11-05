@@ -13,6 +13,9 @@
     "davidleomayAI",
     "Daniel-DFX"
   ],
+  "held_run_drain": {
+    "enabled": true
+  },
   "workflow_approval": {
     "enabled": true,
     "workflows": [
