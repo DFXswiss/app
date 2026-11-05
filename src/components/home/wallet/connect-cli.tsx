@@ -79,7 +79,7 @@ export default function ConnectCli(props: ConnectProps): JSX.Element {
       getAccount={getAccount}
       signMessage={getSignature}
       renderContent={(p) => <Content wallet={props.wallet} form={form} {...p} />}
-      autoConnect={activeWallet === props.wallet}
+      autoConnect={activeWallet === props.wallet && !props.isConnect}
       {...props}
     />
   );

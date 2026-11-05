@@ -589,6 +589,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   notice and the post-activation navigation against that harness. The app-handling fake stores redirect
   changes in memory and records setter calls. It does not prove a real reactivation, a real SDK user load,
   the real app-handling context, or the real interplay with the app router and navigation.
+- **The CLI wallet unit test replaces SDK hooks, app contexts, styled controls and LNURL encoding.**
+  `src/__tests__/connect-cli.test.tsx` renders the real `ConnectBase` with in-memory session and wallet
+  hooks, controlled form elements and a stubbed sign-message service and encoder. A green run does not
+  prove a real CLI login, API session, wallet signature, LNURL encoding or production control rendering.
 - **The connect-mail redirect unit test replaces the SDK auth hooks, the app contexts and navigation.**
   `src/__tests__/connect-mail-redirect.test.tsx` stubs `useAuth`, session and wallet contexts, app-handling
   and `useNavigation`, and asserts the `redirectUri` passed into `signInWithMail`. A green run does not
