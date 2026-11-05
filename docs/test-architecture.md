@@ -572,18 +572,22 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   that the custody sign-up call reaches the real API, or the reporter's 60 s deduplication of identical
   reports, since the reporter is replaced.
 - **The passkey login visual spec stubs the browser and the bootstrap calls.**
-  `e2e/passkey-login.spec.ts` fulfils geolocation-db with country `CH`, fulfils the bootstrap
-  GETs with fixtures, and answers `/v2/**` with 401. The tile shots replace WebAuthn, so the
-  platform report is either available or missing. The desk shots install a fixed in-page
-  authenticator and fulfil the passkey routes with one wallet. The unlocked shots fulfil the
-  Bitcoin link and the wallet list with placeholder EVM, Spark and Bitcoin rows. A green run proves the Passkey
-  tile is shown for `?feature=Passkey`, that an available browser opens the registration form
-  without the beta sentence, that a browser without passkeys keeps the disabled placeholder and
-  the no-support sentence, and that the desk shows the unlocked wallet with those three placeholder
-  rows, the recovery words from
-  that fixed output, a login without PRF output, and a login whose seed-check address does not
-  match. It does not prove a real WebAuthn signature, that the API returns those payloads, that
-  the server stored the placeholder addresses, that geolocation-db returns `CH`, or that this browser's real passkey support matches the stub.
+  `e2e/passkey-login.spec.ts` fulfils geolocation-db with country `CH` and fulfils the bootstrap
+  GETs with fixtures. A `/v2/**` call without the account token is 401. A call that sends that
+  token returns the user for `GET /v2/user` and an empty list otherwise. The tile shots replace WebAuthn, so the
+  platform report is either available or missing. Shots that only open the form or the blocked
+  placeholder keep that stub. The desk shots and every shot that completes a ceremony install a
+  fixed in-page authenticator and fulfil the passkey routes with one wallet. Register and claim
+  omit a Bitcoin row so the auto-link posts the derived address; the wallet list then contains
+  that posted Bitcoin address, the placeholder EVM and Spark rows, and a differing Bitcoin row.
+  The compromised and other-tab shots set the tab session because the wallet package does not
+  return those states. A green run proves each listed screen renders from fixtures, and that
+  the tile, the form controls, the blocked sentences, the disabled Passkey button, every desk
+  button, the EVM account index, and that shot's result sentence are inside the image. It does
+  not prove a real WebAuthn signature, a real API, a production build of the session hook, or
+  the signed-in app after Open the app. It does not prove that
+  geolocation-db returns `CH`, that the API returns those payloads, that the server stored the
+  placeholder addresses, or that this browser's real passkey support matches the stub.
 - **The passkey ceremony full-stack case drives the real frontend, API and database.**
   In `e2e-stack/specs/auth.spec.ts`, the test skips when `POST /v1/auth/passkey/register/begin`
   answers 404, because that API image has no passkey controller. Any other status runs the

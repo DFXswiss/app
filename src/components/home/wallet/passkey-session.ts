@@ -4,6 +4,12 @@ import type { AuthResult } from '@dfx.swiss/wallet';
 // Keys and the account token disappear when the tab closes.
 export type OpenPasskey = AuthResult;
 
+declare global {
+  interface Window {
+    __dfxSetOpenPasskey?: (next: OpenPasskey | undefined) => void;
+  }
+}
+
 let current: OpenPasskey | undefined;
 const listeners = new Set<() => void>();
 
@@ -22,3 +28,14 @@ export function subscribeOpenPasskey(listener: () => void): () => void {
     listeners.delete(listener);
   };
 }
+
+// The published wallet package never returns WalletState compromised or open-elsewhere, so handbook
+// shots set the tab session.
+export function installHandbookSessionHook(target: Window | undefined, env: string | undefined): void {
+  if (env === 'production' || target === undefined) return;
+  // NODE_ENV is inlined. A production bundle drops the assignment and the property name.
+  if (process.env.NODE_ENV === 'production') return;
+  target.__dfxSetOpenPasskey = setOpenPasskey;
+}
+
+installHandbookSessionHook(window, process.env.NODE_ENV);

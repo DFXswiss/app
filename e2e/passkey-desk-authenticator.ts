@@ -90,8 +90,8 @@ export async function installDeskAuthenticator(page: Page, getReturnsPrf: boolea
       const get = () => Promise.resolve(credential('get', withPrf));
       const credentials = navigator.credentials;
       if (credentials) {
-        credentials.create = create as unknown as CredentialContainer['create'];
-        credentials.get = get as unknown as CredentialContainer['get'];
+        credentials.create = create as unknown as CredentialsContainer['create'];
+        credentials.get = get as unknown as CredentialsContainer['get'];
       } else {
         Object.defineProperty(navigator, 'credentials', { configurable: true, value: { create, get } });
       }
