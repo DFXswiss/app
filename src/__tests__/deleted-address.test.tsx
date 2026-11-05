@@ -298,7 +298,7 @@ describe('deleted session address', () => {
     expect(navigate.mock.invocationCallOrder[0]).toBeLessThan(mockSetRedirectPath.mock.invocationCallOrder[0]);
   });
 
-  it('keeps KYC storage for the address on reload after consuming a redirect', async () => {
+  it('leaves both KYC sessionStorage entries in place after consuming a redirect', async () => {
     const target = '/kyc?address=bc1';
     mockUser = userWithActiveAddress(UserStatus.DELETED);
     mockRedirectPath = target;

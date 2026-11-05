@@ -509,7 +509,7 @@ describe('HomeScreen', () => {
     expect(mockSetRedirectPath).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps KYC storage for the address on reload after consuming a redirect', () => {
+  it('leaves both KYC sessionStorage entries in place after consuming a redirect', () => {
     const target = '/kyc?address=bc1';
     mockState.isLoggedIn = true;
     mockState.user = { id: 1 };
