@@ -38,4 +38,4 @@ export function installHandbookSessionHook(target: Window | undefined, env: stri
   target.__dfxSetOpenPasskey = setOpenPasskey;
 }
 
-installHandbookSessionHook(typeof window === 'undefined' ? undefined : window, process.env.NODE_ENV);
+installHandbookSessionHook(window, process.env.NODE_ENV);
