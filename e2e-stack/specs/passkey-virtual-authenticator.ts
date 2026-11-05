@@ -50,14 +50,14 @@ export async function installVirtualPasskey(page: Page): Promise<void> {
           withoutPrf(options) as CredentialCreationOptions,
         )) as PublicKeyCredential | null;
         return withPrf(created);
-      }) as CredentialContainer['create'];
+      }) as CredentialsContainer['create'];
 
       credentials.get = (async (options?: CredentialRequestOptions) => {
         const asserted = (await nativeGet(
           withoutPrf(options) as CredentialRequestOptions,
         )) as PublicKeyCredential | null;
         return withPrf(asserted);
-      }) as CredentialContainer['get'];
+      }) as CredentialsContainer['get'];
     }
 
     const webAuthn = window.PublicKeyCredential as
