@@ -749,6 +749,24 @@ test.describe('Passkey login', () => {
     await expect(page).toHaveScreenshot('passkey-login-inapp.png', { fullPage: true });
   });
 
+  test('shows the iPhone in-app card', async ({ page }) => {
+    await stubPasskeyPlatform(page, true);
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'userAgent', {
+        configurable: true,
+        value:
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Telegram',
+      });
+    });
+    await openLogin(page);
+    await page.locator('img[src$="login-passkey.jpg"]').click();
+    await expect(page.getByText('Open this page in your browser', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("On iPhone, you'll find the compass or Safari icon at the top right.", { exact: true }),
+    ).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-login-inapp-ios.png', { fullPage: true });
+  });
+
   test('shows the operating system hint when the OS is too old', async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'userAgent', {

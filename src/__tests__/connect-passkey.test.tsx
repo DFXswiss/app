@@ -1152,17 +1152,25 @@ describe('ConnectPasskey', () => {
 
   it('shows the in-app card and opens the hash-stripped url', async () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'in-app-browser', prf: 'unknown' });
-    renderPasskey();
-    expect(await screen.findByText('Open this page in your browser')).toBeInTheDocument();
-    expect(screen.getByText(PASSKEY_IN_APP_BODY)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
-    expect(screen.queryByText(IOS_HINT)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Open in browser' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Open in browser' }));
-    expect(mockOpenInSystemBrowser).toHaveBeenCalledTimes(1);
-    expect(String(mockOpenInSystemBrowser.mock.calls[0][0])).not.toContain('#');
+    const previousHref = window.location.href;
+    try {
+      // Assigning location.href in this jsdom does not leave the fragment in place; replaceState writes the full URL.
+      window.history.replaceState(undefined, '', 'http://localhost/login?feature=Passkey#frag');
+      renderPasskey();
+      expect(await screen.findByText('Open this page in your browser')).toBeInTheDocument();
+      expect(screen.getByText(PASSKEY_IN_APP_BODY)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
+      expect(screen.queryByText(IOS_HINT)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Open in browser' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
+      expect(window.location.href).toBe('http://localhost/login?feature=Passkey#frag');
+      fireEvent.click(screen.getByRole('button', { name: 'Open in browser' }));
+      expect(mockOpenInSystemBrowser).toHaveBeenCalledTimes(1);
+      expect(mockOpenInSystemBrowser).toHaveBeenCalledWith('http://localhost/login?feature=Passkey');
+    } finally {
+      window.history.replaceState(undefined, '', previousHref);
+    }
   });
 
   it('shows the iOS hint only for an iPhone user agent', async () => {

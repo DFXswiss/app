@@ -100,7 +100,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const [copied, setCopied] = useState(false);
   const busyRef = useRef(false);
   const unknownOfferedRef = useRef(false);
-  const choiceOfferedRef = useRef(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
@@ -144,7 +143,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
         return;
       }
       setView('choice');
-      if (nextEntry === 'login') choiceOfferedRef.current = true;
       return;
     }
     if (passkeyUnknownCredential(caught) && (nextEntry === 'login' || nextEntry === 'authenticate')) {
@@ -173,7 +171,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     try {
       await action();
       unknownOfferedRef.current = false;
-      choiceOfferedRef.current = false;
       setView('idle');
     } catch (caught) {
       applyCeremonyError(nextEntry, caught);

@@ -581,17 +581,19 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   sentence and Close. A dismissed login rejects the first `credentials.get` with `NotAllowedError`
   and later gets succeed. The unknown-credential shot answers `POST /v1/auth/passkey/authenticate/finish`
   with status 400 and error `Unknown credential`. The in-app shot sets a user agent that contains
-  Telegram. The old-system shot sets a user agent that reports iOS 16.0. The desk shots and every
-  shot that completes a ceremony install a fixed in-page authenticator and fulfil the passkey
+  Telegram. The iPhone in-app shot sets an iPhone user agent that also contains Telegram, so that
+  image includes the iPhone sentence. The old-system shot sets a user agent that reports iOS 16.0.
+  The desk shots and every shot that completes a ceremony install a fixed in-page authenticator and fulfil the passkey
   routes with one wallet. Register and claim omit a Bitcoin row so the auto-link posts the derived
   address; the wallet list then contains that posted Bitcoin address, the placeholder EVM and Spark
   rows, and a differing Bitcoin row. The compromised and other-tab shots set the tab session because
   the wallet package does not return those states. A green run proves each listed screen renders
   from fixtures, including the idle card, the preparing card, the account choice, the email form,
-  the unknown card, the in-app card, the old-system card, the blocked card, and the desk. It does
-  not prove a real WebAuthn signature, a real dismissal, a real in-app browser, that iOS 16.0 is
-  the running system, that the platform check eventually finishes, a real API, a production build
-  of the session hook, or the signed-in app after Open the app. It does not prove that
+  the unknown card, the in-app card and the iPhone in-app card, the old-system card,
+  the blocked card, and the desk. It does
+  not prove a real WebAuthn signature, a real dismissal, a real in-app browser, a real iPhone,
+  that iOS 16.0 is the running system, that the platform check eventually finishes, a real API,
+  a production build of the session hook, or the signed-in app after Open the app. It does not prove that
   geolocation-db returns `CH`, that the API returns those payloads, that the server stored the
   placeholder addresses, or that this browser's real passkey support matches the stub.
 - **The passkey ceremony full-stack case drives the real frontend, API and database.**
