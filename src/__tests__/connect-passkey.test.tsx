@@ -58,6 +58,10 @@ jest.mock('../contexts/settings.context', () => ({
   }),
 }));
 
+jest.mock('../components/payment/qr-code', () => ({
+  QrCopy: ({ data }: { data: string }) => <div data-testid="receive-qr">{data}</div>,
+}));
+
 const mockCheckPasskeyPlatform = jest.fn(() => new Promise(() => undefined));
 const mockRegister = jest.fn();
 const mockLogin = jest.fn();
@@ -274,6 +278,89 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open a new account' }));
     expect(await screen.findByText('Your email')).toBeInTheDocument();
   }
+
+  it('shows local EVM index zero and hides it on the second click', () => {
+    const keys = { evm: jest.fn((index: number) => ({ address: index === 0 ? SEED : OTHER })) };
+    const session = authResult('unlocked', keys);
+    session.wallet.addresses[0].address = '0x3333333333333333333333333333333333333333';
+    setOpenPasskey(session as unknown as OpenPasskey);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Receive on EVM' }));
+    expect(keys.evm).toHaveBeenCalledWith(0);
+    expect(screen.getByTestId('passkey-receive-address').textContent).toBe(SEED);
+    expect(screen.getByTestId('receive-qr').textContent).toBe(SEED);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide receive address' }));
+    expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+  });
+
+  it('disables receive while locked', () => {
+    setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    expect(screen.getByRole('button', { name: 'Receive on EVM' })).toHaveAttribute('data-disabled', 'true');
+    expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+  });
+
+  it('hides the receive address when the session locks', () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Receive on EVM' }));
+    expect(screen.getByTestId('passkey-receive-address')).toBeInTheDocument();
+    act(() => setOpenPasskey({ ...session, state: 'locked', keys: undefined }));
+    expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+  });
+
+  it.each(['locked', 'compromised', 'open-elsewhere', 'seed-mismatch'] as const)(
+    'hides the receive address when the session leaves the unlocked state but still holds keys',
+    (state) => {
+      const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+      setOpenPasskey(session);
+      render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Receive on EVM' }));
+      expect(screen.getByTestId('passkey-receive-address')).toBeInTheDocument();
+      act(() => setOpenPasskey({ ...session, state }));
+      expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+    },
+  );
+
+  it('does not render an address when key derivation throws', () => {
+    const keys = {
+      evm: () => {
+        throw new Error('wiped');
+      },
+    };
+    setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    expect(() => fireEvent.click(screen.getByRole('button', { name: 'Receive on EVM' }))).not.toThrow();
+    expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+  });
+
+  it('does not render an empty derived address', () => {
+    setOpenPasskey(authResult('unlocked', ring('')) as unknown as OpenPasskey);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Receive on EVM' }));
+    expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+  });
+
+  it.each(['Start another ceremony', 'Revoke with passkey as lost', 'Revoke this wallet by id as lost'])(
+    'resets receive after %s',
+    async (action) => {
+      const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+      setOpenPasskey(session);
+      mockGetAuthToken.mockReturnValue('mail-token');
+      mockRevoke.mockResolvedValue(undefined);
+      mockRevokeById.mockResolvedValue({ status: 'Lost' });
+      render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Receive on EVM' }));
+      expect(screen.getByTestId('passkey-receive-address')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: action }));
+      await waitFor(() => expect(passkeySession.getOpenPasskey()).toBeUndefined());
+      act(() => setOpenPasskey(session));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Receive on EVM' })).toBeInTheDocument());
+      expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+    },
+  );
 
   it('shows preparing while the platform check is pending', () => {
     renderPasskey();

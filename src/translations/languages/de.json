@@ -527,6 +527,9 @@
     "Please reload this page. If this problem persists, please contact our support.": "Bitte lade diese Seite neu. Wenn dieses Problem weiterhin besteht, wende Dich bitte an unseren Support."
   },
   "screens/home": {
+    "Receive on EVM": "Auf EVM empfangen",
+    "Hide receive address": "Empfangsadresse ausblenden",
+    "This address is the same on every EVM network.": "Diese Adresse ist in jedem EVM-Netzwerk dieselbe.",
     "DFX services": "DFX Services",
     "title": "Eine einfache <1>Toolbox</1><2/>für alle <4>DFX Services</4>",
     "Buy and sell crypto directly into your wallet!": "Kaufe und verkaufe Kryptowährungen direkt in Deine Wallet!",

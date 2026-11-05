@@ -13,6 +13,7 @@ import {
 } from './passkey-host';
 import { getOpenPasskey, setOpenPasskey, subscribeOpenPasskey, type OpenPasskey } from './passkey-session';
 import PasskeyTransfer, { type ReceiveFamily } from './passkey-transfer';
+import PasskeyReceive from './passkey-receive';
 
 export interface PasskeyDeskProps {
   onOpenApp: () => void;
@@ -90,6 +91,7 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string>();
   const [words, setWords] = useState<string[]>();
+  const [receive, setReceive] = useState(false);
   const [checks, setChecks] = useState<{ address: string; matches: boolean }[]>();
   const busyRef = useRef(false);
 
@@ -160,6 +162,7 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
     await run(async ({ auth }) => {
       await auth.revoke(reason);
       setWords(undefined);
+      setReceive(false);
       setOpenPasskey(undefined);
       onRevoked();
     });
@@ -178,6 +181,7 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
       const updated = await api.passkey.revoke(walletId, reason, fresh);
       if (updated.status !== 'Active') {
         setWords(undefined);
+        setReceive(false);
         setOpenPasskey(undefined);
         onRevoked();
         return;
@@ -204,6 +208,14 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
   if (!open) return <StyledVerticalStack gap={2} center />;
 
   const index = evmIndexOf(evmIndex);
+  let receiveAddress: string | undefined;
+  if (receive && unlocked) {
+    try {
+      receiveAddress = open.keys.evm(0).address;
+    } catch {
+      receiveAddress = undefined;
+    }
+  }
 
   return (
     <StyledVerticalStack gap={2} center>
@@ -232,6 +244,8 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
           );
         })}
       </ul>
+
+      {receiveAddress ? <PasskeyReceive address={receiveAddress} /> : null}
 
       {note ? <p className="text-dfxGray-700">{translate('screens/home', note)}</p> : null}
       {words ? (
@@ -275,6 +289,13 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
           })
         }
         disabled={busy}
+      />
+      <StyledButton
+        width={StyledButtonWidth.FULL}
+        color={StyledButtonColor.GRAY}
+        label={translate('screens/home', receive ? 'Hide receive address' : 'Receive on EVM')}
+        onClick={() => setReceive(!receive)}
+        disabled={busy || (!receive && !unlocked)}
       />
       <StyledButton
         width={StyledButtonWidth.FULL}
@@ -424,6 +445,7 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
         onClick={() => {
           if (busyRef.current) return;
           setWords(undefined);
+          setReceive(false);
           setOpenPasskey(undefined);
         }}
         disabled={busy}

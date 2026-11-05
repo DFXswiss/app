@@ -692,6 +692,30 @@ test.describe('Passkey login', () => {
     await expect(page).toHaveScreenshot('passkey-login-revoked.png', { fullPage: true });
   });
 
+  test('shows the EVM receive address on the unlocked desk', async ({ page }) => {
+    await openDesk(page, 'unlocked');
+    await page.getByLabel('Email address').fill('user@example.com');
+    await page.getByRole('button', { name: 'Create passkey' }).click();
+    await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Linked Bitcoin bc1qdesklogin.')).toBeVisible();
+    await expectDeskRows(page);
+    await page.getByRole('button', { name: 'Receive on EVM' }).click();
+    const address = page.getByTestId('passkey-receive-address');
+    await expect(address).toBeVisible();
+    await expect(address).toHaveText(/^0x[0-9a-fA-F]{40}$/);
+    await expect(address).not.toHaveText(DESK_EVM.address);
+    await expect(page.getByText('This address is the same on every EVM network.')).toBeVisible();
+    await page.getByText('Passkey wallet', { exact: true }).evaluate((heading) => {
+      let node: HTMLElement | null = heading.parentElement;
+      while (node) {
+        if (node.scrollHeight > node.clientHeight + 1) node.scrollTop = 0;
+        node = node.parentElement;
+      }
+      window.scrollTo(0, 0);
+    });
+    await expect(page).toHaveScreenshot('passkey-desk-receive.png', { fullPage: true });
+  });
+
   test('shows recovery words from the fixed authenticator output', async ({ page }) => {
     await registerUnlockedDesk(page);
     await expect(page.getByRole('button', { name: 'Show recovery words' })).toBeEnabled();
