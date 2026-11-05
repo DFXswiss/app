@@ -295,6 +295,8 @@ describe('ConnectPasskey', () => {
     expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
     expect(mockOnLogin).not.toHaveBeenCalled();
     expect(mockOnSwitch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(mockOnCancel).toHaveBeenCalledTimes(1);
   });
 
   it('registers a passkey and opens the app only from the desk', async () => {
@@ -576,6 +578,7 @@ describe('ConnectPasskey', () => {
     expect(screen.queryByText('The authenticator returned no credential')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
     expect(mockSetSession).not.toHaveBeenCalled();
   });
 
@@ -960,6 +963,7 @@ describe('ConnectPasskey', () => {
     renderPasskey();
     expect(await screen.findByText('Log in with your device')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Email address')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open a new account' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add passkey to this account' })).not.toBeInTheDocument();
@@ -970,6 +974,10 @@ describe('ConnectPasskey', () => {
     renderPasskey();
     await goToChoice();
     expect(screen.queryByText(GENERIC)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Log in with existing account' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open a new account' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add passkey to this account' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
   });
 
   it('opens choice after an aborted first login', async () => {
@@ -1001,6 +1009,7 @@ describe('ConnectPasskey', () => {
     mockLogin.mockRejectedValueOnce({ statusCode: 400, message: 'Unknown credential' });
     fireEvent.click(screen.getByRole('button', { name: 'Log in with existing account' }));
     expect(await screen.findByText('This passkey is not an account')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
   });
 
   it('shows the PRF sentence when authenticate cannot hold a wallet', async () => {
@@ -1024,7 +1033,9 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByLabelText('Email address')).toHaveValue('user@example.com');
     expect(screen.getByText('Your email')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
     expect(screen.queryByText(GENERIC)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
   });
 
   it('retries a generic login error without showing the raw message', async () => {
@@ -1146,6 +1157,9 @@ describe('ConnectPasskey', () => {
     expect(screen.getByText(PASSKEY_IN_APP_BODY)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
     expect(screen.queryByText(IOS_HINT)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open in browser' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Open in browser' }));
     expect(mockOpenInSystemBrowser).toHaveBeenCalledTimes(1);
     expect(String(mockOpenInSystemBrowser.mock.calls[0][0])).not.toContain('#');
@@ -1313,6 +1327,8 @@ describe('ConnectPasskey', () => {
     renderPasskey();
     expect(await screen.findByText('This operating system (17.0) cannot sign in with a passkey.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(mockOnCancel).toHaveBeenCalledTimes(1);
   });
 
   it('shows the OS sentence without parentheses when the version is omitted', async () => {

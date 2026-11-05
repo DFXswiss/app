@@ -330,7 +330,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
           label={translate('screens/home', copied ? PASSKEY_LINK_COPIED : PASSKEY_COPY_LINK)}
           onClick={() => void onCopyLink()}
         />
-        {closeButton()}
       </StyledVerticalStack>
     );
   }
@@ -381,7 +380,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
           label={translate('screens/home', 'Add passkey to this account')}
           onClick={() => startClaim()}
         />
-        {closeButton()}
       </StyledVerticalStack>
     );
   }
@@ -412,7 +410,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
           onClick={() => startRegister()}
           disabled={!mailReady}
         />
-        {closeButton()}
       </StyledVerticalStack>
     );
   }
@@ -433,7 +430,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
           label={translate('screens/home', PASSKEY_CREATE)}
           onClick={() => openEmail()}
         />
-        {closeButton()}
       </StyledVerticalStack>
     );
   }
@@ -450,7 +446,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
           label={translate('screens/home', PASSKEY_RETRY)}
           onClick={() => retryError()}
         />
-        {closeButton()}
       </StyledVerticalStack>
     );
   }
@@ -464,7 +459,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
         label={translate('screens/home', 'Log in')}
         onClick={() => startLogin()}
       />
-      {closeButton()}
     </StyledVerticalStack>
   );
 }
