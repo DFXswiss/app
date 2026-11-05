@@ -593,12 +593,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   through a forwarder to the frontend, because the relying party is `localhost` and the stack
   hostname is not that host. When that route does not answer 404, a green run proves
   registration and a later login both reach the unlocked desk, the credential row is `Active`,
-  and credential status plus the wallet list come from the API. It does not prove the ceremony
-  when the test skips, the wallet migration (the row is copied with SQL, forces
-  `autoTradeApproval`, and clears `ownerId` and `address`), authenticator PRF output (the
-  harness inserts fixed bytes when they are missing and forces `extension:prf` when the browser
-  reports false), a real user activation (the harness reports it active), a hardware
-  authenticator, the production relying party, or that background jobs run.
+  and credential status plus the wallet list come from the API. It also proves that the first
+  unlock shows a Bitcoin row with path `m/84'/0'/0'/0/0`, that the sentence `Linked Bitcoin
+  <address>.` names that same `bc1q` address, that `passkey_address` together with
+  `"user".address` stores that address once for the registered mail, and that the second
+  unlock shows the same row. It does not prove the ceremony when the test skips, the wallet
+  migration (the row is copied with SQL, forces `autoTradeApproval`, and clears `ownerId` and
+  `address`), authenticator PRF output (the harness inserts fixed bytes when they are missing
+  and forces `extension:prf` when the browser reports false), a real user activation (the
+  harness reports it active), a hardware authenticator, the production relying party, or that
+  background jobs run.
 - **The passkey tile unit test replaces the wallet package and the API client.**
   `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
   including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the
