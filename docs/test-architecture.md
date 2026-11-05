@@ -633,12 +633,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
   including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the
   session, store, balance and settings hooks, and `src/contexts/wallet.context`. That context's
-  `useWalletContext` returns the test's `setSession`. A green run proves the idle card, the
+  `useWalletContext` returns the test's `setSession`. The same file replaces `navigator.userAgent`,
+  `navigator.clipboard`, and `document.execCommand`. The in-app test writes the page address with
+  `history.replaceState`, because assigning `location.href` in this jsdom drops the fragment.
+  A green run proves the idle card, the
   account choice after a dismissed login, the email form before create, the unknown card, the
   fixed error sentence, Close on the preparing card during a hanging login, and the desk
   actions against those stubs, including that a link keeps the ceremony token, that an unlocked
   list without Bitcoin links once, and that revoke-by-id uses a fresh login token. It does not
-  prove a real ceremony, that Close cancels WebAuthn or logs out, a real `DfxApiClient`, the
+  prove a real ceremony, that Close cancels WebAuthn or logs out, a real in-app browser, a real
+  iPhone, a real operating-system version, a real clipboard, a real system copy, that assigning
+  `location.href` keeps the fragment in a real browser, a real `DfxApiClient`, the
   published components, that `setSession` stores a passkey session, that the server stored the
   mainnet login address, that `auth.link` is the real client, or that a Bitcoin row already in
   the list came from the API. WebAuthn stays a stub.
