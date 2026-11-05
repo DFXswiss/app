@@ -487,29 +487,21 @@ describe('HomeScreen', () => {
     expect(sessionStorage.getItem('dfx.kyc.address')).toBe('bc1');
   });
 
-  it('consumes a redirect after navigating so a later login goes to /buy', () => {
+  it('keeps a stored redirect after navigating to it', () => {
     mockState.isLoggedIn = true;
     mockState.user = { id: 1 };
     mockState.session = { address: 'bc1', blockchains: ['Bitcoin'] };
     mockState.redirectPath = '/settings';
-    const first = setup('/login');
+    const { container } = setup('/login');
 
-    signIn(first.container, 'lw.jpg');
+    signIn(container, 'lw.jpg');
 
     expect(navigatedTo()).toEqual(['/', '/settings']);
-    expect(mockState.redirectPath).toBeUndefined();
-    expect(mockNavigate.mock.invocationCallOrder[1]).toBeLessThan(mockSetRedirectPath.mock.invocationCallOrder[0]);
-    first.unmount();
-
-    mockNavigate.mockClear();
-    const second = setup('/login');
-    signIn(second.container, 'lw.jpg');
-
-    expect(navigatedTo()).toEqual(['/', '/buy']);
-    expect(mockSetRedirectPath).toHaveBeenCalledTimes(1);
+    expect(mockState.redirectPath).toBe('/settings');
+    expect(mockSetRedirectPath).not.toHaveBeenCalled();
   });
 
-  it('leaves both KYC sessionStorage entries in place after consuming a redirect', () => {
+  it('leaves both KYC sessionStorage entries in place after navigating to a redirect', () => {
     const target = '/kyc?address=bc1';
     mockState.isLoggedIn = true;
     mockState.user = { id: 1 };
@@ -522,7 +514,8 @@ describe('HomeScreen', () => {
     signIn(container, 'lw.jpg');
 
     expect(navigatedTo()).toEqual(['/', target]);
-    expect(mockState.redirectPath).toBeUndefined();
+    expect(mockState.redirectPath).toBe(target);
+    expect(mockSetRedirectPath).not.toHaveBeenCalled();
     expect(sessionStorage.getItem('dfx.kyc.redirect')).toBe(target);
     expect(sessionStorage.getItem('dfx.kyc.address')).toBe('bc1');
   });

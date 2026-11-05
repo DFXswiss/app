@@ -48,7 +48,7 @@ export function DeletedAddressGate({ children, router }: DeletedAddressGateProps
 
 function DeletedAddressNotice({ router }: { router: Router }): JSX.Element {
   const { translate } = useSettingsContext();
-  const { redirectPath, setRedirectPath, service, closeServices } = useAppHandlingContext();
+  const { redirectPath, service, closeServices } = useAppHandlingContext();
   const { reactivateAddress, reloadUser } = useUserContext();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -70,7 +70,6 @@ function DeletedAddressNotice({ router }: { router: Router }): JSX.Element {
           } else {
             const target = loginTarget(redirectPath, pathname) ?? '/account';
             router.navigate(relativeUrl({ path: target, params: new URLSearchParams(router.state.location.search) }));
-            if (redirectPath) setRedirectPath(undefined);
           }
         }
       })

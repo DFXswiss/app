@@ -581,7 +581,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   app-handling, settings, wallet and layout contexts, the feature tree and `useNavigation`, and drives
   `HomeScreen` through a memory router. The app-handling fake stores redirect changes in memory and records
   setter calls. The test checks with jsdom sessionStorage that KYC entries remain after a return. A green run
-  proves, against that harness, the login targets and consumption of that fake redirect slot. It does not prove
+  proves, against that harness, the login targets and that the fake redirect slot is left unchanged. It does not prove
   a real login, a real SDK session or user change, the real app-handling context, or the real interplay with the
   app router and navigation.
 - **The deleted-address unit test replaces the SDK user and session hooks and the app contexts.**
