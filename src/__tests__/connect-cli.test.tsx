@@ -216,7 +216,7 @@ beforeEach(() => {
 });
 
 describe('ConnectCli auto-connect', () => {
-  it('does not log in, switch, log out, load or show an error on connect with the active wallet', async () => {
+  it('has no login, switch, logout, pending connection or connection error after mount on connect with the active wallet', async () => {
     mockActiveWallet = WalletType.CLI_BTC;
     await ready({ isConnect: true });
     await act(async () => {
