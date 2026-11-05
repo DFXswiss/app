@@ -306,6 +306,31 @@ test('narrow mobile shows DSC to DGC', async ({ page }) => {
   await shoot(page, 'swap-network-mobile-configured.png', await formClip(page));
 });
 
+test('desktop receive chain menu offers only the address switch when no chain matches', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await page.goto(`/swap?session=${encodeURIComponent(token)}&assets=Bitcoin/BTC&lang=en`);
+  await expect
+    .poll(() => new URL(page.url()).pathname, { timeout: 20000, message: 'session must stay on /swap' })
+    .toMatch(/\/swap\/?$/);
+  await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 20000 });
+
+  const trigger = chainTrigger(page);
+  await trigger.click();
+  const menu = trigger.locator('xpath=following-sibling::div[1]');
+  const buttons = menu.getByRole('button');
+  await expect(buttons).toHaveCount(1);
+  await expect(buttons).toContainText('Switch address');
+  const formBox = await page.locator('form').first().boundingBox();
+  const menuBox = await menu.boundingBox();
+  const viewport = page.viewportSize();
+  if (!formBox || !menuBox || !viewport) throw new Error('open receive-chain menu has no clip');
+  await shoot(
+    page,
+    'swap-network-desktop-switch-only-open.png',
+    clampClip(unionBox(formBox, menuBox), viewport),
+  );
+});
+
 test('desktop receive chain menu excludes the linked EVM address', async ({ page, request }) => {
   // Stay last. The fresh database has one receiver; linking a second address changes that account.
   test.setTimeout(120000);
