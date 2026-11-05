@@ -11,7 +11,6 @@ import { PropsWithChildren, useRef, useState, useSyncExternalStore } from 'react
 import { Service } from 'src/App';
 import { CloseType, useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { clearKycReturnStorage } from 'src/hooks/navigation.hook';
 import { carriesLogin, isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-address';
 import { loginTarget } from 'src/util/login-redirect';
 import { relativeUrl } from 'src/util/utils';
@@ -71,10 +70,7 @@ function DeletedAddressNotice({ router }: { router: Router }): JSX.Element {
           } else {
             const target = loginTarget(redirectPath, pathname) ?? '/account';
             router.navigate(relativeUrl({ path: target, params: new URLSearchParams(router.state.location.search) }));
-            if (redirectPath) {
-              setRedirectPath(undefined);
-              clearKycReturnStorage();
-            }
+            if (redirectPath) setRedirectPath(undefined);
           }
         }
       })

@@ -580,14 +580,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   navigation.** `src/__tests__/home-screen.test.tsx` stubs `@dfx.swiss/react`, `ConnectWrapper`,
   app-handling, settings, wallet and layout contexts, the feature tree and `useNavigation`, and drives
   `HomeScreen` through a memory router. The app-handling fake stores redirect changes in memory and records
-  setter calls; the KYC storage cleanup uses jsdom sessionStorage. A green run proves, against that harness,
-  the login targets and consumption of that fake redirect slot. It does not prove a real login, a real SDK
-  session or user change, the real app-handling context, or the real interplay with the app router and navigation.
+  setter calls. The test checks with jsdom sessionStorage that KYC entries remain after a return. A green run
+  proves, against that harness, the login targets and consumption of that fake redirect slot. It does not prove
+  a real login, a real SDK session or user change, the real app-handling context, or the real interplay with the
+  app router and navigation.
 - **The deleted-address unit test replaces the SDK user and session hooks and the app contexts.**
   `src/__tests__/deleted-address.test.tsx` renders `DeletedAddressGate` against a memory router with
   `useUserContext`, `useApiSession`, settings, app-handling and the service enum replaced. A green run proves the hold, the
-  notice, post-activation navigation and widget close calls against that harness. The app-handling fake stores
-  redirect changes in memory and records setter and close calls. It does not prove a real reactivation, a real
+  notice, post-activation navigation and widget close calls against that harness; jsdom sessionStorage checks
+  that the KYC entries remain after a return. The app-handling fake stores redirect changes in memory and records
+  setter and close calls. It does not prove a real reactivation, a real
   SDK user load, delivery of a widget close event, the real app-handling context, or the real interplay with the
   app router and navigation.
 - **The CLI wallet unit test replaces SDK hooks, app contexts, styled controls and LNURL encoding.**

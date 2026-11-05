@@ -16,7 +16,7 @@ interface NavigationInterface {
   clearParams: (params: string[]) => void;
 }
 
-export function clearKycReturnStorage() {
+function clearKycReturnStorage() {
   try {
     sessionStorage.removeItem('dfx.kyc.redirect');
     sessionStorage.removeItem('dfx.kyc.address');

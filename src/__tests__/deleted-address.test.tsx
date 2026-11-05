@@ -287,8 +287,6 @@ describe('deleted session address', () => {
   it('consumes the redirect after activation on /login navigates to it', async () => {
     mockUser = userWithActiveAddress(UserStatus.DELETED);
     mockRedirectPath = '/settings';
-    sessionStorage.setItem('dfx.kyc.redirect', '/kyc?address=bc1');
-    sessionStorage.setItem('dfx.kyc.address', 'bc1');
 
     const { router } = renderGate('/login?personal-iban=frick');
     const navigate = jest.spyOn(router, 'navigate');
@@ -297,9 +295,24 @@ describe('deleted session address', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/settings'));
     expect(router.state.location.search).toBe('?personal-iban=frick');
     expect(mockRedirectPath).toBeUndefined();
-    expect(sessionStorage.getItem('dfx.kyc.redirect')).toBeNull();
-    expect(sessionStorage.getItem('dfx.kyc.address')).toBeNull();
     expect(navigate.mock.invocationCallOrder[0]).toBeLessThan(mockSetRedirectPath.mock.invocationCallOrder[0]);
+  });
+
+  it('keeps KYC storage for the address on reload after consuming a redirect', async () => {
+    const target = '/kyc?address=bc1';
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+    mockRedirectPath = target;
+    sessionStorage.setItem('dfx.kyc.redirect', target);
+    sessionStorage.setItem('dfx.kyc.address', 'bc1');
+
+    const { router } = renderGate('/login');
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/kyc'));
+    expect(router.state.location.search).toBe('?address=bc1');
+    expect(mockRedirectPath).toBeUndefined();
+    expect(sessionStorage.getItem('dfx.kyc.redirect')).toBe(target);
+    expect(sessionStorage.getItem('dfx.kyc.address')).toBe('bc1');
   });
 
   it('keeps the redirect and stays on /buy after activation', async () => {

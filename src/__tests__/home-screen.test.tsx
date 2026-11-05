@@ -492,16 +492,12 @@ describe('HomeScreen', () => {
     mockState.user = { id: 1 };
     mockState.session = { address: 'bc1', blockchains: ['Bitcoin'] };
     mockState.redirectPath = '/settings';
-    sessionStorage.setItem('dfx.kyc.redirect', '/kyc?address=bc1');
-    sessionStorage.setItem('dfx.kyc.address', 'bc1');
     const first = setup('/login');
 
     signIn(first.container, 'lw.jpg');
 
     expect(navigatedTo()).toEqual(['/', '/settings']);
     expect(mockState.redirectPath).toBeUndefined();
-    expect(sessionStorage.getItem('dfx.kyc.redirect')).toBeNull();
-    expect(sessionStorage.getItem('dfx.kyc.address')).toBeNull();
     expect(mockNavigate.mock.invocationCallOrder[1]).toBeLessThan(mockSetRedirectPath.mock.invocationCallOrder[0]);
     first.unmount();
 
@@ -511,6 +507,24 @@ describe('HomeScreen', () => {
 
     expect(navigatedTo()).toEqual(['/', '/buy']);
     expect(mockSetRedirectPath).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps KYC storage for the address on reload after consuming a redirect', () => {
+    const target = '/kyc?address=bc1';
+    mockState.isLoggedIn = true;
+    mockState.user = { id: 1 };
+    mockState.session = { address: 'bc1', blockchains: ['Bitcoin'] };
+    mockState.redirectPath = target;
+    sessionStorage.setItem('dfx.kyc.redirect', target);
+    sessionStorage.setItem('dfx.kyc.address', 'bc1');
+    const { container } = setup('/login');
+
+    signIn(container, 'lw.jpg');
+
+    expect(navigatedTo()).toEqual(['/', target]);
+    expect(mockState.redirectPath).toBeUndefined();
+    expect(sessionStorage.getItem('dfx.kyc.redirect')).toBe(target);
+    expect(sessionStorage.getItem('dfx.kyc.address')).toBe('bc1');
   });
 
   it('navigates a /login sign-in with a redirect path to that path', () => {
