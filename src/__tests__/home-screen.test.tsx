@@ -8,6 +8,7 @@ const mockGoBack = jest.fn();
 const mockSetOptions = jest.fn();
 const mockCloseServices = jest.fn();
 const mockSetRedirectPath = jest.fn();
+let mockWrapperMounts = 0;
 
 interface TestTile {
   id: string;
@@ -110,6 +111,11 @@ jest.mock('../components/home/connect-wrapper', () => ({
     onCancel: () => void;
     onSwitch: (type: string) => void;
   }) => {
+    const mounted = jest.requireActual<typeof import('react')>('react').useRef(false);
+    if (!mounted.current) {
+      mockWrapperMounts += 1;
+      mounted.current = true;
+    }
     if (mockState.suspend) {
       mockState.suspend = false;
       throw new Promise(() => undefined);
@@ -191,6 +197,7 @@ jest.mock('../hooks/layout-config.hook', () => ({
 }));
 
 jest.mock('../hooks/navigation.hook', () => ({
+  clearKycReturnStorage: jest.requireActual('../hooks/navigation.hook').clearKycReturnStorage,
   useNavigation: () => ({ navigate: mockNavigate, goBack: mockGoBack }),
 }));
 
@@ -316,6 +323,8 @@ function reset(): void {
     mockState.redirectPath = path;
   });
   mockRedraw = undefined;
+  mockWrapperMounts = 0;
+  sessionStorage.clear();
 }
 
 function MockRoute(): JSX.Element {
@@ -438,6 +447,20 @@ describe('HomeScreen', () => {
     expect(screen.queryByText('Home description')).not.toBeInTheDocument();
   });
 
+  it('keeps the connect wrapper mounted while the user record loads after login', () => {
+    const { container } = setup('/connect');
+    signIn(container, 'mm.jpg');
+    const wrapper = screen.getByText('wallet:MetaMask');
+    expect(mockWrapperMounts).toBe(1);
+
+    mockState.isUserLoading = true;
+    redraw();
+
+    expect(screen.getByText('wallet:MetaMask')).toBe(wrapper);
+    expect(mockWrapperMounts).toBe(1);
+    expect(screen.queryByText('loading')).not.toBeInTheDocument();
+  });
+
   it('shows the spinner and no back handler when no page is selected', () => {
     mockState.appParams.mode = undefined;
     setup('/buy');
@@ -451,6 +474,8 @@ describe('HomeScreen', () => {
     mockState.isLoggedIn = true;
     mockState.user = { id: 1 };
     mockState.session = { address: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', blockchains: ['Bitcoin'] };
+    sessionStorage.setItem('dfx.kyc.redirect', '/kyc?address=bc1');
+    sessionStorage.setItem('dfx.kyc.address', 'bc1');
     const { container } = setup('/login');
 
     expect(screen.getByText('Login desc')).toBeInTheDocument();
@@ -458,6 +483,8 @@ describe('HomeScreen', () => {
 
     expect(navigatedTo()).toEqual(['/', '/buy']);
     expect(mockSetRedirectPath).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('dfx.kyc.redirect')).toBe('/kyc?address=bc1');
+    expect(sessionStorage.getItem('dfx.kyc.address')).toBe('bc1');
   });
 
   it('consumes a redirect after navigating so a later login goes to /buy', () => {
@@ -465,12 +492,16 @@ describe('HomeScreen', () => {
     mockState.user = { id: 1 };
     mockState.session = { address: 'bc1', blockchains: ['Bitcoin'] };
     mockState.redirectPath = '/settings';
+    sessionStorage.setItem('dfx.kyc.redirect', '/kyc?address=bc1');
+    sessionStorage.setItem('dfx.kyc.address', 'bc1');
     const first = setup('/login');
 
     signIn(first.container, 'lw.jpg');
 
     expect(navigatedTo()).toEqual(['/', '/settings']);
     expect(mockState.redirectPath).toBeUndefined();
+    expect(sessionStorage.getItem('dfx.kyc.redirect')).toBeNull();
+    expect(sessionStorage.getItem('dfx.kyc.address')).toBeNull();
     expect(mockNavigate.mock.invocationCallOrder[1]).toBeLessThan(mockSetRedirectPath.mock.invocationCallOrder[0]);
     first.unmount();
 

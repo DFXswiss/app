@@ -14,6 +14,7 @@ import { WalletType } from '../../../contexts/wallet.context';
 import { useAlby } from '../../../hooks/wallets/alby.hook';
 import { AbortError } from '../../../util/abort-error';
 import { appOrigin } from '../../../util/app-origin';
+import { normalizeRoute } from '../../../util/deleted-address';
 import { loginRedirectParams, loginTarget } from '../../../util/login-redirect';
 import { delay, relativeUrl, url } from '../../../util/utils';
 import { ConnectBase } from '../connect-base';
@@ -45,7 +46,8 @@ export default function ConnectAlby(props: ConnectProps): JSX.Element {
       redirectUrl.searchParams.set('type', WalletType.ALBY);
       // Merge redirectPath with an allowlisted callback param set (only personal-iban when present).
       // Do not copy the entire live search into the Alby redirect.
-      const target = loginTarget(redirectPath, pathname) ?? (pathname === '/connect' ? '/account' : undefined);
+      const target =
+        loginTarget(redirectPath, pathname) ?? (normalizeRoute(pathname) === '/connect' ? '/account' : undefined);
       target &&
         redirectUrl.searchParams.set(
           'redirect',

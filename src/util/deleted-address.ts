@@ -6,11 +6,14 @@ export function isDeletedSessionAddress(user?: User): boolean {
 
 const loginRoutes = new Set(['/', '/login', '/login/mail', '/login/wallet', '/connect']);
 
-// HomeScreen routes. Lowercased, trailing slashes removed, the way the router matches,
-// so / stays /. A look-alike such as /login/other does not qualify.
+// Lowercased, trailing slashes removed, the way the router matches, so / stays /.
+export function normalizeRoute(pathname: string): string {
+  return pathname.toLowerCase().replace(/(.)\/+$/, '$1');
+}
+
+// HomeScreen routes. A look-alike such as /login/other does not qualify.
 export function carriesLogin(pathname: string): boolean {
-  const normalized = pathname.toLowerCase().replace(/(.)\/+$/, '$1');
-  return loginRoutes.has(normalized);
+  return loginRoutes.has(normalizeRoute(pathname));
 }
 
 // Hold the iframe until the signed-in user record is known. Otherwise buy and sell

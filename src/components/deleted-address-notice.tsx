@@ -8,8 +8,10 @@ import {
 } from '@dfx.swiss/react-components';
 import { Router } from '@remix-run/router';
 import { PropsWithChildren, useRef, useState, useSyncExternalStore } from 'react';
-import { useAppHandlingContext } from 'src/contexts/app-handling.context';
+import { Service } from 'src/App';
+import { CloseType, useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
+import { clearKycReturnStorage } from 'src/hooks/navigation.hook';
 import { carriesLogin, isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-address';
 import { loginTarget } from 'src/util/login-redirect';
 import { relativeUrl } from 'src/util/utils';
@@ -47,16 +49,16 @@ export function DeletedAddressGate({ children, router }: DeletedAddressGateProps
 
 function DeletedAddressNotice({ router }: { router: Router }): JSX.Element {
   const { translate } = useSettingsContext();
-  const { redirectPath, setRedirectPath } = useAppHandlingContext();
+  const { redirectPath, setRedirectPath, service, closeServices } = useAppHandlingContext();
   const { reactivateAddress, reloadUser } = useUserContext();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
 
   // The user context swaps in the returned session token and reloads the user. With the
-  // address active again, the gate renders the app. Login routes continue to the login target
-  // or /account; other routes stay in place. After an error the user is loaded again and the
-  // route stays: when only the reload failed, the address is already active and a second attempt
-  // would be refused.
+  // address active again, the gate renders the app. Login routes close the connect service or
+  // continue to the login target or /account; other routes stay in place. After an error the user
+  // is loaded again and the route stays: when only the reload failed, the address is already active
+  // and a second attempt would be refused.
   function activate() {
     setIsLoading(true);
     setError(undefined);
@@ -64,9 +66,16 @@ function DeletedAddressNotice({ router }: { router: Router }): JSX.Element {
       .then(() => {
         const pathname = router.state.location.pathname;
         if (carriesLogin(pathname)) {
-          const target = loginTarget(redirectPath, pathname) ?? '/account';
-          router.navigate(relativeUrl({ path: target, params: new URLSearchParams(router.state.location.search) }));
-          if (redirectPath) setRedirectPath(undefined);
+          if (service === Service.CONNECT) {
+            closeServices({ type: CloseType.CANCEL, isComplete: true }, true);
+          } else {
+            const target = loginTarget(redirectPath, pathname) ?? '/account';
+            router.navigate(relativeUrl({ path: target, params: new URLSearchParams(router.state.location.search) }));
+            if (redirectPath) {
+              setRedirectPath(undefined);
+              clearKycReturnStorage();
+            }
+          }
         }
       })
       .catch((e: ApiError) => {

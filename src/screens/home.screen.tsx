@@ -13,7 +13,7 @@ import { useSettingsContext } from '../contexts/settings.context';
 import { supportsBlockchain, useWalletContext, WalletType } from '../contexts/wallet.context';
 import { useAppParams } from '../hooks/app-params.hook';
 import { isWallet, Tile, useFeatureTree, Wallet } from '../hooks/feature-tree.hook';
-import { useNavigation } from '../hooks/navigation.hook';
+import { clearKycReturnStorage, useNavigation } from '../hooks/navigation.hook';
 import { useResizeObserver } from '../hooks/resize-observer.hook';
 import { loginTarget } from '../util/login-redirect';
 import { Stack } from '../util/stack';
@@ -173,7 +173,10 @@ function HomeScreenContent(): JSX.Element {
         const path = loginTarget(redirectPath, pathname) ?? (session?.address ? '/account' : undefined);
         if (path) {
           navigate(path);
-          if (redirectPath) setRedirectPath(undefined);
+          if (redirectPath) {
+            setRedirectPath(undefined);
+            clearKycReturnStorage();
+          }
         }
         break;
     }
@@ -199,7 +202,7 @@ function HomeScreenContent(): JSX.Element {
 
   return (
     <>
-      {!isInitialized || isUserLoading || !currentPage ? (
+      {!isInitialized || (isUserLoading && !loginSuccessful) || !currentPage ? (
         <div className="mt-4">
           <StyledLoadingSpinner size={SpinnerSize.LG} />
         </div>

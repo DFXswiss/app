@@ -42,17 +42,21 @@ describe('loginRedirectParams', () => {
 });
 
 describe('loginTarget', () => {
-  it.each(['/login', '/login/mail', '/login/wallet'])('defaults %s to /buy', (pathname) => {
-    expect(loginTarget(undefined, pathname)).toBe('/buy');
-  });
+  it.each(['/login', '/login/mail', '/login/wallet', '/LOGIN', '/login/', '/Login/Wallet/'])(
+    'defaults %s to /buy',
+    (pathname) => {
+      expect(loginTarget(undefined, pathname)).toBe('/buy');
+    },
+  );
 
   it('has no default on / or /connect', () => {
     expect(loginTarget(undefined, '/')).toBeUndefined();
     expect(loginTarget(undefined, '/connect')).toBeUndefined();
+    expect(loginTarget(undefined, '/login/other')).toBeUndefined();
   });
 
   it('prefers a set redirectPath on every one of those paths', () => {
-    for (const pathname of ['/login', '/login/mail', '/login/wallet', '/', '/connect']) {
+    for (const pathname of ['/login', '/login/mail', '/login/wallet', '/', '/connect', '/LOGIN', '/Login/Wallet/']) {
       expect(loginTarget('/settings', pathname)).toBe('/settings');
     }
   });

@@ -1,3 +1,4 @@
+import { normalizeRoute } from './deleted-address';
 import { personalIbanOnlyParams } from './personal-iban';
 
 interface LoginRedirectSource {
@@ -8,7 +9,8 @@ interface LoginRedirectSource {
 // Where a login goes when no screen asked to be returned to. Only the login pages have a default.
 export function loginTarget(redirectPath: string | undefined, pathname: string): string | undefined {
   if (redirectPath) return redirectPath;
-  if (pathname === '/login' || pathname === '/login/mail' || pathname === '/login/wallet') return '/buy';
+  const route = normalizeRoute(pathname);
+  if (route === '/login' || route === '/login/mail' || route === '/login/wallet') return '/buy';
   return undefined;
 }
 

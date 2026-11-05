@@ -530,6 +530,20 @@ describe('ConnectAlby', () => {
     expect(returnUrl.searchParams.get('redirect')).toBe('/account');
   });
 
+  it('sends /account as redirect on /Connect/ when redirectPath is undefined', async () => {
+    mockRedirectPath.mockReturnValue(undefined);
+
+    await act(async () => {
+      renderConnectAlby('/Connect/');
+    });
+
+    await waitFor(() => expect(capturedLocation).toBeDefined());
+    const albyUrl = new URL(capturedLocation as string);
+    const redirectUri = albyUrl.searchParams.get('redirectUri');
+    expect(redirectUri).toBeTruthy();
+    expect(new URL(redirectUri as string).searchParams.get('redirect')).toBe('/account');
+  });
+
   it('prefers a stored redirectPath over the /connect default', async () => {
     mockRedirectPath.mockReturnValue('/settings');
     mockEnable.mockResolvedValue({ node: { alias: 'getalby.com' } });
