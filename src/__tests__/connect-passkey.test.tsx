@@ -1381,6 +1381,22 @@ describe('ConnectPasskey', () => {
     expect(screen.queryByLabelText('Email address')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(mockOnCancel).toHaveBeenCalledTimes(1);
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(mockLogin).toHaveBeenCalledTimes(1);
+    const returned = mockLogin.mock.results[0];
+    if (returned === undefined || returned.type !== 'return' || !(returned.value instanceof Promise)) {
+      throw new Error('login did not return a promise');
+    }
+    const pending = returned.value as Promise<unknown>;
+    let settled = false;
+    pending.then(() => {
+      settled = true;
+    });
+    pending.catch(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
   });
 });
 

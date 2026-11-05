@@ -119,6 +119,33 @@ async function stubPasskeyPlatform(page: Page, available: boolean): Promise<void
   }, available);
 }
 
+async function holdPasskeyPlatform(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    class PublicKeyCredential {
+      static getClientCapabilities(): Promise<Record<string, boolean>> {
+        return new Promise<Record<string, boolean>>(() => undefined);
+      }
+    }
+    try {
+      Object.defineProperty(window, 'PublicKeyCredential', { configurable: true, value: PublicKeyCredential });
+    } catch {
+      const existing = window.PublicKeyCredential as {
+        getClientCapabilities?: () => Promise<Record<string, boolean>>;
+      };
+      if (existing) existing.getClientCapabilities = PublicKeyCredential.getClientCapabilities;
+    }
+    const create = () => new Promise<null>(() => undefined);
+    const get = () => new Promise<null>(() => undefined);
+    const credentials = navigator.credentials;
+    if (credentials) {
+      credentials.create = create as unknown as CredentialsContainer['create'];
+      credentials.get = get as unknown as CredentialsContainer['get'];
+    } else {
+      Object.defineProperty(navigator, 'credentials', { configurable: true, value: { create, get } });
+    }
+  });
+}
+
 async function openLogin(page: Page): Promise<void> {
   await installLoginRoutes(page);
   await page.goto('/login?feature=Passkey&lang=en');
@@ -431,6 +458,17 @@ test.describe('Passkey login', () => {
     await expect(page.getByRole('button', { name: 'Passkey' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Close' })).toBeVisible();
     await expect(page).toHaveScreenshot('passkey-login-blocked.png', { fullPage: true });
+  });
+
+  test('shows the preparing card while the platform check is open', async ({ page }) => {
+    await holdPasskeyPlatform(page);
+    await openLogin(page);
+    await page.locator('img[src$="login-passkey.jpg"]').click();
+    await expect(page.getByText('Preparing your login…', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Close' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Log in' })).toHaveCount(0);
+    await expect(page.getByLabel('Email address')).toHaveCount(0);
+    await expect(page).toHaveScreenshot('passkey-login-preparing.png', { fullPage: true });
   });
 
   test('asks for a mail login before adding a passkey to this account', async ({ page }) => {

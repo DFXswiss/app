@@ -481,13 +481,17 @@ test.describe('Auth area e2e', () => {
     await installVirtualPasskey(page);
     const mail = testEmail('passkey');
 
-    // `http://frontend` is not the loc relying party, so the form stays hidden there.
+    // The relying party is localhost. The stack hostname is not that host, so the page opens through the forwarder.
     await page.goto(`${PASSKEY_PAGE_ORIGIN}/login?feature=Passkey&lang=en`);
     await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible({ timeout: 20000 });
     await page.locator('img[src$="login-passkey.jpg"]').click();
+    await expect(page.getByText('Log in with your device')).toBeVisible({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await expect(page.getByText('Do you already have an account?')).toBeVisible({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Open a new account' }).click();
     await expect(page.getByLabel('Email address')).toBeVisible({ timeout: 20000 });
     await page.getByLabel('Email address').fill(mail);
-    await page.getByRole('button', { name: 'Create passkey' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
 
     let trackedUser = false;
     const trackPasskeyUser = async (): Promise<void> => {
