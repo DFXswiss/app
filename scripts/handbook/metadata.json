@@ -177,7 +177,7 @@
   },
   "passkey-login": {
     "title": "Passkey-Login",
-    "description": "Login mit ?feature=Passkey zeigt die Passkey-Kachel. Ein Browser mit Passkeys öffnet das Registrierungsformular. Ein Browser ohne Passkeys bleibt auf dem deaktivierten Platzhalter mit dem Hinweis, dass keine Passkeys möglich sind. Der Desk zeigt das entsperrte Wallet, die Wiederherstellungswörter, ein gesperrtes Wallet und den Abweichungssatz. Die Baselines zeigen jedes Desk-Steuerelement, die Ergebnissätze sowie die Sätze zu kompromittiert und anderem Tab."
+    "description": "Login mit ?feature=Passkey zeigt die Passkey-Kachel. Danach steht nur „Log in with your device“ und Anmelden. Bricht die Anmeldung ab, folgt die Frage, ob schon ein Konto besteht, danach entweder eine weitere Anmeldung, die E-Mail für ein neues Konto, oder Passkey zum bestehenden Konto. Ein unbekanntes Passkey zeigt eine eigene Karte. Ein Browser ohne Passkeys zeigt nur den Hinweis ohne deaktivierte Passkey-Schaltfläche. Ein In-App-Browser zeigt den Hinweis, die Seite im Browser zu öffnen. Ein zu altes System zeigt den Versionshinweis. Der Desk zeigt das entsperrte Wallet, die Wiederherstellungswörter, ein gesperrtes Wallet und den Abweichungssatz. Die Baselines zeigen jedes Desk-Steuerelement, die Ergebnissätze sowie die Sätze zu kompromittiert und anderem Tab."
   },
   "wallet-entry": {
     "title": "Passkey über /wallet",

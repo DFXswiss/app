@@ -72,6 +72,7 @@ const mockBackupSeen = jest.fn();
 const mockRevokeById = jest.fn();
 const mockCredentialStatus = jest.fn();
 const mockDiagnostics = jest.fn();
+const mockOpenInSystemBrowser = jest.fn();
 const mockSetSession = jest.fn(() => Promise.resolve());
 let mockBuildLoginRing = (_mnemonic: unknown): { wipe: () => void } => {
   throw new Error('unexpected login ring');
@@ -84,6 +85,7 @@ jest.mock(
   () => ({
     RP_IDS: { prd: 'app.dfx.swiss', dev: 'dev.app.dfx.swiss', stg: 'stg.app.dfx.swiss', loc: 'localhost' },
     checkPasskeyPlatform: (...args: unknown[]) => mockCheckPasskeyPlatform(...args),
+    openInSystemBrowser: (...args: unknown[]) => mockOpenInSystemBrowser(...args),
     PasskeyCeremonies: function PasskeyCeremonies() {
       return {};
     },
@@ -148,12 +150,25 @@ import { createRef } from 'react';
 import { RP_IDS } from '@dfx.swiss/wallet';
 import ConnectPasskey, { passkeyPlatformBlock, walletEnvForHost } from '../components/home/wallet/connect-passkey';
 import PasskeyDesk from '../components/home/wallet/passkey-desk';
+import {
+  PASSKEY_IN_APP_BODY,
+  PASSKEY_UNKNOWN_BODY,
+  passkeyDismissed,
+  passkeyOsTooOld,
+  passkeyPlatformView,
+  passkeyPrfUnsupported,
+  passkeyShowIosHint,
+  passkeyUnknownCredential,
+} from '../components/home/wallet/passkey-host';
 import * as passkeySession from '../components/home/wallet/passkey-session';
 import { setOpenPasskey, type OpenPasskey } from '../components/home/wallet/passkey-session';
 import { WalletType } from '../contexts/wallet.context';
 
 const SEED = '0x1111111111111111111111111111111111111111';
 const OTHER = '0x2222222222222222222222222222222222222222';
+const GENERIC = 'Something went wrong. Please try again.';
+const PRF = 'This passkey cannot hold a wallet on this device.';
+const IOS_HINT = "On iPhone, you'll find the compass or Safari icon at the top right.";
 
 function ring(address: string) {
   return { evm: () => ({ address }) };
@@ -190,6 +205,34 @@ function authResult(state: string, keys?: unknown, includeBitcoin = true) {
   };
 }
 
+function namedError(name: string, message = name): Error {
+  const error = new Error(message);
+  error.name = name;
+  return error;
+}
+
+function setUserAgent(value: string): () => void {
+  const previous = Object.getOwnPropertyDescriptor(navigator, 'userAgent');
+  Object.defineProperty(navigator, 'userAgent', { configurable: true, value });
+  return () => {
+    if (previous) Object.defineProperty(navigator, 'userAgent', previous);
+    else delete (navigator as { userAgent?: string }).userAgent;
+  };
+}
+
+function stubExecCommand(impl: () => boolean): { exec: jest.Mock; restore: () => void } {
+  const previous = Object.getOwnPropertyDescriptor(document, 'execCommand');
+  const exec = jest.fn(impl);
+  Object.defineProperty(document, 'execCommand', { configurable: true, writable: true, value: exec });
+  return {
+    exec,
+    restore: () => {
+      if (previous) Object.defineProperty(document, 'execCommand', previous);
+      else delete (document as { execCommand?: Document['execCommand'] }).execCommand;
+    },
+  };
+}
+
 describe('ConnectPasskey', () => {
   beforeEach(() => {
     setOpenPasskey(undefined);
@@ -199,6 +242,7 @@ describe('ConnectPasskey', () => {
     jest.clearAllMocks();
     mockGetAuthToken.mockReturnValue(undefined);
     mockCheckPasskeyPlatform.mockImplementation(() => new Promise(() => undefined));
+    mockOpenInSystemBrowser.mockReset();
   });
 
   function renderPasskey() {
@@ -214,15 +258,24 @@ describe('ConnectPasskey', () => {
     );
   }
 
-  it('shows the wallet-beta placeholder and wires the buttons', () => {
+  async function goToChoice(): Promise<void> {
+    mockLogin.mockRejectedValueOnce(namedError('NotAllowedError'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText('Do you already have an account?')).toBeInTheDocument();
+  }
+
+  async function goToEmail(): Promise<void> {
+    await goToChoice();
+    fireEvent.click(screen.getByRole('button', { name: 'Open a new account' }));
+    expect(await screen.findByText('Your email')).toBeInTheDocument();
+  }
+
+  it('shows preparing while the platform check is pending', () => {
     renderPasskey();
 
-    const hint = screen.getByText('Passkey login arrives with the wallet beta');
-    expect(hint).toHaveClass('text-dfxGray-700');
-
-    const passkeyButton = screen.getByRole('button', { name: 'Passkey' });
-    expect(passkeyButton).toHaveAttribute('data-disabled', 'true');
-    expect(() => fireEvent.click(passkeyButton)).not.toThrow();
+    expect(screen.getByText('Preparing your login…')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Passkey' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(mockOnCancel).toHaveBeenCalledTimes(1);
@@ -232,14 +285,14 @@ describe('ConnectPasskey', () => {
     expect(mockCheckPasskeyPlatform).toHaveBeenCalledWith('loc');
   });
 
-  it('keeps the button disabled and shows the platform block when the browser cannot use passkeys', async () => {
+  it('shows the platform block when the browser cannot use passkeys', async () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'no-webauthn', prf: 'unknown' });
 
     renderPasskey();
 
     expect(await screen.findByText('This browser has no passkey support')).toBeInTheDocument();
-    expect(screen.getByText('Passkey login arrives with the wallet beta')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Passkey' })).toHaveAttribute('data-disabled', 'true');
+    expect(screen.queryByRole('button', { name: 'Passkey' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
     expect(mockOnLogin).not.toHaveBeenCalled();
     expect(mockOnSwitch).not.toHaveBeenCalled();
   });
@@ -247,17 +300,18 @@ describe('ConnectPasskey', () => {
   it('registers a passkey and opens the app only from the desk', async () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
     const keys = { id: 'keys' };
+    mockLogin.mockRejectedValueOnce(namedError('NotAllowedError'));
     mockRegister.mockResolvedValue(authResult('unlocked', keys));
 
     renderPasskey();
 
-    expect(await screen.findByRole('button', { name: 'Create passkey' })).toHaveAttribute('data-disabled', 'true');
-    expect(screen.queryByText('Passkey login arrives with the wallet beta')).not.toBeInTheDocument();
-    expect(screen.queryByText('This browser has no passkey support')).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText('Do you already have an account?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open a new account' }));
+    expect(mockRegister).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'user@example.com' } });
-    expect(screen.getByRole('button', { name: 'Create passkey' })).not.toHaveAttribute('data-disabled');
-    fireEvent.click(screen.getByRole('button', { name: 'Create passkey' }));
+    fireEvent.change(await screen.findByLabelText('Email address'), { target: { value: 'user@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
     await waitFor(() => expect(mockRegister).toHaveBeenCalledWith({ mail: 'user@example.com' }));
     expect(await screen.findByRole('button', { name: 'Open the app' })).toBeInTheDocument();
@@ -287,6 +341,19 @@ describe('ConnectPasskey', () => {
     expect(mockSetSession).not.toHaveBeenCalled();
     expect(mockOnLogin).not.toHaveBeenCalled();
     expect(mockLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs in from the choice card and opens the desk', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    await goToChoice();
+    mockLogin.mockResolvedValueOnce(authResult('unlocked', { id: 'keys' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Log in with existing account' }));
+    expect(await screen.findByText('The wallet is unlocked.')).toBeInTheDocument();
+    expect(mockLogin).toHaveBeenCalledTimes(2);
+    expect(mockRegister).not.toHaveBeenCalled();
+    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockOnLogin).not.toHaveBeenCalled();
   });
 
   it('keeps a locked passkey on the desk and opens the account only from the app button', async () => {
@@ -355,7 +422,8 @@ describe('ConnectPasskey', () => {
     mockClaim.mockResolvedValue(authResult('unlocked', { id: 'keys' }));
 
     renderPasskey();
-    fireEvent.click(await screen.findByRole('button', { name: 'Add passkey to this account' }));
+    await goToChoice();
+    fireEvent.click(screen.getByRole('button', { name: 'Add passkey to this account' }));
     expect(
       await screen.findByText('Sign in with mail first. The passkey is added to that account.'),
     ).toBeInTheDocument();
@@ -491,7 +559,8 @@ describe('ConnectPasskey', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Revoke with passkey as lost' }));
     expect(await screen.findByText('The passkey wallet was revoked.')).toBeInTheDocument();
-    expect(screen.getByLabelText('Email address')).toBeInTheDocument();
+    expect(screen.getByText('Log in with your device')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument();
     expect(mockRevoke).toHaveBeenCalledWith('Lost');
     expect(mockSetSession).not.toHaveBeenCalled();
   });
@@ -503,9 +572,11 @@ describe('ConnectPasskey', () => {
     renderPasskey();
     fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
 
-    expect(await screen.findByText('The authenticator returned no credential')).toBeInTheDocument();
+    expect(await screen.findByText(GENERIC)).toBeInTheDocument();
+    expect(screen.queryByText('The authenticator returned no credential')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
     expect(mockSetSession).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Log in' })).not.toHaveAttribute('data-disabled');
   });
 
   it('keeps the account token after a link and refuses a second passkey on unlock', async () => {
@@ -594,7 +665,8 @@ describe('ConnectPasskey', () => {
     expect(screen.getByRole('list')).toHaveTextContent('differs');
 
     fireEvent.click(screen.getByRole('button', { name: 'Start another ceremony' }));
-    expect(screen.getByLabelText('Email address')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument();
+    expect(screen.getByText('Log in with your device')).toBeInTheDocument();
   });
 
   it('stays on the desk when opening the app is refused', async () => {
@@ -605,6 +677,12 @@ describe('ConnectPasskey', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Open the app' }));
     expect(await screen.findByText('The session was refused')).toBeInTheDocument();
+    mockSetSession.mockRejectedValueOnce(new Error('   '));
+    fireEvent.click(screen.getByRole('button', { name: 'Open the app' }));
+    expect(await screen.findByText(GENERIC)).toBeInTheDocument();
+    mockSetSession.mockRejectedValueOnce('nope');
+    fireEvent.click(screen.getByRole('button', { name: 'Open the app' }));
+    expect(await screen.findByText(GENERIC)).toBeInTheDocument();
     expect(mockOnCancel).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Open the app' })).toBeInTheDocument();
   });
@@ -614,7 +692,8 @@ describe('ConnectPasskey', () => {
     mockLogin.mockRejectedValue('nope');
     renderPasskey();
     fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
-    expect(await screen.findByText('Something went wrong. Please try again.')).toBeInTheDocument();
+    expect(await screen.findByText(GENERIC)).toBeInTheDocument();
+    expect(screen.queryByText('nope')).not.toBeInTheDocument();
   });
 
   it('does not log out when the tile is already a connect step', async () => {
@@ -654,14 +733,20 @@ describe('ConnectPasskey', () => {
 
   it('covers the remaining ceremony and desk branches', async () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const first = renderPasskey();
+    await goToEmail();
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'not-an-email' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(mockRegister).not.toHaveBeenCalled();
+    first.unmount();
+    setOpenPasskey(undefined);
+    mockLogin.mockClear();
+
     mockLogin.mockRejectedValueOnce(new Error('   '));
     renderPasskey();
     fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
-    expect(await screen.findByText('Something went wrong. Please try again.')).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'not-an-email' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create passkey' }));
-    expect(mockRegister).not.toHaveBeenCalled();
+    expect(await screen.findByText(GENERIC)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
 
     let releaseLogin: (value: ReturnType<typeof authResult>) => void = () => undefined;
     mockLogin.mockImplementationOnce(
@@ -670,8 +755,11 @@ describe('ConnectPasskey', () => {
           releaseLogin = resolve;
         }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    act(() => {
+      retry.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      retry.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
     await act(async () => {
       releaseLogin(authResult('unlocked', ring(SEED)));
     });
@@ -810,7 +898,7 @@ describe('ConnectPasskey', () => {
       return { state: 'unlocked', keys: ring(SEED) };
     });
     fireEvent.click(screen.getByRole('button', { name: 'Unlock wallet' }));
-    expect(await screen.findByLabelText('Email address')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Log in' })).toBeInTheDocument();
 
     mockLogin.mockResolvedValueOnce(authResult('unlocked', ring(SEED)));
     fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
@@ -864,7 +952,419 @@ describe('ConnectPasskey', () => {
       return [{ id: 7 }];
     });
     fireEvent.click(screen.getByRole('button', { name: 'Refresh wallets' }));
-    expect(await screen.findByLabelText('Email address')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Log in' })).toBeInTheDocument();
+  });
+
+  it('shows idle login when the platform is ready', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    expect(await screen.findByText('Log in with your device')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Email address')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open a new account' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add passkey to this account' })).not.toBeInTheDocument();
+  });
+
+  it('opens choice after a dismissed first login', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    await goToChoice();
+    expect(screen.queryByText(GENERIC)).not.toBeInTheDocument();
+  });
+
+  it('opens choice after an aborted first login', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockRejectedValueOnce(namedError('AbortError'));
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText('Do you already have an account?')).toBeInTheDocument();
+    expect(screen.queryByText(GENERIC)).not.toBeInTheDocument();
+  });
+
+  it('stays on choice when an existing-account login is dismissed', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockRejectedValue(namedError('NotAllowedError'));
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText('Do you already have an account?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Log in with existing account' }));
+    expect(await screen.findByText('Do you already have an account?')).toBeInTheDocument();
+    expect(screen.queryByText('This passkey is not an account')).not.toBeInTheDocument();
+    expect(screen.queryByText(GENERIC)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Log in$/ })).not.toBeInTheDocument();
+  });
+
+  it('opens the unknown card from an authenticate login', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    await goToChoice();
+    mockLogin.mockRejectedValueOnce({ statusCode: 400, message: 'Unknown credential' });
+    fireEvent.click(screen.getByRole('button', { name: 'Log in with existing account' }));
+    expect(await screen.findByText('This passkey is not an account')).toBeInTheDocument();
+  });
+
+  it('shows the PRF sentence when authenticate cannot hold a wallet', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    await goToChoice();
+    mockLogin.mockRejectedValueOnce({ code: 'prf-unavailable', message: 'no' });
+    fireEvent.click(screen.getByRole('button', { name: 'Log in with existing account' }));
+    expect(await screen.findByText(PRF)).toBeInTheDocument();
+    mockLogin.mockImplementation(() => new Promise(() => undefined));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(mockLogin).toHaveBeenCalledTimes(3));
+  });
+
+  it('keeps the typed email when register is dismissed', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    await goToEmail();
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'user@example.com' } });
+    mockRegister.mockRejectedValueOnce(namedError('NotAllowedError'));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByLabelText('Email address')).toHaveValue('user@example.com');
+    expect(screen.getByText('Your email')).toBeInTheDocument();
+    expect(screen.queryByText(GENERIC)).not.toBeInTheDocument();
+  });
+
+  it('retries a generic login error without showing the raw message', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockRejectedValue(new Error('boom'));
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText(GENERIC)).toBeInTheDocument();
+    expect(screen.queryByText('boom')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(mockLogin).toHaveBeenCalledTimes(2));
+  });
+
+  it('returns to the email form after a PRF failure during register', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    await goToEmail();
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'user@example.com' } });
+    mockRegister.mockRejectedValueOnce({ code: 'prf-unavailable', message: 'no' });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText(PRF)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Your email')).toBeInTheDocument();
+    expect(mockRegister).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the unknown card when a later login is dismissed', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin
+      .mockRejectedValueOnce({ statusCode: 400, message: 'Unknown credential' })
+      .mockRejectedValueOnce(namedError('NotAllowedError'));
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText('This passkey is not an account')).toBeInTheDocument();
+    expect(screen.getByText(PASSKEY_UNKNOWN_BODY)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('This passkey is not an account')).toBeInTheDocument();
+    expect(screen.queryByText('Do you already have an account?')).not.toBeInTheDocument();
+  });
+
+  it('treats UnknownCredential as an unknown passkey', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockRejectedValueOnce({ code: 'UnknownCredential', message: 'nope' });
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText('This passkey is not an account')).toBeInTheDocument();
+  });
+
+  it('shows a generic error when register reports an unknown credential', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    await goToEmail();
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'user@example.com' } });
+    mockRegister.mockRejectedValueOnce({ statusCode: 400, message: 'Unknown credential' });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText(GENERIC)).toBeInTheDocument();
+    expect(screen.queryByText('This passkey is not an account')).not.toBeInTheDocument();
+  });
+
+  it('shows the PRF sentence when the first login cannot hold a wallet', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockRejectedValueOnce({ code: 'prf-unavailable', message: 'no' });
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText(PRF)).toBeInTheDocument();
+  });
+
+  it('stays on choice when claim is dismissed', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    await goToChoice();
+    mockGetAuthToken.mockReturnValue('mail-token');
+    mockClaim.mockRejectedValueOnce(namedError('NotAllowedError'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add passkey to this account' }));
+    expect(await screen.findByText('Do you already have an account?')).toBeInTheDocument();
+    expect(mockClaim).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(GENERIC)).not.toBeInTheDocument();
+  });
+
+  it('returns to choice after a generic claim failure without calling claim again', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    await goToChoice();
+    mockGetAuthToken.mockReturnValue('mail-token');
+    mockClaim.mockRejectedValueOnce(new Error('raw claim'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add passkey to this account' }));
+    expect(await screen.findByText(GENERIC)).toBeInTheDocument();
+    expect(screen.queryByText('raw claim')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Do you already have an account?')).toBeInTheDocument();
+    expect(mockClaim).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the PRF sentence when claim cannot hold a wallet', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    await goToChoice();
+    mockGetAuthToken.mockReturnValue('mail-token');
+    mockClaim.mockRejectedValueOnce({ code: 'prf-unavailable', message: 'no' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add passkey to this account' }));
+    expect(await screen.findByText(PRF)).toBeInTheDocument();
+  });
+
+  it('opens the email form from the unknown card without registering', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockRejectedValueOnce({ code: 'UnknownCredential', message: 'nope' });
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText('This passkey is not an account')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open a new account' }));
+    expect(await screen.findByText('Your email')).toBeInTheDocument();
+    expect(mockRegister).not.toHaveBeenCalled();
+  });
+
+  it('shows the in-app card and opens the hash-stripped url', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'in-app-browser', prf: 'unknown' });
+    renderPasskey();
+    expect(await screen.findByText('Open this page in your browser')).toBeInTheDocument();
+    expect(screen.getByText(PASSKEY_IN_APP_BODY)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
+    expect(screen.queryByText(IOS_HINT)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open in browser' }));
+    expect(mockOpenInSystemBrowser).toHaveBeenCalledTimes(1);
+    expect(String(mockOpenInSystemBrowser.mock.calls[0][0])).not.toContain('#');
+  });
+
+  it('shows the iOS hint only for an iPhone user agent', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'in-app-browser', prf: 'unknown' });
+    const restore = setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15');
+    try {
+      renderPasskey();
+      expect(await screen.findByText(IOS_HINT)).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it('copies the link and restores the label after 1200ms', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'in-app-browser', prf: 'unknown' });
+    const writeText = jest.fn(() => Promise.resolve());
+    const previous = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    jest.useFakeTimers();
+    const { unmount } = renderPasskey();
+    try {
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy link' }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Copied' }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(writeText).toHaveBeenCalledTimes(2);
+      act(() => {
+        jest.advanceTimersByTime(1200);
+      });
+      expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
+    } finally {
+      unmount();
+      jest.useRealTimers();
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: previous });
+    }
+  });
+
+  it('leaves the copy label when writeText rejects and execCommand returns false', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'in-app-browser', prf: 'unknown' });
+    const writeText = jest.fn(() => Promise.reject(new Error('denied')));
+    const previous = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const { exec, restore } = stubExecCommand(() => false);
+    try {
+      renderPasskey();
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy link' }));
+      expect(await screen.findByRole('button', { name: 'Copy link' })).toBeInTheDocument();
+      expect(exec).toHaveBeenCalledWith('copy');
+      expect(screen.queryByRole('button', { name: 'Copied' })).not.toBeInTheDocument();
+    } finally {
+      restore();
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: previous });
+    }
+  });
+
+  it('copies with execCommand when clipboard is missing', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'in-app-browser', prf: 'unknown' });
+    const previous = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+    const { exec, restore } = stubExecCommand(() => true);
+    const { unmount } = renderPasskey();
+    try {
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy link' }));
+      expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+      expect(exec).toHaveBeenCalledWith('copy');
+    } finally {
+      unmount();
+      restore();
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: previous });
+    }
+  });
+
+  it('copies with execCommand when writeText is missing', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'in-app-browser', prf: 'unknown' });
+    const previous = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {} });
+    const { exec, restore } = stubExecCommand(() => true);
+    const { unmount } = renderPasskey();
+    try {
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy link' }));
+      expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+      expect(exec).toHaveBeenCalledWith('copy');
+    } finally {
+      unmount();
+      restore();
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: previous });
+    }
+  });
+
+  it('copies with execCommand after writeText rejects', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'in-app-browser', prf: 'unknown' });
+    const writeText = jest.fn(() => Promise.reject(new Error('denied')));
+    const previous = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const { exec, restore } = stubExecCommand(() => true);
+    const { unmount } = renderPasskey();
+    try {
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy link' }));
+      expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+      expect(exec).toHaveBeenCalledWith('copy');
+    } finally {
+      unmount();
+      restore();
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: previous });
+    }
+  });
+
+  it('leaves the copy label when writeText and execCommand throw', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'in-app-browser', prf: 'unknown' });
+    const writeText = jest.fn(() => Promise.reject(new Error('denied')));
+    const previous = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const { exec, restore } = stubExecCommand(() => {
+      throw new Error('nope');
+    });
+    try {
+      renderPasskey();
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy link' }));
+      expect(await screen.findByRole('button', { name: 'Copy link' })).toBeInTheDocument();
+      expect(exec).toHaveBeenCalledWith('copy');
+      expect(screen.queryByRole('button', { name: 'Copied' })).not.toBeInTheDocument();
+    } finally {
+      restore();
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: previous });
+    }
+  });
+
+  it('does not throw when unmounting while the copied timer is pending', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'in-app-browser', prf: 'unknown' });
+    const writeText = jest.fn(() => Promise.resolve());
+    const previous = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    jest.useFakeTimers();
+    try {
+      const { unmount } = renderPasskey();
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy link' }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      unmount();
+      act(() => {
+        jest.advanceTimersByTime(1200);
+      });
+    } finally {
+      jest.useRealTimers();
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: previous });
+    }
+  });
+
+  it('shows the OS version when the operating system is too old', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({
+      available: false,
+      reason: 'os-too-old',
+      prf: 'unknown',
+      os: '17.0',
+    });
+    renderPasskey();
+    expect(await screen.findByText('This operating system (17.0) cannot sign in with a passkey.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
+  });
+
+  it('shows the OS sentence without parentheses when the version is omitted', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'os-too-old', prf: 'unknown' });
+    renderPasskey();
+    expect(await screen.findByText('This operating system cannot sign in with a passkey.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
+  });
+
+  it('shows the OS sentence without parentheses when the version is whitespace', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({
+      available: false,
+      reason: 'os-too-old',
+      prf: 'unknown',
+      os: '   ',
+    });
+    renderPasskey();
+    expect(await screen.findByText('This operating system cannot sign in with a passkey.')).toBeInTheDocument();
+  });
+
+  it('treats a missing PRF as the blocked card', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'no-prf', prf: 'no' });
+    renderPasskey();
+    expect(await screen.findByText('This browser has no passkey support')).toBeInTheDocument();
+    expect(screen.queryByText('Open this page in your browser')).not.toBeInTheDocument();
+    expect(screen.queryByText('This operating system cannot sign in with a passkey.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
+  });
+
+  it('clears the no-account alert when another choice button is clicked', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    renderPasskey();
+    await goToChoice();
+    fireEvent.click(screen.getByRole('button', { name: 'Add passkey to this account' }));
+    expect(
+      await screen.findByText('Sign in with mail first. The passkey is added to that account.'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open a new account' }));
+    expect(screen.queryByText('Sign in with mail first. The passkey is added to that account.')).not.toBeInTheDocument();
+  });
+
+  it('hides the other controls while a ceremony is preparing', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockImplementation(() => new Promise(() => undefined));
+    renderPasskey();
+    const login = await screen.findByRole('button', { name: 'Log in' });
+    fireEvent.click(login);
+    expect(await screen.findByText('Preparing your login…')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Email address')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(mockOnCancel).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -908,5 +1408,55 @@ describe('passkey platform helpers', () => {
     expect(passkeyPlatformBlock({ available: false, reason: 'os-too-old', prf: 'unknown', os: '17.5' })).toBe(
       'This browser has no passkey support',
     );
+  });
+});
+
+describe('passkey ceremony helpers', () => {
+  it('classifies dismissed, unknown, prf and platform reports', () => {
+    expect(passkeyDismissed(null)).toBe(false);
+    expect(passkeyDismissed('nope')).toBe(false);
+    expect(passkeyDismissed(1)).toBe(false);
+    expect(passkeyDismissed(namedError('TimeoutError'))).toBe(false);
+    expect(passkeyDismissed(namedError('UserActivationMissingError'))).toBe(false);
+    expect(passkeyDismissed(new Error('boom'))).toBe(false);
+    expect(passkeyDismissed(namedError('NotAllowedError'))).toBe(true);
+    expect(passkeyDismissed(namedError('AbortError'))).toBe(true);
+    expect(passkeyDismissed({ code: 'ceremony-cancelled' })).toBe(true);
+
+    expect(passkeyUnknownCredential(null)).toBe(false);
+    expect(passkeyUnknownCredential('unknown credential')).toBe(false);
+    expect(passkeyUnknownCredential(1)).toBe(false);
+    expect(passkeyUnknownCredential({ message: 'Unknown credential' })).toBe(true);
+    expect(passkeyUnknownCredential({ code: 'UNKNOWN CREDENTIAL' })).toBe(true);
+    expect(passkeyUnknownCredential({ code: 'UnknownCredential', message: 'nope' })).toBe(true);
+    expect(passkeyUnknownCredential({ code: 'UnknownCredential' })).toBe(true);
+    expect(passkeyUnknownCredential({ code: 'unknown' })).toBe(false);
+    expect(passkeyUnknownCredential({ message: 1 })).toBe(false);
+
+    expect(passkeyPrfUnsupported(null)).toBe(false);
+    expect(passkeyPrfUnsupported('no prf')).toBe(false);
+    expect(passkeyPrfUnsupported(1)).toBe(false);
+    expect(passkeyPrfUnsupported({ message: 'no PRF' })).toBe(true);
+    expect(passkeyPrfUnsupported({ code: 'prf-unavailable' })).toBe(true);
+
+    expect(passkeyOsTooOld(undefined)).toBe('This operating system cannot sign in with a passkey.');
+    expect(passkeyOsTooOld('')).toBe('This operating system cannot sign in with a passkey.');
+    expect(passkeyOsTooOld('   ')).toBe('This operating system cannot sign in with a passkey.');
+    expect(passkeyOsTooOld('17.0')).toBe('This operating system (17.0) cannot sign in with a passkey.');
+    expect(passkeyOsTooOld(' 17.0 ')).toBe('This operating system (17.0) cannot sign in with a passkey.');
+
+    expect(passkeyShowIosHint('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')).toBe(true);
+    expect(passkeyShowIosHint('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)')).toBe(true);
+    expect(passkeyShowIosHint('Mozilla/5.0 (iPod touch; CPU iPhone OS 16_0 like Mac OS X)')).toBe(true);
+    expect(passkeyShowIosHint('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)')).toBe(false);
+
+    expect(passkeyPlatformView(undefined)).toBe('pending');
+    expect(passkeyPlatformView({ available: false, reason: 'in-app-browser', prf: 'unknown' })).toBe('in-app');
+    expect(passkeyPlatformView({ available: true, reason: 'in-app-browser', prf: 'yes' })).toBe('in-app');
+    expect(passkeyPlatformView({ available: false, reason: 'os-too-old', prf: 'unknown', os: '16.0' })).toBe('os-old');
+    expect(passkeyPlatformView({ available: false, reason: 'no-webauthn', prf: 'unknown' })).toBe('blocked');
+    expect(passkeyPlatformView({ available: false, prf: 'unknown' })).toBe('blocked');
+    expect(passkeyPlatformView({ available: false, reason: 'no-prf', prf: 'no' })).toBe('blocked');
+    expect(passkeyPlatformView({ available: true, prf: 'yes' })).toBe('ready');
   });
 });
