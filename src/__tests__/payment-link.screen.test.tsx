@@ -2046,6 +2046,32 @@ describe('PaymentLinkScreen', () => {
       expect(screen.getByText('RECOMMENDED APPS')).toBeInTheDocument();
     });
 
+    it('reads a wallet-id that comes with another merchant only after the provider has switched to it', async () => {
+      showMerchantPage();
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7 })];
+      mockSearchParams = new URLSearchParams('merchant=shop-route');
+      const view = renderScreen();
+
+      mockSearchParams = new URLSearchParams('merchant=other-route&wallet-id=7');
+      view.rerender(<PaymentLinkScreen />);
+      expect(mockSetSearchParams).not.toHaveBeenCalled();
+
+      mockPaymentLinkContext.merchant = 'other-route';
+      mockPaymentLinkContext.merchantInfo = undefined;
+      view.rerender(<PaymentLinkScreen />);
+      expect(mockSetSearchParams).not.toHaveBeenCalled();
+
+      mockPaymentLinkContext.merchantInfo = merchantInfo({ displayName: 'Other Shop' });
+      view.rerender(<PaymentLinkScreen />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('dfx-icon-back')).toBeInTheDocument();
+      });
+      const nextParams = mockSetSearchParams.mock.calls[0][0] as URLSearchParams;
+      expect(nextParams.get('merchant')).toBe('other-route');
+      expect(nextParams.has('wallet-id')).toBe(false);
+    });
+
     it('does nothing for an unknown wallet id', () => {
       mockWalletsHook.recommendedWallets = [wallet({ id: 1 })];
       mockSearchParams = new URLSearchParams('wallet-id=99');

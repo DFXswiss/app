@@ -147,8 +147,11 @@ export default function PaymentLinkScreen(): JSX.Element {
   }, [merchant]);
 
   // the wallet list loads asynchronously and is filtered by the page's payment methods, so a wallet-id in a URL
-  // opened directly is resolved once both have loaded
-  const canSelectWallet = !isLoadingWallets && !!pageInfo;
+  // opened directly is resolved once both have loaded; when the URL opens another merchant, it waits until the
+  // provider has switched to that merchant, so the wallet comes from the new merchant's page
+  const urlMerchant = searchParams.get('merchant');
+  const isSwitchingMerchant = !!merchant && !!urlMerchant && urlMerchant !== merchant;
+  const canSelectWallet = !isLoadingWallets && !!pageInfo && !isSwitchingMerchant;
 
   useEffect(() => {
     if (!canSelectWallet) return;
