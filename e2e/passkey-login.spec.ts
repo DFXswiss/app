@@ -498,6 +498,23 @@ test.describe('Passkey login', () => {
     await expect(page).toHaveScreenshot('passkey-login-error.png', { fullPage: true });
   });
 
+  test('shows the sentence when the passkey cannot hold a wallet', async ({ page }) => {
+    await installDeskAuthenticator(page, false, true);
+    await installLoginRoutes(page);
+    await installRegisterErrorRoutes(page);
+    await page.goto('/login?feature=Passkey&lang=en');
+    await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible();
+    await page.locator('img[src$="login-passkey.jpg"]').click();
+    await waitForPlatform(page);
+    await registerThroughGuidance(page);
+    const sentence = page.getByText('This passkey cannot hold a wallet on this device.', { exact: true });
+    await expect(sentence).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Close' })).toHaveCount(0);
+    await expect(page.getByText('Something went wrong. Please try again.', { exact: true })).toHaveCount(0);
+    await expect(page).toHaveScreenshot('passkey-login-prf.png', { fullPage: true });
+  });
+
   test('shows the unlocked desk after registration', async ({ page }) => {
     await registerUnlockedDesk(page);
     await shoot(page, 'passkey-desk-unlocked.png', [
