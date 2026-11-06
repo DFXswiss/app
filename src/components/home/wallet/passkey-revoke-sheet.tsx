@@ -6,6 +6,7 @@ interface PasskeyRevokeSheetProps {
   backupNeeded: boolean;
   acknowledged: boolean;
   busy: boolean;
+  returnFocus?: HTMLElement | null;
   reason: 'Lost' | 'Compromised';
   method: 'passkey' | 'login';
   onBackup: () => void;
@@ -22,7 +23,7 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
   const button = 'min-h-[52px] rounded-md px-4 text-base font-semibold focus-visible:outline focus-visible:outline-2';
 
   return (
-    <PasskeySheet title={t('Block passkey')} onClose={props.onClose} busy={props.busy}>
+    <PasskeySheet title={t('Block passkey')} onClose={props.onClose} busy={props.busy} returnFocus={props.returnFocus}>
       {props.note && (
         <div role="alert" className="mb-3 rounded-[16px] bg-[#EEF2F8] p-4 text-sm">
           {props.note === 'Wallet status is Active.' ? (

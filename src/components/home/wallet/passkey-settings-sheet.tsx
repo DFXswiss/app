@@ -287,7 +287,7 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
       </div>
       <h3 className={group}>{t('Danger zone')}</h3>
       <div className={card}>
-        <button className={`${row} text-[#B4233D]`} onClick={props.onRevoke}>
+        <button className={`${row} text-[#B4233D]`} disabled={props.busy} onClick={props.onRevoke}>
           <Icon path={icons.revoke} danger />
           <span className={text}>{t('Block passkey')}</span>
           <Chevron />

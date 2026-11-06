@@ -492,6 +492,59 @@ describe('ConnectPasskey', () => {
     expect(screen.getByRole('dialog', { name: 'Settings' })).toContainElement(screen.getByText('status unavailable'));
   });
 
+  it('keeps settings open and shows a pending action error when dialog changes are disabled', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    let reject: (error: Error) => void = () => undefined;
+    mockDiagnostics.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+    const block = screen.getByRole('button', { name: 'Block passkey' });
+    const words = screen.getByRole('button', { name: /Recovery words/ });
+    expect(block).toBeDisabled();
+    expect(words).toBeDisabled();
+    fireEvent.click(block);
+    fireEvent.click(words);
+    await act(async () => reject(new Error('diagnostic failed')));
+    const dialog = screen.getByRole('dialog', { name: 'Settings' });
+    expect(dialog).toContainElement(screen.getByText('diagnostic failed'));
+    expect(screen.queryByRole('dialog', { name: 'Block passkey' })).not.toBeInTheDocument();
+  });
+
+  it('ignores a block request during the synchronous start of another action', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    const block = screen.getByRole('button', { name: 'Block passkey' });
+    mockDiagnostics.mockImplementationOnce(() => {
+      fireEvent.click(block);
+      return Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+    expect(await screen.findByText('Sent. Thank you!')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+  });
+
+  it('returns focus to settings trigger after closing the block dialog', () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    const settings = screen.getByRole('button', { name: 'Settings' });
+    settings.focus();
+    fireEvent.click(settings);
+    const block = screen.getByRole('button', { name: 'Block passkey' });
+    block.focus();
+    fireEvent.click(block);
+    expect(screen.getByRole('dialog', { name: 'Block passkey' })).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Block passkey' })).not.toBeInTheDocument();
+    expect(settings).toHaveFocus();
+  });
+
   it.each(['wallet', 'credential', 'token', 'missing', 'unmount'] as const)(
     'does not apply a late refresh after a %s change',
     async (change) => {
@@ -1093,12 +1146,24 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
     expect(screen.getByRole('button', { name: /Recovery words/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Back up now' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Block passkey' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    await act(async () => resolveDiagnostic());
+    fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
+    let resolveRevoke: () => void = () => undefined;
+    mockRevoke.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRevoke = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
     expect(screen.getByRole('button', { name: 'Back up first' })).toBeDisabled();
     expect(screen.queryByRole('dialog', { name: 'Recovery words' })).not.toBeInTheDocument();
     expect(mockExport).not.toHaveBeenCalled();
-    await act(async () => resolveDiagnostic());
-    expect(screen.getByRole('button', { name: 'Back up first' })).toBeEnabled();
+    await act(async () => resolveRevoke());
   });
 
   it('accepts EVM account 99 and does not link invalid account indices', async () => {

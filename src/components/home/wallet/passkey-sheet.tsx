@@ -5,14 +5,22 @@ export default function PasskeySheet({
   title,
   onClose,
   busy,
+  returnFocus,
   children,
-}: PropsWithChildren<{ title: string; onClose: () => void; busy?: boolean }>): JSX.Element {
+}: PropsWithChildren<{
+  title: string;
+  onClose: () => void;
+  busy?: boolean;
+  returnFocus?: HTMLElement | null;
+}>): JSX.Element {
   const { translate } = useSettingsContext();
   const dialog = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
+  const focusTarget = useRef(returnFocus);
   close.current = onClose;
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
+    const previous =
+      focusTarget.current === undefined ? (document.activeElement as HTMLElement | null) : focusTarget.current;
     dialog.current?.focus();
     function keydown(event: KeyboardEvent) {
       if (event.key === 'Escape') close.current();

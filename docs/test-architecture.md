@@ -650,7 +650,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   session, store, balance and settings hooks, and `src/contexts/wallet.context`. That context's
   `useWalletContext` returns the test's `setSession`. Tests also stub `QrCopy`,
   `IntersectionObserver`, `getUserMedia` and navigation; a green run does not prove the real QR
-  renderer, browser observers, camera or router. The same file replaces `navigator.userAgent`,
+  renderer, browser observers, camera or router. The same applies to the new wallet unit tests: `passkey-pay-sheet.test.tsx` stubs `getUserMedia`
+  with a fake stream, `passkey-receive.test.tsx` replaces `QrCopy`, and
+  `passkey-wallet-history.test.tsx` replaces `IntersectionObserver`; a green run does not prove a
+  real camera, QR code or scroll observer. The same file replaces `navigator.userAgent`,
   `navigator.clipboard`, and `document.execCommand`. The same file also replaces `react-qr-code`, `BarcodeDetector`, `navigator.mediaDevices.getUserMedia`, and `window.requestAnimationFrame`. The in-app test writes the page address with
   `history.replaceState`, because assigning `location.href` in this jsdom drops the fragment.
   A green run proves the idle card, the

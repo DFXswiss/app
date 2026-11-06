@@ -6,6 +6,7 @@ interface PasskeyWordsSheetProps {
   note?: string;
   acknowledged: boolean;
   busy: boolean;
+  returnFocus?: HTMLElement | null;
   onAcknowledged: (acknowledged: boolean) => void;
   onDone: () => void;
   onClose: () => void;
@@ -16,6 +17,7 @@ export default function PasskeyWordsSheet({
   note,
   acknowledged,
   busy,
+  returnFocus,
   onAcknowledged,
   onDone,
   onClose,
@@ -24,7 +26,7 @@ export default function PasskeyWordsSheet({
   const t = (key: string) => translate('screens/home', key);
 
   return (
-    <PasskeySheet title={t('Recovery words')} onClose={onClose} busy={busy}>
+    <PasskeySheet title={t('Recovery words')} onClose={onClose} busy={busy} returnFocus={returnFocus}>
       <p className="my-3 text-sm leading-5 text-dfxGray-800">
         {t(
           'Write the 12 words on paper in this order. Anyone who knows them can access your funds. DFX will never ask for them.',

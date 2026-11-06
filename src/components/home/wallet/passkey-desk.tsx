@@ -115,6 +115,7 @@ export default function PasskeyDesk({
   const busyRef = useRef(false);
   const mounted = useRef(false);
   const sheetRef = useRef<typeof sheet>();
+  const sheetOrigin = useRef<HTMLElement | null>(null);
   const sheetGeneration = useRef(0);
   const wordsGeneration = useRef(0);
   const wordsKeys = useRef<KeyRing>();
@@ -323,6 +324,7 @@ export default function PasskeyDesk({
     'min-h-[44px] rounded-lg px-4 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2';
   const backupNeeded = !open.wallet.backupSeenDate;
   const openSheet = (next: typeof sheet) => {
+    if (sheetRef.current === undefined) sheetOrigin.current = document.activeElement as HTMLElement | null;
     sheetGeneration.current += 1;
     sheetRef.current = next;
     setNote(undefined);
@@ -579,7 +581,9 @@ export default function PasskeyDesk({
             })
           }
           onAnotherPasskey={startAnother}
-          onRevoke={() => openSheet('revoke')}
+          onRevoke={() => {
+            if (!busyRef.current) openSheet('revoke');
+          }}
           onCancel={onCancel}
           onClose={requestCloseSheet}
         />
@@ -590,6 +594,7 @@ export default function PasskeyDesk({
           note={note}
           acknowledged={wordsAcknowledged}
           busy={busy}
+          returnFocus={sheetOrigin.current}
           onAcknowledged={setWordsAcknowledged}
           onClose={requestCloseSheet}
           onDone={() =>
@@ -608,6 +613,7 @@ export default function PasskeyDesk({
           backupNeeded={backupNeeded}
           acknowledged={revokeAcknowledged}
           busy={busy}
+          returnFocus={sheetOrigin.current}
           reason={reason}
           method={method}
           onBackup={() => void showWords()}
