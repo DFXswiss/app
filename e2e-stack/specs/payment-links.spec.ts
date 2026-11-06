@@ -388,8 +388,21 @@ test.describe('Payment links / routes / invoice', () => {
     }
   });
 
-  // The place API is stubbed. A green run does not prove that the place API returns this shop.
+  // The place API and the merchant info are stubbed. A green run does not prove that the place API
+  // returns this shop, or that the API answers the merchant info for SPAR.
   test('/pl: merchant SPAR shows the location list from the place API', async ({ page }) => {
+    // The harness seeds no SPAR route, so the merchant info answers here; the page shows its
+    // error state instead of the locations when that call fails.
+    await page.route(
+      (url) => url.pathname.endsWith('/v1/paymentLink/merchant') && url.searchParams.get('route') === 'SPAR',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ displayName: 'SPAR', mode: 'Multiple', transferAmounts: [] }),
+        }),
+    );
+
     const seen: string[] = [];
     await page.route('https://api.opencryptopay.io/map/**', (route) => {
       const url = route.request().url();

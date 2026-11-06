@@ -60,11 +60,7 @@ async function stubPayment(page: Page): Promise<void> {
   await page.route('**/paymentLink/**', (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/walletApp')) return fulfillJson(route, 200, []);
-    return fulfillJson(route, 200, {
-      displayName: 'SPAR',
-      externalId: 'merchant-info-shot',
-      message: 'no payment',
-    });
+    return fulfillJson(route, 200, { displayName: 'SPAR', mode: 'Multiple', transferAmounts: [] });
   });
 }
 

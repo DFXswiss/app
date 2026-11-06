@@ -251,6 +251,10 @@
     "title": "Session-Wechsel (Debug)",
     "description": "Debug-Screenshots zum Session-/Account-Wechsel."
   },
+  "merchant-page": {
+    "title": "Händlerseite",
+    "description": "Zahlungslink mit Händler (/pl?merchant=<Route>), jeweils die ganze Seite: Name, Empfänger, Zahlungsmethoden und die empfohlenen, kompatiblen und teilweise kompatiblen Apps aus der Händler-Info, ohne dass eine Zahlung angelegt wird; die gewählte App mit den Zahlungsmethoden, die sie unterstützt, auch direkt über ?wallet-id=<ID> geöffnet; und der Fehlertext, wenn die Händler-Info nicht geladen werden kann (z.B. unbekannte Route oder Händler ohne öffentliche Händler-Info)."
+  },
   "spar-place-map": {
     "title": "SPAR-Standorte",
     "description": "Zahlungslink mit Händler SPAR, jeweils die ganze Seite und fest nur SPAR-Läden in der Schweiz, ohne Länder- oder Shop-Auswahl: Standortkarte, geöffneter Standort, leere Liste, der Fehler wenn die Standortliste nicht geladen werden kann, und das Ladebild bevor die Orte da sind."
