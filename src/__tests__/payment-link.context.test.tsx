@@ -337,6 +337,26 @@ describe('PaymentLinkProvider', () => {
         expect(context.current().merchantInfo).toBeUndefined();
       });
 
+      it('drops a payment shown before and stops its polling when the URL opens a merchant', async () => {
+        mockSearchParams = new URLSearchParams();
+        mockGetPaymentMerchantInfo.mockResolvedValue(merchantInfo);
+        const context = await renderWithPayRequest({ id: 'pl-1', message: 'Payment complete' });
+        expect(context.current().paymentStatus).toBe('Completed');
+        mockPaymentPolling.stop.mockClear();
+        mockWaitPolling.stop.mockClear();
+        mockStoreRemove.mockClear();
+
+        changeRoute(context, 'merchant=shop-route');
+
+        await waitFor(() => expect(context.current().merchantInfo).toEqual(merchantInfo));
+        expect(context.current().payRequest).toBeUndefined();
+        expect(context.current().paymentStatus).toBe('Pending');
+        expect(context.current().paymentLinkApiUrl.current).toBe('');
+        expect(mockStoreRemove).toHaveBeenCalled();
+        expect(mockPaymentPolling.stop).toHaveBeenCalled();
+        expect(mockWaitPolling.stop).toHaveBeenCalled();
+      });
+
       it('keeps the loaded info when the URL keeps the same route', async () => {
         mockGetPaymentMerchantInfo.mockResolvedValue(merchantInfo);
         const context = renderProvider();

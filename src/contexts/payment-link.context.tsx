@@ -177,11 +177,8 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
       setUrlParams(newParams);
     }
 
-    if (merchantUrlParam) {
-      // the merchant page has no payment, so no stored payment URL is reused from here
-      setSessionApiUrl(undefined);
-      return;
-    }
+    // the merchant page is loaded by its own effect below
+    if (merchantUrlParam) return;
 
     let apiUrl: string | undefined = sessionApiUrl.current;
     if (lightningUrlParam) {
@@ -213,6 +210,13 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
   // Merchant page, reloaded when the merchant route in the URL changes
   useEffect(() => {
     if (!merchantUrlParam) return;
+
+    // the merchant page has no payment: drop one shown before and its stored URL and polling
+    setSessionApiUrl(undefined);
+    stopPaymentPolling();
+    stopWaitPolling();
+    setPayRequest(undefined);
+    setPaymentStatus(PaymentLinkPaymentStatus.PENDING);
 
     // an answer for a route the URL no longer shows is dropped
     let isCurrent = true;
