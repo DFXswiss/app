@@ -1512,6 +1512,27 @@ describe('ConnectPasskey', () => {
       expect(evm).not.toHaveBeenCalledWith(1);
     });
 
+    it('hides the previous receive address before the next family is read', () => {
+      const evm = jest.fn((index: number) => ({ path: `m/${index}`, address: `addr-${index}` }));
+      const bitcoinAddress = jest.fn(() => {
+        expect(screen.queryByText('addr-0')).not.toBeInTheDocument();
+        return { path: "m/84'/0'/0'/0/0", address: 'bc1qnext', publicKey: new Uint8Array() };
+      });
+      openDesk({ evm, bitcoinNetwork: 'mainnet', bitcoinAddress });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('addr-0');
+
+      fireEvent.click(screen.getByRole('button', { name: /^Bitcoin$/ }));
+
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('bc1qnext');
+      expect(screen.queryByText('addr-0')).not.toBeInTheDocument();
+      expect(bitcoinAddress).toHaveBeenCalledWith(0, 0);
+      expect(evm).toHaveBeenCalledWith(0);
+      expect(evm).not.toHaveBeenCalledWith(1);
+    });
+
     it('shows the spark identity receive address', () => {
       openDesk({
         sparkIdentity: () => ({ path: "m/879'/0'/0'", publicKey: new Uint8Array(), address: 'spark1identity' }),
@@ -1748,6 +1769,56 @@ describe('ConnectPasskey', () => {
         else globalWithDetector.BarcodeDetector = previousDetector;
         if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
         else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    it('explains when the camera rejects the scan', async () => {
+      const getUserMedia = jest.fn().mockRejectedValue(new Error('denied'));
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+
+      class MockBarcodeDetector {
+        detect(): Promise<{ rawValue: string }[]> {
+          return Promise.resolve([]);
+        }
+      }
+      globalWithDetector.BarcodeDetector = MockBarcodeDetector;
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia },
+      });
+
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        await waitFor(() =>
+          expect(screen.getByText('QR scanning is not available in this browser.')).toBeInTheDocument(),
+        );
+        expect(getUserMedia).toHaveBeenCalledTimes(1);
+      } finally {
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    it('explains when paste has no clipboard', () => {
+      const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.change(screen.getByLabelText('Destination'), { target: { value: 'keep-typed' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Paste' }));
+        expect(screen.getByText('Paste is not available in this browser.')).toBeInTheDocument();
+        expect(screen.getByLabelText('Destination')).toHaveValue('keep-typed');
+      } finally {
+        if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard);
+        else delete (navigator as { clipboard?: Clipboard }).clipboard;
       }
     });
   });

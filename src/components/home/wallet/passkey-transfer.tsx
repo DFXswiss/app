@@ -156,9 +156,10 @@ export default function PasskeyTransfer({
     const media = streamRef.current;
     const Detector = (globalThis as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
     if (!streamVideo || media === undefined || Detector === undefined) return;
+    const source = streamVideo;
 
     try {
-      streamVideo.srcObject = media;
+      source.srcObject = media;
     } catch {
       // detect still runs if the element rejects the stream
     }
@@ -169,7 +170,7 @@ export default function PasskeyTransfer({
       if (!alive || cancelledRef.current) return;
       let found: string | undefined;
       try {
-        const codes = await detector.detect(streamVideo);
+        const codes = await detector.detect(source);
         const hit = codes.find((code) => code.rawValue !== '');
         if (hit !== undefined) found = hit.rawValue;
       } catch {
@@ -187,7 +188,7 @@ export default function PasskeyTransfer({
     }
 
     try {
-      const played = streamVideo.play?.();
+      const played = source.play?.();
       if (played !== undefined) void Promise.resolve(played).catch(() => undefined);
     } catch {
       // ignore a play rejection
@@ -279,7 +280,11 @@ export default function PasskeyTransfer({
                 key={item}
                 type="button"
                 aria-pressed={family === item}
-                onClick={() => setFamily(item)}
+                onClick={() => {
+                  if (item === family) return;
+                  setFamily(item);
+                  setAddress(undefined);
+                }}
                 className={
                   family === item
                     ? 'rounded-full bg-dfxBlue-800 px-4 py-2 text-sm text-white'

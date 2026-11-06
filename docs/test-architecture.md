@@ -636,8 +636,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the
   session, store, balance and settings hooks, and `src/contexts/wallet.context`. That context's
   `useWalletContext` returns the test's `setSession`. The same file replaces `navigator.userAgent`,
-  `navigator.clipboard`, and `document.execCommand`. The in-app test writes the page address with
-  `history.replaceState`, because assigning `location.href` in this jsdom drops the fragment.
+  `navigator.clipboard`, and `document.execCommand`. The same file also replaces `react-qr-code`,
+  `BarcodeDetector`, `navigator.mediaDevices.getUserMedia`, and `window.requestAnimationFrame`. The
+  in-app test writes the page address with `history.replaceState`, because assigning `location.href`
+  in this jsdom drops the fragment.
   A green run proves the idle card, the
   account choice after a dismissed login, the email form before create, the unknown card, the
   fixed error sentence, Close on the preparing card during a hanging login, and the desk
@@ -648,7 +650,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `location.href` keeps the fragment in a real browser, a real `DfxApiClient`, the
   published components, that `setSession` stores a passkey session, that the server stored the
   mainnet login address, that `auth.link` is the real client, or that a Bitcoin row already in
-  the list came from the API. WebAuthn stays a stub.
+  the list came from the API. WebAuthn stays a stub. A green run does not prove a real camera, a
+  real BarcodeDetector, or a real QR image.
 - **The wallet entry unit test replaces the session, the page tree, and the connect form.**
   `src/__tests__/wallet-entry.test.tsx` replaces the service names from `App`, `@dfx.swiss/react`,
   `react-i18next`, `@dfx.swiss/react-components`, the connect wrapper, the custody-asset list, and the layout,
