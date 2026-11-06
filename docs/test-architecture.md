@@ -90,19 +90,22 @@ declaration.** Anything its parser cannot resolve is a hard failure rather than 
 
 ## Reality declaration — hard requirement
 
-Full definition, including the categories that count as a fake and the mandatory fields per entry, is in
-`DFXswiss/backend` under `docs/test-architecture.md` — that document owns the taxonomy, and its exact extent
-is not verifiable from this repository. The short form that binds every pull request here:
+A fake test of a website function is forbidden. A declaration does not make it
+acceptable. `CONTRIBUTING.md` under Real tests defines the real test and the
+fake test. This section does not relax that rule.
 
-Whenever you introduce, remove or change a fake — a faked external provider, a disabled cron job, a
-schema built without the migration chain, state written directly with SQL, a placeholder value that
-looks real, a suppressed side effect, or a seed correction that bends reality — the declaration
-changes in the same pull request, and each entry says in one plain sentence what a green run does
-**not** prove. A pull request that adds a fake without its declaration is incomplete regardless of
-whether CI is green.
+Where the harness replaces something that is not the website function — an
+external provider, a cron job, or the migration chain — or writes a starting
+row, a placeholder, or a suppressed side effect, the declaration changes in
+the same pull request. Each entry says in one plain sentence what a green run
+does **not** prove. That sentence is a limit. It is not coverage, and it does
+not excuse a missing real test. Write that limit before adding the
+replacement. Reversed, it becomes documentation written from memory, with
+omissions.
 
-Write the declaration entry **before** building the fake. Reversed, it becomes documentation written
-from memory, with omissions.
+The taxonomy of those harness limits, and the mandatory fields of an entry,
+live in `DFXswiss/backend` under `docs/test-architecture.md`. That document
+owns the taxonomy. Its exact extent is not verifiable from this repository.
 
 ## Reality declaration — entries
 
