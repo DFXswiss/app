@@ -4,6 +4,7 @@ import PasskeySheet from './passkey-sheet';
 interface PasskeyRevokeSheetProps {
   note?: string;
   backupNeeded: boolean;
+  canBackUp: boolean;
   acknowledged: boolean;
   busy: boolean;
   returnFocus?: HTMLElement | null;
@@ -58,7 +59,7 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
             <p>{t('You have not backed up your recovery words. Without them you will lose access to your funds.')}</p>
             <button
               className="mt-3 min-h-[44px] rounded-md bg-dfxBlue-800 px-4 font-semibold text-white disabled:opacity-50"
-              disabled={props.busy}
+              disabled={props.busy || !props.canBackUp}
               onClick={props.onBackup}
             >
               {t('Back up first')}

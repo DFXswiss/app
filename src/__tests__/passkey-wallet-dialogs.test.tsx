@@ -53,6 +53,7 @@ describe('Passkey wallet dialogs', () => {
       onClose = jest.fn();
     const props = {
       backupNeeded: true,
+      canBackUp: true,
       acknowledged: false,
       busy: false,
       reason: 'Lost' as const,
@@ -66,6 +67,12 @@ describe('Passkey wallet dialogs', () => {
     };
     const view = render(<PasskeyRevokeSheet {...props} />);
     expect(screen.getByRole('button', { name: 'Block', exact: true })).toBeDisabled();
+    view.rerender(<PasskeyRevokeSheet {...props} canBackUp={false} />);
+    expect(screen.getByRole('button', { name: 'Back up first' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Back up first' }));
+    expect(onBackup).not.toHaveBeenCalled();
+    view.rerender(<PasskeyRevokeSheet {...props} />);
+    expect(screen.getByRole('button', { name: 'Back up first' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Back up first' }));
     fireEvent.click(screen.getByLabelText('Passkey compromised'));
     fireEvent.click(screen.getByLabelText('New login'));
@@ -109,6 +116,7 @@ describe('Passkey wallet dialogs', () => {
       onEvmIndex = jest.fn();
     const props = {
       unlocked: true,
+      canUnlock: false,
       backupNeeded: true,
       credentialId: 'credential',
       busy: false,
@@ -127,6 +135,7 @@ describe('Passkey wallet dialogs', () => {
       onEvmIndex,
     };
     const view = render(<PasskeySettingsSheet {...props} />);
+    expect(screen.getByRole('button', { name: /Recovery words/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
     fireEvent.change(screen.getByLabelText(/Another EVM account/), { target: { value: '2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Link' }));
@@ -162,6 +171,13 @@ describe('Passkey wallet dialogs', () => {
     expect(screen.getByText('0 / 1 addresses match')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Link' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Check passkey status' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Recovery words/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
+    expect(onWords).toHaveBeenCalledTimes(1);
+    view.rerender(<PasskeySettingsSheet {...props} unlocked={false} canUnlock />);
+    expect(screen.getByRole('button', { name: /Recovery words/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
+    expect(onWords).toHaveBeenCalledTimes(2);
     view.rerender(<PasskeySettingsSheet {...props} note="Wallets on this account: 1." />);
     expect(screen.getByRole('button', { name: 'Reload data' })).toHaveTextContent('Wallets on this account: 1.');
     view.rerender(<PasskeySettingsSheet {...props} note="credential: Active" />);

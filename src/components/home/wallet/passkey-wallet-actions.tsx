@@ -4,6 +4,7 @@ export type WalletAction = 'Buy' | 'Sell' | 'Swap' | 'Send' | 'Receive' | 'Pay';
 
 interface PasskeyWalletActionsProps {
   unlocked: boolean;
+  canUnlock: boolean;
   busy?: boolean;
   onAction: (action: WalletAction) => void;
 }
@@ -18,7 +19,12 @@ const icons: Record<WalletAction, string> = {
   Pay: 'M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3M7 12h10',
 };
 
-export default function PasskeyWalletActions({ unlocked, busy, onAction }: PasskeyWalletActionsProps): JSX.Element {
+export default function PasskeyWalletActions({
+  unlocked,
+  canUnlock,
+  busy,
+  onAction,
+}: PasskeyWalletActionsProps): JSX.Element {
   const { translate } = useSettingsContext();
 
   return (
@@ -26,7 +32,7 @@ export default function PasskeyWalletActions({ unlocked, busy, onAction }: Passk
       {actions.map((action, index) => (
         <button
           key={action}
-          disabled={busy}
+          disabled={busy || (index >= 3 && !unlocked && !canUnlock)}
           className="flex min-h-[80px] flex-col items-center gap-2 rounded font-semibold focus-visible:outline focus-visible:outline-2"
           onClick={() => onAction(action)}
         >

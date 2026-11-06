@@ -3,6 +3,7 @@ import PasskeySheet from './passkey-sheet';
 
 interface PasskeySettingsSheetProps {
   unlocked: boolean;
+  canUnlock: boolean;
   backupNeeded: boolean;
   backupSeenDate?: string;
   credentialId: string;
@@ -121,7 +122,7 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
       )}
       <h3 className={group}>{t('Security')}</h3>
       <div className={card}>
-        <button className={row} disabled={props.busy} onClick={props.onWords}>
+        <button className={row} disabled={props.busy || (!props.unlocked && !props.canUnlock)} onClick={props.onWords}>
           <Icon path={icons.words} />
           <span className={text}>
             {t('Recovery words')}

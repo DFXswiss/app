@@ -457,7 +457,7 @@ export default function PasskeyDesk({
         onAnotherPasskey={startAnother}
         onReload={() => window.location.reload()}
       />
-      <PasskeyWalletActions unlocked={unlocked} busy={busy} onAction={onAction} />
+      <PasskeyWalletActions unlocked={unlocked} canUnlock={walletState === 'locked'} busy={busy} onAction={onAction} />
       {expanded && (
         <section id="passkey-wallet-details" className="mt-6">
           <h2 className="mb-2 text-xl font-bold">{t('Your wallet')}</h2>
@@ -533,6 +533,7 @@ export default function PasskeyDesk({
       {sheet === 'settings' && (
         <PasskeySettingsSheet
           unlocked={unlocked}
+          canUnlock={walletState === 'locked'}
           backupNeeded={backupNeeded}
           backupSeenDate={open.wallet.backupSeenDate}
           credentialId={open.wallet.credentialId}
@@ -612,6 +613,7 @@ export default function PasskeyDesk({
         <PasskeyRevokeSheet
           note={note}
           backupNeeded={backupNeeded}
+          canBackUp={unlocked || walletState === 'locked'}
           acknowledged={revokeAcknowledged}
           busy={busy}
           returnFocus={sheetOrigin.current}

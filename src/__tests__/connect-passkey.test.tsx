@@ -1861,6 +1861,19 @@ describe('ConnectPasskey', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Unlock' }));
     expect(await screen.findByText('Wrong passkey')).toBeInTheDocument();
     expect(passkeySession.getOpenPasskey()?.keys).toBeUndefined();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    const recovery = screen.getByRole('button', { name: /Recovery words/ });
+    expect(recovery).toBeDisabled();
+    fireEvent.click(recovery);
+    expect(mockExport).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Receive' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
+    expect(screen.getByRole('button', { name: 'Back up first' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Back up first' }));
+    expect(mockExport).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     act(() => {
       const current = requireWallet();
       setOpenPasskey({ ...current.session, state: 'locked' });

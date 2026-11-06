@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import PasskeyWalletCard from '../components/home/wallet/passkey-wallet-card';
+import PasskeyWalletActions from '../components/home/wallet/passkey-wallet-actions';
 
 jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({
@@ -32,4 +33,31 @@ it('renders balance, currency controls and wallet toggles', () => {
   expect(onExpandedChange).toHaveBeenLastCalledWith(false);
   fireEvent.click(screen.getByRole('button', { name: 'CHF' }));
   expect(onCurrencyChange).toHaveBeenLastCalledWith('CHF');
+});
+
+it('enables key actions only when unlocked or unlockable and disables every action while busy', () => {
+  const onAction = jest.fn();
+  const view = render(<PasskeyWalletActions unlocked={false} canUnlock={false} onAction={onAction} />);
+  for (const name of ['Buy', 'Sell', 'Swap']) {
+    expect(screen.getByRole('button', { name })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name }));
+    expect(onAction).toHaveBeenCalledWith(name);
+  }
+  for (const name of ['Send', 'Receive', 'Pay']) {
+    expect(screen.getByRole('button', { name })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name }));
+    expect(onAction).not.toHaveBeenCalledWith(name);
+  }
+  view.rerender(<PasskeyWalletActions unlocked={false} canUnlock onAction={onAction} />);
+  for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay']) {
+    expect(screen.getByRole('button', { name })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name }));
+    expect(onAction).toHaveBeenCalledWith(name);
+  }
+  view.rerender(<PasskeyWalletActions unlocked canUnlock={false} onAction={onAction} />);
+  expect(screen.getByRole('button', { name: 'Receive' })).toBeEnabled();
+  view.rerender(<PasskeyWalletActions unlocked canUnlock={false} busy onAction={onAction} />);
+  for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay']) {
+    expect(screen.getByRole('button', { name })).toBeDisabled();
+  }
 });
