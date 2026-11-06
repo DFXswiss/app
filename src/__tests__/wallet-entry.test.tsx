@@ -94,6 +94,17 @@ jest.mock('../components/home/connect-wrapper', () => ({
       <button onClick={onCancel}>cancel-connect</button>
       <button onClick={() => onSwitch('Mail')}>switch-wallet</button>
       <button onClick={() => onSwitch('Address')}>switch-address</button>
+      <button
+        onClick={() =>
+          jest
+            .requireActual<typeof import('../components/home/wallet/passkey-session')>(
+              '../components/home/wallet/passkey-session',
+            )
+            .setOpenPasskey(undefined)
+        }
+      >
+        Use another passkey
+      </button>
     </div>
   ),
 }));
@@ -236,6 +247,15 @@ describe('/wallet passkey entry', () => {
     expect(mockLayoutOptions).toMatchObject({ noHeader: true });
     view.unmount();
     setOpenPasskey(undefined);
+  });
+
+  it('keeps the passkey form open when an already signed-in user chooses another passkey', () => {
+    mockSessionState.isLoggedIn = true;
+    setOpenPasskey({ state: 'unlocked' } as OpenPasskey);
+    renderAt('/wallet');
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+    fireEvent.click(screen.getByRole('button', { name: 'Use another passkey' }));
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
   });
 
   it('shows the home tiles when the session is already logged in', () => {

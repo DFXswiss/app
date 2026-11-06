@@ -557,6 +557,31 @@ describe('ConnectPasskey', () => {
     expect(screen.getByRole('button', { name: 'Buy' })).toBeEnabled();
   });
 
+  it('disables all actions during the automatic Bitcoin link and retains its error', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED), false) as unknown as OpenPasskey);
+    let fail: (error: Error) => void = () => undefined;
+    mockLink.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(1));
+    for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay']) {
+      const action = screen.getByRole('button', { name });
+      expect(action).toBeDisabled();
+      fireEvent.click(action);
+    }
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockOnLogin).not.toHaveBeenCalled();
+    await act(async () => fail(new Error('Bitcoin link failed')));
+    expect(await screen.findByRole('status')).toHaveTextContent('Bitcoin link failed');
+    for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay']) {
+      expect(screen.getByRole('button', { name })).toBeEnabled();
+    }
+  });
+
   it('ignores a block request during the synchronous start of another action', async () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
@@ -678,7 +703,7 @@ describe('ConnectPasskey', () => {
     expect(passkeySession.getOpenPasskey()).toBe(next);
   });
 
-  it('does not show a link refresh error in a newer dialog', async () => {
+  it('keeps settings open and shows a link refresh error while actions are disabled', async () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     mockLink.mockResolvedValueOnce({ address: { family: 'Evm', address: OTHER } });
     let fail: (error: Error) => void = () => undefined;
@@ -692,13 +717,32 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Link' }));
     await waitFor(() => expect(mockWallets).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    expect(screen.getByRole('button', { name: 'Receive' })).toBeDisabled();
     await act(async () => fail(new Error('old refresh error')));
-    expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
-    expect(screen.queryByText(/old refresh error/)).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.getByText(/old refresh error/)).toBeInTheDocument();
   });
 
-  it('does not show a late passkey status in a newer dialog', async () => {
+  it('ignores a link refresh error after the desk unmounts', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    mockLink.mockResolvedValueOnce({ address: { family: 'Evm', address: OTHER } });
+    let fail: (error: Error) => void = () => undefined;
+    mockWallets.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }));
+    await waitFor(() => expect(mockWallets).toHaveBeenCalledTimes(1));
+    view.unmount();
+    await act(async () => fail(new Error('late error')));
+    expect(screen.queryByText(/late error/)).not.toBeInTheDocument();
+  });
+
+  it('keeps settings open for a pending passkey status', async () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     let finish: (value: unknown) => void = () => undefined;
     mockCredentialStatus.mockImplementationOnce(
@@ -710,28 +754,87 @@ describe('ConnectPasskey', () => {
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    expect(screen.getByRole('button', { name: 'Receive' })).toBeDisabled();
+    await act(async () => finish([{ credentialId: 'cred', status: 'Active' }]));
+    expect(screen.getByText('cred: Active')).toBeInTheDocument();
+  });
+
+  it('ignores passkey status after the desk unmounts', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    let finish: (value: unknown) => void = () => undefined;
+    mockCredentialStatus.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
+    view.unmount();
     await act(async () => finish([{ credentialId: 'cred', status: 'Active' }]));
     expect(screen.queryByText('cred: Active')).not.toBeInTheDocument();
   });
 
-  it('does not close the receive dialog on Escape while another action is busy', async () => {
-    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
-    let finish: () => void = () => undefined;
-    mockDiagnostics.mockImplementationOnce(
+  it.each(['success', 'error'] as const)('discards a diagnostic %s after the desk unmounts', async (outcome) => {
+    const react = jest.requireActual<typeof import('react')>('react');
+    const originalUseState = react.useState;
+    const staleWrite = jest.fn();
+    const spy = jest.spyOn(react, 'useState').mockImplementation(((initial: unknown) => {
+      const [value, setValue] = originalUseState<unknown>(initial);
+      return [
+        value,
+        (next: unknown) => {
+          if (next === 'Sent. Thank you!' || next === 'late diagnostic error') staleWrite(next);
+          setValue(next);
+        },
+      ];
+    }) as typeof react.useState);
+    try {
+      setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+      let finish: () => void = () => undefined;
+      let fail: (error: Error) => void = () => undefined;
+      mockDiagnostics.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            finish = resolve;
+            fail = reject;
+          }),
+      );
+      const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+      expect(mockDiagnostics).toHaveBeenCalledTimes(1);
+      view.unmount();
+      await act(async () => {
+        if (outcome === 'success') finish();
+        else fail(new Error('late diagnostic error'));
+      });
+      expect(staleWrite).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('does not close receive on Escape while the Bitcoin link is busy', async () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    let fail: (error: Error) => void = () => undefined;
+    mockLink.mockImplementationOnce(
       () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
+        new Promise((_resolve, reject) => {
+          fail = reject;
         }),
     );
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
     fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, addresses: [] } }));
+    await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Receive' })).toBeDisabled();
     expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
-    await act(async () => finish());
+    await act(async () => fail(new Error('link failed')));
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Receive' })).not.toBeInTheDocument();
   });
@@ -800,7 +903,7 @@ describe('ConnectPasskey', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
-  it('does not let a late backup result close a newer dialog', async () => {
+  it('keeps wallet actions disabled until backup confirmation completes', async () => {
     const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
     setOpenPasskey(session);
     mockExport.mockResolvedValueOnce(['alpha']);
@@ -816,12 +919,12 @@ describe('ConnectPasskey', () => {
     await screen.findByTestId('passkey-recovery-words');
     fireEvent.click(screen.getByLabelText('I have written the words down on paper.'));
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    expect(screen.getByRole('button', { name: 'Receive' })).toBeDisabled();
     await act(async () => finish(session.wallet));
-    expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Recovery words' })).not.toBeInTheDocument();
   });
 
-  it('does not put a late revocation failure into a newer dialog', async () => {
+  it('shows a revocation failure in the still-open dialog', async () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     let fail: (error: Error) => void = () => undefined;
     mockRevoke.mockImplementationOnce(
@@ -835,10 +938,10 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
     fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
     fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    expect(screen.getByRole('button', { name: 'Receive' })).toBeDisabled();
     await act(async () => fail(new Error('late revoke error')));
-    expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
-    expect(screen.queryByText('late revoke error')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Block passkey' })).toBeInTheDocument();
+    expect(screen.getByText('late revoke error')).toBeInTheDocument();
     expect(mockOnSwitch).not.toHaveBeenCalled();
   });
 
@@ -854,16 +957,18 @@ describe('ConnectPasskey', () => {
           finish = resolve;
         }),
     );
-    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
     if (method === 'login') fireEvent.click(screen.getByLabelText('New login'));
     fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
     fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
+    view.unmount();
     act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, id: 8 } }));
-    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     await act(async () => finish({ status: 'Lost' }));
-    expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
     expect(mockOnSwitch).not.toHaveBeenCalled();
   });
 
@@ -878,13 +983,13 @@ describe('ConnectPasskey', () => {
           finish = resolve;
         }),
     );
-    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
     if (method === 'login') fireEvent.click(screen.getByLabelText('New login'));
     fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
     fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    view.unmount();
     await act(async () => finish({ status: 'Lost' }));
     expect(passkeySession.getOpenPasskey()).toBeUndefined();
     expect(mockOnSwitch).toHaveBeenCalledTimes(1);

@@ -26,7 +26,7 @@ export default function PasskeyWalletActions({ unlocked, busy, onAction }: Passk
       {actions.map((action, index) => (
         <button
           key={action}
-          disabled={busy && index < 3}
+          disabled={busy}
           className="flex min-h-[80px] flex-col items-center gap-2 rounded font-semibold focus-visible:outline focus-visible:outline-2"
           onClick={() => onAction(action)}
         >

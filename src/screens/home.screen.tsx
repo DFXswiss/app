@@ -83,6 +83,7 @@ function HomeScreenContent(): JSX.Element {
   const [loginSuccessful, setLoginSuccessful] = useState(false);
   const [pages, setPages] = useState(new Stack<Page>());
   const connectToRef = useRef<Wallet>();
+  const previousLogin = useRef(isLoggedIn);
 
   const currentPageId = pages.current?.page;
   const allowedTiles = pages.current?.allowedTiles;
@@ -93,6 +94,8 @@ function HomeScreenContent(): JSX.Element {
   const waitingForSession = specialMode === SpecialMode.WALLET && !isSessionInitialized;
 
   useEffect(() => {
+    const justLoggedIn = !previousLogin.current && isLoggedIn;
+    previousLogin.current = isLoggedIn;
     const isConnectAddress = connectTo?.type === WalletType.ADDRESS;
 
     if (
@@ -111,11 +114,11 @@ function HomeScreenContent(): JSX.Element {
       setConnectTo({ type: WalletType.PASSKEY });
     } else if (
       specialMode === SpecialMode.WALLET &&
-      isLoggedIn &&
+      justLoggedIn &&
       !openPasskey &&
       connectTo?.type === WalletType.PASSKEY
     ) {
-      // Without an open passkey, a completed DFX sign-in leaves the form.
+      // A newly completed DFX sign-in leaves the form only when no passkey session is open.
       setConnectTo(undefined);
     }
   }, [specialMode, isLoggedIn, session, hasAddress, isSessionInitialized, openPasskey]);
