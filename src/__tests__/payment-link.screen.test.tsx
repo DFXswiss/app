@@ -1682,6 +1682,10 @@ describe('PaymentLinkScreen', () => {
       await waitFor(() => {
         expect(mockSetSearchParams).toHaveBeenCalled();
       });
+      // the deeplink resolves after the wallet is selected
+      await act(async () => {
+        await Promise.resolve();
+      });
     }
 
     it('clears the selected wallet on the back button', async () => {
@@ -1951,6 +1955,74 @@ describe('PaymentLinkScreen', () => {
       const nextParams = mockSetSearchParams.mock.calls[0][0] as URLSearchParams;
       expect(nextParams.get('merchant')).toBe('shop-route');
       expect(nextParams.has('wallet-id')).toBe(false);
+    });
+
+    it('waits for the payment before reading wallet-id', async () => {
+      mockPaymentLinkContext.payRequest = undefined;
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7 })];
+      mockSearchParams = new URLSearchParams('wallet-id=7');
+
+      const view = renderScreen();
+
+      expect(mockSetSearchParams).not.toHaveBeenCalled();
+      expect(mockGetDeeplinkByWalletId).not.toHaveBeenCalled();
+
+      mockPaymentLinkContext.payRequest = quotedPayRequest();
+      view.rerender(<PaymentLinkScreen />);
+
+      await waitFor(() => {
+        expect(mockGetDeeplinkByWalletId).toHaveBeenCalledWith(7);
+      });
+      expect(mockSetSearchParams).toHaveBeenCalled();
+    });
+
+    it('resolves the deeplink again when the payment identifier arrives after the wallet was opened', async () => {
+      mockPaymentLinkContext.paymentIdentifier = undefined;
+      mockGetDeeplinkByWalletId.mockResolvedValueOnce(undefined).mockResolvedValueOnce('late://pay');
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7, hasActionDeepLink: true, deepLink: undefined })];
+      mockSearchParams = new URLSearchParams('wallet-id=7');
+
+      const view = renderScreen();
+      await waitFor(() => {
+        expect(mockGetDeeplinkByWalletId).toHaveBeenCalledTimes(1);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.queryByRole('button', { name: 'Pay in app' })).not.toBeInTheDocument();
+
+      mockPaymentLinkContext.paymentIdentifier = 'lnurl1late';
+      view.rerender(<PaymentLinkScreen />);
+
+      const pay = await screen.findByRole('button', { name: 'Pay in app' });
+      expect(mockGetDeeplinkByWalletId).toHaveBeenCalledTimes(2);
+      fireEvent.click(pay);
+      expect(mockOpen).toHaveBeenCalledWith('late://pay', '_blank');
+    });
+
+    it('drops a deeplink that resolves after the wallet was closed', async () => {
+      let resolveDeeplink: (value: string) => void = () => undefined;
+      mockGetDeeplinkByWalletId.mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveDeeplink = resolve;
+        }),
+      );
+      mockPaymentLinkContext.paymentIdentifier = 'lnurl1abc';
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7, active: true })];
+      mockSearchParams = new URLSearchParams('wallet-id=7');
+
+      renderScreen();
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('dfx-icon-back').closest('button') as HTMLButtonElement);
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+
+      await act(async () => {
+        resolveDeeplink('wallet://pay');
+        await Promise.resolve();
+      });
+      expect(screen.queryByTestId('dfx-icon-back')).not.toBeInTheDocument();
+      expect(screen.getByText('RECOMMENDED APPS')).toBeInTheDocument();
     });
 
     it('does nothing for an unknown wallet id', () => {

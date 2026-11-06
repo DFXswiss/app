@@ -140,9 +140,12 @@ export default function PaymentLinkScreen(): JSX.Element {
   const selectedPaymentStandard = useWatch({ control, name: 'paymentStandard' });
   const selectedAsset = useWatch({ control, name: 'asset' });
 
-  // the wallet list loads asynchronously, so a wallet-id in a URL opened directly is resolved once it has loaded
+  // the wallet list loads asynchronously and is filtered by the page's payment methods, so a wallet-id in a URL
+  // opened directly is resolved once both have loaded
+  const canSelectWallet = !isLoadingWallets && !!pageInfo;
+
   useEffect(() => {
-    if (isLoadingWallets) return;
+    if (!canSelectWallet) return;
     const walletIdParam = searchParams.get('wallet-id');
     const walletId = walletIdParam ? parseInt(walletIdParam, 10) : undefined;
     const wallet = walletId
@@ -151,19 +154,33 @@ export default function PaymentLinkScreen(): JSX.Element {
     if (wallet) {
       setWalletData(wallet);
 
-      setIsLoadingDeeplink(true);
-      getDeeplinkByWalletId(wallet.id)
-        .then((deeplink) => {
-          setWalletData({ ...wallet, deepLink: deeplink });
-        })
-        .finally(() => {
-          const newParams = new URLSearchParams(searchParams);
-          newParams.delete('wallet-id');
-          setSearchParams(newParams);
-          setIsLoadingDeeplink(false);
-        });
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('wallet-id');
+      setSearchParams(newParams);
     }
-  }, [searchParams, isLoadingWallets]);
+  }, [searchParams, canSelectWallet]);
+
+  // the deeplink is built from the payment identifier, so it is resolved again when that arrives or changes;
+  // a cleanup runs whenever another wallet is selected or the wallet is closed, so a late answer is dropped
+  useEffect(() => {
+    const wallet = walletData;
+    if (!wallet) return;
+    let isCurrent = true;
+
+    setIsLoadingDeeplink(true);
+    getDeeplinkByWalletId(wallet.id)
+      .then((deepLink) => {
+        if (isCurrent) setWalletData({ ...wallet, deepLink });
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingDeeplink(false);
+      });
+
+    return () => {
+      isCurrent = false;
+      setIsLoadingDeeplink(false);
+    };
+  }, [walletData?.id, paymentIdentifier]);
 
   useEffect(() => {
     if (
