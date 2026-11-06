@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -13,7 +13,8 @@ COPY . .
 # service; on the host it hits the published proxy port that forwards to the same API. See
 # e2e-stack/README.md ("Manual exploration") for the full explanation.
 ARG REACT_APP_API_URL=http://localhost:3000
-ARG REACT_APP_PUBLIC_URL=http://frontend
+# Browser origin. Needs a top-level domain: @IsUrl() rejects http://frontend/...
+ARG REACT_APP_PUBLIC_URL=http://frontend.e2e.test
 ARG REACT_APP_BUILD_ID=e2e-stack
 ENV REACT_APP_API_URL=${REACT_APP_API_URL}
 ENV REACT_APP_PUBLIC_URL=${REACT_APP_PUBLIC_URL}

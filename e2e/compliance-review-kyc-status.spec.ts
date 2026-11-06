@@ -359,6 +359,69 @@ test.describe('Compliance review KYC and AML actions', () => {
     expect(unexpectedRequests).toEqual([]);
   });
 
+  test('shows the monthly-limit acknowledgement row and the Reset warning', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1200 });
+
+    const pendingFixture = structuredClone(complianceFixture);
+    pendingFixture.transactions = [
+      {
+        id: 336963,
+        uid: 'synthetic-buy-crypto-136855',
+        buyCryptoId: 136855,
+        type: 'Buy',
+        sourceType: 'BuyCrypto',
+        inputAmount: 11.2,
+        inputAsset: 'EUR',
+        outputAsset: 'WBTC',
+        amountInChf: 10.45,
+        amlCheck: 'Pending',
+        amlReason: 'ManualCheck',
+        isCompleted: false,
+        buyCryptoIsComplete: false,
+        buyCryptoStatus: 'Created',
+        buyCryptoHasBatch: false,
+        buyCryptoHasChargeback: false,
+        buyCryptoReviewResetBlocked: false,
+        created: '2026-09-28T07:32:35.000Z',
+        comment: 'MonthlyLimitReached',
+      },
+    ];
+
+    const { unexpectedRequests } = await installSyntheticApi(page, pendingFixture);
+
+    await page.goto(`/compliance/user/${USER_DATA_ID}/kyc?session=${jwt()}&tab=amlPending`);
+
+    await expect(page.getByText('AmlCheck', { exact: true })).toBeVisible();
+    await expect(page.getByText('Monatslimit blockiert die Zahlung')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Monatslimit quittieren' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Scorechain quittieren' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Empfehler-Check aufheben' })).toHaveCount(0);
+
+    await page.getByText('Monatslimit blockiert die Zahlung').scrollIntoViewIfNeeded();
+
+    await expect(page).toHaveScreenshot('compliance-review-aml-pending-monthly-limit.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+
+    await page.locator('select').first().selectOption('Reset');
+
+    await expect(
+      page.getByText(/Reset hilft hier nicht: Das Monatslimit kommt bei jeder Prüfung wieder/),
+    ).toBeVisible();
+
+    await page
+      .getByText(/Reset hilft hier nicht: Das Monatslimit kommt bei jeder Prüfung wieder/)
+      .scrollIntoViewIfNeeded();
+
+    await expect(page).toHaveScreenshot('compliance-review-aml-pending-monthly-limit-reset-hint.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+
+    expect(unexpectedRequests).toEqual([]);
+  });
+
   test('shows the Scorechain acknowledgement row for an unavailable result', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 1200 });
 

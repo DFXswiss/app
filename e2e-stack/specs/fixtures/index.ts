@@ -84,7 +84,7 @@ export async function openScreen(page: Page, path: string, jwt: string): Promise
 function stackHosts(): Set<string> {
   const hosts = new Set(['localhost', '127.0.0.1']);
   const stackUrls = [
-    process.env.E2E_FRONTEND_URL ?? 'http://frontend',
+    process.env.E2E_FRONTEND_URL ?? 'http://frontend.e2e.test',
     process.env.E2E_API_URL ?? 'http://api:3000',
     process.env.E2E_WIDGET_URL ?? 'http://frontend-widget',
   ];

@@ -47,6 +47,16 @@ jest.mock('src/components/compliance/scorechain-clear-row', () => ({
   },
 }));
 
+const mockMonthlyLimitClearRow = jest.fn();
+
+jest.mock('src/components/compliance/monthly-limit-clear-row', () => ({
+  MONTHLY_LIMIT_CLEAR_LABEL: 'Monatslimit quittieren',
+  MonthlyLimitClearRow: (props: unknown) => {
+    mockMonthlyLimitClearRow(props);
+    return null;
+  },
+}));
+
 jest.mock('src/components/error-hint', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const React = require('react');
@@ -60,6 +70,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   AmlCheckPendingPanel,
   NAME_CHECK_UNAVAILABLE_HINT,
+  RESET_MONTHLY_LIMIT_HOLD_HINT,
   RESET_REF_USER_KYC_HOLD_HINT,
   RESET_SCORECHAIN_HOLD_HINT,
 } from 'src/components/compliance/aml-check-panel';
@@ -887,6 +898,135 @@ describe('AmlCheckPendingPanel Scorechain acknowledgement row', () => {
     );
     expect(RESET_REF_USER_KYC_HOLD_HINT).toBe(
       'Reset hilft hier nicht: Der Empfehler blockiert die Zahlung bei jeder Prüfung wieder. Verwende «Empfehler-Check aufheben».',
+    );
+  });
+});
+
+describe('AmlCheckPendingPanel monthly limit acknowledgement row', () => {
+  beforeEach(() => {
+    mockAuth.session = { role: 'Compliance' };
+    mockMonthlyLimitClearRow.mockReset();
+  });
+
+  it('offers the row for a pending BuyCrypto held by MonthlyLimitReached', () => {
+    const onScorechainCleared = jest.fn().mockResolvedValue(undefined);
+    render(
+      <AmlCheckPendingPanel
+        data={{ ...data, transactions: [{ ...pendingTx, comment: 'MonthlyLimitReached' }] }}
+        isSaving={true}
+        onUpdate={jest.fn()}
+        onReset={jest.fn()}
+        onReviewReset={jest.fn()}
+        onScorechainCleared={onScorechainCleared}
+      />,
+    );
+
+    expect(mockMonthlyLimitClearRow).toHaveBeenCalledWith({
+      target: { kind: 'buyCrypto', id: 130504 },
+      disabled: true,
+      onCleared: onScorechainCleared,
+    });
+    expect(mockMonthlyLimitClearRow.mock.calls[0][0]).not.toHaveProperty('hold');
+  });
+
+  it('offers the row for a pending BuyFiat held by MonthlyLimitReached', () => {
+    renderPanel({
+      transactions: [
+        {
+          ...pendingTx,
+          buyCryptoId: undefined,
+          buyFiatId: 88,
+          sourceType: 'BuyFiat',
+          comment: 'MonthlyLimitReached',
+        },
+      ],
+    });
+
+    expect(mockMonthlyLimitClearRow).toHaveBeenCalledWith({
+      target: { kind: 'buyFiat', id: 88 },
+      disabled: false,
+      onCleared: undefined,
+    });
+  });
+
+  it('offers the row when MonthlyLimitReached is one member of the comment', () => {
+    renderPanel({
+      transactions: [{ ...pendingTx, comment: 'OtherError; MonthlyLimitReached ;YetAnother' }],
+    });
+
+    expect(mockMonthlyLimitClearRow).toHaveBeenCalledWith({
+      target: { kind: 'buyCrypto', id: 130504 },
+      disabled: false,
+      onCleared: undefined,
+    });
+  });
+
+  it.each(['MonthlyLimitReachedX', 'MonthlyLimitReachedLegacy'])(
+    'hides the row when the comment only contains the token as a substring: %s',
+    (comment) => {
+      renderPanel({ transactions: [{ ...pendingTx, comment }] });
+
+      expect(mockMonthlyLimitClearRow).not.toHaveBeenCalled();
+    },
+  );
+
+  it('hides the row when the transaction has neither a BuyCrypto nor a BuyFiat id', () => {
+    renderPanel({
+      transactions: [{ ...pendingTx, buyCryptoId: undefined, buyFiatId: undefined, comment: 'MonthlyLimitReached' }],
+    });
+
+    expect(mockMonthlyLimitClearRow).not.toHaveBeenCalled();
+  });
+
+  it.each(['ScorechainHighRisk', 'InvalidKycStatusRefUser'])('hides the row for the comment %s', (comment) => {
+    renderPanel({ transactions: [{ ...pendingTx, comment }] });
+
+    expect(mockMonthlyLimitClearRow).not.toHaveBeenCalled();
+  });
+
+  it('prefers buyCrypto when both ids are set', () => {
+    renderPanel({
+      transactions: [{ ...pendingTx, buyCryptoId: 130504, buyFiatId: 88, comment: 'MonthlyLimitReached' }],
+    });
+
+    expect(mockMonthlyLimitClearRow).toHaveBeenCalledWith({
+      target: { kind: 'buyCrypto', id: 130504 },
+      disabled: false,
+      onCleared: undefined,
+    });
+  });
+
+  it('warns that Reset does not resolve a monthly-limit hold, and only after Reset is chosen', () => {
+    renderPanel({ transactions: [{ ...pendingTx, comment: 'MonthlyLimitReached' }] });
+
+    expect(screen.queryByText(RESET_MONTHLY_LIMIT_HOLD_HINT)).not.toBeInTheDocument();
+    fireEvent.change(amlCheckSelect(), { target: { value: 'Reset' } });
+
+    expect(screen.getByText(RESET_MONTHLY_LIMIT_HOLD_HINT)).toBeInTheDocument();
+  });
+
+  it('does not warn on Reset for a monthly-limit hold it cannot acknowledge', () => {
+    renderPanel({
+      transactions: [{ ...pendingTx, buyCryptoId: undefined, comment: 'MonthlyLimitReached' }],
+    });
+
+    fireEvent.change(amlCheckSelect(), { target: { value: 'Reset' } });
+
+    expect(screen.queryByText(RESET_MONTHLY_LIMIT_HOLD_HINT)).not.toBeInTheDocument();
+  });
+
+  it('shows the Scorechain and the monthly-limit reset hints together', () => {
+    renderPanel({ transactions: [{ ...pendingTx, comment: 'ScorechainHighRisk;MonthlyLimitReached' }] });
+
+    fireEvent.change(amlCheckSelect(), { target: { value: 'Reset' } });
+
+    expect(screen.getByText(RESET_SCORECHAIN_HOLD_HINT)).toBeInTheDocument();
+    expect(screen.getByText(RESET_MONTHLY_LIMIT_HOLD_HINT)).toBeInTheDocument();
+  });
+
+  it('names the monthly-limit action the clerk has to use instead of Reset', () => {
+    expect(RESET_MONTHLY_LIMIT_HOLD_HINT).toBe(
+      'Reset hilft hier nicht: Das Monatslimit kommt bei jeder Prüfung wieder. Verwende «Monatslimit quittieren».',
     );
   });
 });

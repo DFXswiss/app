@@ -4,12 +4,14 @@ import type { ComplianceUserData, TransactionInfo } from 'src/hooks/compliance.h
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import type { ScorechainClearTarget } from 'src/hooks/scorechain-clear.hook';
+import { MONTHLY_LIMIT_CLEAR_LABEL, MonthlyLimitClearRow } from './monthly-limit-clear-row';
 import { REF_USER_KYC_CLEAR_LABEL, RefUserKycClearRow } from './ref-user-kyc-clear-row';
 import { SCORECHAIN_CLEAR_LABEL, ScorechainClearRow } from './scorechain-clear-row';
 import { StaffIdentityBlock } from './staff-identity';
 import { canManuallySetAmlPass } from 'src/util/aml-pass.util';
 import { canResetBuyCryptoAmlForReview, hasBuyCryptoReviewResetEligibleState } from 'src/util/buy-crypto-reset.util';
 import { statusBadge } from 'src/util/compliance-helpers';
+import { hasMonthlyLimitReached } from 'src/util/monthly-limit.util';
 import { hasNameCheckUnavailable } from 'src/util/name-check.util';
 import { hasRefUserKycHold } from 'src/util/ref-user-kyc.util';
 import { hasScorechainHighRisk, scorechainHighlightValue, scorechainHold } from 'src/util/scorechain.util';
@@ -44,6 +46,7 @@ interface AmlCheckPendingPanelProps {
 // AML run finds the same reason again and parks the transaction right back here.
 export const RESET_REF_USER_KYC_HOLD_HINT = `Reset hilft hier nicht: Der Empfehler blockiert die Zahlung bei jeder Prüfung wieder. Verwende «${REF_USER_KYC_CLEAR_LABEL}».`;
 export const RESET_SCORECHAIN_HOLD_HINT = `Reset hilft hier nicht: Die Scorechain-Warnung kommt bei jeder Prüfung wieder. Verwende «${SCORECHAIN_CLEAR_LABEL}».`;
+export const RESET_MONTHLY_LIMIT_HOLD_HINT = `Reset hilft hier nicht: Das Monatslimit kommt bei jeder Prüfung wieder. Verwende «${MONTHLY_LIMIT_CLEAR_LABEL}».`;
 
 // Shown for a transaction parked because the name-check refresh could not be completed. Here Reset is the
 // way out: the automatic AML run repeats the refresh.
@@ -250,6 +253,9 @@ function TransactionEntry({
               onCleared={onScorechainCleared}
             />
           )}
+          {hasMonthlyLimitReached(tx.comment) && scorechainTarget && (
+            <MonthlyLimitClearRow target={scorechainTarget} disabled={isSaving} onCleared={onScorechainCleared} />
+          )}
           {isReset ? (
             <div className="px-3 py-2 flex flex-col gap-1">
               <p className="text-xs text-dfxGray-700">
@@ -259,6 +265,9 @@ function TransactionEntry({
               {hasRefUserHold && <p className="text-xs text-dfxRed-100">{RESET_REF_USER_KYC_HOLD_HINT}</p>}
               {scorechainHoldKind === 'HighRisk' && scorechainTarget && (
                 <p className="text-xs text-dfxRed-100">{RESET_SCORECHAIN_HOLD_HINT}</p>
+              )}
+              {hasMonthlyLimitReached(tx.comment) && scorechainTarget && (
+                <p className="text-xs text-dfxRed-100">{RESET_MONTHLY_LIMIT_HOLD_HINT}</p>
               )}
             </div>
           ) : (

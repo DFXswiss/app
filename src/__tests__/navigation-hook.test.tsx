@@ -162,6 +162,14 @@ describe('useNavigation', () => {
     expect(sessionStorage.getItem('dfx.kyc.redirect')).toBeNull();
   });
 
+  it('stores the explicit redirect path when supplied', () => {
+    renderAt('/buy');
+    act(() => {
+      navigation.navigate('/login', { setRedirect: true, redirectPath: '/sell' });
+    });
+    expect(mockAppHandling.setRedirectPath).toHaveBeenCalledWith('/sell');
+  });
+
   it('stores /kyc without a search and does not write the redirect key', () => {
     renderAt('/kyc');
     act(() => {

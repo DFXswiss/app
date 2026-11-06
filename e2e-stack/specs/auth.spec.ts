@@ -11,6 +11,7 @@
  */
 
 import type { Page } from '@playwright/test';
+import { ethers } from 'ethers';
 import {
   completeMailLogin,
   expect,
@@ -46,6 +47,25 @@ function codeFromNotificationData(data: string): string {
     if (typeof code === 'string' && code.length > 0) return code;
   }
   throw new Error('codeFromNotificationData: no texts[].params.code found');
+}
+
+/** Full login link from a Login notification. The first non-empty texts[].params.url wins. */
+function loginUrlFromNotification(data: string): string {
+  let parsed: { texts?: Array<{ params?: { url?: string } }> };
+  try {
+    parsed = JSON.parse(data) as typeof parsed;
+  } catch (e) {
+    throw new Error(`loginUrlFromNotification: failed to JSON.parse notification.data: ${e}`);
+  }
+  const texts = parsed.texts;
+  if (!Array.isArray(texts)) {
+    throw new Error('loginUrlFromNotification: notification.data.texts is not an array');
+  }
+  for (const entry of texts) {
+    const url = entry?.params?.url;
+    if (typeof url === 'string' && url.length > 0) return url;
+  }
+  throw new Error('loginUrlFromNotification: no texts[].params.url');
 }
 
 async function waitForVerificationCode(
@@ -116,6 +136,164 @@ test.describe('Auth area e2e', () => {
     await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible();
     await expect(page.locator('img[src*="mail"]')).toBeVisible();
+  });
+
+  test('command-line wallet login on /login continues to /buy', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet();
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+  });
+
+  test('command-line wallet login from a guarded /buy returns to /buy', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet();
+    await page.goto('/buy?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).not.toBe('/buy');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+    await page.waitForTimeout(3000);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/buy');
+  });
+
+  test('command-line wallet login on /connect continues to /account', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet();
+    await page.goto('/connect?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/account');
+    await page.waitForTimeout(3000);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/account');
+  });
+
+  test('command-line login on /login with a deleted address reactivates and continues to /buy', async ({ page }) => {
+    test.setTimeout(90000);
+
+    // Dedicated index so marking this address Deleted does not affect testWallet() / index 0.
+    const wallet = testWallet(51);
+    await signatureLogin(wallet);
+    const deleted = await queryOne<{ id: number; status: string }>(
+      `UPDATE "user" SET status = 'Deleted', "deactivationDate" = NOW() WHERE address = $1 RETURNING id, status`,
+      [wallet.address],
+    );
+    if (deleted == null || deleted.status !== 'Deleted') {
+      throw new Error(`failed to mark address ${wallet.address} as Deleted`);
+    }
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect(page.getByRole('button', { name: 'Activate address' })).toBeVisible({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Activate address' }).click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+    await page.waitForTimeout(3000);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/buy');
+    await expect
+      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+        timeout: 20000,
+      })
+      .toBeTruthy();
   });
 
   // ---------------------------------------------------------------------------
@@ -205,7 +383,7 @@ test.describe('Auth area e2e', () => {
   // /login/mail — ConnectMail form + real mail-login sequence
   // ---------------------------------------------------------------------------
 
-  test('/login/mail mail form → sent confirmation → OTP session → user_data.mail', async ({ page }) => {
+  test('/login/mail mail form → confirmation → login link visits /buy → session on /connect', async ({ page }) => {
     test.setTimeout(90000);
 
     const email = testEmail('auth-mail');
@@ -217,23 +395,57 @@ test.describe('Auth area e2e', () => {
     // ConnectMail auto-selected: email field + Next.
     await expect(page.getByPlaceholder('example@mail.com')).toBeVisible({ timeout: 15000 });
     await page.getByPlaceholder('example@mail.com').fill(email);
+
+    const mailPost = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === 'POST' && new URL(request.url()).pathname === '/v1/auth/mail';
+    });
     await page.getByRole('button', { name: 'Next' }).click();
+    const response = await mailPost;
+    expect(response.ok(), `POST /v1/auth/mail returned ${response.status()}`).toBe(true);
+
+    const sent: unknown = response.request().postDataJSON();
+    if (sent === null || typeof sent !== 'object' || Array.isArray(sent)) {
+      throw new Error('POST /v1/auth/mail body is not an object');
+    }
+    const redirectUri = (sent as { redirectUri?: unknown }).redirectUri;
+    if (typeof redirectUri !== 'string') throw new Error('the login page should send redirectUri');
+    expect(new URL(redirectUri).pathname).toBe('/buy');
 
     await expect(
       page.getByText('We have sent an email with further instructions to the address provided.', { exact: true }),
     ).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole('button', { name: 'Back' })).toBeVisible();
 
-    // OTP lives in notification; completeMailLogin exchanges it for a session JWT.
-    const jwt = await completeMailLogin(email);
-    expect(jwt).toBeTruthy();
+    const row = await waitForRow<{ data: string }>(
+      `SELECT n.data
+       FROM notification n
+       JOIN user_data ud ON ud.id = n."userDataId"
+       WHERE ud.mail = $1 AND n.context = 'Login'
+       ORDER BY n.id DESC LIMIT 1`,
+      [email],
+      20000,
+    );
+    // A mail session has no address. After the link lands on /buy, useAddressGuard sends it on to
+    // /connect. Record main-frame paths so a pass still proves the link went through /buy.
+    const visited: string[] = [];
+    page.on('framenavigated', (frame) => {
+      if (frame !== page.mainFrame()) return;
+      visited.push(normPath(new URL(frame.url()).pathname));
+    });
+    await page.goto(loginUrlFromNotification(row.data));
+
+    await expect.poll(() => visited.includes('/buy'), { timeout: 30000 }).toBe(true);
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 30000 }).toBe('/connect');
+    await expect
+      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+        timeout: 20000,
+      })
+      .toBeTruthy();
+    await page.waitForTimeout(3000);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/connect');
 
     await waitForRow<{ id: number; mail: string }>(`SELECT id, mail FROM user_data WHERE mail = $1`, [email], 20000);
-
-    await gotoWithSession(page, '/', jwt);
-    await page.waitForLoadState('networkidle');
-    const token = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
-    expect(token, 'mail session should land in localStorage').toBeTruthy();
   });
 
   // ---------------------------------------------------------------------------
@@ -275,7 +487,7 @@ test.describe('Auth area e2e', () => {
       const url = entry?.params?.url;
       if (typeof url === 'string') {
         try {
-          otp = new URL(url, process.env.E2E_FRONTEND_URL ?? 'http://frontend').searchParams.get('otp');
+          otp = new URL(url, process.env.E2E_FRONTEND_URL ?? 'http://frontend.e2e.test').searchParams.get('otp');
           if (otp) break;
         } catch {
           /* next */
