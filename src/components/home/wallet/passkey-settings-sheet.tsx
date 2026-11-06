@@ -8,7 +8,7 @@ interface PasskeySettingsSheetProps {
   credentialId: string;
   busy: boolean;
   note?: string;
-  checks?: { address: string; matches: boolean }[];
+  checks?: { family: string; address: string; matches: boolean }[];
   evmIndex: string;
   validEvmIndex: boolean;
   onEvmIndex: (value: string) => void;
@@ -100,8 +100,9 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
       ? props.note
       : undefined;
   const linkResult = /^Linked Evm 0x[0-9a-f]{40}\.$/i.test(props.note ?? '');
+  const checksColor = props.checks?.every((item) => item.matches) ? 'text-dfxGreen-300' : 'text-dfxRed-150';
   return (
-    <PasskeySheet title={t('Settings')} onClose={props.onClose}>
+    <PasskeySheet title={t('Settings')} onClose={props.onClose} busy={props.busy}>
       <div className="mb-5 flex items-center gap-3 rounded-[16px] bg-[#EEF2F8] px-4 py-3.5">
         <Icon path={icons.key} />
         <div>
@@ -165,7 +166,7 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
           <Icon path={icons.verify} />
           <span className={text}>
             {t('Check addresses')}
-            <small className={`${sub} ${props.checks ? 'font-semibold text-dfxGreen-300' : ''}`}>
+            <small className={`${sub} ${props.checks ? `font-semibold ${checksColor}` : ''}`}>
               {props.checks
                 ? `${props.checks.filter((item) => item.matches).length} / ${props.checks.length} ${t('addresses match')}`
                 : t('Checks that DFX shows your own addresses')}
@@ -173,6 +174,22 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
           </span>
           <Chevron />
         </button>
+        {props.checks && (
+          <ul className="px-4 pb-3 text-sm">
+            {props.checks.map((item, index) => (
+              <li
+                key={`${item.family}:${item.address}:${index}`}
+                className={item.matches ? 'text-dfxGreen-300' : 'text-dfxRed-150'}
+              >
+                {item.family}{' '}
+                <span className="font-mono">
+                  {item.address.slice(0, 10)}…{item.address.slice(-8)}
+                </span>
+                : {t(item.matches ? 'Matches' : 'Differs')}
+              </li>
+            ))}
+          </ul>
+        )}
         <div className={row}>
           <Icon path={icons.storage} />
           <span className={text}>
@@ -276,7 +293,7 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
           <Chevron />
         </button>
       </div>
-      <button className={`${button} mt-5`} onClick={props.onCancel}>
+      <button className={`${button} mt-5`} disabled={props.busy} onClick={props.onCancel}>
         {t('Close')}
       </button>
     </PasskeySheet>

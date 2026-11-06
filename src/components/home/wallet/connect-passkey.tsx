@@ -93,7 +93,7 @@ async function copyPageUrl(): Promise<boolean> {
 // merged passkey routes can be tried. /wallet opens this screen without a flag. The tile on /login
 // stays behind ?feature=Passkey. Opening the app is separate.
 export default function ConnectPasskey(props: ConnectProps): JSX.Element {
-  const { isConnect, onCancel }: ConnectProps = props;
+  const { isConnect, onCancel, onLogin }: ConnectProps = props;
   const { translate } = useSettingsContext();
   const { setSession } = useWalletContext();
   const { navigate } = useNavigation();
@@ -205,7 +205,12 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     setError(undefined);
     try {
       await setSession(session.accessToken, WalletType.PASSKEY);
-      navigate(path);
+      if (isConnect) {
+        onLogin();
+        onCancel();
+      } else {
+        navigate(path);
+      }
     } catch (caught) {
       setError(passkeyMessage(caught));
     } finally {

@@ -14,6 +14,40 @@ const items: PasskeyTx[] = Array.from({ length: 6 }, (_, index) => ({
 }));
 
 describe('Passkey wallet history', () => {
+  it.each([
+    ['buy', '+1 BTC', 'text-dfxGreen-300', 'M12 5v14M5 12h14'],
+    ['buy', '-1 BTC', '', 'M12 5v14M5 12h14'],
+    ['receive', '1 BTC', 'text-dfxGreen-300', 'M17 7L7 17M15 17H7V9'],
+    [
+      'sell',
+      '-1 BTC',
+      '',
+      'M3 8a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2zM12 9.5a2.5 2.5 0 110 5 2.5 2.5 0 010-5z',
+    ],
+    ['swap', '1 BTC', '', 'M5 8h13l-3-3M19 16H6l3 3'],
+    ['send', '-1 BTC', '', 'M7 17L17 7M9 7h8v8'],
+    [
+      'pay',
+      '-1 BTC',
+      '',
+      'M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3M7 12h10',
+    ],
+  ] as const)('renders the %s transaction icon and amount', (type, amount, color, path) => {
+    render(
+      <PasskeyWalletHistory
+        history={{ items: [{ ...items[0], type, amount }], hasMore: false, loadMore: async () => undefined }}
+      />,
+    );
+    const title = screen.getByText('Transaction 0');
+    const row = title.parentElement?.parentElement;
+    expect(row?.querySelector('svg path')).toHaveAttribute('d', path);
+    expect(row?.querySelector('svg')?.parentElement).toHaveClass('bg-dfxGray-300', 'rounded-[10px]');
+    const value = screen.getByText(amount);
+    expect(value).toHaveClass('font-semibold');
+    if (color) expect(value).toHaveClass(color);
+    else expect(value).not.toHaveClass('text-dfxGreen-300');
+  });
+
   it('shows a loading state without a source and an honest empty state', () => {
     const { rerender } = render(<PasskeyWalletHistory />);
     expect(screen.getByLabelText('Loading transactions').children).toHaveLength(3);
@@ -50,6 +84,7 @@ describe('Passkey wallet history', () => {
       const history: PasskeyHistory = { items, hasMore: true, loadMore };
       const { rerender } = render(<PasskeyWalletHistory history={history} />);
       expect(screen.queryByText('Transaction 5')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Show more' })).toHaveClass('w-full', 'min-h-[48px]');
       fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
       expect(screen.getByText('Transaction 5')).toBeInTheDocument();
       act(() => callback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
@@ -107,7 +142,13 @@ describe('Passkey wallet history', () => {
           history={{ items: [{ ...items[0], pending: true }], hasMore: true, loadMore: async () => undefined }}
         />,
       );
-      expect(screen.getByText(/Pending/)).toBeInTheDocument();
+      expect(screen.getByText('Payout pending')).toBeInTheDocument();
+      expect(screen.getByText('Payout pending')).toHaveClass('text-[#8A5A00]');
+      expect(screen.getByText('1 BTC')).toHaveClass('text-[#8A5A00]');
+      expect(screen.getByText('Transaction 0').parentElement?.parentElement?.querySelector('svg path')).toHaveAttribute(
+        'd',
+        'M12 7v5l3 2M12 3a9 9 0 110 18 9 9 0 010-18z',
+      );
       fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
       expect(screen.getByText('Transaction 0')).toBeInTheDocument();
     } finally {

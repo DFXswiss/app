@@ -36,6 +36,10 @@ describe('Passkey wallet dialogs', () => {
     expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled();
     view.rerender(<PasskeyWordsSheet {...props} acknowledged busy />);
     expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).not.toHaveBeenCalled();
+    view.rerender(<PasskeyWordsSheet {...props} acknowledged />);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -78,6 +82,11 @@ describe('Passkey wallet dialogs', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('failure');
     expect(screen.queryByRole('button', { name: 'Back up first' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Block', exact: true })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).not.toHaveBeenCalled();
+    view.rerender(<PasskeyRevokeSheet {...props} acknowledged />);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -141,7 +150,7 @@ describe('Passkey wallet dialogs', () => {
         backupSeenDate="2026-11-06"
         credentialId=""
         note="failure"
-        checks={[{ address: 'a', matches: false }]}
+        checks={[{ family: 'Evm', address: 'a', matches: false }]}
       />,
     );
     expect(screen.getByText('Backed up on 2026-11-06')).toBeInTheDocument();

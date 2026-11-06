@@ -51,7 +51,10 @@ async function installLoginRoutes(page: Page): Promise<void> {
     const path = new URL(request.url()).pathname;
     if (request.method() === 'GET' && path === '/v1/language') return fulfillJson(route, LANGUAGES);
     if (request.method() === 'GET' && path === '/v1/fiat') {
-      return fulfillJson(route, [{ id: 1, name: 'CHF', buyable: true, sellable: true }]);
+      return fulfillJson(route, [
+        { id: 1, name: 'CHF', buyable: true, sellable: true },
+        { id: 2, name: 'EUR', buyable: true, sellable: true },
+      ]);
     }
     if (request.method() === 'GET' && path === '/v1/setting/infoBanner') return fulfillJson(route, null);
     if (request.method() === 'GET' && ['/v1/country', '/v1/asset', '/v1/bankAccount'].includes(path)) {
@@ -960,6 +963,15 @@ test.describe('Passkey wallet design', () => {
     await expect(page).toHaveScreenshot('passkey-wallet-settings.png');
   });
 
+  test('shows the wallet with EUR selected', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWallet(page);
+    const eur = page.getByRole('button', { name: 'EUR', exact: true });
+    await eur.click();
+    await expect(eur).toHaveAttribute('aria-pressed', 'true');
+    await expect(page).toHaveScreenshot('passkey-wallet-start-eur.png');
+  });
+
   test('shows an empty transaction history from test props', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
@@ -968,6 +980,38 @@ test.describe('Passkey wallet design', () => {
     await openWallet(page);
     await expect(page.getByText('No transactions yet.', { exact: true })).toBeVisible();
     await expect(page).toHaveScreenshot('passkey-wallet-history-empty.png', { fullPage: true });
+  });
+
+  test('shows populated transaction history before and after show more', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      window.__dfxHandbookPasskeyHistory = {
+        items: [
+          { type: 'buy', title: 'Bitcoin purchase', date: '6 Nov 2026', amount: '+0.01 BTC', fiatValue: 'CHF 500' },
+          { type: 'receive', title: 'Received Bitcoin', date: '5 Nov 2026', amount: '+0.001 BTC', fiatValue: 'CHF 50' },
+          {
+            type: 'send',
+            title: 'Sent Bitcoin',
+            date: '4 Nov 2026',
+            amount: '-0.001 BTC',
+            fiatValue: 'CHF 50',
+            pending: true,
+          },
+          { type: 'swap', title: 'Swap', date: '3 Nov 2026', amount: '+0.01 ETH', fiatValue: 'CHF 30' },
+          { type: 'sell', title: 'Bitcoin sale', date: '2 Nov 2026', amount: '-0.002 BTC', fiatValue: 'CHF 100' },
+          { type: 'pay', title: 'Payment', date: '1 Nov 2026', amount: '-0.0001 BTC', fiatValue: 'CHF 5' },
+        ],
+        hasMore: false,
+        loadMore: async () => undefined,
+      };
+    });
+    await openWallet(page);
+    await expect(page.getByText('Payout pending')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Show more' })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-history-populated.png', { fullPage: true });
+    await page.getByRole('button', { name: 'Show more' }).click();
+    await expect(page.getByText('Payment', { exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-history-expanded.png', { fullPage: true });
   });
 
   test('shows recovery words and revocation confirmation', async ({ page }) => {

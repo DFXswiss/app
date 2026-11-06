@@ -24,7 +24,7 @@ export default function PasskeyWordsSheet({
   const t = (key: string) => translate('screens/home', key);
 
   return (
-    <PasskeySheet title={t('Recovery words')} onClose={onClose}>
+    <PasskeySheet title={t('Recovery words')} onClose={onClose} busy={busy}>
       <p className="my-3 text-sm leading-5 text-dfxGray-800">
         {t(
           'Write the 12 words on paper in this order. Anyone who knows them can access your funds. DFX will never ask for them.',

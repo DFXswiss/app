@@ -4,8 +4,9 @@ import { useSettingsContext } from '../../../contexts/settings.context';
 export default function PasskeySheet({
   title,
   onClose,
+  busy,
   children,
-}: PropsWithChildren<{ title: string; onClose: () => void }>): JSX.Element {
+}: PropsWithChildren<{ title: string; onClose: () => void; busy?: boolean }>): JSX.Element {
   const { translate } = useSettingsContext();
   const dialog = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -63,6 +64,7 @@ export default function PasskeySheet({
           <button
             className="min-h-[44px] min-w-[44px] rounded focus-visible:outline focus-visible:outline-2"
             aria-label={translate('screens/home', 'Close')}
+            disabled={busy}
             onClick={onClose}
           >
             ✕

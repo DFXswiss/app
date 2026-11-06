@@ -1,9 +1,9 @@
-import type { Fiat } from '@dfx.swiss/react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 
 interface PasskeyWalletCardProps {
   balance?: { chf: number; eur: number };
-  currencies?: Fiat[];
+  currency: 'CHF' | 'EUR';
+  onCurrencyChange: (currency: 'CHF' | 'EUR') => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   onSettings: () => void;
@@ -11,16 +11,17 @@ interface PasskeyWalletCardProps {
 
 export default function PasskeyWalletCard({
   balance,
-  currencies,
+  currency,
+  onCurrencyChange,
   expanded,
   onExpandedChange,
   onSettings,
 }: PasskeyWalletCardProps): JSX.Element {
-  const { translate, currency, changeCurrency, locale } = useSettingsContext();
+  const { translate, locale } = useSettingsContext();
   const t = (key: string) => translate('screens/home', key);
   const button =
     'min-h-[44px] rounded-lg px-4 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2';
-  const currentSymbol = currency?.name === 'EUR' ? 'EUR' : 'CHF';
+  const currentSymbol = currency;
   const value = balance?.[currentSymbol.toLowerCase() as 'chf' | 'eur'];
   const formatted =
     value === undefined
@@ -135,10 +136,7 @@ export default function PasskeyWalletCard({
                 className={`min-h-[44px] min-w-[52px] rounded-md px-2 text-sm ${
                   currentSymbol === symbol ? 'bg-white text-dfxBlue-800' : ''
                 }`}
-                onClick={() => {
-                  const next = currencies?.find((item) => item.name === symbol);
-                  if (next) changeCurrency(next);
-                }}
+                onClick={() => onCurrencyChange(symbol)}
               >
                 {symbol}
               </button>

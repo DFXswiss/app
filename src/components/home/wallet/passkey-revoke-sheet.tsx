@@ -22,7 +22,7 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
   const button = 'min-h-[52px] rounded-md px-4 text-base font-semibold focus-visible:outline focus-visible:outline-2';
 
   return (
-    <PasskeySheet title={t('Block passkey')} onClose={props.onClose}>
+    <PasskeySheet title={t('Block passkey')} onClose={props.onClose} busy={props.busy}>
       {props.note && (
         <div role="alert" className="mb-3 rounded-[16px] bg-[#EEF2F8] p-4 text-sm">
           {props.note === 'Wallet status is Active.' ? (
@@ -132,7 +132,7 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
         {t('I understand that this cannot be undone.')}
       </label>
       <div className="mt-5 grid grid-cols-[1fr_1.4fr] gap-2">
-        <button className={`${button} border border-dfxGray-600`} onClick={props.onClose}>
+        <button className={`${button} border border-dfxGray-600`} disabled={props.busy} onClick={props.onClose}>
           {t('Cancel')}
         </button>
         <button

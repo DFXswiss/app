@@ -572,11 +572,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   that the custody sign-up call reaches the real API, or the reporter's 60 s deduplication of identical
   reports, since the reporter is replaced.
 - **Passkey wallet balance and history props are not backed by a data source here.**
-  The empty-history screenshot passes a fixture through a non-production window hook to the desk prop.
+  The empty and populated history screenshots pass fixtures through a non-production window hook to the desk prop.
   A green visual run does not prove a production balance, rate or transaction-history integration.
+- **The layout configuration hook unit test replaces its context setter.**
+  `src/__tests__/layout-config-hook.test.tsx` uses `mockSetConfig`; a green run does not prove that the real provider updates its context.
+- **The passkey sheet unit test replaces the active element in one case.**
+  `src/__tests__/passkey-sheet.test.tsx` stubs `document.activeElement`; a green run does not prove browser focus behaviour for that case.
 - **The passkey login visual spec stubs the browser and the bootstrap calls.**
   `e2e/passkey-login.spec.ts` fulfils geolocation-db with country `CH` and fulfils the bootstrap
-  GETs with fixtures. A `/v2/**` call without the account token is 401. A call that sends that
+  GETs with fixtures. The fiat fixture includes CHF and EUR; a green run does not prove either currency is
+  returned by the API. The EUR shot selects the local wallet currency without a DFX user; it does not prove the
+  service saves an account currency. A `/v2/**` call without the account token is 401. A call that sends that
   token returns the user for `GET /v2/user` and an empty list otherwise. The tile shots replace WebAuthn.
   An available report resolves `PublicKeyCredential.getClientCapabilities` with `extension:prf`.
   A missing report removes `PublicKeyCredential` or `credentials.create` and `credentials.get`.
