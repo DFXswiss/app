@@ -621,6 +621,40 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   enums, the order hook, the debounce hook and the payment-info component. A green run proves the
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
+- **The swap receive-chain visual flips two catalog flags in the browser.** The component is the
+  swap screen. `e2e/swap-network.spec.ts` fetches the real local `GET /v1/asset` response and, only
+  in that returned browser catalog, sets `buyable` and `sellable` to true on the Polygon DSC and
+  Polygon DGC rows, matched by name and chain. A row with no uniqueName still matches. A present
+  uniqueName must be `Polygon/DSC` or `Polygon/DGC`. The route throws unless that response contains
+  exactly one Polygon DSC and exactly one Polygon DGC. It does not change database rows, invent
+  assets, or invent a Denario quote. Production supplies those two flags from the asset catalog and
+  a Denario price for the pair. A green run does not prove backend enablement, Denario prices,
+  liquidity, or transfers. The full-stack network test in `e2e-stack/specs/sell-swap.spec.ts` stays
+  unintercepted and does not use this fixture.
+- **The legacy native swap visuals sign in locally and seed two deposit rows.**
+  `e2e/helpers/local-swap-auth.ts` calls the real local `POST /v1/auth`. The EVM account is the
+  existing factory user at wallet index 0 (`createUser` with KYC level 30, language DE and
+  completed personal data via the existing SQL shortcut, not a KYC provider). Bitcoin is linked
+  with `createBitcoinCredentials`. Lightning is a custodial `LNNID` plus the compressed public key
+  from that same throwaway Bitcoin derivation; the signature is a fixed test shared secret that
+  the auth call itself stores. There is no request to lightning.space. `ensureNativeSwapDeposits`
+  inserts two free `deposit` rows, or reuses the existing rows with the same address and
+  blockchains, and the fixture writes no `deposit_route`: one Bitcoin address derived from
+  `E2E_EVM_DEPOSIT_SEED`, and one Lightning LNURL for
+  `http://localhost:3000/v1/lnurlp/e2e-native-swap-ln`. A later real quote may route those rows;
+  the fixture still returns the same ids. A green run does not prove lightning.space
+  ownership, a real Lightning invoice (the local LNbits stub can answer `mock: true` with no
+  payment request `pr`), a production or Denario price, a real payable invoice, a payment, or a
+  settlement.
+- **Reproducing the legacy native swap visuals uses the existing local stack.** The repository
+  root dependencies and the `e2e-stack` dependencies both have to be installed already. The native
+  fixture requires `REACT_APP_API_URL` and `E2E_API_URL` to each be `http://localhost:31380`, and
+  `REACT_APP_PUBLIC_URL` to be `http://localhost:31381`. The frontend image is built with that
+  same API origin. The external Playwright config for this run sets `baseURL` to port 31381 and
+  disables `webServer`; the default port 3001 is not used. The run's own disposable database
+  publishes Postgres on loopback port 31382 and attaches that database to the sandbox network and
+  the existing edge network, retaining the sandbox aliases. The remaining PostgreSQL, test-seed
+  and runtime `TEST_IBAN` guards are in `e2e/helpers/local-swap-auth.ts`.
 
 ## Known gaps
 

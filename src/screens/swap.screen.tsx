@@ -96,7 +96,7 @@ export default function SwapScreen(): JSX.Element {
 
   const { translate, translateError } = useSettingsContext();
   const { closeServices } = useAppHandlingContext();
-  const { blockchain: walletBlockchain, activeWallet, switchBlockchain } = useWalletContext();
+  const { blockchain: walletBlockchain, activeWallet } = useWalletContext();
   const { getBalances, sendTransaction, canSendTransaction } = useTxHelper();
   const { logout } = useSessionContext();
   const { session } = useAuthContext();
@@ -111,17 +111,18 @@ export default function SwapScreen(): JSX.Element {
     assetOut,
     amountIn,
     blockchain,
+    blockchains,
+    availableBlockchains,
     hideTargetSelection,
     externalTransactionId,
     flags,
-    setParams,
   } = useAppParams();
   const { receiveFor } = useSwap();
   const { toString } = useBlockchain();
   const { rootRef } = useLayoutContext();
 
   const [sourceAssets, setSourceAssets] = useState<Asset[]>();
-  const [targetAssets, setTargetAssets] = useState<Asset[]>();
+  const [targetAssets, setTargetAssets] = useState<Asset[]>([]);
   const [customAmountError, setCustomAmountError] = useState<CustomAmountError>();
   const [errorMessage, setErrorMessage] = useState<string>();
   const [kycError, setKycError] = useState<TransactionError>();
@@ -137,7 +138,7 @@ export default function SwapScreen(): JSX.Element {
   const [retryToken, setRetryToken] = useState(0);
 
   // form
-  const { control, handleSubmit, setValue, resetField } = useForm<FormData>({ mode: 'onTouched' });
+  const { control, handleSubmit, setValue, watch } = useForm<FormData>({ mode: 'onTouched' });
 
   const enteredAmount = useWatch({ control, name: 'amount' });
   const selectedSourceAsset = useWatch({ control, name: 'sourceAsset' });
@@ -145,8 +146,13 @@ export default function SwapScreen(): JSX.Element {
   const selectedTargetAsset = useWatch({ control, name: 'targetAsset' });
   const selectedAddress = useWatch({ control, name: 'address' });
 
+  const userSelectedSourceRef = useRef(false);
+  const userSelectedChainRef = useRef(false);
+  const previousAddressRef = useRef<Address>();
   const previousAmountRef = useRef<string>();
   const previousTargetAmountRef = useRef<string>();
+  const previousTargetAssetRef = useRef<Asset>();
+  const previousTargetChainRef = useRef<Blockchain>();
   const spendClearedByUserRef = useRef(false);
   const targetClearedByUserRef = useRef(false);
   const isExactPriceWriteRef = useRef(false);
@@ -157,6 +163,19 @@ export default function SwapScreen(): JSX.Element {
   selectedTargetAmountLiveRef.current = selectedTargetAmount;
   if (!enteredAmount && previousAmountRef.current) spendClearedByUserRef.current = true;
   if (!selectedTargetAmount && previousTargetAmountRef.current) targetClearedByUserRef.current = true;
+
+  useEffect(() => {
+    const subscription = watch((values, { name, type }) => {
+      if (type !== 'change') return;
+      if (name === 'sourceAsset') userSelectedSourceRef.current = true;
+      if (name === 'address' && values.address?.chain) userSelectedChainRef.current = true;
+    });
+    return () => subscription.unsubscribe();
+  }, [watch]);
+
+  useEffect(() => {
+    if (selectedAddress?.chain) previousAddressRef.current = selectedAddress;
+  }, [selectedAddress]);
 
   useEffect(() => {
     if (sourceAssets && session?.address) {
@@ -202,59 +221,86 @@ export default function SwapScreen(): JSX.Element {
     .filter((b, i, arr) => arr.indexOf(b) === i)
     .filter((b) => filteredAssets?.some((a) => a.blockchain === b));
 
-  const targetBlockchains = userAddressItems
-    .flatMap((a) => a.blockchains)
-    .filter((b, i, arr) => arr.indexOf(b) === i)
-    .filter((b) => filteredAssets?.some((a) => a.blockchain === b));
-
-  const addressItems: Address[] =
-    userAddressItems.length > 0 && targetBlockchains.length
-      ? [
-          ...targetBlockchains.flatMap((b) => {
-            const addresses = userAddressItems.filter((a) => a.blockchains.includes(b));
-            return addresses.map((a) => ({
-              address: a.address,
-              addressLabel: a.addressLabel,
-              label: toString(b),
-              chain: b,
-            }));
-          }),
-          {
-            addressLabel: translate('screens/buy', 'Switch address'),
-            label: translate('screens/buy', 'Login with a different address'),
-          },
-        ]
-      : [];
+  const linkedBitcoinAddresses = session?.blockchains.some((chain) =>
+    [Blockchain.BITCOIN, Blockchain.LIGHTNING].includes(chain),
+  )
+    ? userAddresses.filter((a) => a.address !== session?.address)
+    : [];
+  const chainAddresses: (Address & { chain: Blockchain })[] = session
+    ? [
+        ...(availableBlockchains ?? []).map((chain) => ({
+          address: session.address,
+          addressLabel: addressLabel(session),
+          label: toString(chain),
+          chain,
+        })),
+        ...linkedBitcoinAddresses.flatMap((a) =>
+          a.blockchains
+            .filter(
+              (chain) =>
+                [Blockchain.BITCOIN, Blockchain.LIGHTNING].includes(chain) &&
+                (!blockchains || blockchains.split(',').some((b) => b.toLowerCase() === chain.toLowerCase())),
+            )
+            .map((chain) => ({ address: a.address, addressLabel: addressLabel(a), label: toString(chain), chain })),
+        ),
+      ].filter(
+        (item, index, items) =>
+          items.findIndex((other) => other.chain === item.chain) === index &&
+          filterAssets(getAssets([item.chain], { buyable: true, comingSoon: false }), assetFilter).length > 0,
+      )
+    : [];
+  const addressItems: Address[] = session
+    ? [
+        ...chainAddresses,
+        {
+          addressLabel: translate('screens/buy', 'Switch address'),
+          label: translate('screens/buy', 'Login with a different address'),
+        },
+      ]
+    : [];
 
   useEffect(() => {
     const blockchainSourceAssets = getAssets(sourceBlockchains, { sellable: true, comingSoon: false });
     const activeSourceAssets = filterAssets(blockchainSourceAssets, assetFilter);
     setSourceAssets(activeSourceAssets);
 
-    const activeTargetBlockchains = blockchain ? [blockchain as Blockchain] : targetBlockchains;
-    const blockchainTargetAssets = getAssets(activeTargetBlockchains, { buyable: true, comingSoon: false });
-    const activeTargetAssets = filterAssets(blockchainTargetAssets, assetFilter);
-    setTargetAssets(activeTargetAssets);
-
-    const sourceAsset =
-      getAsset(activeSourceAssets, assetIn) ??
-      (walletBlockchain && activeSourceAssets.find((a) => a.blockchain === walletBlockchain));
-    if (sourceAsset) setVal('sourceAsset', sourceAsset);
-
-    const targetAsset = getAsset(activeTargetAssets, assetOut) ?? (blockchain && activeTargetAssets[0]);
-    if (targetAsset) setVal('targetAsset', targetAsset);
+    if (!selectedSourceAsset || (assetIn && !userSelectedSourceRef.current)) {
+      const startChain = getStartAddress()?.chain;
+      const sourceAsset =
+        getAsset(activeSourceAssets, assetIn) ??
+        selectedSourceAsset ??
+        activeSourceAssets.find((a) => a.blockchain === walletBlockchain) ??
+        activeSourceAssets.find((a) => a.blockchain === startChain) ??
+        activeSourceAssets[0];
+      if (sourceAsset && sourceAsset.uniqueName !== selectedSourceAsset?.uniqueName) setVal('sourceAsset', sourceAsset);
+    }
   }, [
     assetFilter,
     assetIn,
-    assetOut,
     getAsset,
     getAssets,
-    blockchain,
     walletBlockchain,
-    sourceBlockchains?.length,
-    targetBlockchains?.length,
-    userAddresses.length,
+    sourceBlockchains.join(','),
+    chainAddresses.map((a) => `${a.chain}:${a.address}`).join(','),
   ]);
+
+  useEffect(() => {
+    if (!chainAddresses.length) {
+      setTargetAssets([]);
+      return;
+    }
+    if (!selectedAddress?.chain) return;
+    const activeTargetAssets = filterAssets(
+      getAssets([selectedAddress.chain], { buyable: true, comingSoon: false }),
+      assetFilter,
+    );
+    setTargetAssets(activeTargetAssets);
+    const targetAsset =
+      getAsset(activeTargetAssets, assetOut) ??
+      activeTargetAssets.find((a) => a.name === selectedTargetAsset?.name) ??
+      activeTargetAssets[0];
+    if (targetAsset && targetAsset.uniqueName !== selectedTargetAsset?.uniqueName) setVal('targetAsset', targetAsset);
+  }, [selectedAddress?.chain, chainAddresses.length, assetFilter, assetOut, getAsset, getAssets]);
 
   useEffect(() => {
     if (amountIn) {
@@ -271,42 +317,28 @@ export default function SwapScreen(): JSX.Element {
     }
   }, [amountIn, selectedSourceAsset]);
 
-  useEffect(() => setAddress(), [session?.address, translate, blockchain, userAddresses, addressItems.length]);
-
-  // When assetOut is set and userAddresses are loaded, ensure the correct blockchain is selected
   useEffect(() => {
-    if (assetOut && userAddresses.length > 0) {
-      const assetOutBlockchain = assetOut.split('/')[0];
-      const hasAddressForBlockchain = addressItems.some((a) => a.chain === assetOutBlockchain);
-
-      // If we have an address for the assetOut blockchain and blockchain doesn't match, update it
-      if (hasAddressForBlockchain && blockchain !== assetOutBlockchain) {
-        setParams({ blockchain: assetOutBlockchain as Blockchain });
-        switchBlockchain(assetOutBlockchain as Blockchain);
-      }
-    }
-  }, [assetOut, userAddresses.length, addressItems.length]);
+    if (!userSelectedChainRef.current) setAddress();
+  }, [
+    session?.address,
+    blockchain,
+    assetOut,
+    walletBlockchain,
+    selectedSourceAsset,
+    getAsset,
+    getAssets,
+    assetFilter,
+    chainAddresses.map((a) => `${a.chain}:${a.address}`).join(','),
+  ]);
 
   useEffect(() => {
     if (selectedAddress) {
-      if (selectedAddress.chain) {
-        // If assetOut is set and points to a different blockchain, don't override it
-        const assetOutBlockchain = assetOut?.split('/')[0];
-        const shouldSkipBlockchainChange =
-          assetOutBlockchain && addressItems.some((a) => a.chain === assetOutBlockchain);
-
-        if (blockchain !== selectedAddress.chain && !shouldSkipBlockchainChange) {
-          setParams({ blockchain: selectedAddress.chain });
-          switchBlockchain(selectedAddress.chain);
-          resetField('targetAsset');
-          setTargetAssets(undefined);
-        }
-      } else {
+      if (!selectedAddress.chain) {
+        setValue('address', previousAddressRef.current as Address, { shouldValidate: true });
         setShowsSwitchScreen(true);
-        setAddress();
       }
     }
-  }, [selectedAddress]);
+  }, [selectedAddress, setValue]);
 
   useEffect(() => {
     if (!enteredAmount) {
@@ -364,7 +396,25 @@ export default function SwapScreen(): JSX.Element {
 
   // GET data changed
   useEffect(() => {
+    if (selectedAddress && !selectedAddress.chain) return;
     const exactPriceWrite = isExactPriceWriteRef.current;
+    const targetChanged =
+      (previousTargetChainRef.current && previousTargetChainRef.current !== selectedAddress?.chain) ||
+      (previousTargetAssetRef.current && previousTargetAssetRef.current.uniqueName !== selectedTargetAsset?.uniqueName);
+    previousTargetChainRef.current = selectedAddress?.chain;
+    previousTargetAssetRef.current = selectedTargetAsset;
+    if (targetChanged && enteredAmount) {
+      quoteGeneration.current += 1;
+      setIsQuoteFinal(false);
+      setPaymentInfo(undefined);
+      setValidatedData(undefined);
+      previousTargetAmountRef.current = undefined;
+      targetClearedByUserRef.current = false;
+      isExactPriceWriteRef.current = false;
+      setVal('targetAmount', '');
+      if (selectedTargetAsset?.blockchain === selectedAddress?.chain) updateData(Side.GET);
+      return;
+    }
     if (selectedTargetAmount) {
       targetClearedByUserRef.current = false;
       if (selectedTargetAmount !== previousTargetAmountRef.current && !exactPriceWrite) {
@@ -397,12 +447,7 @@ export default function SwapScreen(): JSX.Element {
 
     if (requiresUpdate) {
       if (hasGetData && !spendClearedByUserRef.current) {
-        const addressOnlyChange =
-          Boolean(enteredAmount) &&
-          selectedAddress?.address !== validatedData?.receiverAddress &&
-          selectedTargetAmount === paymentInfo?.estimatedAmount?.toString() &&
-          selectedTargetAsset?.uniqueName === paymentInfo?.targetAsset?.uniqueName;
-        updateData(addressOnlyChange ? Side.GET : Side.SPEND);
+        updateData(Side.SPEND);
       } else if (targetClearedByUserRef.current || spendClearedByUserRef.current) {
         setValidatedData(undefined);
         setPaymentInfo(undefined);
@@ -625,20 +670,30 @@ export default function SwapScreen(): JSX.Element {
     void handleNext(paymentInfo);
   }
 
+  function getStartAddress(): Address | undefined {
+    const initialSourceAsset =
+      selectedSourceAsset ??
+      getAsset(filterAssets(getAssets(sourceBlockchains, { sellable: true, comingSoon: false }), assetFilter), assetIn);
+    const outputAsset = getAsset(
+      filterAssets(
+        getAssets(chainAddresses.map((a) => a.chain), { buyable: true, comingSoon: false }),
+        assetFilter,
+      ),
+      assetOut,
+    );
+    return (
+      chainAddresses.find((a) => a.chain === outputAsset?.blockchain) ??
+      chainAddresses.find((a) => a.chain === blockchain) ??
+      chainAddresses.find((a) => a.chain === walletBlockchain) ??
+      chainAddresses.find((a) => a.chain === initialSourceAsset?.blockchain) ??
+      chainAddresses[0]
+    );
+  }
+
   function setAddress() {
-    if (session?.address && addressItems.length > 0) {
-      // Prefer URL blockchain, then assetOut chain, then the first address.
-      let preferredChain = blockchain;
-      if (!preferredChain && assetOut) {
-        // Extract blockchain from assetOut (format: Blockchain/AssetName)
-        const assetOutBlockchain = assetOut.split('/')[0];
-        if (addressItems.some((a) => a.chain === assetOutBlockchain)) {
-          preferredChain = assetOutBlockchain as Blockchain;
-        }
-      }
-      const address = addressItems.find((a) => preferredChain && a.chain === preferredChain) ?? addressItems[0];
+    const address = getStartAddress();
+    if (address && (address.chain !== selectedAddress?.chain || address.address !== selectedAddress?.address))
       setVal('address', address);
-    }
   }
 
   function onAddressSwitch() {
@@ -692,7 +747,12 @@ export default function SwapScreen(): JSX.Element {
       {paymentInfo && isTxDone ? (
         <SwapCompletion paymentInfo={paymentInfo} navigateOnClose={true} txId={swapTxId} />
       ) : showsSwitchScreen ? (
-        <AddressSwitch onClose={(r) => (r ? onAddressSwitch() : setShowsSwitchScreen(false))} />
+        <AddressSwitch
+          onClose={(r) => {
+            if (r) onAddressSwitch();
+            else setShowsSwitchScreen(false);
+          }}
+        />
       ) : (
         <form
           className="w-full"
@@ -808,9 +868,13 @@ export default function SwapScreen(): JSX.Element {
                   <StyledDropdown<Address>
                     rootRef={rootRef}
                     name="address"
+                    label={translate('screens/swap', 'Blockchain')}
+                    aria-label={translate('screens/swap', 'Blockchain')}
                     items={addressItems}
-                    labelFunc={(item) => displayWalletAddress(item.addressLabel, { width })}
-                    descriptionFunc={(item) => item.label}
+                    labelFunc={(item) => (item.chain ? item.label : item.addressLabel)}
+                    descriptionFunc={(item) =>
+                      item.chain ? displayWalletAddress(item.addressLabel, { width }) : item.label
+                    }
                     full
                     forceEnable
                   />

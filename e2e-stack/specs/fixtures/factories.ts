@@ -685,6 +685,52 @@ export async function requireUnusedDeposit(blockchain: string): Promise<void> {
 }
 
 /**
+ * Deposit rows for the host-native legacy swap visuals.
+ *
+ * Database change, no migration and no new foreign key. Table deposit:
+ * address is Free text character varying(256), NOT NULL, no default;
+ * blockchains is Free text character varying(256), NOT NULL, no default.
+ * A new INSERT writes only those two columns, so accountIndex stays NULL
+ * (Integer, NULL allowed, no default) and this fixture writes no deposit_route.
+ * The first insert is therefore unrouted. A later real quote may route the row.
+ * Reuse matches address and blockchains and returns that existing id either way.
+ * insertReturningId tracks only a row this helper inserts, never a reused row.
+ */
+export async function ensureNativeSwapDeposits(input: {
+  bitcoinAddress: string;
+  lightningAddress: string;
+}): Promise<{ bitcoinDepositId: number; lightningDepositId: number }> {
+  if (!input.bitcoinAddress || !input.lightningAddress || input.bitcoinAddress === input.lightningAddress) {
+    throw new Error('ensureNativeSwapDeposits requires two distinct deposit addresses');
+  }
+  const bitcoinDepositId = await reuseOrInsertNativeDeposit(input.bitcoinAddress, 'Bitcoin');
+  const lightningDepositId = await reuseOrInsertNativeDeposit(input.lightningAddress, 'Lightning');
+  return { bitcoinDepositId, lightningDepositId };
+}
+
+async function reuseOrInsertNativeDeposit(address: string, blockchains: 'Bitcoin' | 'Lightning'): Promise<number> {
+  if (address.length > 256) {
+    throw new Error(`deposit address for ${blockchains} exceeds character varying(256)`);
+  }
+  const existing = await queryOne<{ id: number; address: string; blockchains: string }>(
+    `SELECT id, address, blockchains
+     FROM deposit
+     WHERE address = $1`,
+    [address],
+  );
+  if (existing) {
+    if (existing.address !== address) {
+      throw new Error(`deposit ${existing.id} was selected by address but returned a different address`);
+    }
+    if (existing.blockchains !== blockchains) {
+      throw new Error(`deposit ${existing.id} has blockchains ${existing.blockchains}, not ${blockchains}`);
+    }
+    return existing.id;
+  }
+  return insertReturningId('deposit', ['address', 'blockchains'], [address, blockchains]);
+}
+
+/**
  * Fill personal-data columns so UserData.isDataComplete is true.
  * Required for POST /sell (createSell checks isDataComplete).
  * No public API sets all of these without the full KYC flow → SQL.
