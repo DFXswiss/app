@@ -140,6 +140,12 @@ export default function PaymentLinkScreen(): JSX.Element {
   const selectedPaymentStandard = useWatch({ control, name: 'paymentStandard' });
   const selectedAsset = useWatch({ control, name: 'asset' });
 
+  // a wallet chosen for one merchant is closed when the URL opens another merchant;
+  // it runs before the wallet-id effect, so a wallet-id in the new URL is still read
+  useEffect(() => {
+    setWalletData(undefined);
+  }, [merchant]);
+
   // the wallet list loads asynchronously and is filtered by the page's payment methods, so a wallet-id in a URL
   // opened directly is resolved once both have loaded
   const canSelectWallet = !isLoadingWallets && !!pageInfo;

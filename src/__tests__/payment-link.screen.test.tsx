@@ -2028,6 +2028,24 @@ describe('PaymentLinkScreen', () => {
       expect(screen.getByText('RECOMMENDED APPS')).toBeInTheDocument();
     });
 
+    it('closes the wallet chosen for one merchant when the URL opens another merchant', async () => {
+      showMerchantPage();
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7 })];
+      mockSearchParams = new URLSearchParams('merchant=shop-route&wallet-id=7');
+
+      const view = renderScreen();
+      await waitFor(() => {
+        expect(screen.getByTestId('dfx-icon-back')).toBeInTheDocument();
+      });
+
+      mockPaymentLinkContext.merchant = 'other-route';
+      mockPaymentLinkContext.merchantInfo = merchantInfo({ displayName: 'Other Shop' });
+      view.rerender(<PaymentLinkScreen />);
+
+      expect(screen.queryByTestId('dfx-icon-back')).not.toBeInTheDocument();
+      expect(screen.getByText('RECOMMENDED APPS')).toBeInTheDocument();
+    });
+
     it('does nothing for an unknown wallet id', () => {
       mockWalletsHook.recommendedWallets = [wallet({ id: 1 })];
       mockSearchParams = new URLSearchParams('wallet-id=99');
