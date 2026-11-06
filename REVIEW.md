@@ -1,0 +1,46 @@
+# Review
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first. These checks reject the pull
+request. An undeclared deviation is rejected. A declared deviation is the
+reviewer's to grant or refuse, in writing on the pull request. Declaring one
+is not the same as being granted one.
+
+## Website functions
+
+Every function of the website is covered by a real test, as defined under
+[Real tests](CONTRIBUTING.md#real-tests). A fake test is forbidden.
+
+Reject the pull request when any of these is true:
+
+- It adds or changes a function a visitor can use, and the same pull request
+  has no real test of that function.
+- The real test did not run. A job that records `mode=none`, or a suite that
+  does not run in CI, is not a run of the real test. On a pull request into
+  `develop`, the full-stack harness has to have run, which means the `ci:full`
+  label or a run that brings the stack up.
+- The test offered as coverage replaces the screen, the visitor's action, the
+  session, the router, the navigation, this service's API, or this service's
+  database.
+- The test only opens the screen, only takes a screenshot, only injects a
+  finished session or a finished result, or only asserts against a stub, a
+  fixture, or a memory router.
+- The pull request adds a fake test, or presents a fake test as the coverage
+  of a website function. Removing a fake test is allowed.
+
+A row written in the database may be the visitor's starting state. It may not
+be the outcome. Replacing an external provider does not cover the function.
+The visitor's action still has to run through the real frontend, this
+service's API, and this service's database.
+
+Do not accept a reality declaration as permission to skip the real test. A
+declaration may describe a limit of the harness. It is not coverage. A unit
+test, a handbook baseline, and a route that was only opened are not coverage
+either. A fake test that already exists does not count as the real test of a
+function this pull request changes.
+
+## What else the review still checks
+
+The other duties in CONTRIBUTING.md stay in force: the pull request is
+self-contained, files it touches meet the coverage bar, screens it changes
+have handbook baselines, and an API call the SDK already covers goes through
+the SDK. None of those duties replaces the real test of a website function.

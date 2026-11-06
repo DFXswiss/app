@@ -67,6 +67,44 @@ Compliance and lower. Prefer Fail or Reset so the automatic AML pipeline can re-
 
 ## Testing
 
+### Real tests
+
+Every function of the website is covered by a real test. A function without
+that test is not done. Reviewers enforce this with [REVIEW.md](REVIEW.md).
+
+A real test performs the function the way a visitor does. It uses the real
+frontend, this service's real API, and this service's real database. It starts
+from the screen a visitor sees, carries out the visitor's action, and checks
+the result the visitor would see. It does not carry out the function's outcome
+for the application, and it does not plant that result. A row written in the
+database may be the visitor's starting state. It may not be the outcome.
+
+A fake test is forbidden. A fake test replaces any part of a website function
+and is then treated as proof that the function works. Replacing the screen,
+the visitor's action, the session, the router, the navigation, this service's
+API, or this service's database is a fake test. Opening a screen without
+performing the function is a fake test. A reality declaration, a comment, a
+green unit test, a screenshot of the idle screen, or a route that was only
+opened does not make a fake test acceptable.
+
+A pull request that adds or changes a website function is rejected unless the
+same pull request contains a real test of that function and that test has run.
+A pull request that adds a fake test, or that presents a fake test as the
+coverage of a website function, is rejected. Removing a fake test is allowed.
+A green check
+that did not run the real test does not satisfy this rule. On a pull request
+into `develop`, apply `ci:full` so the full-stack harness runs the test. A job
+that records `mode=none` is not a run. A function this pull request does not
+touch is not an excuse to add a fake test, and a fake test that already exists
+does not count as the real test of a function this pull request changes.
+
+A unit test of pure logic may exist. It is not coverage of a website function,
+and it must not stand in for the real test.
+
+Replacing an external provider does not cover a website function. The
+visitor's action still runs through this frontend, this service's API, and
+this service's database.
+
 ### A38
 
 This repository requires A38 according to the canonical A38 standard in
@@ -118,21 +156,29 @@ a reference to a `.md` file never does, since only the rendered `.html` is there
 References outside those three prefixes are unaffected, which is why the link to
 `e2e-stack/README.md` further down is fine.)
 
-Two obligations follow from it for every pull request:
+Two obligations follow from it for every pull request. Neither one relaxes
+[Real tests](#real-tests).
 
-- **A failure mode is tested at the lowest layer that can express it.** A case
-  reachable against a real database does not belong in a browser test, and the
-  processing chain behind the API is not testable from this repository at all.
-- **Reality declaration.** Whenever a pull request introduces, removes or changes
-  a fake — a faked external provider, a disabled cron job, a schema built without
-  the migration chain, state written directly with SQL, a placeholder value that
-  looks real, a suppressed side effect, or a seed correction that bends reality —
-  the declaration changes in the same pull request, and each entry says in one
-  plain sentence what a green run does **not** prove. Write the entry before
-  building the fake. A pull request that adds a fake without its declaration is
-  incomplete regardless of whether CI is green.
+- **A website function is not pushed down to a lower layer.** The lowest layer
+  that can express it by replacing part of it is not coverage. A failure that
+  is not a website function, and that is reachable against a real database,
+  does not belong in a browser test. The processing chain behind the API is
+  not testable from this repository at all.
+- **A fake test of a website function is forbidden, not declared.** A reality
+  declaration does not permit one. Where the harness replaces something that
+  is not the website function — an external provider, a cron job, or the
+  migration chain — or writes a starting row, a placeholder, or a suppressed
+  side effect, the declaration in `docs/test-architecture.md` changes in the
+  same pull request. Each entry says in one plain sentence what a green run
+  does **not** prove. That sentence is a limit. It is not coverage, and it
+  does not excuse a missing real test.
 
 ### Unit tests
+
+A unit test does not cover a website function. Coverage of a website function
+is only the real test under [Real tests](#real-tests). A test that replaces
+the screen, the session, the router, or this service's API and then claims to
+have tested the function is a fake test and is forbidden.
 
 ```
 npm run test
@@ -246,7 +292,8 @@ your change actually affects" above: a screen you changed is affected, whether o
 not it had a baseline before. `--update-snapshots` writes missing baselines as
 well as changed ones, so the same command covers both. If the screen has no spec
 at all, add one next to the existing specs in `e2e/` — a spec that navigates to
-the screen and takes one `toHaveScreenshot` per visual variant is enough.
+the screen and takes one `toHaveScreenshot` per visual variant. That spec is
+only the handbook baseline. It is not the real test of the function.
 
 The build itself does not enforce any of this: it guards a global screenshot and
 document floor, and a missing `metadata.json` entry is accepted silently, falling
@@ -285,8 +332,10 @@ ask a maintainer to approve workflow runs. A develop PR without `ci:full`
 records `mode=none` and does not bring the stack up (the job still runs). Apply
 `ci:full`, target `main`, or run a bare `workflow_dispatch` to force a full run.
 
-A pull request that changes a screen or an API contract should bring or update
-the matching full-stack test.
+A pull request that adds or changes a website function must add or update the
+real test of that function in this harness, and that test must have run. See
+[Real tests](#real-tests). Opening the route, or injecting a finished session,
+does not meet that rule.
 
 Coverage of the route tree is enforced, not tracked by hand. The suite reads the
 route definitions out of `src/App.tsx` and fails if a route is claimed by no test
@@ -298,7 +347,9 @@ pointing at a file that never visits the route does not satisfy it. Adding a rou
 therefore means adding a claim in `e2e-stack/specs/registry/` and a test that
 navigates there. That gate runs only when the stack comes up (`ci:full`, a PR
 into `main`, or a bare `workflow_dispatch`); a standard develop PR without
-`ci:full` does not enforce it.
+`ci:full` does not enforce it. Opening a route satisfies only this route gate.
+It does not satisfy [Real tests](#real-tests). A green check on a run that
+records `mode=none` does not satisfy that rule either.
 
 Run locally:
 
