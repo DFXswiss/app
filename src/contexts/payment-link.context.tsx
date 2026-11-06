@@ -217,7 +217,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
   // MetaMask in-app browser
   useEffect(() => {
     if (hasQuote(payRequest) && isInstalled() && getWalletType() === WalletType.IN_APP_BROWSER && !assetsLoading) {
-      loadMetaMaskInfo();
+      loadMetaMaskInfo(payRequest);
     } else {
       setMetaMaskInfo(undefined);
     }
@@ -358,12 +358,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
     selectedPaymentMethod?: Blockchain,
     selectedAsset?: string,
   ): Promise<void> {
-    if (
-      !hasQuote(payRequest) ||
-      (payRequest.standard === PaymentStandardType.PAY_TO_ADDRESS && !(selectedPaymentMethod && selectedAsset))
-    ) {
-      return;
-    }
+    if (!hasQuote(payRequest)) return;
 
     switch (payRequest.standard) {
       case PaymentStandardType.OPEN_CRYPTO_PAY:
@@ -379,13 +374,15 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
         );
         break;
       case PaymentStandardType.PAY_TO_ADDRESS:
+        if (!selectedPaymentMethod || !selectedAsset) return;
+
         invokeCallback(
           url({
             base: payRequest.callback,
             params: new URLSearchParams({
               quote: payRequest.quote.id,
-              method: selectedPaymentMethod ?? '',
-              asset: selectedAsset ?? '',
+              method: selectedPaymentMethod,
+              asset: selectedAsset,
             }),
           }),
         );
@@ -416,9 +413,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
   }
 
   // --- META MASK IN-APP BROWSER --- //
-  async function loadMetaMaskInfo() {
-    if (!hasQuote(payRequest)) return;
-
+  async function loadMetaMaskInfo(payRequest: PaymentLinkPayRequest) {
     setIsLoadingMetaMask(true);
 
     try {

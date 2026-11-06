@@ -297,7 +297,7 @@ export default function PaymentLinkScreen(): JSX.Element {
           {([PaymentLinkPaymentStatus.PENDING, NoPaymentLinkPaymentStatus.NO_PAYMENT].includes(paymentStatus) ||
             pageInfo.mode === PaymentLinkMode.PUBLIC) && (
             <>
-              {(paymentHasQuote(payRequest) || pageInfo.recipient) && (
+              {(paymentHasQuote(payRequest) || pageInfo.recipient || isMerchantMode) && (
                 <StyledCollapsible
                   full
                   titleContent={

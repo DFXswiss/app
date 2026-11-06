@@ -536,10 +536,19 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   catalog with `useAssetContext`, the payment-link context and the wallet hook with in-memory
   objects, wallet deeplinks with `mockGetDeeplinkByWalletId`, and `SparPlaceMap` with an empty
   marker. Styled controls, the QR code and `window.open` are fakes too. A green run proves those
-  objects render the quote rows, the payment methods, the wallet block and the SPAR locations
-  block. It does not prove that the DFX payment-link API returns those payloads, that a wallet
-  deeplink opens, that the asset catalog matches production, or that the SPAR map draws the
-  place list.
+  objects render the quote rows, the payment methods, the wallet block, the SPAR locations
+  block and the merchant page from merchant info. It does not prove that the DFX payment-link API
+  returns those payloads, that a wallet deeplink opens, that the asset catalog matches production,
+  or that the SPAR map draws the place list.
+- **The payment-link context unit test replaces the SDK, the network and the wallet.**
+  `src/__tests__/payment-link.context.test.tsx` replaces `getPaymentMerchantInfo` and
+  `assignPaymentLink` with mocks, answers `fetchJson` and `fetch` from in-memory routes, and fakes
+  the session store, polling, the countdown, navigation, the LNURL and EVM helpers and MetaMask. A
+  green run proves how the provider reacts to those answers: the merchant page reads merchant info
+  and creates no payment, invoice and lightning links load and poll, identifiers and MetaMask
+  payments are requested as built. It does not prove that the API returns merchant info for a
+  route or answers `404` and `400` as assumed, that the payment endpoints return those payloads, or
+  that a real MetaMask signs and sends the transaction.
 - **The rejected address switch visual spec answers the user and the switch itself.**
   `e2e/connect-address-switch.spec.ts` authenticates with a synthetic unsigned JWT without an address, fulfils
   `GET /v2/user` with one synthetic address (and with none in the custody case) and the bootstrap GETs,

@@ -744,6 +744,15 @@ describe('PaymentLinkScreen', () => {
       expect(screen.queryByTestId('expand-External ID')).not.toBeInTheDocument();
     });
 
+    it('shows the payment methods for merchant info without a recipient', () => {
+      showMerchantPage(merchantInfo({ recipient: undefined }));
+
+      renderScreen();
+
+      expect(screen.getByTestId('expand-Payment Methods')).toBeInTheDocument();
+      expect(screen.queryByTestId('expand-Recipient')).not.toBeInTheDocument();
+    });
+
     it('opens the recipient website with an https prefix', () => {
       showMerchantPage();
 
