@@ -96,6 +96,7 @@ jest.mock('src/util/utils', () => ({
   fetchJson: (...args: unknown[]) => mockFetchJson(...args),
 }));
 
+import type { ApiError } from '@dfx.swiss/react';
 import { act, render, waitFor } from '@testing-library/react';
 import { PaymentLinkProvider, usePaymentLinkContext } from 'src/contexts/payment-link.context';
 
@@ -161,7 +162,7 @@ function fetchJsonUrls(): string[] {
   return requestedUrls;
 }
 
-function renderProvider(): { current: () => ContextValue; unmount: () => void } {
+function renderProvider(): { current: () => ContextValue; unmount: () => void; rerender: () => void } {
   let value: ContextValue | undefined;
 
   function Consumer(): null {
@@ -169,13 +170,24 @@ function renderProvider(): { current: () => ContextValue; unmount: () => void } 
     return null;
   }
 
-  const { unmount } = render(
+  const tree = () => (
     <PaymentLinkProvider>
       <Consumer />
-    </PaymentLinkProvider>,
+    </PaymentLinkProvider>
   );
+  const { unmount, rerender } = render(tree());
 
-  return { current: () => value as ContextValue, unmount };
+  return { current: () => value as ContextValue, unmount, rerender: () => rerender(tree()) };
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason: unknown) => void } {
+  let resolve: (value: T) => void = () => undefined;
+  let reject: (reason: unknown) => void = () => undefined;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 function mockStandards(standards: unknown[] | undefined): void {
@@ -264,12 +276,77 @@ describe('PaymentLinkProvider', () => {
       expect(mockFetchJson).not.toHaveBeenCalled();
     });
 
-    it('shows a generic error when the API error has no message', async () => {
-      mockGetPaymentMerchantInfo.mockRejectedValue({ statusCode: 500 });
+    it('shows a generic error when the API error has an empty message', async () => {
+      // the SDK falls back to the HTTP status text, which is empty over HTTP/2
+      const failure: ApiError = { statusCode: 500, message: '' };
+      mockGetPaymentMerchantInfo.mockRejectedValue(failure);
 
       const context = renderProvider();
 
       await waitFor(() => expect(context.current().error).toBe('Unknown Error'));
+    });
+
+    describe('when the merchant route in the URL changes', () => {
+      const infoB = { ...merchantInfo, displayName: 'Shop B' };
+
+      function changeRoute(context: ReturnType<typeof renderProvider>, query: string): void {
+        mockSearchParams = new URLSearchParams(query);
+        context.rerender();
+      }
+
+      it('loads the new route and drops a late answer for the old one', async () => {
+        const answerA = deferred<unknown>();
+        mockGetPaymentMerchantInfo.mockReturnValueOnce(answerA.promise).mockResolvedValueOnce(infoB);
+        const context = renderProvider();
+
+        changeRoute(context, 'merchant=shop-b');
+        await waitFor(() => expect(context.current().merchantInfo).toEqual(infoB));
+        await act(async () => answerA.resolve(merchantInfo));
+
+        expect(mockGetPaymentMerchantInfo.mock.calls).toEqual([['shop-route'], ['shop-b']]);
+        expect(context.current().merchant).toBe('shop-b');
+        expect(context.current().merchantInfo).toEqual(infoB);
+        expect(context.current().error).toBeUndefined();
+        expect(mockFetchJson).not.toHaveBeenCalled();
+      });
+
+      it('drops a late error for the old route', async () => {
+        const answerA = deferred<unknown>();
+        mockGetPaymentMerchantInfo.mockReturnValueOnce(answerA.promise).mockResolvedValueOnce(infoB);
+        const context = renderProvider();
+
+        changeRoute(context, 'merchant=shop-b');
+        await waitFor(() => expect(context.current().merchantInfo).toEqual(infoB));
+        const failure: ApiError = { statusCode: 404, message: 'Payment route not found' };
+        await act(async () => answerA.reject(failure));
+
+        expect(context.current().error).toBeUndefined();
+        expect(context.current().merchantInfo).toEqual(infoB);
+      });
+
+      it('clears the error and the info of the old route while the new one loads', async () => {
+        const failure: ApiError = { statusCode: 404, message: 'Payment route not found' };
+        mockGetPaymentMerchantInfo.mockRejectedValueOnce(failure).mockReturnValueOnce(new Promise(() => undefined));
+        const context = renderProvider();
+        await waitFor(() => expect(context.current().error).toBe('Payment route not found'));
+
+        changeRoute(context, 'merchant=shop-b');
+
+        await waitFor(() => expect(context.current().merchant).toBe('shop-b'));
+        expect(context.current().error).toBeUndefined();
+        expect(context.current().merchantInfo).toBeUndefined();
+      });
+
+      it('keeps the loaded info when the URL keeps the same route', async () => {
+        mockGetPaymentMerchantInfo.mockResolvedValue(merchantInfo);
+        const context = renderProvider();
+        await waitFor(() => expect(context.current().merchantInfo).toEqual(merchantInfo));
+
+        changeRoute(context, 'merchant=shop-route&wallet-id=7');
+
+        expect(mockGetPaymentMerchantInfo).toHaveBeenCalledTimes(1);
+        expect(context.current().merchantInfo).toEqual(merchantInfo);
+      });
     });
 
     it('removes showAssets and showMap from the URL and exposes them', async () => {

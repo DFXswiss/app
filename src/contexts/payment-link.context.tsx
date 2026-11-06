@@ -159,10 +159,11 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
     return routeId && externalId && amount;
   };
 
+  const merchantUrlParam = urlParams.get('merchant');
+
   // Handle URL parameters
   useEffect(() => {
     const lightningUrlParam = urlParams.get('lightning');
-    const merchantUrlParam = urlParams.get('merchant');
     const showAssets = urlParams.has('showAssets');
     const showMap = urlParams.has('showMap');
 
@@ -177,13 +178,8 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
     }
 
     if (merchantUrlParam) {
-      setMerchant(merchantUrlParam);
-
       // the merchant page has no payment, so no stored payment URL is reused from here
       setSessionApiUrl(undefined);
-      getPaymentMerchantInfo(merchantUrlParam)
-        .then(setMerchantInfo)
-        .catch((e: ApiError) => setError(e.message ?? 'Unknown Error'));
       return;
     }
 
@@ -213,6 +209,25 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
       stopWaitPolling();
     };
   }, []);
+
+  // Merchant page, reloaded when the merchant route in the URL changes
+  useEffect(() => {
+    if (!merchantUrlParam) return;
+
+    // an answer for a route the URL no longer shows is dropped
+    let isCurrent = true;
+    setMerchant(merchantUrlParam);
+    setMerchantInfo(undefined);
+    setError(undefined);
+
+    getPaymentMerchantInfo(merchantUrlParam)
+      .then((info) => isCurrent && setMerchantInfo(info))
+      .catch((e: ApiError) => isCurrent && setError(e.message || 'Unknown Error'));
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [merchantUrlParam]);
 
   // MetaMask in-app browser
   useEffect(() => {
