@@ -1026,6 +1026,53 @@ describe('ConnectPasskey', () => {
     expect(mockUnlock).toHaveBeenCalledTimes(2);
   });
 
+  it.each(['settings', 'revoke'] as const)(
+    'shows the wrong-passkey explanation in the %s dialog when recovery unlock fails',
+    async (entry) => {
+      setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
+      mockUnlock.mockResolvedValueOnce({ state: 'unlocked', keys: ring(OTHER) });
+      render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      if (entry === 'revoke') {
+        fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Back up first' }));
+      } else {
+        fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
+      }
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('This passkey belongs to a different wallet. Sign in with the right passkey.');
+      expect(
+        screen.getByRole('dialog', { name: entry === 'settings' ? 'Settings' : 'Block passkey' }),
+      ).toContainElement(alert);
+      expect(mockExport).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['compromised', 'This passkey was blocked as compromised and no longer opens the wallet.'],
+    ['open-elsewhere', 'The wallet is already open in another tab. Close it and reload this page.'],
+  ] as const)('shows the %s explanation in settings when recovery unlock fails', async (state, message) => {
+    setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
+    mockUnlock.mockResolvedValueOnce({ state });
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(message);
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toContainElement(alert);
+    expect(mockExport).not.toHaveBeenCalled();
+  });
+
+  it('keeps the unlock error in settings when recovery authentication is cancelled', async () => {
+    setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
+    mockUnlock.mockRejectedValueOnce(new Error('Authentication cancelled'));
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Authentication cancelled');
+    expect(mockExport).not.toHaveBeenCalled();
+  });
+
   it('does not abandon the session while an SDK action remains in progress', async () => {
     setOpenPasskey(authResult('seed-mismatch') as unknown as OpenPasskey);
     let resolve: () => void = () => undefined;

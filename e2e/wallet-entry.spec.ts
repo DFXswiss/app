@@ -211,7 +211,7 @@ test.describe('/wallet passkey entry', () => {
     await shoot(page, 'wallet-entry-signed-out.png', [heading, login]);
   });
 
-  test('keeps an open passkey wallet on /wallet after DFX sign-in without the header', async ({ page }) => {
+  test('shows the passkey wallet on /wallet without the header while a DFX session is signed in', async ({ page }) => {
     await plantAccountToken(page);
     await installRoutes(page);
     await page.goto('/wallet?lang=en');

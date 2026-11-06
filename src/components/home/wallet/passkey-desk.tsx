@@ -10,7 +10,7 @@ import PasskeyTransfer, { type ReceiveFamily } from './passkey-transfer';
 import PasskeyReceive from './passkey-receive';
 import PasskeyWalletCard from './passkey-wallet-card';
 import PasskeyWalletActions, { WalletAction } from './passkey-wallet-actions';
-import PasskeyWalletNotes from './passkey-wallet-notes';
+import PasskeyWalletNotes, { walletStateDescription } from './passkey-wallet-notes';
 import PasskeyWordsSheet from './passkey-words-sheet';
 import PasskeyRevokeSheet from './passkey-revoke-sheet';
 import PasskeySettingsSheet from './passkey-settings-sheet';
@@ -393,7 +393,13 @@ export default function PasskeyDesk({
   }
   async function showWords(): Promise<void> {
     if (busyRef.current) return;
-    if (!unlocked && !(walletState === 'locked' && (await unlock()))) return;
+    if (!unlocked && !(walletState === 'locked' && (await unlock()))) {
+      const state = getOpenPasskey()?.state;
+      if (sheetRef.current && (state === 'seed-mismatch' || state === 'compromised' || state === 'open-elsewhere')) {
+        setNote(walletStateDescription(state));
+      }
+      return;
+    }
     await run(async ({ auth }, session) => {
       if (!canUseKeys(session)) return;
       const generation = ++wordsGeneration.current;

@@ -12,6 +12,16 @@ interface PasskeyWalletNotesProps {
   onReload: () => void;
 }
 
+export function walletStateDescription(state: WalletState): string {
+  return state === 'locked'
+    ? 'To send, receive or pay, unlock briefly with Face ID, fingerprint or device PIN.'
+    : state === 'seed-mismatch'
+      ? 'This passkey belongs to a different wallet. Sign in with the right passkey.'
+      : state === 'compromised'
+        ? 'This passkey was blocked as compromised and no longer opens the wallet.'
+        : 'The wallet is already open in another tab. Close it and reload this page.';
+}
+
 export default function PasskeyWalletNotes({
   state,
   unlocked,
@@ -33,14 +43,7 @@ export default function PasskeyWalletNotes({
         : state === 'compromised'
           ? 'Passkey blocked'
           : 'Open in another tab';
-  const description =
-    state === 'locked'
-      ? 'To send, receive or pay, unlock briefly with Face ID, fingerprint or device PIN.'
-      : state === 'seed-mismatch'
-        ? 'This passkey belongs to a different wallet. Sign in with the right passkey.'
-        : state === 'compromised'
-          ? 'This passkey was blocked as compromised and no longer opens the wallet.'
-          : 'The wallet is already open in another tab. Close it and reload this page.';
+  const description = walletStateDescription(state);
 
   const shield = 'M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6zM12 8v5M12 16h.01';
   const information = 'M12 3a9 9 0 110 18 9 9 0 010-18zM12 8h.01M11 12h1v4h1';
