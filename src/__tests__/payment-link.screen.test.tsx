@@ -744,13 +744,14 @@ describe('PaymentLinkScreen', () => {
       expect(screen.queryByTestId('expand-External ID')).not.toBeInTheDocument();
     });
 
-    it('shows the payment methods for merchant info without a recipient', () => {
+    it('shows no payment details block for merchant info without a recipient, as before', () => {
       showMerchantPage(merchantInfo({ recipient: undefined }));
 
       renderScreen();
 
-      expect(screen.getByTestId('expand-Payment Methods')).toBeInTheDocument();
-      expect(screen.queryByTestId('expand-Recipient')).not.toBeInTheDocument();
+      expect(screen.queryByText('Payment details')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('expand-Payment Methods')).not.toBeInTheDocument();
+      expect(screen.getByText('Frankenwallet')).toBeInTheDocument();
     });
 
     it('opens the recipient website with an https prefix', () => {
