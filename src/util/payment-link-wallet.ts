@@ -1,23 +1,26 @@
-import { TransferInfo, WalletInfo } from 'src/dto/payment-link.dto';
+import { Amount, TransferInfo, WalletInfo } from 'src/dto/payment-link.dto';
+
+// the part of a transfer entry that wallet compatibility depends on; payment requests and merchant info both have it
+export type TransferMethodInfo = { method: string; assets: Amount[]; available?: boolean };
 
 export class Wallet {
-  static filterTransferInfoByWallet(wallet: WalletInfo, transferInfoList: TransferInfo[]): TransferInfo[] {
-    return transferInfoList.map((ta) => this.filterCompatible(wallet, ta)).filter(Boolean) as TransferInfo[];
+  static filterTransferInfoByWallet<T extends TransferMethodInfo>(wallet: WalletInfo, transferInfoList: T[]): T[] {
+    return transferInfoList.map((ta) => this.filterCompatible(wallet, ta)).filter(Boolean) as T[];
   }
 
   static qualifiesForPayment(wallet: WalletInfo, transferInfoList: TransferInfo[]): boolean {
     return transferInfoList.some((ta) => this.filterCompatible(wallet, ta));
   }
 
-  private static filterCompatible(
+  private static filterCompatible<T extends TransferMethodInfo>(
     wallet: WalletInfo,
-    transferInfo: TransferInfo,
+    transferInfo: T,
     isAvailable = true,
-  ): TransferInfo | undefined {
+  ): T | undefined {
     const { method, assets, available } = transferInfo;
     if (isAvailable && available === false) return undefined;
 
-    if (!wallet.supportedMethods.includes(method)) {
+    if (!(wallet.supportedMethods as string[]).includes(method)) {
       return undefined;
     }
 

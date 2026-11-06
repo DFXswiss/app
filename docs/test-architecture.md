@@ -505,7 +505,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   Country is CH on the fixture because the page draws a pin only when country is CH.
   The map does not list shop names. Any other place URL, including `/map/filters`, is answered
   with HTTP 500. It also fulfils `**/v1/**`, `**/v2/**` and `**/paymentLink/**` so `/pl?merchant=SPAR`
-  renders without a live DFX API. Map tiles are the live OpenFreeMap Liberty style, not a fixture.
+  renders without a live DFX API; the merchant info call gets a SPAR merchant with no payment
+  methods. Map tiles are the live OpenFreeMap Liberty style, not a fixture.
   A green run proves those fixtures render on the whole payment page, with no country or shop
   control and no shop-name list: a map of the Swiss pins, an open shop, an empty list, the load
   error, and the loading state before the places arrive. It does not prove that the
@@ -516,10 +517,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   synthetic SPAR shop, and answers every other place URL with HTTP 500, while the rest of that
   spec talks to the local API. It also fulfils `https://tiles.openfreemap.org/**` with an empty
   map style, because this harness never reaches that host and an open style request keeps the
-  network from going idle. A green run proves the locations block appears for `merchant=SPAR`,
+  network from going idle. It also answers `GET /v1/paymentLink/merchant?route=SPAR` with a SPAR
+  merchant that has no payment methods, because the harness seeds no SPAR route. A green run
+  proves the locations block appears for `merchant=SPAR`,
   the request is `shopName=SPAR` and `country=CH`, and the page shows neither a country control,
   a shop control, the load error, nor the empty sentence. It does not prove that the place API
-  returns that shop, that OpenFreeMap serves tiles, or that a real map draws the pin.
+  returns that shop, that the API answers the merchant info for a SPAR route, that OpenFreeMap
+  serves tiles, or that a real map draws the pin.
 - **The SPAR place-map unit test replaces fetch and MapLibre.**
   `src/__tests__/spar-place-map.test.tsx` stubs `global.fetch` for the place API and replaces
   `maplibre-gl` with a fake map that records markers. A green run proves the component asks only

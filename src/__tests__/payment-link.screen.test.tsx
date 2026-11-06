@@ -60,6 +60,7 @@ function paymentHasQuote(request: unknown): boolean {
 interface MockPaymentLinkContext {
   error: string | undefined;
   merchant: string | undefined;
+  merchantInfo: Record<string, unknown> | undefined;
   payRequest: Record<string, unknown> | undefined;
   timer: { minutes: number; seconds: number };
   paymentLinkApiUrl: { current: string };
@@ -448,6 +449,31 @@ function terminalPayRequest(overrides: Record<string, unknown> = {}): Record<str
   };
 }
 
+function merchantInfo(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    displayName: 'Shop',
+    mode: PaymentLinkMode.MULTIPLE,
+    recipient: {
+      name: 'Shop AG',
+      address: { street: 'Main', houseNumber: '1', zip: '8000', city: 'Zurich', country: 'CH' },
+      website: 'shop.example.com',
+    },
+    transferAmounts: [
+      { method: 'Lightning', assets: [{ asset: 'BTC' }] },
+      { method: 'Ethereum', assets: [{ asset: 'ZCHF' }, { asset: 'USDT' }] },
+      { method: 'Polygon', assets: [{ asset: 'ZCHF' }] },
+    ],
+    ...overrides,
+  };
+}
+
+function showMerchantPage(info: Record<string, unknown> = merchantInfo()): void {
+  mockPaymentLinkContext.merchant = 'shop-route';
+  mockPaymentLinkContext.isMerchantMode = true;
+  mockPaymentLinkContext.payRequest = undefined;
+  mockPaymentLinkContext.merchantInfo = info;
+}
+
 function wallet(overrides: Partial<WalletLike> = {}): WalletLike {
   return {
     id: 1,
@@ -462,6 +488,7 @@ function wallet(overrides: Partial<WalletLike> = {}): WalletLike {
 function resetPaymentLinkContext(): void {
   mockPaymentLinkContext.error = undefined;
   mockPaymentLinkContext.merchant = undefined;
+  mockPaymentLinkContext.merchantInfo = undefined;
   mockPaymentLinkContext.payRequest = quotedPayRequest();
   mockPaymentLinkContext.timer = { minutes: 1, seconds: 30 };
   mockPaymentLinkContext.paymentLinkApiUrl = { current: API_URL };
@@ -679,6 +706,92 @@ describe('PaymentLinkScreen', () => {
 
       expect(screen.getByText('Migros')).toBeInTheDocument();
       expect(screen.queryByTestId('spar-locations')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('merchant page', () => {
+    it('shows a spinner until the merchant info has loaded', () => {
+      showMerchantPage();
+      mockPaymentLinkContext.merchantInfo = undefined;
+
+      renderScreen();
+
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    });
+
+    it('shows the context error instead of the page when the merchant info fails', () => {
+      showMerchantPage();
+      mockPaymentLinkContext.merchantInfo = undefined;
+      mockPaymentLinkContext.error = 'Payment route not found';
+
+      renderScreen();
+
+      expect(screen.getByText('Payment route not found')).toBeInTheDocument();
+      expect(screen.queryByTestId('expand-Payment Methods')).not.toBeInTheDocument();
+    });
+
+    it('shows the display name, recipient, payment methods and wallets from the merchant info', () => {
+      showMerchantPage();
+
+      renderScreen();
+
+      expect(screen.getByText('Shop')).toBeInTheDocument();
+      expect(screen.getByTestId('expand-Recipient')).toHaveTextContent('Shop AG');
+      expect(screen.getByTestId('expand-item-Country')).toHaveTextContent('CH');
+      expect(screen.getByTestId('expand-Payment Methods')).toBeInTheDocument();
+      expect(screen.getByText('Frankenwallet')).toBeInTheDocument();
+      expect(screen.queryByTestId('expand-Expiry date')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('expand-External ID')).not.toBeInTheDocument();
+    });
+
+    it('opens the recipient website with an https prefix', () => {
+      showMerchantPage();
+
+      renderScreen();
+      fireEvent.click(screen.getByTestId('expand-item-Website'));
+
+      expect(mockOpen).toHaveBeenCalledWith('https://shop.example.com', '_blank');
+    });
+
+    it('falls back to the merchant route when the display name is missing', () => {
+      showMerchantPage(merchantInfo({ displayName: undefined }));
+
+      renderScreen();
+
+      expect(screen.getByText('shop-route')).toBeInTheDocument();
+    });
+
+    it('filters the merchant payment methods by the selected wallet', async () => {
+      showMerchantPage();
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7, supportedMethods: ['Polygon'] })];
+      mockSearchParams = new URLSearchParams('wallet-id=7');
+
+      renderScreen();
+
+      expect(await screen.findByText('Frankenwallet')).toBeInTheDocument();
+      const methods = screen.getAllByTestId('collapsible').find((node) => {
+        const text = node.textContent;
+        return Boolean(text && text.includes('Payment Methods') && !text.includes('Payment details'));
+      });
+      expect(methods).toHaveTextContent('ZCHF');
+      expect(methods).not.toHaveTextContent('BTC');
+      expect(methods).not.toHaveTextContent('USDT');
+    });
+
+    it('scrolls to the SPAR locations once the merchant info is shown', () => {
+      jest.useFakeTimers();
+      showMerchantPage();
+      mockPaymentLinkContext.merchant = 'SPAR';
+      mockPaymentLinkContext.showMap = true;
+
+      renderScreen();
+      act(() => {
+        jest.advanceTimersByTime(100);
+      });
+
+      expect(screen.getByTestId('spar-locations')).toBeInTheDocument();
+      expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth' });
+      jest.useRealTimers();
     });
   });
 
@@ -952,8 +1065,7 @@ describe('PaymentLinkScreen', () => {
     });
 
     it('hides the external id row in merchant mode', () => {
-      mockPaymentLinkContext.isMerchantMode = true;
-      mockPaymentLinkContext.payRequest = quotedPayRequest();
+      showMerchantPage();
 
       renderScreen();
 
@@ -1257,16 +1369,19 @@ describe('PaymentLinkScreen', () => {
       expect(screen.queryByText('Lightning')).not.toBeInTheDocument();
     });
 
-    it('hides amounts in merchant mode', () => {
-      mockPaymentLinkContext.isMerchantMode = true;
-      mockPaymentLinkContext.merchant = 'Shop';
-      mockPaymentLinkContext.payRequest = quotedPayRequest({ transferAmounts: sharedAmounts });
+    it('lists the merchant assets with their methods and no amounts', () => {
+      showMerchantPage();
 
       renderScreen();
 
-      expect(screen.getByText('USDC')).toBeInTheDocument();
-      expect(screen.queryByText('10')).not.toBeInTheDocument();
-      expect(screen.queryByText('1.5')).not.toBeInTheDocument();
+      const methods = screen.getByTestId('expand-Payment Methods');
+      expect(within(methods).getByText('BTC')).toBeInTheDocument();
+      expect(within(methods).getByText('Lightning')).toBeInTheDocument();
+      expect(within(methods).getByText('ZCHF')).toBeInTheDocument();
+      expect(within(methods).getByText('Ethereum, Polygon')).toBeInTheDocument();
+      expect(within(methods).getByText('USDT')).toBeInTheDocument();
+      expect(within(methods).getByText('Ethereum')).toBeInTheDocument();
+      expect(within(methods).queryByText(/\d/)).not.toBeInTheDocument();
     });
 
     it('renders nothing for an empty asset map', () => {
@@ -1299,14 +1414,9 @@ describe('PaymentLinkScreen', () => {
     });
 
     it('shows an empty payment-methods row when the key is missing in merchant mode', () => {
-      const request = terminalPayRequest({
-        mode: PaymentLinkMode.SINGLE,
-        recipient: { name: 'Bob' },
-      });
-      delete request.transferAmounts;
-      mockPaymentLinkContext.payRequest = request;
-      mockPaymentLinkContext.isMerchantMode = true;
-      mockPaymentLinkContext.paymentStatus = PaymentLinkPaymentStatus.PENDING;
+      const info = merchantInfo({ recipient: { name: 'Bob' } });
+      delete info.transferAmounts;
+      showMerchantPage(info);
 
       renderScreen();
 
@@ -1316,14 +1426,9 @@ describe('PaymentLinkScreen', () => {
     });
 
     it('shows an empty payment-methods row in the wallet branch when the key is missing in merchant mode', async () => {
-      const request = terminalPayRequest({
-        mode: PaymentLinkMode.SINGLE,
-        recipient: undefined,
-      });
-      delete request.transferAmounts;
-      mockPaymentLinkContext.payRequest = request;
-      mockPaymentLinkContext.isMerchantMode = true;
-      mockPaymentLinkContext.paymentStatus = PaymentLinkPaymentStatus.PENDING;
+      const info = merchantInfo({ recipient: undefined });
+      delete info.transferAmounts;
+      showMerchantPage(info);
       mockWalletsHook.recommendedWallets = [wallet({ id: 7 })];
       mockSearchParams = new URLSearchParams('wallet-id=7');
 

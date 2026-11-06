@@ -66,7 +66,7 @@ import { useWeb3 } from 'src/hooks/web3.hook';
 import { BadgeType } from 'src/util/app-store-badges';
 import { Evm } from 'src/util/evm';
 import { OpenCryptoPayUtils } from 'src/util/open-crypto-pay';
-import { Wallet } from 'src/util/payment-link-wallet';
+import { TransferMethodInfo, Wallet } from 'src/util/payment-link-wallet';
 import { blankedAddress, formatAmountForDisplay, formatLocationAddress, formatUnits } from 'src/util/utils';
 import { AppStoreBadge } from '../components/app-store-badge';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
@@ -86,6 +86,7 @@ export default function PaymentLinkScreen(): JSX.Element {
   const {
     error,
     merchant,
+    merchantInfo,
     payRequest,
     timer,
     paymentLinkApiUrl,
@@ -125,6 +126,8 @@ export default function PaymentLinkScreen(): JSX.Element {
   const mapRef = useRef<HTMLDivElement>(null);
 
   const errorToDisplay = walletsError ?? error;
+  // what the page shows: a payment request, or the read-only merchant info on the merchant page
+  const pageInfo = payRequest ?? merchantInfo;
 
   const {
     control,
@@ -223,8 +226,8 @@ export default function PaymentLinkScreen(): JSX.Element {
   }, [selectedAsset, selectedPaymentStandard]);
 
   useEffect(() => {
-    if (showMap && payRequest) scrollToMap();
-  }, [showMap, payRequest]);
+    if (showMap && pageInfo) scrollToMap();
+  }, [showMap, pageInfo]);
 
   const handleBackButton = () => {
     setWalletData(undefined);
@@ -249,12 +252,12 @@ export default function PaymentLinkScreen(): JSX.Element {
     <>
       {errorToDisplay ? (
         <p className="text-dfxGray-800 text-sm mt-4">{errorToDisplay}</p>
-      ) : !payRequest || isLoadingMetaMask || isLoadingWallets ? (
+      ) : !pageInfo || isLoadingMetaMask || isLoadingWallets ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : (
         <StyledVerticalStack full gap={4} center className="pt-8">
           <div className="flex flex-col w-full gap-6 justify-center">
-            <p className="text-dfxBlue-800 font-bold text-xl">{payRequest.displayName ?? merchant}</p>
+            <p className="text-dfxBlue-800 font-bold text-xl">{pageInfo.displayName ?? merchant}</p>
             <div className="w-full h-[1px] bg-gradient-to-r bg-dfxGray-500 from-white via-dfxGray-500 to-white" />
             {!merchant && (
               <>
@@ -269,7 +272,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                         paymentStatus as PaymentLinkPaymentStatus,
                       ) && <EditPublicPaymentForm paymentRequest={payRequest} />}
                   </>
-                ) : payRequest.mode === PaymentLinkMode.PUBLIC &&
+                ) : payRequest?.mode === PaymentLinkMode.PUBLIC &&
                   paymentStatus === NoPaymentLinkPaymentStatus.NO_PAYMENT ? (
                   <CreatePublicPaymentForm paymentRequest={payRequest} />
                 ) : [PaymentLinkPaymentStatus.PENDING, NoPaymentLinkPaymentStatus.NO_PAYMENT].includes(
@@ -285,16 +288,16 @@ export default function PaymentLinkScreen(): JSX.Element {
           <PaymentStatusTile
             status={paymentStatus}
             filterStatuses={
-              payRequest.mode === PaymentLinkMode.PUBLIC
+              pageInfo.mode === PaymentLinkMode.PUBLIC
                 ? [PaymentLinkPaymentStatus.CANCELLED, NoPaymentLinkPaymentStatus.NO_PAYMENT]
                 : []
             }
           />
 
           {([PaymentLinkPaymentStatus.PENDING, NoPaymentLinkPaymentStatus.NO_PAYMENT].includes(paymentStatus) ||
-            payRequest.mode === PaymentLinkMode.PUBLIC) && (
+            pageInfo.mode === PaymentLinkMode.PUBLIC) && (
             <>
-              {(paymentHasQuote(payRequest) || payRequest.recipient) && (
+              {(paymentHasQuote(payRequest) || pageInfo.recipient) && (
                 <StyledCollapsible
                   full
                   titleContent={
@@ -352,7 +355,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                         </Form>
                       )}
                     <StyledDataTable alignContent={AlignContent.RIGHT} showBorder minWidth={false}>
-                      {!isMerchantMode && payRequest.externalId && (
+                      {payRequest?.externalId && (
                         <StyledDataTableExpandableRow
                           label={translate('screens/payment', 'External ID')}
                           expansionItems={
@@ -455,41 +458,41 @@ export default function PaymentLinkScreen(): JSX.Element {
                           )}
                         </>
                       )}
-                      {payRequest.recipient && (
+                      {pageInfo.recipient && (
                         <StyledDataTableExpandableRow
                           label={translate('screens/payment', 'Recipient')}
                           expansionItems={
                             [
                               {
                                 label: translate('screens/support', 'Name'),
-                                text: payRequest.recipient.name,
+                                text: pageInfo.recipient.name,
                               },
                               {
                                 label: translate('screens/home', 'Address'),
                                 text:
-                                  formatLocationAddress({ ...payRequest.recipient.address, country: undefined }) ?? '',
+                                  formatLocationAddress({ ...pageInfo.recipient.address, country: undefined }) ?? '',
                               },
                               {
                                 label: translate('screens/home', 'Country'),
-                                text: payRequest.recipient.address?.country ?? '',
+                                text: pageInfo.recipient.address?.country ?? '',
                               },
                               {
                                 label: translate('screens/kyc', 'Phone number'),
-                                text: payRequest.recipient.phone,
+                                text: pageInfo.recipient.phone,
                               },
                               {
                                 label: translate('screens/kyc', 'Email address'),
-                                text: !payRequest.recipient.mail?.endsWith('@dfx.swiss') && payRequest.recipient.mail,
+                                text: !pageInfo.recipient.mail?.endsWith('@dfx.swiss') && pageInfo.recipient.mail,
                               },
                               {
                                 label: translate('screens/kyc', 'Website'),
-                                text: payRequest.recipient.website,
+                                text: pageInfo.recipient.website,
                                 onClick: () => {
                                   const url =
-                                    payRequest.recipient.website?.startsWith('http://') ||
-                                    payRequest.recipient.website?.startsWith('https://')
-                                      ? payRequest.recipient.website
-                                      : `https://${payRequest.recipient.website}`;
+                                    pageInfo.recipient?.website?.startsWith('http://') ||
+                                    pageInfo.recipient?.website?.startsWith('https://')
+                                      ? pageInfo.recipient?.website
+                                      : `https://${pageInfo.recipient?.website}`;
 
                                   window.open(url, '_blank');
                                 },
@@ -497,7 +500,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                             ].filter((item) => item.text) as any
                           }
                         >
-                          <p>{payRequest.recipient.name}</p>
+                          <p>{pageInfo.recipient.name}</p>
                         </StyledDataTableExpandableRow>
                       )}
                       {paymentHasQuote(payRequest) && (
@@ -535,11 +538,11 @@ export default function PaymentLinkScreen(): JSX.Element {
                           }
                         />
                       )}
-                      {('transferAmounts' in payRequest || isMerchantMode) && (
+                      {('transferAmounts' in pageInfo || isMerchantMode) && (
                         <StyledDataTableExpandableRow
                           isExpanded={showAssets}
                           label={translate('screens/payment', 'Payment Methods')}
-                          expansionContent={<TransferMethodsContent payRequest={payRequest as PaymentLinkPayRequest} />}
+                          expansionContent={<TransferMethodsContent transferAmounts={pageInfo.transferAmounts} />}
                         />
                       )}
                     </StyledDataTable>
@@ -626,7 +629,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                           )}
                         </p>
                       </div>
-                    ) : payRequest.mode === PaymentLinkMode.PUBLIC ? (
+                    ) : pageInfo.mode === PaymentLinkMode.PUBLIC ? (
                       <p className="text-base pt-3 text-dfxGray-700" />
                     ) : (
                       <p className="text-base pt-3 text-dfxGray-700">
@@ -649,7 +652,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                           <WalletLogo wallet={walletData} size={128} />
 
                           <StyledVerticalStack full gap={3} center className="pt-2 px-4">
-                            {('transferAmounts' in payRequest || isMerchantMode) && (
+                            {('transferAmounts' in pageInfo || isMerchantMode) && (
                               <StyledDataTable alignContent={AlignContent.RIGHT} showBorder minWidth={false}>
                                 <StyledCollapsible
                                   full
@@ -668,7 +671,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                                   }
                                 >
                                   <TransferMethodsContent
-                                    payRequest={payRequest as PaymentLinkPayRequest}
+                                    transferAmounts={pageInfo.transferAmounts}
                                     walletData={walletData}
                                   />
                                 </StyledCollapsible>
@@ -699,7 +702,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                               onClick={() => window.open(walletData.websiteUrl, '_blank')}
                               color={StyledButtonColor.STURDY_WHITE}
                               width={StyledButtonWidth.FULL}
-                              hidden={!walletData.websiteUrl || payRequest.mode === PaymentLinkMode.PUBLIC}
+                              hidden={!walletData.websiteUrl || pageInfo.mode === PaymentLinkMode.PUBLIC}
                             />
                             <div
                               className="flex flex-row gap-3 w-full justify-center pt-5 pb-2"
@@ -713,7 +716,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                       </StyledVerticalStack>
                     ) : (
                       <>
-                        {(payRequest.mode !== PaymentLinkMode.PUBLIC || paymentHasQuote(payRequest)) && (
+                        {(pageInfo.mode !== PaymentLinkMode.PUBLIC || paymentHasQuote(payRequest)) && (
                           <>
                             <WalletGrid
                               wallets={recommendedWallets}
@@ -765,16 +768,14 @@ export default function PaymentLinkScreen(): JSX.Element {
 }
 
 interface TransferMethodsContentProps {
-  payRequest: PaymentLinkPayRequest;
+  transferAmounts: TransferMethodInfo[];
   walletData?: WalletInfo;
 }
 
-function TransferMethodsContent({ payRequest, walletData }: TransferMethodsContentProps) {
-  const { isMerchantMode } = usePaymentLinkContext();
-
+function TransferMethodsContent({ transferAmounts: transferAmountsProp, walletData }: TransferMethodsContentProps) {
   // Merchant mode still opens this row when the key is absent. The type says the
   // list is present; a missing list used to throw on filter or map.
-  const transferAmounts = Array.isArray(payRequest.transferAmounts) ? payRequest.transferAmounts : [];
+  const transferAmounts = Array.isArray(transferAmountsProp) ? transferAmountsProp : [];
   const filteredTransferAmounts = walletData
     ? Wallet.filterTransferInfoByWallet(walletData, transferAmounts)
     : transferAmounts;
@@ -795,8 +796,8 @@ function TransferMethodsContent({ payRequest, walletData }: TransferMethodsConte
     });
   });
 
-  const amountsDefined = Array.from(assetMap.values()).some((data) => data.amount != null);
-  const showAmounts = !isMerchantMode && amountsDefined;
+  // the merchant info carries no amounts, so the merchant page lists assets only
+  const showAmounts = Array.from(assetMap.values()).some((data) => data.amount != null);
 
   return (
     assetMap.size > 0 && (
