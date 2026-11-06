@@ -181,7 +181,7 @@
   },
   "wallet-entry": {
     "title": "Passkey über /wallet",
-    "description": "/wallet bleibt auf dieser Adresse. Ohne Anmeldung öffnet sich das Passkey-Formular. Hat der Browser keine Passkeys, bleibt der Platzhalter deaktiviert. Während das Konto noch lädt, zeigt die Seite den Ladekreis. Mit Anmeldung erscheinen die Dienste der Startseite, ohne das Formular."
+    "description": "/wallet bleibt auf dieser Adresse. Ohne Anmeldung zeigt die Karte „Log in with your device“ und Anmelden, ohne E-Mail-Feld. Hat der Browser keine Passkeys, steht nur „This browser has no passkey support“ und Close. Während das Konto noch lädt, zeigt die Seite den Ladekreis. Mit Anmeldung erscheinen die Dienste der Startseite, ohne das Formular."
   },
   "sitemap": {
     "title": "Sitemap",

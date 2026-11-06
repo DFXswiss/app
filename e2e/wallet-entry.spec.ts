@@ -186,13 +186,14 @@ test.describe('/wallet passkey entry', () => {
     await page.goto('/wallet?lang=en');
 
     const notice = page.getByText('This browser has no passkey support');
-    const passkey = page.getByRole('button', { name: 'Passkey' });
+    const close = page.getByRole('button', { name: 'Close' });
     await expect(notice).toBeVisible();
-    await expect(page.getByText('Passkey login arrives with the wallet beta')).toBeVisible();
-    await expect(passkey).toBeDisabled();
+    await expect(close).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Passkey' })).toHaveCount(0);
+    await expect(page.getByText('Passkey login arrives with the wallet beta')).toHaveCount(0);
     await expect(page.getByLabel('Email address')).toHaveCount(0);
     await expectWalletAddress(page);
-    await shoot(page, 'wallet-entry-blocked.png', [notice, passkey]);
+    await shoot(page, 'wallet-entry-blocked.png', [notice, close]);
   });
 
   test('opens the passkey form without leaving /wallet', async ({ page }) => {
@@ -200,14 +201,14 @@ test.describe('/wallet passkey entry', () => {
     await installRoutes(page);
     await page.goto('/wallet?lang=en');
 
-    const mail = page.getByLabel('Email address');
-    const create = page.getByRole('button', { name: 'Create passkey' });
+    const heading = page.getByText('Log in with your device');
     const login = page.getByRole('button', { name: 'Log in' });
-    await expect(mail).toBeVisible();
-    await expect(create).toBeVisible();
+    await expect(heading).toBeVisible();
     await expect(login).toBeVisible();
+    await expect(page.getByLabel('Email address')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Create passkey' })).toHaveCount(0);
     await expectWalletAddress(page);
-    await shoot(page, 'wallet-entry-signed-out.png', [mail, create, login]);
+    await shoot(page, 'wallet-entry-signed-out.png', [heading, login]);
   });
 
   test('shows the home services when the session is already signed in', async ({ page }) => {

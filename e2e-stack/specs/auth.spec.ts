@@ -143,8 +143,9 @@ test.describe('Auth area e2e', () => {
     await page.goto(`${PASSKEY_PAGE_ORIGIN}/wallet?lang=en`);
 
     expect(normPath(new URL(page.url()).pathname)).toBe('/wallet');
-    await expect(page.getByLabel('Email address')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('Log in with your device')).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+    await expect(page.getByLabel('Email address')).toHaveCount(0);
     await expect(page.getByText('Login to DFX Services', { exact: true })).toHaveCount(0);
   });
 

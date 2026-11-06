@@ -624,8 +624,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   opens `http://localhost:3001` through the forwarder, because the relying party is
   `localhost` and the stack hostname is not that host. The init script forces
   `extension:prf` when the browser reports false and reports user activation as active.
-  A green run proves the email field and the Log in button are visible, the address stays
-  `/wallet`, and the login heading is absent. It does not prove a completed ceremony, a
+  A green run proves the heading `Log in with your device` and the Log in button are
+  visible, the email field is absent, the address stays `/wallet`, and the login heading
+  is absent. It does not prove a completed ceremony, a
   hardware authenticator, the production relying party, a real user activation, authenticator
   PRF output, or that the email field appears on the stack hostname or when the browser
   reports `extension:prf` as false.
@@ -664,8 +665,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   replaces `window.PublicKeyCredential` with a class that reports passkeys as available.
   The blocked shot removes `window.PublicKeyCredential`. The logo, the home tiles and the
   bottom picture are loaded from the public image host and pinned in the baseline. A green
-  run proves `/wallet` renders the spinner, the passkey form, the disabled placeholder and
-  the home services from those fixtures, and that the address stays `/wallet`. It does not
+  run proves `/wallet` renders the spinner, the idle card (`Log in with your device` and
+  Log in), the blocked card (`This browser has no passkey support` and Close), and the
+  home services from those fixtures, and that the address stays `/wallet`. It does not
   prove a real browser report, a real session, a real passkey ceremony, a real API, or that
   the image host keeps serving the same bytes.
 - **The sitemap visual spec answers the bootstrap itself and plants an admin token.**
