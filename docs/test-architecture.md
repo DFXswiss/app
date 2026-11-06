@@ -574,18 +574,26 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The passkey login visual spec stubs the browser and the bootstrap calls.**
   `e2e/passkey-login.spec.ts` fulfils geolocation-db with country `CH` and fulfils the bootstrap
   GETs with fixtures. A `/v2/**` call without the account token is 401. A call that sends that
-  token returns the user for `GET /v2/user` and an empty list otherwise. The tile shots replace WebAuthn, so the
-  platform report is either available or missing. Shots that only open the form or the blocked
-  placeholder keep that stub. The desk shots and every shot that completes a ceremony install a
-  fixed in-page authenticator and fulfil the passkey routes with one wallet. Register and claim
-  omit a Bitcoin row so the auto-link posts the derived address; the wallet list then contains
-  that posted Bitcoin address, the placeholder EVM and Spark rows, and a differing Bitcoin row.
-  The compromised and other-tab shots set the tab session because the wallet package does not
-  return those states. A green run proves each listed screen renders from fixtures, and that
-  the tile, the form controls, the blocked sentences, the disabled Passkey button, every desk
-  button, the EVM account index, and that shot's result sentence are inside the image. It does
-  not prove a real WebAuthn signature, a real API, a production build of the session hook, or
-  the signed-in app after Open the app. It does not prove that
+  token returns the user for `GET /v2/user` and an empty list otherwise. The tile shots replace WebAuthn.
+  An available report resolves `PublicKeyCredential.getClientCapabilities` with `extension:prf`.
+  A missing report removes `PublicKeyCredential` or `credentials.create` and `credentials.get`.
+  The preparing shot leaves `getClientCapabilities` pending, so the sheet stays on the preparing
+  sentence and Close. A dismissed login rejects the first `credentials.get` with `NotAllowedError`
+  and later gets succeed. The unknown-credential shot answers `POST /v1/auth/passkey/authenticate/finish`
+  with status 400 and error `Unknown credential`. The in-app shot sets a user agent that contains
+  Telegram. The iPhone in-app shot sets an iPhone user agent that also contains Telegram, so that
+  image includes the iPhone sentence. The old-system shot sets a user agent that reports iOS 16.0.
+  The desk shots and every shot that completes a ceremony install a fixed in-page authenticator and fulfil the passkey
+  routes with one wallet. Register and claim omit a Bitcoin row so the auto-link posts the derived
+  address; the wallet list then contains that posted Bitcoin address, the placeholder EVM and Spark
+  rows, and a differing Bitcoin row. The compromised and other-tab shots set the tab session because
+  the wallet package does not return those states. A green run proves each listed screen renders
+  from fixtures, including the idle card, the preparing card, the account choice, the email form,
+  the unknown card, the in-app card and the iPhone in-app card, the old-system card,
+  the blocked card, and the desk. It does
+  not prove a real WebAuthn signature, a real dismissal, a real in-app browser, a real iPhone,
+  that iOS 16.0 is the running system, that the platform check eventually finishes, a real API,
+  a production build of the session hook, or the signed-in app after Open the app. It does not prove that
   geolocation-db returns `CH`, that the API returns those payloads, that the server stored the
   placeholder addresses, or that this browser's real passkey support matches the stub.
 - **The passkey ceremony full-stack case drives the real frontend, API and database.**
@@ -595,9 +603,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   synchronize does not run the wallet migration, installs a Chromium virtual authenticator, and
   adds PRF output only when that authenticator omits it. The page opens at `http://localhost:3001`
   through a forwarder to the frontend, because the relying party is `localhost` and the stack
-  hostname is not that host. When that route does not answer 404, a green run proves
-  registration and a later login both reach the unlocked desk, the credential row is `Active`,
-  and credential status plus the wallet list come from the API. It also proves that the first
+  hostname is not that host. When that route does not answer 404, a green run proves the device
+  card, the rejected first login without an existing credential, then `Open a new account`, the
+  email and Continue, then the unlocked desk and the later login, the credential row is
+  `Active`, and credential status plus the wallet list come from the API. It also proves that the first
   unlock shows a Bitcoin row with path `m/84'/0'/0'/0/0`, that the sentence `Linked Bitcoin
   <address>.` names that same `bc1q` address, that `passkey_address` together with
   `"user".address` stores that address once for the registered mail, that after Refresh
@@ -615,8 +624,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   opens `http://localhost:3001` through the forwarder, because the relying party is
   `localhost` and the stack hostname is not that host. The init script forces
   `extension:prf` when the browser reports false and reports user activation as active.
-  A green run proves the email field and the Log in button are visible, the address stays
-  `/wallet`, and the login heading is absent. It does not prove a completed ceremony, a
+  A green run proves the heading `Log in with your device` and the Log in button are
+  visible, the email field is absent, the address stays `/wallet`, and the login heading
+  is absent. It does not prove a completed ceremony, a
   hardware authenticator, the production relying party, a real user activation, authenticator
   PRF output, or that the email field appears on the stack hostname or when the browser
   reports `extension:prf` as false.
@@ -624,11 +634,20 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
   including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the
   session, store, balance and settings hooks, and `src/contexts/wallet.context`. That context's
-  `useWalletContext` returns the test's `setSession`. A green run proves the disabled placeholder,
-  the registration form, and the desk actions against those stubs, including that a link keeps the
-  ceremony token, that an unlocked list without Bitcoin links once, and that revoke-by-id uses a fresh login token. It does not prove a real
-  ceremony, a real `DfxApiClient`, the published components, that `setSession` stores a passkey
-  session, that the server stored the mainnet login address, that `auth.link` is the real client, or that a Bitcoin row already in the list came from the API. WebAuthn stays a stub.
+  `useWalletContext` returns the test's `setSession`. The same file replaces `navigator.userAgent`,
+  `navigator.clipboard`, and `document.execCommand`. The in-app test writes the page address with
+  `history.replaceState`, because assigning `location.href` in this jsdom drops the fragment.
+  A green run proves the idle card, the
+  account choice after a dismissed login, the email form before create, the unknown card, the
+  fixed error sentence, Close on the preparing card during a hanging login, and the desk
+  actions against those stubs, including that a link keeps the ceremony token, that an unlocked
+  list without Bitcoin links once, and that revoke-by-id uses a fresh login token. It does not
+  prove a real ceremony, that Close cancels WebAuthn or logs out, a real in-app browser, a real
+  iPhone, a real operating-system version, a real clipboard, a real system copy, that assigning
+  `location.href` keeps the fragment in a real browser, a real `DfxApiClient`, the
+  published components, that `setSession` stores a passkey session, that the server stored the
+  mainnet login address, that `auth.link` is the real client, or that a Bitcoin row already in
+  the list came from the API. WebAuthn stays a stub.
 - **The wallet entry unit test replaces the session, the page tree, and the connect form.**
   `src/__tests__/wallet-entry.test.tsx` replaces the service names from `App`, `@dfx.swiss/react`,
   `react-i18next`, `@dfx.swiss/react-components`, the connect wrapper, the custody-asset list, and the layout,
@@ -646,8 +665,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   replaces `window.PublicKeyCredential` with a class that reports passkeys as available.
   The blocked shot removes `window.PublicKeyCredential`. The logo, the home tiles and the
   bottom picture are loaded from the public image host and pinned in the baseline. A green
-  run proves `/wallet` renders the spinner, the passkey form, the disabled placeholder and
-  the home services from those fixtures, and that the address stays `/wallet`. It does not
+  run proves `/wallet` renders the spinner, the idle card (`Log in with your device` and
+  Log in), the blocked card (`This browser has no passkey support` and Close), and the
+  home services from those fixtures, and that the address stays `/wallet`. It does not
   prove a real browser report, a real session, a real passkey ceremony, a real API, or that
   the image host keeps serving the same bytes.
 - **The sitemap visual spec answers the bootstrap itself and plants an admin token.**

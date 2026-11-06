@@ -119,6 +119,33 @@ async function stubPasskeyPlatform(page: Page, available: boolean): Promise<void
   }, available);
 }
 
+async function holdPasskeyPlatform(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    class PublicKeyCredential {
+      static getClientCapabilities(): Promise<Record<string, boolean>> {
+        return new Promise<Record<string, boolean>>(() => undefined);
+      }
+    }
+    try {
+      Object.defineProperty(window, 'PublicKeyCredential', { configurable: true, value: PublicKeyCredential });
+    } catch {
+      const existing = window.PublicKeyCredential as {
+        getClientCapabilities?: () => Promise<Record<string, boolean>>;
+      };
+      if (existing) existing.getClientCapabilities = PublicKeyCredential.getClientCapabilities;
+    }
+    const create = () => new Promise<null>(() => undefined);
+    const get = () => new Promise<null>(() => undefined);
+    const credentials = navigator.credentials;
+    if (credentials) {
+      credentials.create = create as unknown as CredentialsContainer['create'];
+      credentials.get = get as unknown as CredentialsContainer['get'];
+    } else {
+      Object.defineProperty(navigator, 'credentials', { configurable: true, value: { create, get } });
+    }
+  });
+}
+
 async function openLogin(page: Page): Promise<void> {
   await installLoginRoutes(page);
   await page.goto('/login?feature=Passkey&lang=en');
@@ -129,13 +156,6 @@ async function waitForPlatform(page: Page): Promise<void> {
   await page.waitForFunction(
     () => (window as unknown as { __passkeyPlatformReady?: boolean }).__passkeyPlatformReady === true,
   );
-}
-
-async function openStubForm(page: Page): Promise<void> {
-  await stubPasskeyPlatform(page, true);
-  await openLogin(page);
-  await page.locator('img[src$="login-passkey.jpg"]').click();
-  await waitForPlatform(page);
 }
 
 const DESK_CHALLENGE = {
@@ -256,10 +276,13 @@ async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<
 }
 
 // A 500 is not a 4xx, so the client retries begin and finish once. Both finish calls must stay 500.
+// Login posts authenticate/begin before credentials.get. An empty body there is a generic error
+// and never reaches the dismissed prompt that opens the account choice.
 async function installRegisterErrorRoutes(page: Page): Promise<void> {
   await page.route('**/v1/auth/passkey/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
+    if (method === 'POST' && path.endsWith('/authenticate/begin')) return fulfillJson(route, DESK_CHALLENGE);
     if (method === 'POST' && path.endsWith('/register/begin')) return fulfillJson(route, DESK_CHALLENGE);
     if (method === 'POST' && path.endsWith('/register/finish')) {
       await route.fulfill({
@@ -279,8 +302,8 @@ async function plantAccountToken(page: Page): Promise<void> {
   }, ACCOUNT_TOKEN);
 }
 
-async function openDesk(page: Page, mode: 'unlocked' | 'locked' | 'mismatch'): Promise<void> {
-  await installDeskAuthenticator(page, mode !== 'locked');
+async function openDesk(page: Page, mode: 'unlocked' | 'locked' | 'mismatch', dismissFirstGet = false): Promise<void> {
+  await installDeskAuthenticator(page, mode !== 'locked', dismissFirstGet);
   await installLoginRoutes(page);
   await installDeskRoutes(page, mode === 'mismatch' ? MISMATCH_ADDRESS : '');
   await page.goto('/login?feature=Passkey&lang=en');
@@ -305,9 +328,8 @@ async function waitForLinkedBitcoin(page: Page): Promise<string> {
 }
 
 async function registerUnlockedDesk(page: Page): Promise<string> {
-  await openDesk(page, 'unlocked');
-  await page.getByLabel('Email address').fill('user@example.com');
-  await page.getByRole('button', { name: 'Create passkey' }).click();
+  await openDesk(page, 'unlocked', true);
+  await registerThroughGuidance(page);
   await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible();
   await expect(page.getByText('Passkey wallet', { exact: true })).toBeVisible();
   return waitForLinkedBitcoin(page);
@@ -324,25 +346,6 @@ async function setTabSession(page: Page, state: 'compromised' | 'open-elsewhere'
     if (hook === undefined) throw new Error('handbook session hook is missing');
     hook(next);
   }, session);
-}
-
-function formControls(page: Page): Locator[] {
-  return [
-    page.getByLabel('Email address'),
-    page.getByRole('button', { name: 'Create passkey' }),
-    page.getByRole('button', { name: 'Log in' }),
-    page.getByRole('button', { name: 'Add passkey to this account' }),
-    page.getByRole('button', { name: 'Close' }),
-  ];
-}
-
-function blockedControls(page: Page): Locator[] {
-  return [
-    page.getByText('Passkey login arrives with the wallet beta', { exact: true }),
-    page.getByText('This browser has no passkey support', { exact: true }),
-    page.getByRole('button', { name: 'Passkey' }),
-    page.getByRole('button', { name: 'Close' }),
-  ];
 }
 
 async function deskControls(page: Page): Promise<Locator[]> {
@@ -418,6 +421,14 @@ async function shoot(page: Page, name: string, controls: Locator[]): Promise<voi
   await expect(page).toHaveScreenshot(name, { fullPage: true });
 }
 
+async function registerThroughGuidance(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Log in' }).click();
+  await expect(page.getByText('Do you already have an account?')).toBeVisible();
+  await page.getByRole('button', { name: 'Open a new account' }).click();
+  await page.getByLabel('Email address').fill('user@example.com');
+  await page.getByRole('button', { name: 'Continue' }).click();
+}
+
 test.describe('Passkey login', () => {
   test('shows the passkey tile when the feature flag is set', async ({ page }) => {
     await openLogin(page);
@@ -428,26 +439,15 @@ test.describe('Passkey login', () => {
   });
 
   test('opens registration and login when this browser can use passkeys', async ({ page }) => {
-    await openStubForm(page);
-    await expect(page.getByText('Passkey login arrives with the wallet beta')).toHaveCount(0);
+    await stubPasskeyPlatform(page, true);
+    await openLogin(page);
+    await page.locator('img[src$="login-passkey.jpg"]').click();
+    await waitForPlatform(page);
     await expect(page.getByText('This browser has no passkey support')).toHaveCount(0);
-    await expect(page.getByLabel('Email address')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Create passkey' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Create passkey' })).toBeDisabled();
-    await page.getByLabel('Email address').fill('user@example.com');
-    await expect(page.getByRole('button', { name: 'Create passkey' })).toBeEnabled();
-    await shoot(page, 'passkey-login-available.png', formControls(page));
-  });
-
-  test('opens the empty registration form', async ({ page }) => {
-    await openStubForm(page);
-    await expect(page.getByLabel('Email address')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Create passkey' })).toBeDisabled();
+    await expect(page.getByText('Log in with your device')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Log in' })).toBeEnabled();
-    await expect(page.getByRole('button', { name: 'Add passkey to this account' })).toBeEnabled();
-    await expect(page.getByRole('button', { name: 'Close' })).toBeEnabled();
-    await shoot(page, 'passkey-login-empty.png', formControls(page));
+    await expect(page.getByLabel('Email address')).toHaveCount(0);
+    await expect(page).toHaveScreenshot('passkey-login-available.png', { fullPage: true });
   });
 
   test('opens the passkey placeholder when this browser has no passkeys', async ({ page }) => {
@@ -455,35 +455,64 @@ test.describe('Passkey login', () => {
     await openLogin(page);
     await page.locator('img[src$="login-passkey.jpg"]').click();
     await expect(page.getByText('This browser has no passkey support')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Passkey' })).toBeDisabled();
-    await shoot(page, 'passkey-login-blocked.png', blockedControls(page));
+    await expect(page.getByRole('button', { name: 'Passkey' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Close' })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-login-blocked.png', { fullPage: true });
+  });
+
+  test('shows the preparing card while the platform check is open', async ({ page }) => {
+    await holdPasskeyPlatform(page);
+    await openLogin(page);
+    await page.locator('img[src$="login-passkey.jpg"]').click();
+    await expect(page.getByText('Preparing your login…', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Close' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Log in' })).toHaveCount(0);
+    await expect(page.getByLabel('Email address')).toHaveCount(0);
+    await expect(page).toHaveScreenshot('passkey-login-preparing.png', { fullPage: true });
   });
 
   test('asks for a mail login before adding a passkey to this account', async ({ page }) => {
-    await openStubForm(page);
+    await openDesk(page, 'unlocked', true);
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await expect(page.getByText('Do you already have an account?')).toBeVisible();
     await page.getByRole('button', { name: 'Add passkey to this account' }).click();
     const sentence = page.getByText('Sign in with mail first. The passkey is added to that account.', { exact: true });
     await expect(sentence).toBeVisible();
-    await shoot(page, 'passkey-login-no-account.png', [...formControls(page), sentence]);
+    await expect(page.getByRole('button', { name: 'Log in with existing account' })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-login-no-account.png', { fullPage: true });
   });
 
   test('shows the register error on the form', async ({ page }) => {
-    await installDeskAuthenticator(page, true);
+    await installDeskAuthenticator(page, true, true);
     await installLoginRoutes(page);
     await installRegisterErrorRoutes(page);
     await page.goto('/login?feature=Passkey&lang=en');
     await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible();
     await page.locator('img[src$="login-passkey.jpg"]').click();
     await waitForPlatform(page);
-    await page.getByLabel('Email address').fill('user@example.com');
-    await page.getByRole('button', { name: 'Create passkey' }).click();
-    const sentence = page.getByText('The passkey could not be created.', { exact: true });
+    await registerThroughGuidance(page);
+    const sentence = page.getByText('Something went wrong. Please try again.', { exact: true });
     await expect(sentence).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Create passkey' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Add passkey to this account' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Close' })).toBeVisible();
-    await shoot(page, 'passkey-login-error.png', [...formControls(page), sentence]);
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expect(page.getByLabel('Email address')).toHaveCount(0);
+    await expect(page).toHaveScreenshot('passkey-login-error.png', { fullPage: true });
+  });
+
+  test('shows the sentence when the passkey cannot hold a wallet', async ({ page }) => {
+    await installDeskAuthenticator(page, false, true);
+    await installLoginRoutes(page);
+    await installRegisterErrorRoutes(page);
+    await page.goto('/login?feature=Passkey&lang=en');
+    await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible();
+    await page.locator('img[src$="login-passkey.jpg"]').click();
+    await waitForPlatform(page);
+    await registerThroughGuidance(page);
+    const sentence = page.getByText('This passkey cannot hold a wallet on this device.', { exact: true });
+    await expect(sentence).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Close' })).toHaveCount(0);
+    await expect(page.getByText('Something went wrong. Please try again.', { exact: true })).toHaveCount(0);
+    await expect(page).toHaveScreenshot('passkey-login-prf.png', { fullPage: true });
   });
 
   test('shows the unlocked desk after registration', async ({ page }) => {
@@ -496,7 +525,9 @@ test.describe('Passkey login', () => {
 
   test('shows the unlocked desk after claiming a passkey', async ({ page }) => {
     await plantAccountToken(page);
-    await openDesk(page, 'unlocked');
+    await openDesk(page, 'unlocked', true);
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await expect(page.getByText('Do you already have an account?')).toBeVisible();
     await page.getByRole('button', { name: 'Add passkey to this account' }).click();
     await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible();
     await waitForLinkedBitcoin(page);
@@ -509,8 +540,10 @@ test.describe('Passkey login', () => {
   test('returns to the form when starting another ceremony', async ({ page }) => {
     await registerUnlockedDesk(page);
     await page.getByRole('button', { name: 'Start another ceremony' }).click();
-    await expect(page.getByLabel('Email address')).toBeVisible();
-    await shoot(page, 'passkey-login-another.png', formControls(page));
+    await expect(page.getByText('Log in with your device')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+    await expect(page.getByLabel('Email address')).toHaveCount(0);
+    await expect(page).toHaveScreenshot('passkey-login-another.png', { fullPage: true });
   });
 
   test('shows the revoked sentence after revoking with the passkey', async ({ page }) => {
@@ -518,7 +551,9 @@ test.describe('Passkey login', () => {
     await page.getByRole('button', { name: 'Revoke with passkey as lost' }).click();
     const sentence = page.getByText('The passkey wallet was revoked.', { exact: true });
     await expect(sentence).toBeVisible();
-    await shoot(page, 'passkey-login-revoked.png', [...formControls(page), sentence]);
+    await expect(page.getByText('Log in with your device')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-login-revoked.png', { fullPage: true });
   });
 
   test('shows recovery words from the fixed authenticator output', async ({ page }) => {
@@ -657,5 +692,134 @@ test.describe('Passkey login', () => {
     await page.getByLabel('EVM account index').fill('100');
     await expect(page.getByRole('button', { name: 'Link EVM account' })).toBeDisabled();
     await shoot(page, 'passkey-desk-evm-index.png', await deskControls(page));
+  });
+
+  test('shows the account choice after a dismissed login', async ({ page }) => {
+    await openDesk(page, 'unlocked', true);
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await expect(page.getByText('Do you already have an account?')).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-login-choice.png', { fullPage: true });
+  });
+
+  test('shows the email form for a new account', async ({ page }) => {
+    await openDesk(page, 'unlocked', true);
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await expect(page.getByText('Do you already have an account?')).toBeVisible();
+    await page.getByRole('button', { name: 'Open a new account' }).click();
+    await expect(page.getByText('Your email')).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-login-email.png', { fullPage: true });
+  });
+
+  test('shows the unknown passkey card when authenticate finish is unknown', async ({ page }) => {
+    await stubPasskeyPlatform(page, true);
+    await page.addInitScript(() => {
+      const get = () =>
+        Promise.resolve({
+          id: 'cred',
+          rawId: new Uint8Array(8).buffer,
+          type: 'public-key',
+          response: {
+            clientDataJSON: new Uint8Array([1]).buffer,
+            authenticatorData: new Uint8Array(37).buffer,
+            signature: new Uint8Array([1]).buffer,
+            userHandle: new Uint8Array([1]).buffer,
+          },
+          getClientExtensionResults: () => ({}),
+        });
+      const credentials = navigator.credentials;
+      if (credentials) credentials.get = get as unknown as CredentialsContainer['get'];
+    });
+    await installLoginRoutes(page);
+    await page.route('**/v1/auth/passkey/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const method = route.request().method();
+      if (method === 'POST' && path.endsWith('/authenticate/begin')) return fulfillJson(route, DESK_CHALLENGE);
+      if (method === 'POST' && path.endsWith('/authenticate/finish')) {
+        return route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ statusCode: 400, message: 'Unknown credential', code: 'UnknownCredential' }),
+        });
+      }
+      return fulfillJson(route, []);
+    });
+    await page.goto('/login?feature=Passkey&lang=en');
+    await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible();
+    await page.locator('img[src$="login-passkey.jpg"]').click();
+    await page.waitForFunction(
+      () => (window as unknown as { __passkeyPlatformReady?: boolean }).__passkeyPlatformReady === true,
+    );
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await expect(page.getByText('This passkey is not an account')).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-login-unknown.png', { fullPage: true });
+  });
+
+  test('shows the in-app browser card when the user agent contains Telegram', async ({ page }) => {
+    await stubPasskeyPlatform(page, true);
+    await page.addInitScript(() => {
+      const ua = `${navigator.userAgent} Telegram`;
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: ua });
+    });
+    await openLogin(page);
+    await page.locator('img[src$="login-passkey.jpg"]').click();
+    await expect(page.getByText('Open this page in your browser')).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-login-inapp.png', { fullPage: true });
+  });
+
+  test('shows the iPhone in-app card', async ({ page }) => {
+    await stubPasskeyPlatform(page, true);
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'userAgent', {
+        configurable: true,
+        value:
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Telegram',
+      });
+    });
+    await openLogin(page);
+    await page.locator('img[src$="login-passkey.jpg"]').click();
+    await expect(page.getByText('Open this page in your browser', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("On iPhone, you'll find the compass or Safari icon at the top right.", { exact: true }),
+    ).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-login-inapp-ios.png', { fullPage: true });
+  });
+
+  test('shows the operating system hint when the OS is too old', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'userAgent', {
+        configurable: true,
+        value:
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+      });
+      const flag = '__passkeyPlatformReady';
+      class PublicKeyCredential {
+        static getClientCapabilities(): Promise<Record<string, boolean>> {
+          Object.defineProperty(window, flag, { configurable: true, value: true });
+          return Promise.resolve({ 'extension:prf': true });
+        }
+      }
+      try {
+        Object.defineProperty(window, 'PublicKeyCredential', { configurable: true, value: PublicKeyCredential });
+      } catch {
+        const existing = window.PublicKeyCredential as {
+          getClientCapabilities?: () => Promise<Record<string, boolean>>;
+        };
+        if (existing) existing.getClientCapabilities = PublicKeyCredential.getClientCapabilities;
+      }
+      const create = () => Promise.resolve(null);
+      const get = () => Promise.resolve(null);
+      const credentials = navigator.credentials;
+      if (credentials) {
+        credentials.create = create as unknown as CredentialsContainer['create'];
+        credentials.get = get as unknown as CredentialsContainer['get'];
+      } else {
+        Object.defineProperty(navigator, 'credentials', { configurable: true, value: { create, get } });
+      }
+    });
+    await openLogin(page);
+    await page.locator('img[src$="login-passkey.jpg"]').click();
+    await expect(page.getByText('This operating system (16.0) cannot sign in with a passkey.')).toBeVisible();
+    await expect(page.getByText('Open this page in your browser')).toHaveCount(0);
+    await expect(page).toHaveScreenshot('passkey-login-os.png', { fullPage: true });
   });
 });

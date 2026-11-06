@@ -177,11 +177,11 @@
   },
   "passkey-login": {
     "title": "Passkey-Login",
-    "description": "Login mit ?feature=Passkey zeigt die Passkey-Kachel. Ein Browser mit Passkeys öffnet das Registrierungsformular. Ein Browser ohne Passkeys bleibt auf dem deaktivierten Platzhalter mit dem Hinweis, dass keine Passkeys möglich sind. Der Desk zeigt das entsperrte Wallet, die Wiederherstellungswörter, ein gesperrtes Wallet und den Abweichungssatz. Die Baselines zeigen jedes Desk-Steuerelement, die Ergebnissätze sowie die Sätze zu kompromittiert und anderem Tab."
+    "description": "Login mit ?feature=Passkey zeigt die Passkey-Kachel. Danach steht nur „Log in with your device“ und Anmelden. Solange die Plattformprüfung offen ist, steht „Preparing your login…“ und Close. Bricht die Anmeldung ab, folgt die Frage, ob schon ein Konto besteht, danach entweder eine weitere Anmeldung, die E-Mail für ein neues Konto, oder Passkey zum bestehenden Konto. Ein unbekanntes Passkey zeigt eine eigene Karte. Ein Browser ohne Passkeys zeigt nur den Hinweis ohne deaktivierte Passkey-Schaltfläche. Ein In-App-Browser zeigt den Hinweis, die Seite im Browser zu öffnen. Auf dem iPhone steht dort zusätzlich der Hinweis auf den Kompass oder Safari. Ein zu altes System zeigt den Versionshinweis. Der Desk zeigt das entsperrte Wallet, die Wiederherstellungswörter, ein gesperrtes Wallet und den Abweichungssatz. Die Baselines zeigen jedes Desk-Steuerelement, die Ergebnissätze sowie die Sätze zu kompromittiert und anderem Tab. Kann das Passkey kein Wallet auf diesem Gerät halten, zeigt die Fehlerkarte den Satz «This passkey cannot hold a wallet on this device.» und Try again."
   },
   "wallet-entry": {
     "title": "Passkey über /wallet",
-    "description": "/wallet bleibt auf dieser Adresse. Ohne Anmeldung öffnet sich das Passkey-Formular. Hat der Browser keine Passkeys, bleibt der Platzhalter deaktiviert. Während das Konto noch lädt, zeigt die Seite den Ladekreis. Mit Anmeldung erscheinen die Dienste der Startseite, ohne das Formular."
+    "description": "/wallet bleibt auf dieser Adresse. Ohne Anmeldung zeigt die Karte „Log in with your device“ und Anmelden, ohne E-Mail-Feld. Hat der Browser keine Passkeys, steht nur „This browser has no passkey support“ und Close. Während das Konto noch lädt, zeigt die Seite den Ladekreis. Mit Anmeldung erscheinen die Dienste der Startseite, ohne das Formular."
   },
   "sitemap": {
     "title": "Sitemap",

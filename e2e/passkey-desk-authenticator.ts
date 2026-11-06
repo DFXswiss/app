@@ -14,9 +14,13 @@ export function deskBase64Url(bytes: number[]): string {
  * In-page authenticator for the handbook shots. It is not a virtual authenticator and it does not
  * produce a signature the API would accept. The full-stack spec covers that path.
  */
-export async function installDeskAuthenticator(page: Page, getReturnsPrf: boolean): Promise<void> {
+export async function installDeskAuthenticator(
+  page: Page,
+  getReturnsPrf: boolean,
+  dismissFirstGet = false,
+): Promise<void> {
   await page.addInitScript(
-    ({ credentialBytes, prfBytes, withPrf }) => {
+    ({ credentialBytes, prfBytes, withPrf, dismissFirstGet: dismissGet }) => {
       const flag = '__passkeyPlatformReady';
 
       function bufferFrom(bytes: number[]): ArrayBuffer {
@@ -87,7 +91,16 @@ export async function installDeskAuthenticator(page: Page, getReturnsPrf: boolea
       }
 
       const create = () => Promise.resolve(credential('create', true));
-      const get = () => Promise.resolve(credential('get', withPrf));
+      let firstGet = dismissGet;
+      const get = () => {
+        if (firstGet) {
+          firstGet = false;
+          return Promise.reject(
+            new DOMException('The operation either timed out or was not allowed.', 'NotAllowedError'),
+          );
+        }
+        return Promise.resolve(credential('get', withPrf));
+      };
       const credentials = navigator.credentials;
       if (credentials) {
         credentials.create = create as unknown as CredentialsContainer['create'];
@@ -96,6 +109,11 @@ export async function installDeskAuthenticator(page: Page, getReturnsPrf: boolea
         Object.defineProperty(navigator, 'credentials', { configurable: true, value: { create, get } });
       }
     },
-    { credentialBytes: DESK_CREDENTIAL_BYTES, prfBytes: DESK_PRF_BYTES, withPrf: getReturnsPrf },
+    {
+      credentialBytes: DESK_CREDENTIAL_BYTES,
+      prfBytes: DESK_PRF_BYTES,
+      withPrf: getReturnsPrf,
+      dismissFirstGet,
+    },
   );
 }
