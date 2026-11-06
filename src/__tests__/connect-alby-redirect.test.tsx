@@ -92,6 +92,7 @@ jest.mock('../util/utils', () => {
 
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { createRef } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import ConnectAlby from '../components/home/wallet/connect-alby';
 import { WalletType } from '../contexts/wallet.context';
 
@@ -144,17 +145,19 @@ describe('ConnectAlby login redirect', () => {
     });
   });
 
-  function renderConnectAlby() {
+  function renderConnectAlby(pathname = '/connect') {
     return render(
-      <ConnectAlby
-        rootRef={createRef<HTMLDivElement>()}
-        wallet={WalletType.ALBY}
-        blockchain={undefined}
-        isConnect={false}
-        onLogin={mockOnLogin}
-        onCancel={mockOnCancel}
-        onSwitch={mockOnSwitch}
-      />,
+      <MemoryRouter initialEntries={[pathname]}>
+        <ConnectAlby
+          rootRef={createRef<HTMLDivElement>()}
+          wallet={WalletType.ALBY}
+          blockchain={undefined}
+          isConnect={false}
+          onLogin={mockOnLogin}
+          onCancel={mockOnCancel}
+          onSwitch={mockOnSwitch}
+        />
+      </MemoryRouter>,
     );
   }
 
@@ -338,7 +341,7 @@ describe('ConnectAlby login redirect', () => {
     mockRedirectPath.mockReturnValue(undefined);
 
     await act(async () => {
-      renderConnectAlby();
+      renderConnectAlby('/some/page');
     });
 
     await waitFor(() => expect(capturedLocation).toBeDefined());
@@ -346,6 +349,17 @@ describe('ConnectAlby login redirect', () => {
     const returnUrl = getReturnUrlFromCapturedLocation();
     expect(returnUrl.origin).toBe('https://app.example.com');
     expect(returnUrl.searchParams.get('redirect')).toBeNull();
+  });
+
+  it('sends /buy as redirect on /login when redirectPath is undefined', async () => {
+    mockRedirectPath.mockReturnValue(undefined);
+
+    await act(async () => {
+      renderConnectAlby('/login');
+    });
+
+    await waitFor(() => expect(capturedLocation).toBeDefined());
+    expect(getRedirectParamFromCapturedLocation()).toBe('/buy');
   });
 });
 
@@ -399,17 +413,19 @@ describe('ConnectAlby', () => {
     });
   });
 
-  function renderConnectAlby() {
+  function renderConnectAlby(pathname = '/connect') {
     return render(
-      <ConnectAlby
-        rootRef={createRef<HTMLDivElement>()}
-        wallet={WalletType.ALBY}
-        blockchain={undefined}
-        isConnect={false}
-        onLogin={mockOnLogin}
-        onCancel={mockOnCancel}
-        onSwitch={mockOnSwitch}
-      />,
+      <MemoryRouter initialEntries={[pathname]}>
+        <ConnectAlby
+          rootRef={createRef<HTMLDivElement>()}
+          wallet={WalletType.ALBY}
+          blockchain={undefined}
+          isConnect={false}
+          onLogin={mockOnLogin}
+          onCancel={mockOnCancel}
+          onSwitch={mockOnSwitch}
+        />
+      </MemoryRouter>,
     );
   }
 
@@ -498,12 +514,12 @@ describe('ConnectAlby', () => {
     await waitFor(() => expect(screen.getByText('No login method found')).toBeInTheDocument());
   });
 
-  it('omits redirect search param when redirectPath is falsy', async () => {
+  it('sends /account as redirect on /connect when redirectPath is undefined', async () => {
     mockRedirectPath.mockReturnValue(undefined);
     mockEnable.mockResolvedValue({ node: { alias: 'getalby.com' } });
 
     await act(async () => {
-      renderConnectAlby();
+      renderConnectAlby('/connect');
     });
 
     await waitFor(() => expect(capturedLocation).toBeDefined());
@@ -511,7 +527,37 @@ describe('ConnectAlby', () => {
     const redirectUri = albyUrl.searchParams.get('redirectUri');
     expect(redirectUri).toBeTruthy();
     const returnUrl = new URL(redirectUri as string);
-    expect(returnUrl.searchParams.get('redirect')).toBeNull();
+    expect(returnUrl.searchParams.get('redirect')).toBe('/account');
+  });
+
+  it('sends /account as redirect on /Connect/ when redirectPath is undefined', async () => {
+    mockRedirectPath.mockReturnValue(undefined);
+
+    await act(async () => {
+      renderConnectAlby('/Connect/');
+    });
+
+    await waitFor(() => expect(capturedLocation).toBeDefined());
+    const albyUrl = new URL(capturedLocation as string);
+    const redirectUri = albyUrl.searchParams.get('redirectUri');
+    expect(redirectUri).toBeTruthy();
+    expect(new URL(redirectUri as string).searchParams.get('redirect')).toBe('/account');
+  });
+
+  it('prefers a stored redirectPath over the /connect default', async () => {
+    mockRedirectPath.mockReturnValue('/settings');
+    mockEnable.mockResolvedValue({ node: { alias: 'getalby.com' } });
+
+    await act(async () => {
+      renderConnectAlby('/connect');
+    });
+
+    await waitFor(() => expect(capturedLocation).toBeDefined());
+    const albyUrl = new URL(capturedLocation as string);
+    const redirectUri = albyUrl.searchParams.get('redirectUri');
+    expect(redirectUri).toBeTruthy();
+    const returnUrl = new URL(redirectUri as string);
+    expect(returnUrl.searchParams.get('redirect')).toBe('/settings');
   });
 
   it('forwards appParams wallet and refcode onto the Alby auth URL', async () => {

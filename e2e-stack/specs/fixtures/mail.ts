@@ -5,7 +5,7 @@ function apiBase(): string {
 }
 
 function frontendBase(): string {
-  return process.env.E2E_FRONTEND_URL ?? 'http://frontend';
+  return process.env.E2E_FRONTEND_URL ?? 'http://frontend.e2e.test';
 }
 
 /**
