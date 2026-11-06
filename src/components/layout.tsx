@@ -12,7 +12,7 @@ import { Navigation } from './navigation';
 
 export function Layout({ children }: PropsWithChildren): JSX.Element {
   const {
-    config: { title, backButton, onBack, textStart, noPadding, noMaxWidth, smallMenu },
+    config: { title, backButton, onBack, textStart, noPadding, noMaxWidth, smallMenu, noHeader },
   } = useLayoutConfigContext();
 
   const navRef = useRef<HTMLDivElement>(null);
@@ -48,15 +48,17 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
       ref={rootRef}
       onClick={onClick}
     >
-      <Navigation
-        ref={navRef}
-        title={title}
-        backButton={backButton}
-        onBack={onBack}
-        isOpen={isNavigationOpen}
-        setIsOpen={setIsNavigationOpen}
-        small={smallMenu}
-      />
+      {!noHeader && (
+        <Navigation
+          ref={navRef}
+          title={title}
+          backButton={backButton}
+          onBack={onBack}
+          isOpen={isNavigationOpen}
+          setIsOpen={setIsNavigationOpen}
+          small={smallMenu}
+        />
+      )}
 
       {/* Widget-scoped stand-in for the navigation's page-wide backdrop */}
       {webComponent && isNavigationOpen && (

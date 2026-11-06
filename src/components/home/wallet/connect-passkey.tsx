@@ -5,7 +5,9 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { useWalletContext, WalletType } from '../../../contexts/wallet.context';
 import { ConnectProps } from '../connect-shared';
+import { useNavigation } from '../../../hooks/navigation.hook';
 import PasskeyDesk from './passkey-desk';
+import type { PasskeyHistory } from './passkey-wallet-history';
 import {
   createPasskeyClients,
   passkeyDismissed,
@@ -46,6 +48,12 @@ export { passkeyPlatformBlock, walletEnvForHost };
 type SheetView = 'idle' | 'choice' | 'email' | 'unknown' | 'error';
 type CeremonyEntry = 'login' | 'authenticate' | 'register' | 'claim';
 
+declare global {
+  interface Window {
+    __dfxHandbookPasskeyHistory?: PasskeyHistory;
+  }
+}
+
 function isMail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
@@ -85,9 +93,10 @@ async function copyPageUrl(): Promise<boolean> {
 // merged passkey routes can be tried. /wallet opens this screen without a flag. The tile on /login
 // stays behind ?feature=Passkey. Opening the app is separate.
 export default function ConnectPasskey(props: ConnectProps): JSX.Element {
-  const { isConnect, onLogin, onCancel }: ConnectProps = props;
+  const { isConnect, onCancel }: ConnectProps = props;
   const { translate } = useSettingsContext();
   const { setSession } = useWalletContext();
+  const { navigate } = useNavigation();
   const { logout } = useSessionContext();
   const { getAuthToken } = useAuthContext();
   const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
@@ -188,7 +197,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     }
   }
 
-  async function openApp(): Promise<void> {
+  async function openApp(path: '/buy' | '/sell' | '/swap'): Promise<void> {
     if (busyRef.current) return;
     const session = getOpenPasskey();
     if (!session) return;
@@ -196,9 +205,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     setError(undefined);
     try {
       await setSession(session.accessToken, WalletType.PASSKEY);
-      onLogin();
-      // The ceremony does not reload the page, so the connect step has to be left here.
-      onCancel();
+      navigate(path);
     } catch (caught) {
       setError(passkeyMessage(caught));
     } finally {
@@ -300,7 +307,8 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       <StyledVerticalStack gap={2} center>
         {error ? <p className="text-dfxRed-150">{translate('screens/home', error)}</p> : null}
         <PasskeyDesk
-          onOpenApp={() => void openApp()}
+          history={process.env.NODE_ENV === 'production' ? undefined : window.__dfxHandbookPasskeyHistory}
+          onOpenApp={(path) => void openApp(path)}
           onCancel={onCancel}
           onRevoked={() => setNotice('The passkey wallet was revoked.')}
         />

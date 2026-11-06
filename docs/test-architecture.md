@@ -571,6 +571,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `ErrorHint`, labels and app contexts (translation returns the key), that the API returns those statuses,
   that the custody sign-up call reaches the real API, or the reporter's 60 s deduplication of identical
   reports, since the reporter is replaced.
+- **Passkey wallet balance and history props are not backed by a data source here.**
+  The empty-history screenshot passes a fixture through a non-production window hook to the desk prop.
+  A green visual run does not prove a production balance, rate or transaction-history integration.
 - **The passkey login visual spec stubs the browser and the bootstrap calls.**
   `e2e/passkey-login.spec.ts` fulfils geolocation-db with country `CH` and fulfils the bootstrap
   GETs with fixtures. A `/v2/**` call without the account token is 401. A call that sends that
@@ -593,7 +596,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the blocked card, and the desk. It does
   not prove a real WebAuthn signature, a real dismissal, a real in-app browser, a real iPhone,
   that iOS 16.0 is the running system, that the platform check eventually finishes, a real API,
-  a production build of the session hook, or the signed-in app after Open the app. It does not prove that
+  a production build of the session hook, or the DFX session created by a service action. It does not prove that
   geolocation-db returns `CH`, that the API returns those payloads, that the server stored the
   placeholder addresses, or that this browser's real passkey support matches the stub. Die drei Send-Baselines für
   fehlendes Einfügen, fehlendes Scannen und die offene Kamera ersetzen die Zwischenablage, die Kamera und
@@ -608,10 +611,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   through a forwarder to the frontend, because the relying party is `localhost` and the stack
   hostname is not that host. When that route does not answer 404, a green run proves the device
   card, the rejected first login without an existing credential, then `Open a new account`, the
-  email and Continue, then the unlocked desk and the later login, the credential row is
-  `Active`, and credential status plus the wallet list come from the API. It also proves that the first
-  unlock shows a Bitcoin row with path `m/84'/0'/0'/0/0`, that the sentence `Linked Bitcoin
-  <address>.` names that same `bc1q` address, that `passkey_address` together with
+  email and Continue, then the unlocked desk and the later login, the credential row is `Active`,
+  and credential status plus the wallet list come from the API. It also proves that the first
+  unlock shows a Bitcoin row whose full `bc1q` address matches the database path
+  `m/84'/0'/0'/0/0`, that `passkey_address` together with
   `"user".address` stores that address once for the registered mail, that after Refresh
   wallets and after the second unlock exactly one list row shows that same `bc1q` address,
   and that a different address at that path does not pass. It does not prove the ceremony

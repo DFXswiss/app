@@ -3,6 +3,7 @@ import { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { CustodyAssets } from '../components/home/wallet/connect-address';
 import HomeScreen from '../screens/home.screen';
+import { setOpenPasskey, type OpenPasskey } from '../components/home/wallet/passkey-session';
 
 const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
@@ -157,6 +158,7 @@ jest.mock('../hooks/resize-observer.hook', () => ({
 }));
 
 function resetWorld(): void {
+  setOpenPasskey(undefined);
   mockSessionState.isLoggedIn = false;
   mockSessionState.isInitialized = true;
   mockAuthState.session = undefined;
@@ -224,6 +226,16 @@ describe('/wallet passkey entry', () => {
 
     expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
     expect(document.querySelector('img[src="/buy.jpg"]')).not.toBeNull();
+  });
+
+  it('keeps an open passkey visible with a DFX session', () => {
+    mockSessionState.isLoggedIn = true;
+    setOpenPasskey({ state: 'locked' } as OpenPasskey);
+    const view = renderAt('/wallet');
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+    expect(mockLayoutOptions).toMatchObject({ noHeader: true });
+    view.unmount();
+    setOpenPasskey(undefined);
   });
 
   it('shows the home tiles when the session is already logged in', () => {

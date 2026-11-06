@@ -1,9 +1,10 @@
 import { Blockchain, useAuthContext, useSessionContext, useUserContext } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { Fragment, Suspense, useEffect, useRef, useState } from 'react';
+import { Fragment, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Trans } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import { CustodyAssets } from 'src/components/home/wallet/connect-address';
+import { getOpenPasskey, subscribeOpenPasskey } from 'src/components/home/wallet/passkey-session';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { Service } from '../App';
@@ -66,6 +67,7 @@ type Page = { page: string; allowedTiles: string[] | undefined };
 
 function HomeScreenContent(): JSX.Element {
   const { translate } = useSettingsContext();
+  const openPasskey = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
   const { isLoggedIn, isInitialized: isSessionInitialized } = useSessionContext();
   const { session } = useAuthContext();
   const { user, isUserLoading, hasAddress } = useUserContext();
@@ -105,14 +107,18 @@ function HomeScreenContent(): JSX.Element {
       setConnectTo(undefined);
     } else if (specialMode === SpecialMode.LOGIN_MAIL) {
       setConnectTo({ type: WalletType.MAIL });
-    } else if (specialMode === SpecialMode.WALLET && isSessionInitialized && !isLoggedIn) {
+    } else if (specialMode === SpecialMode.WALLET && isSessionInitialized && (openPasskey || !isLoggedIn)) {
       setConnectTo({ type: WalletType.PASSKEY });
-    } else if (specialMode === SpecialMode.WALLET && isLoggedIn && connectTo?.type === WalletType.PASSKEY) {
-      // A sign-in that finishes on this page must leave the form. connectTo stays out of the
-      // dependency list so closing the form does not open it again.
+    } else if (
+      specialMode === SpecialMode.WALLET &&
+      isLoggedIn &&
+      !openPasskey &&
+      connectTo?.type === WalletType.PASSKEY
+    ) {
+      // Without an open passkey, a completed DFX sign-in leaves the form.
       setConnectTo(undefined);
     }
-  }, [specialMode, isLoggedIn, session, hasAddress, isSessionInitialized]);
+  }, [specialMode, isLoggedIn, session, hasAddress, isSessionInitialized, openPasskey]);
 
   useEffect(() => {
     if (isInitialized && isLoggedIn && user && loginSuccessful) {
@@ -199,6 +205,7 @@ function HomeScreenContent(): JSX.Element {
     (canClose && !isEmbedded) || connectTo != null || (currentPageId != null && currentPageId !== appParams.mode);
 
   useLayoutOptions({
+    noHeader: Boolean(openPasskey && connectTo?.type === WalletType.PASSKEY),
     title: isEmbedded ? title : undefined,
     backButton: hasBackButton,
     onBack: connectTo || (specialMode === SpecialMode.CONNECT && isLoggedIn) || currentPageId ? handleBack : undefined,

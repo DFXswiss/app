@@ -7,6 +7,7 @@ export function useLayoutOptions({
   backButton,
   textStart,
   noPadding,
+  noHeader,
   noMaxWidth,
   smallMenu,
   onBack,
@@ -20,6 +21,7 @@ export function useLayoutOptions({
       backButton,
       textStart,
       noPadding,
+      noHeader,
       noMaxWidth,
       smallMenu,
       onBack,
@@ -34,7 +36,7 @@ export function useLayoutOptions({
       prevConfig.current = newConfig;
       setConfig(newConfig);
     }
-  }, [title, backButton, textStart, noPadding, smallMenu, onBack, setConfig]);
+  }, [title, backButton, textStart, noPadding, noHeader, noMaxWidth, smallMenu, onBack, setConfig]);
 
   useLayoutEffect(() => {
     return () => setConfig({});

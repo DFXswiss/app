@@ -328,3 +328,8 @@ describe('Layout', () => {
     expect(contentColumn().className.split(/\s+/)).toContain('max-w-screen-md');
   });
 });
+
+it('hides the navigation when noHeader is set', () => {
+  renderLayout({ config: { noHeader: true } });
+  expect(screen.queryByTestId('navigation')).not.toBeInTheDocument();
+});

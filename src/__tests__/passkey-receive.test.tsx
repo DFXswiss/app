@@ -16,5 +16,9 @@ it('renders the supplied address, QR, heading and notice', () => {
   expect(screen.getByText('Receive on EVM')).toBeInTheDocument();
   expect(screen.getByTestId('passkey-receive-address').textContent).toBe(address);
   expect(screen.getByTestId('qr')).toHaveTextContent(address);
-  expect(screen.getByText('This address is the same on every EVM network.')).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      'This address is the same on every EVM network, for example Ethereum, Arbitrum or Base. Only send coins from EVM networks to it.',
+    ),
+  ).toBeInTheDocument();
 });
