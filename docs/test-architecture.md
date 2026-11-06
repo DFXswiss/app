@@ -110,6 +110,38 @@ This section lists the fakes introduced by this repository's own suites and stat
 run does not prove for each one; the taxonomy and cross-repository entries live in
 `DFXswiss/backend` under `docs/test-architecture.md`.
 
+- **The injected-wallet tests fabricate providers with broken or missing methods.**
+  `src/hooks/wallets/__tests__/metamask.hook.test.ts` and `e2e-stack/specs/auth.spec.ts`
+  use a JavaScript proxy that throws when `on` is read. The unit tests also pass that
+  request adapter through the real Web3 request manager, including a provider injected
+  after the hook has rendered, and check that method and parameters arrive unchanged.
+  They replace `window.ethereum` after `eth_sendTransaction` and after
+  `wallet_sendCalls` with a second provider that rejects every request, then check
+  that `eth_getTransactionReceipt` and `wallet_getCallsStatus` stay on the provider
+  that accepted the send. A green run of that replacement does not prove a real
+  extension swap still confirms a payment that was already broadcast. The token
+  receipt case stubs `sha3` in `web3-utils` with SHA-256 and returns the address
+  from `toChecksumAddress` unchanged, so it checks provider routing and receipt
+  polling, not cryptographic encoding.
+  Most unit cases replace Web3 itself: account, chain and `requestAccounts` RPCs
+  reach the adapter, while balance reads, personal signing, transaction sending,
+  contracts and unit conversions are Jest mocks. A green unit run does not prove
+  that real Web3 performs any of those mocked operations correctly or that a real
+  wallet accepts them.
+  The full-stack fake returns fixed accounts and chain data and does not produce a valid signature.
+  The visual spec
+  `e2e/wallet-missing-provider.spec.ts` supplies a detectable wallet that disappears after its
+  first account RPC and mocks the login bootstrap API responses. A green login visual run proves
+  the translated missing-provider error renders for that synthetic disappearance. It does not prove
+  that Web3 failed to bind a real provider, the live API returns the mocked data, every Brave version
+  has the same failure, or a real wallet login completes. The payment case supplies a synthetic
+  in-app wallet with insufficient ETH and sufficient USDT, so the in-app payment chooses USDT. Its
+  callback fixture returns a coin URI for ETH and a token-transfer URI for USDT, matching each
+  fixture asset's type. It removes the wallet before `Pay`; the payment request, standards,
+  wallet-app list, callback URIs, polling status and bootstrap responses all come from mocked API
+  routes. A green payment visual run proves the USDT callback is requested and the translated
+  missing-provider error renders for that synthetic disappearance. It does not prove the live API
+  returns those payloads, a real in-app wallet disappears in that way, or a real payment is broadcast.
 - **The buy-process specs answer the quote endpoint themselves.** `e2e/buy-process.spec.ts` fulfils
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
   payloads, not that the API produces them. Unit tests against the utility pin the payload shapes
