@@ -559,7 +559,7 @@
     "If you lose your passkey, only your recovery words get you back to your funds.": "Si tu perds ta clé d’accès, seuls tes mots de récupération permettent de retrouver tes fonds.",
     "Back up now": "Sauvegarder",
     "Wallet locked": "Wallet verrouillé",
-    "To send, sell, swap or pay, unlock briefly with Face ID, fingerprint or device PIN.": "Pour envoyer, vendre, échanger ou payer, déverrouille avec Face ID, ton empreinte ou le code de ton appareil.",
+    "To send, receive or pay, unlock briefly with Face ID, fingerprint or device PIN.": "Pour envoyer, recevoir ou payer, déverrouille brièvement avec Face ID, ton empreinte ou le code de ton appareil.",
     "Unlock": "Déverrouiller",
     "Wrong passkey": "Mauvaise clé d’accès",
     "This passkey belongs to a different wallet. Sign in with the right passkey.": "Cette clé d’accès appartient à un autre wallet. Connecte-toi avec la bonne clé.",

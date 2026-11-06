@@ -643,6 +643,33 @@ describe('ConnectPasskey', () => {
     expect(screen.queryByText('unavailable-secret')).not.toBeInTheDocument();
   });
 
+  it('ignores a second backup request while the export is starting', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    const backup = screen.getByRole('button', { name: 'Back up now' });
+    mockExport.mockImplementationOnce(() => {
+      fireEvent.click(backup);
+      return Promise.resolve(['alpha']);
+    });
+    fireEvent.click(backup);
+    expect(await screen.findByTestId('passkey-recovery-words')).toHaveTextContent('alpha');
+    expect(mockExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not export if the session locks before the backup click is processed', async () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    const backup = screen.getByRole('button', { name: 'Back up now' });
+    act(() => {
+      setOpenPasskey({ ...session, state: 'locked', keys: undefined });
+      fireEvent.click(backup);
+    });
+    await waitFor(() => expect(screen.getByText('Wallet locked')).toBeInTheDocument());
+    expect(mockExport).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Recovery words' })).not.toBeInTheDocument();
+  });
+
   it('does not open the recovery dialog if export cannot start', async () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     mockExport.mockImplementationOnce(() => {

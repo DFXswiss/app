@@ -35,7 +35,7 @@ export default function PasskeyWalletNotes({
           : 'Open in another tab';
   const description =
     state === 'locked'
-      ? 'To send, sell, swap or pay, unlock briefly with Face ID, fingerprint or device PIN.'
+      ? 'To send, receive or pay, unlock briefly with Face ID, fingerprint or device PIN.'
       : state === 'seed-mismatch'
         ? 'This passkey belongs to a different wallet. Sign in with the right passkey.'
         : state === 'compromised'
