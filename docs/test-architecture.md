@@ -597,8 +597,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   geolocation-db returns `CH`, that the API returns those payloads, that the server stored the
   placeholder addresses, or that this browser's real passkey support matches the stub.
 - **The passkey ceremony full-stack case drives the real frontend, API and database.**
-  In `e2e-stack/specs/auth.spec.ts`, the test skips when `POST /v1/auth/passkey/register/begin`
-  answers 404, because that API image has no passkey controller. Any other status runs the
+  In `e2e-stack/specs/auth.spec.ts`, a run whose companion API ref is staging fails when
+  `POST /v1/auth/passkey/register/begin` answers 404. Any other companion ref still skips on 404,
+  because that image has no passkey controller. Any other status runs the
   ceremony. The test copies the default wallet row to the passkey wallet name, because
   synchronize does not run the wallet migration, installs a Chromium virtual authenticator, and
   adds PRF output only when that authenticator omits it. The page opens at `http://localhost:3001`
