@@ -512,6 +512,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   error, and the loading state before the places arrive. It does not prove that the
   place API still returns this set, that those rows are stored with country CH, or that the
   DFX payment-link API returns the stubbed merchant.
+- **The merchant page pictures answer the merchant info call themselves.**
+  `e2e/merchant-page.spec.ts` fulfils `GET /v1/paymentLink/merchant?route=shop-route` with a
+  synthetic merchant (recipient and three payment methods) or with a `404`, every other
+  `**/paymentLink/**` call with an empty list, and `**/v1/**` and `**/v2/**` so the page renders
+  without a live DFX API. A green run proves that the whole merchant page renders that merchant
+  info and that error text, and that the page requests no `/paymentLink/payment`. It does not
+  prove that the API returns this merchant info for a route or answers an unknown route with
+  this `404`.
 - **The payment-link stack spec answers the place API itself for the SPAR merchant.**
   `e2e-stack/specs/payment-links.spec.ts` fulfils that same SPAR-Switzerland place URL with one
   synthetic SPAR shop, and answers every other place URL with HTTP 500, while the rest of that
