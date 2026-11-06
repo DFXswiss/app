@@ -37,6 +37,8 @@ services:
       # Set by scripts/run.sh and by both CI workflows. Tells the coverage gate that every spec was
       # in scope, so it can require each route to have been navigated to and not just claimed.
       E2E_FULL_RUN: ${E2E_FULL_RUN:-}
+      # A staging companion API must answer the passkey registration route.
+      E2E_REQUIRE_PASSKEY: ${E2E_REQUIRE_PASSKEY:-}
       # This default MUST stay in sync with EVM_DEPOSIT_SEED in env/api.env (owned by the stack
       # lane) — deposit addresses are derived from this mnemonic here AND inside the API; a
       # mismatch produces addresses/keys that silently disagree deep in a buy/forwarding path.

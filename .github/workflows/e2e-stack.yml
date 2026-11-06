@@ -51,7 +51,7 @@ on:
   workflow_dispatch:
     inputs:
       api_ref:
-        description: 'Git ref of DFXswiss/backend to check out and build against (empty = develop)'
+        description: 'Git ref of DFXswiss/backend to check out and build against (empty = staging when base_ref is staging, otherwise develop)'
         required: false
         type: string
       pr_number:
@@ -168,12 +168,39 @@ jobs:
             echo "E2E_API_CHECKOUT_KEY is not available to this run (typical for a fork pull request)."
           fi
 
+      # An empty api_ref follows the pull-request base, so staging checks out DFXswiss/backend
+      # at staging and requires the passkey registration route; every other base stays on
+      # develop and may still skip a 404; an explicit api_ref wins for both the checkout ref
+      # and the flag.
+      - name: Choose the API ref
+        id: api_ref
+        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
+        env:
+          API_REF: ${{ inputs.api_ref }}
+          BASE_REF: ${{ inputs.base_ref }}
+        run: |
+          set -euo pipefail
+          ref="${API_REF:-}"
+          if [ -z "$ref" ]; then
+            if [ "${BASE_REF:-}" = "staging" ]; then
+              ref=staging
+            else
+              ref=develop
+            fi
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          if [ "$ref" = "staging" ]; then
+            echo "require_passkey=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "require_passkey=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout API
         if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
         uses: actions/checkout@v4
         with:
           repository: DFXswiss/backend
-          ref: ${{ inputs.api_ref || 'develop' }}
+          ref: ${{ steps.api_ref.outputs.ref }}
           path: api-repo
           ssh-key: ${{ secrets.E2E_API_CHECKOUT_KEY }}
           persist-credentials: false
@@ -272,6 +299,7 @@ jobs:
         env:
           MODE: ${{ steps.scope.outputs.mode }}
           API_CRED: ${{ steps.api_cred.outputs.available }}
+          E2E_REQUIRE_PASSKEY: ${{ steps.api_ref.outputs.require_passkey }}
         run: |
           set -euo pipefail
           case "$MODE" in
@@ -286,8 +314,8 @@ jobs:
               fi
               # Every spec is in scope here, so the coverage gate checks navigations, not just claims.
               # E2E_FULL_RUN is inline on this command only — not a static step env that would also
-              # apply to mode=none.
-              E2E_FULL_RUN=1 docker compose \
+              # apply to mode=none. E2E_REQUIRE_PASSKEY is passed the same way.
+              E2E_FULL_RUN=1 E2E_REQUIRE_PASSKEY="${E2E_REQUIRE_PASSKEY:-}" docker compose \
                 -p dfx-e2e-stack \
                 --env-file e2e-stack/.env.generated \
                 -f e2e-stack/compose.yml \

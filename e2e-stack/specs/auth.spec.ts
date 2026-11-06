@@ -474,7 +474,11 @@ test.describe('Auth area e2e', () => {
   test('/login?feature=Passkey registers, lists the wallet, and logs in to the desk', async ({ page }) => {
     test.setTimeout(120000);
     const route = await passkeyRegistrationRoute();
-    test.skip(route === 'absent', 'This API image has no passkey registration route');
+    if (process.env.E2E_REQUIRE_PASSKEY === '1') {
+      expect(route).toBe('present');
+    } else {
+      test.skip(route === 'absent', 'This API image has no passkey registration route');
+    }
 
     const walletId = await ensurePasskeyWallet();
     if (walletId !== undefined) trackRow('wallet', walletId);
