@@ -5,6 +5,7 @@ const claims: RouteClaim[] = [
   { path: '/login', spec: 'auth.spec.ts' },
   { path: '/login/mail', spec: 'auth.spec.ts' },
   { path: '/login/wallet', spec: 'auth.spec.ts' },
+  { path: '/wallet', spec: 'auth.spec.ts' },
   { path: '/connect', spec: 'auth.spec.ts' },
   { path: '/mail-login', spec: 'auth.spec.ts' },
   { path: '/2fa', spec: 'auth.spec.ts' },

@@ -33,6 +33,7 @@ enum SpecialMode {
   LOGIN_MAIL = 'LoginMail',
   LOGIN_WALLET = 'LoginWallet',
   CONNECT = 'Connect',
+  WALLET = 'Wallet',
 }
 
 const SpecialModes: { [m in SpecialMode]: string } = {
@@ -40,6 +41,8 @@ const SpecialModes: { [m in SpecialMode]: string } = {
   [SpecialMode.LOGIN_MAIL]: 'login',
   [SpecialMode.LOGIN_WALLET]: 'wallets',
   [SpecialMode.CONNECT]: 'wallets',
+  // Empty so the page under the passkey form is the home service grid.
+  [SpecialMode.WALLET]: '',
 };
 
 function getMode(pathName: string): SpecialMode | undefined {
@@ -52,6 +55,8 @@ function getMode(pathName: string): SpecialMode | undefined {
       return SpecialMode.LOGIN_WALLET;
     case '/connect':
       return SpecialMode.CONNECT;
+    case '/wallet':
+      return SpecialMode.WALLET;
     default:
       return undefined;
   }
@@ -61,7 +66,7 @@ type Page = { page: string; allowedTiles: string[] | undefined };
 
 function HomeScreenContent(): JSX.Element {
   const { translate } = useSettingsContext();
-  const { isLoggedIn } = useSessionContext();
+  const { isLoggedIn, isInitialized: isSessionInitialized } = useSessionContext();
   const { session } = useAuthContext();
   const { user, isUserLoading, hasAddress } = useUserContext();
   const { hasSession, canClose, service, isEmbedded, redirectPath, closeServices } = useAppHandlingContext();
@@ -83,6 +88,7 @@ function HomeScreenContent(): JSX.Element {
 
   const selectedBlockchain = (connectTo?.blockchain ?? appParams.blockchain) as Blockchain | undefined;
   const specialMode = getMode(pathname);
+  const waitingForSession = specialMode === SpecialMode.WALLET && !isSessionInitialized;
 
   useEffect(() => {
     const isConnectAddress = connectTo?.type === WalletType.ADDRESS;
@@ -99,8 +105,14 @@ function HomeScreenContent(): JSX.Element {
       setConnectTo(undefined);
     } else if (specialMode === SpecialMode.LOGIN_MAIL) {
       setConnectTo({ type: WalletType.MAIL });
+    } else if (specialMode === SpecialMode.WALLET && isSessionInitialized && !isLoggedIn) {
+      setConnectTo({ type: WalletType.PASSKEY });
+    } else if (specialMode === SpecialMode.WALLET && isLoggedIn && connectTo?.type === WalletType.PASSKEY) {
+      // A sign-in that finishes on this page must leave the form. connectTo stays out of the
+      // dependency list so closing the form does not open it again.
+      setConnectTo(undefined);
     }
-  }, [specialMode, isLoggedIn, session, hasAddress]);
+  }, [specialMode, isLoggedIn, session, hasAddress, isSessionInitialized]);
 
   useEffect(() => {
     if (isInitialized && isLoggedIn && user && loginSuccessful) {
@@ -194,7 +206,7 @@ function HomeScreenContent(): JSX.Element {
 
   return (
     <>
-      {!isInitialized || isUserLoading || !currentPage ? (
+      {!isInitialized || isUserLoading || !currentPage || waitingForSession ? (
         <div className="mt-4">
           <StyledLoadingSpinner size={SpinnerSize.LG} />
         </div>

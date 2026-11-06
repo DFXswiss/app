@@ -181,6 +181,10 @@ export const Routes = [
         element: <HomeScreen />,
       },
       {
+        path: 'wallet',
+        element: <HomeScreen />,
+      },
+      {
         path: 'connect',
         element: <HomeScreen />,
       },

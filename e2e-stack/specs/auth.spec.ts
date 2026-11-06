@@ -1,6 +1,6 @@
 /**
  * Auth / session area e2e — owns:
- *   /, /login, /login/mail, /login/wallet, /connect, /mail-login, /2fa, /account-merge
+ *   /, /login, /login/mail, /login/wallet, /wallet, /connect, /mail-login, /2fa, /account-merge
  *
  * Browser drives the real frontend; Postgres proves login, 2FA, and merge side-effects.
  *
@@ -135,6 +135,17 @@ test.describe('Auth area e2e', () => {
     await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible();
     await expect(page.locator('img[src*="mail"]')).toBeVisible();
     await expect(page.locator('img[src$="login-passkey.jpg"]')).toBeVisible();
+  });
+
+  test('/wallet opens the passkey login form without the feature flag', async ({ page }) => {
+    await ensurePasskeyPage();
+    await installVirtualPasskey(page);
+    await page.goto(`${PASSKEY_PAGE_ORIGIN}/wallet?lang=en`);
+
+    expect(normPath(new URL(page.url()).pathname)).toBe('/wallet');
+    await expect(page.getByLabel('Email address')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+    await expect(page.getByText('Login to DFX Services', { exact: true })).toHaveCount(0);
   });
 
   // ---------------------------------------------------------------------------

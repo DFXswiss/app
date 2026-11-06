@@ -609,6 +609,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and forces `extension:prf` when the browser reports false), a real user activation (the
   harness reports it active), a hardware authenticator, the production relying party, or that
   background jobs run.
+- **The wallet route full-stack case opens the passkey form on the loc relying party.**
+  In `e2e-stack/specs/auth.spec.ts`, the `/wallet` test installs the same Chromium virtual
+  authenticator as the ceremony, including fixed PRF bytes when that output is missing, and
+  opens `http://localhost:3001` through the forwarder, because the relying party is
+  `localhost` and the stack hostname is not that host. The init script forces
+  `extension:prf` when the browser reports false and reports user activation as active.
+  A green run proves the email field and the Log in button are visible, the address stays
+  `/wallet`, and the login heading is absent. It does not prove a completed ceremony, a
+  hardware authenticator, the production relying party, a real user activation, authenticator
+  PRF output, or that the email field appears on the stack hostname or when the browser
+  reports `extension:prf` as false.
 - **The passkey tile unit test replaces the wallet package and the API client.**
   `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
   including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the
@@ -618,6 +629,33 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   ceremony token, that an unlocked list without Bitcoin links once, and that revoke-by-id uses a fresh login token. It does not prove a real
   ceremony, a real `DfxApiClient`, the published components, that `setSession` stores a passkey
   session, that the server stored the mainnet login address, that `auth.link` is the real client, or that a Bitcoin row already in the list came from the API. WebAuthn stays a stub.
+- **The wallet entry unit test replaces the session, the page tree, and the connect form.**
+  `src/__tests__/wallet-entry.test.tsx` replaces the service names from `App`, `@dfx.swiss/react`,
+  `react-i18next`, `@dfx.swiss/react-components`, the connect wrapper, the custody-asset list, and the layout,
+  settings, wallet, app-handling, app-params, feature-tree, navigation and resize hooks.
+  A green run proves the signed-out `/wallet` path opens the passkey stub, a later sign-in
+  closes it, and the other home branches in that file run against those stubs. It does not
+  prove a real session, a real SDK, a real passkey ceremony, the published components, or
+  that the home shell's other modes work against the real feature tree.
+- **The wallet entry visual spec answers the bootstrap itself.**
+  `e2e/wallet-entry.spec.ts` fulfils geolocation-db, the bootstrap GETs and `/v2/**`.
+  The loading shot plants an account token and holds `GET /v2/user`. Before that shot, the
+  spec enlarges the spinner, draws its track, forces the circle's stroke to a visible arc
+  and turns its animation off, because the disabled animation frame is empty and the real
+  circle is too small to read on the full page. The signed-out shot
+  replaces `window.PublicKeyCredential` with a class that reports passkeys as available.
+  The blocked shot removes `window.PublicKeyCredential`. The logo, the home tiles and the
+  bottom picture are loaded from the public image host and pinned in the baseline. A green
+  run proves `/wallet` renders the spinner, the passkey form, the disabled placeholder and
+  the home services from those fixtures, and that the address stays `/wallet`. It does not
+  prove a real browser report, a real session, a real passkey ceremony, a real API, or that
+  the image host keeps serving the same bytes.
+- **The sitemap visual spec answers the bootstrap itself and plants an admin token.**
+  `e2e/sitemap.spec.ts` fulfils geolocation-db, the bootstrap GETs and `/v2/**`, and stores
+  a synthetic Admin JWT. The shell may load pictures from the public image host. A green
+  run proves the sitemap renders the Passkey login (`/wallet`) link from that fixture. It
+  does not prove a real admin session, a real API, or that the image host keeps serving the
+  same bytes.
 - **The connect-screen unit test replaces every wallet tile.**
   `src/__tests__/connect-wrapper.test.tsx` replaces `@dfx.swiss/react` and each connect tile, including
   the passkey tile, with a stub. A green run proves the wrapper renders the stub named by the wallet

@@ -22,7 +22,8 @@ function isMail(value: string): boolean {
 }
 
 // Register, log in and claim on the page host, then keep the account in this tab so the rest of the
-// merged passkey routes can be tried. The tile stays behind ?feature=Passkey. Opening the app is separate.
+// merged passkey routes can be tried. /wallet opens this screen without a flag. The tile on /login
+// stays behind ?feature=Passkey. Opening the app is separate.
 export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const { isConnect, onLogin, onCancel }: ConnectProps = props;
   const { translate } = useSettingsContext();
