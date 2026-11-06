@@ -1683,8 +1683,11 @@ describe('PaymentLinkScreen', () => {
         expect(mockSetSearchParams).toHaveBeenCalled();
       });
       // the deeplink resolves after the wallet is selected
-      await act(async () => {
-        await Promise.resolve();
+      await waitFor(() => {
+        expect(mockGetDeeplinkByWalletId).toHaveBeenCalledWith(7);
+      });
+      await waitFor(() => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
       });
     }
 
