@@ -1235,12 +1235,22 @@ describe('ConnectPasskey', () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: false, reason: 'in-app-browser', prf: 'unknown' });
     const previous = navigator.clipboard;
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
-    const { exec, restore } = stubExecCommand(() => true);
+    let textarea: HTMLTextAreaElement | undefined;
+    const { exec, restore } = stubExecCommand(() => {
+      const node = document.querySelector('textarea');
+      if (node instanceof HTMLTextAreaElement && document.body.contains(node)) textarea = node;
+      return true;
+    });
     const { unmount } = renderPasskey();
     try {
       fireEvent.click(await screen.findByRole('button', { name: 'Copy link' }));
       expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
       expect(exec).toHaveBeenCalledWith('copy');
+      expect(textarea?.hasAttribute('hidden')).toBe(false);
+      expect(textarea?.style.position).toBe('fixed');
+      expect(textarea?.style.left).toBe('-9999px');
+      expect(textarea?.readOnly).toBe(true);
+      expect(textarea?.value).toBe(window.location.href.split('#')[0]);
     } finally {
       unmount();
       restore();

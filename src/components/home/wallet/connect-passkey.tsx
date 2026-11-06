@@ -68,7 +68,10 @@ async function copyPageUrl(): Promise<boolean> {
   }
   const textarea = document.createElement('textarea');
   textarea.value = url;
-  textarea.setAttribute('hidden', '');
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '0';
+  textarea.style.left = '-9999px';
   document.body.appendChild(textarea);
   try {
     textarea.select();
