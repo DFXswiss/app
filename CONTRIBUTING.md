@@ -82,21 +82,27 @@ database may be the visitor's starting state. It may not be the outcome.
 A fake test is forbidden. A fake test replaces any part of a website function
 and is then treated as proof that the function works. Replacing the screen,
 the visitor's action, the session, the router, the navigation, this service's
-API, or this service's database is a fake test. Opening a screen without
-performing the function is a fake test. A reality declaration, a comment, a
-green unit test, a screenshot of the idle screen, or a route that was only
-opened does not make a fake test acceptable.
+API, or this service's database, and then treating that as the proof, is a
+fake test. Opening a screen without performing the function, and then treating
+that as the proof, is a fake test. A reality declaration, a comment, a green
+unit test, a screenshot of the idle screen, or a route that was only opened
+does not make a fake test acceptable.
+
+A handbook baseline that only opens the screen and takes a screenshot, and a
+unit test required by the coverage rule below, are not that proof. Adding
+them does not by itself reject the pull request. They do not cover the
+website function.
 
 A pull request that adds or changes a website function is rejected unless the
 same pull request contains a real test of that function and that test has run.
 A pull request that adds a fake test, or that presents a fake test as the
 coverage of a website function, is rejected. Removing a fake test is allowed.
-A green check
-that did not run the real test does not satisfy this rule. On a pull request
-into `develop`, apply `ci:full` so the full-stack harness runs the test. A job
-that records `mode=none` is not a run. A function this pull request does not
-touch is not an excuse to add a fake test, and a fake test that already exists
-does not count as the real test of a function this pull request changes.
+A green check that did not run the real test does not satisfy this rule. On a
+pull request into `develop`, apply `ci:full` so the full-stack harness runs
+the test. A job that records `mode=none` is not a run. A function this pull
+request does not touch is not an excuse to add a fake test, and a fake test
+that already exists does not count as the real test of a function this pull
+request changes.
 
 A unit test of pure logic may exist. It is not coverage of a website function,
 and it must not stand in for the real test.
@@ -156,8 +162,9 @@ a reference to a `.md` file never does, since only the rendered `.html` is there
 References outside those three prefixes are unaffected, which is why the link to
 `e2e-stack/README.md` further down is fine.)
 
-Two obligations follow from it for every pull request. Neither one relaxes
-[Real tests](#real-tests).
+Two obligations bind every pull request. They are rules of this file. They do
+not follow from `docs/test-architecture.md`, and the reality-declaration
+section there does not relax [Real tests](#real-tests).
 
 - **A website function is not pushed down to a lower layer.** The lowest layer
   that can express it by replacing part of it is not coverage. A failure that

@@ -18,14 +18,16 @@ Reject the pull request when any of these is true:
   does not run in CI, is not a run of the real test. On a pull request into
   `develop`, the full-stack harness has to have run, which means the `ci:full`
   label or a run that brings the stack up.
-- The test offered as coverage replaces the screen, the visitor's action, the
-  session, the router, the navigation, this service's API, or this service's
-  database.
-- The test only opens the screen, only takes a screenshot, only injects a
-  finished session or a finished result, or only asserts against a stub, a
-  fixture, or a memory router.
+- The test offered as coverage of the function replaces the screen, the
+  visitor's action, the session, the router, the navigation, this service's
+  API, or this service's database.
+- The only test offered as coverage of the function opens the screen, takes a
+  screenshot, injects a finished session or a finished result, or asserts
+  against a stub, a fixture, or a memory router.
 - The pull request adds a fake test, or presents a fake test as the coverage
-  of a website function. Removing a fake test is allowed.
+  of a website function. Removing a fake test is allowed. A handbook baseline,
+  and a unit test that does not claim to cover the function, are not this
+  rejection.
 
 A row written in the database may be the visitor's starting state. It may not
 be the outcome. Replacing an external provider does not cover the function.
