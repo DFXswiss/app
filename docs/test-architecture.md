@@ -578,6 +578,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/layout-config-hook.test.tsx` uses `mockSetConfig`; a green run does not prove that the real provider updates its context.
 - **The passkey sheet unit test replaces the active element in one case.**
   `src/__tests__/passkey-sheet.test.tsx` stubs `document.activeElement`; a green run does not prove browser focus behaviour for that case.
+- **The passkey wallet unit tests replace the settings context.**
+  Their `translate` returns the key and `changeLanguage` is mocked; a green run does not prove real translation or language changes.
+- **The late recovery-word test spies on React state.**
+  `src/__tests__/connect-passkey.test.tsx` replaces `useState` with a spy; a green run does not prove behaviour without that instrumentation.
+- **The passkey reload test replaces `window.location.reload`.**
+  A green run does not prove that a browser actually reloads the page.
 - **The passkey login visual spec stubs the browser and the bootstrap calls.**
   `e2e/passkey-login.spec.ts` fulfils geolocation-db with country `CH` and fulfils the bootstrap
   GETs with fixtures. The fiat fixture includes CHF and EUR; a green run does not prove either currency is

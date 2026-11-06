@@ -436,6 +436,7 @@ export default function PasskeyDesk({
     <main className="mx-auto w-full max-w-[560px] pb-10 text-left text-dfxBlue-800">
       <PasskeyWalletCard
         balance={balance}
+        busy={busy}
         currency={currentSymbol}
         onCurrencyChange={(symbol) => {
           setCurrentSymbol(symbol);
@@ -456,7 +457,7 @@ export default function PasskeyDesk({
         onAnotherPasskey={startAnother}
         onReload={() => window.location.reload()}
       />
-      <PasskeyWalletActions unlocked={unlocked} onAction={onAction} />
+      <PasskeyWalletActions unlocked={unlocked} busy={busy} onAction={onAction} />
       {expanded && (
         <section id="passkey-wallet-details" className="mt-6">
           <h2 className="mb-2 text-xl font-bold">{t('Your wallet')}</h2>

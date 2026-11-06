@@ -5,6 +5,7 @@ interface PasskeyWalletCardProps {
   currency: 'CHF' | 'EUR';
   onCurrencyChange: (currency: 'CHF' | 'EUR') => void;
   expanded: boolean;
+  busy?: boolean;
   onExpandedChange: (expanded: boolean) => void;
   onSettings: () => void;
 }
@@ -14,6 +15,7 @@ export default function PasskeyWalletCard({
   currency,
   onCurrencyChange,
   expanded,
+  busy,
   onExpandedChange,
   onSettings,
 }: PasskeyWalletCardProps): JSX.Element {
@@ -108,6 +110,7 @@ export default function PasskeyWalletCard({
           </h1>
           <button
             className={`${button} inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 text-sm`}
+            disabled={busy}
             onClick={onSettings}
           >
             <svg

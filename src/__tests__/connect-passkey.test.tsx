@@ -516,6 +516,47 @@ describe('ConnectPasskey', () => {
     expect(screen.queryByRole('dialog', { name: 'Block passkey' })).not.toBeInTheDocument();
   });
 
+  it('disables settings and service actions while receive unlock is pending', async () => {
+    setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
+    let finish: (value: unknown) => void = () => undefined;
+    mockUnlock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    for (const name of ['Settings', 'Buy', 'Sell', 'Swap']) {
+      const button = screen.getByRole('button', { name });
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+    }
+    expect(mockOnLogin).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+    await act(async () => finish({ state: 'unlocked', keys: ring(SEED) }));
+    expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled();
+  });
+
+  it('keeps service actions disabled while an EVM link is pending', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    let fail: (error: Error) => void = () => undefined;
+    mockLink.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }));
+    for (const name of ['Buy', 'Sell', 'Swap']) expect(screen.getByRole('button', { name })).toBeDisabled();
+    await act(async () => fail(new Error('link failed')));
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toContainElement(screen.getByText('link failed'));
+    expect(screen.getByRole('button', { name: 'Buy' })).toBeEnabled();
+  });
+
   it('ignores a block request during the synchronous start of another action', async () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
@@ -651,9 +692,9 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Link' }));
     await waitFor(() => expect(mockWallets).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
     await act(async () => fail(new Error('old refresh error')));
-    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
     expect(screen.queryByText(/old refresh error/)).not.toBeInTheDocument();
   });
 
@@ -669,7 +710,7 @@ describe('ConnectPasskey', () => {
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
     await act(async () => finish([{ credentialId: 'cred', status: 'Active' }]));
     expect(screen.queryByText('cred: Active')).not.toBeInTheDocument();
   });
@@ -775,9 +816,9 @@ describe('ConnectPasskey', () => {
     await screen.findByTestId('passkey-recovery-words');
     fireEvent.click(screen.getByLabelText('I have written the words down on paper.'));
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
     await act(async () => finish(session.wallet));
-    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
   });
 
   it('does not put a late revocation failure into a newer dialog', async () => {
@@ -794,9 +835,9 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
     fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
     fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
     await act(async () => fail(new Error('late revoke error')));
-    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
     expect(screen.queryByText('late revoke error')).not.toBeInTheDocument();
     expect(mockOnSwitch).not.toHaveBeenCalled();
   });
@@ -820,9 +861,9 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
     fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
     act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, id: 8 } }));
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
     await act(async () => finish({ status: 'Lost' }));
-    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
     expect(mockOnSwitch).not.toHaveBeenCalled();
   });
 
@@ -843,7 +884,7 @@ describe('ConnectPasskey', () => {
     if (method === 'login') fireEvent.click(screen.getByLabelText('New login'));
     fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
     fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
     await act(async () => finish({ status: 'Lost' }));
     expect(passkeySession.getOpenPasskey()).toBeUndefined();
     expect(mockOnSwitch).toHaveBeenCalledTimes(1);
@@ -1445,6 +1486,7 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
     await waitFor(() => expect(mockUnlock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(passkeySession.getOpenPasskey()?.state).toBe('unlocked'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Buy' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
     await waitFor(() => expect(mockSetSession).toHaveBeenCalledWith('token', WalletType.PASSKEY));
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/buy'));
@@ -1587,9 +1629,11 @@ describe('ConnectPasskey', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
     expect(await screen.findByText('link failed')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Connect again' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Connect again' }));
     await waitFor(() => expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0));
     await waitFor(() => expect(mockWallets).toHaveBeenCalledWith('token'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
     await waitFor(() => expect(mockDiagnostics).toHaveBeenCalledWith({ stage: 'Authentication', outcome: 'Success' }));
@@ -1623,12 +1667,14 @@ describe('ConnectPasskey', () => {
     expect(await screen.findByText('link failed')).toBeInTheDocument();
     expect(wiped).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Connect again' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Connect again' }));
     await waitFor(() => expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', loginRing, 0));
     await waitFor(() => expect(mockWallets).toHaveBeenCalledWith('token'));
     expect(wiped).toHaveBeenCalledTimes(2);
     expect(keys.wipe).not.toHaveBeenCalled();
     mockVerify.mockReturnValue([{ address: 'bc1qlogin', family: 'Bitcoin', matches: true }]);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     await waitFor(() => expect(screen.getByRole('button', { name: /Check addresses/ })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: /Check addresses/ }));
@@ -1717,6 +1763,7 @@ describe('ConnectPasskey', () => {
     mockUnlock.mockResolvedValueOnce({ state: 'unlocked', keys });
     fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
     await waitFor(() => expect(passkeySession.getOpenPasskey()?.state).toBe('unlocked'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     const input = screen.getByLabelText(/Another EVM account/);
     fireEvent.change(input, { target: { value: 'nope' } });

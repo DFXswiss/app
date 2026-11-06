@@ -78,6 +78,10 @@ describe('Passkey wallet dialogs', () => {
     expect(screen.getByText('Not blocked yet')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
     expect(onRevoke).toHaveBeenCalledTimes(1);
+    view.rerender(<PasskeyRevokeSheet {...props} method="login" />);
+    expect(
+      screen.getByText('Uses your current DFX login. If you are not signed in, sign in by e-mail or wallet first.'),
+    ).toBeInTheDocument();
     view.rerender(<PasskeyRevokeSheet {...props} backupNeeded={false} acknowledged busy note="failure" />);
     expect(screen.getByRole('alert')).toHaveTextContent('failure');
     expect(screen.queryByRole('button', { name: 'Back up first' })).not.toBeInTheDocument();

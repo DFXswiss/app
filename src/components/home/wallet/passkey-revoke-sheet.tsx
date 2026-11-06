@@ -119,7 +119,7 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
           {t(
             props.method === 'passkey'
               ? 'You confirm one last time with this passkey.'
-              : 'If you no longer have the passkey: sign in again by e-mail or wallet.',
+              : 'Uses your current DFX login. If you are not signed in, sign in by e-mail or wallet first.',
           )}
         </p>
       </fieldset>
