@@ -519,8 +519,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   other `**/paymentLink/**` call with an empty list, and `**/v1/**` and `**/v2/**` so the page
   renders without a live DFX API. A green run proves that the whole merchant page renders that
   merchant info with its wallet groups, that a selected wallet shows only the payment methods it
-  supports, that the error text appears, and that the page requests no `/paymentLink/payment`. It
-  does not prove that the API returns this merchant info or this wallet list, or answers an
+  supports, both when chosen in the grid and when opened directly with `wallet-id` while the
+  wallet list answers late, that the error text appears, and that the page requests no
+  `/paymentLink/payment`. It does not prove that the API returns this merchant info or this wallet list, or answers an
   unknown route with this `404`.
 - **The payment-link stack spec answers the place API itself for the SPAR merchant.**
   `e2e-stack/specs/payment-links.spec.ts` fulfils that same SPAR-Switzerland place URL with one

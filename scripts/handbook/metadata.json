@@ -253,7 +253,7 @@
   },
   "merchant-page": {
     "title": "Händlerseite",
-    "description": "Zahlungslink mit Händler (/pl?merchant=<Route>), jeweils die ganze Seite: Name, Empfänger, Zahlungsmethoden und die empfohlenen, kompatiblen und teilweise kompatiblen Apps aus der Händler-Info, ohne dass eine Zahlung angelegt wird; die gewählte App mit den Zahlungsmethoden, die sie unterstützt; und der Fehlertext, wenn die Händler-Info nicht geladen werden kann (z.B. unbekannte Route oder Händler ohne öffentliche Händler-Info)."
+    "description": "Zahlungslink mit Händler (/pl?merchant=<Route>), jeweils die ganze Seite: Name, Empfänger, Zahlungsmethoden und die empfohlenen, kompatiblen und teilweise kompatiblen Apps aus der Händler-Info, ohne dass eine Zahlung angelegt wird; die gewählte App mit den Zahlungsmethoden, die sie unterstützt, auch direkt über ?wallet-id=<ID> geöffnet; und der Fehlertext, wenn die Händler-Info nicht geladen werden kann (z.B. unbekannte Route oder Händler ohne öffentliche Händler-Info)."
   },
   "spar-place-map": {
     "title": "SPAR-Standorte",

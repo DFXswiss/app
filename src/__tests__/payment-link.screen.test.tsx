@@ -1906,6 +1906,53 @@ describe('PaymentLinkScreen', () => {
       expect(nextParams.has('wallet-id')).toBe(false);
     });
 
+    it('waits for the wallet list before reading wallet-id', async () => {
+      mockWalletsHook.isLoading = true;
+      mockWalletsHook.recommendedWallets = [];
+      mockGetDeeplinkByWalletId.mockResolvedValue(undefined);
+      mockSearchParams = new URLSearchParams('wallet-id=7');
+
+      const view = renderScreen();
+
+      expect(mockGetDeeplinkByWalletId).not.toHaveBeenCalled();
+      expect(mockSetSearchParams).not.toHaveBeenCalled();
+
+      mockWalletsHook.isLoading = false;
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7, name: 'LateWallet' })];
+      view.rerender(<PaymentLinkScreen />);
+
+      await waitFor(() => {
+        expect(mockSetSearchParams).toHaveBeenCalled();
+      });
+      expect(mockGetDeeplinkByWalletId).toHaveBeenCalledWith(7);
+      expect(screen.getByTestId('dfx-icon-back')).toBeInTheDocument();
+    });
+
+    it('opens the wallet from wallet-id on the merchant page once the wallet list has loaded', async () => {
+      showMerchantPage();
+      mockWalletsHook.isLoading = true;
+      mockWalletsHook.recommendedWallets = [];
+      mockGetDeeplinkByWalletId.mockResolvedValue(undefined);
+      mockSearchParams = new URLSearchParams('merchant=shop-route&wallet-id=7');
+
+      const view = renderScreen();
+      expect(mockGetDeeplinkByWalletId).not.toHaveBeenCalled();
+
+      mockWalletsHook.isLoading = false;
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7, name: 'MerchantWallet' })];
+      view.rerender(<PaymentLinkScreen />);
+
+      await waitFor(() => {
+        expect(mockSetSearchParams).toHaveBeenCalled();
+      });
+      expect(mockGetDeeplinkByWalletId).toHaveBeenCalledWith(7);
+      expect(screen.getByTestId('dfx-icon-back')).toBeInTheDocument();
+      expect(screen.queryByText('RECOMMENDED APPS')).not.toBeInTheDocument();
+      const nextParams = mockSetSearchParams.mock.calls[0][0] as URLSearchParams;
+      expect(nextParams.get('merchant')).toBe('shop-route');
+      expect(nextParams.has('wallet-id')).toBe(false);
+    });
+
     it('does nothing for an unknown wallet id', () => {
       mockWalletsHook.recommendedWallets = [wallet({ id: 1 })];
       mockSearchParams = new URLSearchParams('wallet-id=99');

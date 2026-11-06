@@ -98,15 +98,18 @@ async function stubAppApi(page: Page): Promise<void> {
 }
 
 // Records every payment-link request, so a test can show that the page creates no payment.
-async function stubMerchant(page: Page, status: number, body: unknown): Promise<string[]> {
+async function stubMerchant(page: Page, status: number, body: unknown, walletDelayMs = 0): Promise<string[]> {
   const requested: string[] = [];
-  await page.route('**/paymentLink/**', (route) => {
+  await page.route('**/paymentLink/**', async (route) => {
     const url = new URL(route.request().url());
     requested.push(`${route.request().method()} ${url.pathname}`);
     if (url.pathname.endsWith('/paymentLink/merchant') && url.searchParams.get('route') === ROUTE) {
       return fulfillJson(route, status, body);
     }
-    if (url.pathname.endsWith('/paymentLink/walletApp')) return fulfillJson(route, 200, WALLETS);
+    if (url.pathname.endsWith('/paymentLink/walletApp')) {
+      if (walletDelayMs) await new Promise((resolve) => setTimeout(resolve, walletDelayMs));
+      return fulfillJson(route, 200, WALLETS);
+    }
     return fulfillJson(route, 200, []);
   });
   return requested;
@@ -179,6 +182,25 @@ test.describe('Merchant page', () => {
     await expect(page.getByText('USDT', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Open website' })).toBeVisible();
     expect(requested.filter((request) => request.includes('/paymentLink/payment'))).toEqual([]);
+    await shoot(page, 'merchant-page-wallet.png');
+  });
+
+  test('visual regression - wallet opened from wallet-id in the URL', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1200 });
+    await stubAppApi(page);
+    // the wallet list answers after the merchant info, as it can in production
+    const requested = await stubMerchant(page, 200, MERCHANT_INFO, 1000);
+
+    await page.goto(`/pl?merchant=${ROUTE}&wallet-id=2&lang=en`);
+
+    await expect(page.getByText('Supported cryptocurrencies and blockchains', { exact: true })).toBeVisible();
+    await expect(page.getByText('RECOMMENDED APPS', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Ethereum, Polygon', { exact: true })).toBeVisible();
+    await expect(page.getByText('USDT', { exact: true })).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`merchant=${ROUTE}`));
+    await expect(page).not.toHaveURL(/wallet-id=/);
+    expect(requested.filter((request) => request.includes('/paymentLink/payment'))).toEqual([]);
+    // the same screen as choosing the wallet in the grid
     await shoot(page, 'merchant-page-wallet.png');
   });
 

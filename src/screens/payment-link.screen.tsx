@@ -140,7 +140,9 @@ export default function PaymentLinkScreen(): JSX.Element {
   const selectedPaymentStandard = useWatch({ control, name: 'paymentStandard' });
   const selectedAsset = useWatch({ control, name: 'asset' });
 
+  // the wallet list loads asynchronously, so a wallet-id in a URL opened directly is resolved once it has loaded
   useEffect(() => {
+    if (isLoadingWallets) return;
     const walletIdParam = searchParams.get('wallet-id');
     const walletId = walletIdParam ? parseInt(walletIdParam, 10) : undefined;
     const wallet = walletId
@@ -161,7 +163,7 @@ export default function PaymentLinkScreen(): JSX.Element {
           setIsLoadingDeeplink(false);
         });
     }
-  }, [searchParams]);
+  }, [searchParams, isLoadingWallets]);
 
   useEffect(() => {
     if (
