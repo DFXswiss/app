@@ -357,6 +357,83 @@ describe('PaymentLinkProvider', () => {
         expect(mockWaitPolling.stop).toHaveBeenCalled();
       });
 
+      describe('drops answers for the payment shown before the merchant page', () => {
+        beforeEach(() => {
+          mockSearchParams = new URLSearchParams();
+          mockStoreGet.mockReturnValue(STORED_URL);
+          mockGetPaymentMerchantInfo.mockResolvedValue(merchantInfo);
+        });
+
+        async function openMerchant(context: ReturnType<typeof renderProvider>): Promise<void> {
+          changeRoute(context, 'merchant=shop-route');
+          await waitFor(() => expect(context.current().merchantInfo).toEqual(merchantInfo));
+        }
+
+        it('drops a payment request that arrives after the switch', async () => {
+          const answer = deferred<unknown>();
+          mockFetchJson.mockReturnValue(answer.promise);
+          const context = renderProvider();
+
+          await openMerchant(context);
+          await act(async () => answer.resolve(quoted()));
+
+          expect(context.current().payRequest).toBeUndefined();
+          expect(mockWaitPolling.init).not.toHaveBeenCalled();
+        });
+
+        it('drops a failed payment request that arrives after the switch', async () => {
+          const answer = deferred<unknown>();
+          mockFetchJson.mockReturnValue(answer.promise);
+          const context = renderProvider();
+
+          await openMerchant(context);
+          await act(async () => answer.reject(new Error('network down')));
+
+          expect(context.current().error).toBeUndefined();
+        });
+
+        it('drops a polling answer that arrives after the switch', async () => {
+          const context = await renderWithPayRequest({ id: 'pl-1', message: 'waiting' });
+          const onResponse = mockPaymentPolling.init.mock.calls[0][1];
+
+          await openMerchant(context);
+          act(() => onResponse(quoted()));
+
+          expect(context.current().payRequest).toBeUndefined();
+          expect(mockWaitPolling.init).not.toHaveBeenCalled();
+        });
+
+        it('drops a wait answer that arrives after the switch', async () => {
+          const context = await renderWithPayRequest(quoted());
+          const onWait = mockWaitPolling.init.mock.calls[0][1];
+          const calls = mockFetchJson.mock.calls.length;
+
+          await openMerchant(context);
+          await act(async () => onWait({}));
+
+          expect(mockFetchJson).toHaveBeenCalledTimes(calls);
+          expect(context.current().paymentStatus).toBe('Pending');
+          expect(context.current().error).toBeUndefined();
+        });
+
+        it('does not reload the payment three seconds after the switch', async () => {
+          const context = await renderWithPayRequest(quoted());
+          const onWait = mockWaitPolling.init.mock.calls[0][1];
+          jest.useFakeTimers();
+          act(() => onWait({ status: 'Expired' }));
+          const calls = mockFetchJson.mock.calls.length;
+
+          changeRoute(context, 'merchant=shop-route');
+          await act(async () => {
+            jest.advanceTimersByTime(3000);
+          });
+
+          expect(mockFetchJson).toHaveBeenCalledTimes(calls);
+          expect(context.current().error).toBeUndefined();
+          expect(context.current().payRequest).toBeUndefined();
+        });
+      });
+
       it('keeps the loaded info when the URL keeps the same route', async () => {
         mockGetPaymentMerchantInfo.mockResolvedValue(merchantInfo);
         const context = renderProvider();

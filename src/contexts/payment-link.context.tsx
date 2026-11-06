@@ -131,6 +131,9 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
 
   const callbackUrl = useRef<string>();
 
+  // raised when the merchant page takes over, so answers for an earlier payment are dropped
+  const paymentGeneration = useRef(0);
+
   useEffect(() => {
     fetchPaymentStandards()
       .then((standards) => {
@@ -212,6 +215,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
     if (!merchantUrlParam) return;
 
     // the merchant page has no payment: drop one shown before and its stored URL and polling
+    paymentGeneration.current += 1;
     setSessionApiUrl(undefined);
     stopPaymentPolling();
     stopWaitPolling();
@@ -243,12 +247,15 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
   }, [payRequest, isInstalled, getWalletType, assetsLoading]);
 
   async function fetchPayRequest(url: string): Promise<void> {
+    const generation = paymentGeneration.current;
+    const isCurrent = () => generation === paymentGeneration.current;
     setError(undefined);
 
     try {
       const urlObj = new URL(url);
       urlObj.searchParams.set('timeout', '0');
       const payRequest = await fetchJson<PaymentLinkPayRequest>(urlObj);
+      if (!isCurrent()) return;
 
       if (payRequest.statusCode === 400 && payRequest.message?.includes('not assigned')) {
         setPayRequest(payRequest);
@@ -267,6 +274,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
 
       urlObj.searchParams.set('timeout', '10');
       initPaymentPolling(urlObj, (response) => {
+        if (!isCurrent()) return;
         setPayRequest(response);
 
         const status = getStatusFromPayRequest(response);
@@ -283,7 +291,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
         }
       });
     } catch (error: any) {
-      setError(error.message ?? 'Unknown Error');
+      if (isCurrent()) setError(error.message ?? 'Unknown Error');
     }
   }
 
@@ -314,6 +322,8 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
   }
 
   async function waitPayment(paymentRequest: PaymentLinkPayRequest) {
+    const generation = paymentGeneration.current;
+    const isCurrent = () => generation === paymentGeneration.current;
     setPaymentStatus(PaymentLinkPaymentStatus.PENDING);
     startTimer(new Date(paymentRequest.quote.expiration));
 
@@ -323,6 +333,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
     });
 
     initWaitPolling(lnurlpUrl, (response) => {
+      if (!isCurrent()) return;
       stopWaitPolling();
 
       if (response.status === PaymentLinkPaymentStatus.COMPLETED && redirectUri) {
@@ -330,7 +341,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
         closeServices({ type: CloseType.PAYMENT }, false);
       } else if (response.status) {
         setPaymentStatus(response.status);
-        setTimeout(() => fetchPayRequest(sessionApiUrl.current), 3 * 1000);
+        setTimeout(() => isCurrent() && fetchPayRequest(sessionApiUrl.current), 3 * 1000);
       } else {
         fetchPayRequest(sessionApiUrl.current);
       }
