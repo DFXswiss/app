@@ -12,13 +12,9 @@ export class Wallet {
     return transferInfoList.some((ta) => this.filterCompatible(wallet, ta));
   }
 
-  private static filterCompatible<T extends TransferMethodInfo>(
-    wallet: WalletInfo,
-    transferInfo: T,
-    isAvailable = true,
-  ): T | undefined {
+  private static filterCompatible<T extends TransferMethodInfo>(wallet: WalletInfo, transferInfo: T): T | undefined {
     const { method, assets, available } = transferInfo;
-    if (isAvailable && available === false) return undefined;
+    if (available === false) return undefined;
 
     if (!(wallet.supportedMethods as string[]).includes(method)) {
       return undefined;
