@@ -499,10 +499,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
   the real `url()` treats those arguments identically; no assertion pins the outer host.
 - **The SPAR location pictures answer the OpenCryptoPay place API themselves.**
-  `e2e/spar-place-map.spec.ts` fulfils `https://api.opencryptopay.io/map/places?shopName=SPAR&country=CH`
+  `e2e/spar-place-map.spec.ts` fulfils `https://api.opencryptopay.io/map/places?shopType=SPAR&country=CH`
   with the published SPAR shop locations, plus one Liechtenstein SPAR pin and one
   Volg pin that the page must not plot. Names and coordinates are that published list.
-  Country is CH on the fixture because the page draws a pin only when country is CH.
+  Country is on each fixture row; the page draws a pin only when country is CH.
   The map does not list shop names. Any other place URL, including `/map/filters`, is answered
   with HTTP 500. It also fulfils `**/v1/**`, `**/v2/**` and `**/paymentLink/**` so `/pl?merchant=SPAR`
   renders without a live DFX API. Map tiles are the live OpenFreeMap Liberty style, not a fixture.
@@ -517,16 +517,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   spec talks to the local API. It also fulfils `https://tiles.openfreemap.org/**` with an empty
   map style, because this harness never reaches that host and an open style request keeps the
   network from going idle. A green run proves the locations block appears for `merchant=SPAR`,
-  the request is `shopName=SPAR` and `country=CH`, and the page shows neither a country control,
+  the request is `shopType=SPAR` and `country=CH`, and the page shows neither a country control,
   a shop control, the load error, nor the empty sentence. It does not prove that the place API
   returns that shop, that OpenFreeMap serves tiles, or that a real map draws the pin.
 - **The SPAR place-map unit test replaces fetch and MapLibre.**
   `src/__tests__/spar-place-map.test.tsx` stubs `global.fetch` for the place API and replaces
   `maplibre-gl` with a fake map that records markers. A green run proves the component asks only
-  for `shopName=SPAR&country=CH`, never for `/map/filters` or an unfiltered place list, drops pins
-  that are not SPAR in CH or are out of range, and shows the empty and error states with no
-  country or shop control. It does not prove that a real map draws those pins, that OpenFreeMap
-  serves tiles, or that the place API returns that JSON.
+  for `shopType=SPAR&country=CH`, never for `/map/filters` or an unfiltered place list, drops pins
+  that are not SPAR in CH or are out of range, keeps an old-API `shopName=SPAR` pin when `shopType`
+  is absent, and shows the empty and error states with no country or shop control. The popup
+  shows name, address, description and category. It does not prove that a real map draws those pins,
+  that OpenFreeMap serves tiles, or that the place API returns that JSON.
 - **The payment-link screen unit test replaces the SDK, the context, wallets and the SPAR map.**
   `src/__tests__/payment-link.screen.test.tsx` replaces `useApi` with `mockCall`, the asset
   catalog with `useAssetContext`, the payment-link context and the wallet hook with in-memory

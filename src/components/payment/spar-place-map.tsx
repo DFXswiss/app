@@ -16,7 +16,7 @@ export function publishMapLibreWorker(
 publishMapLibreWorker(setWorkerUrl, process.env.PUBLIC_URL);
 
 // OpenCryptoPay's place list. @dfx.swiss/react does not encapsulate this call.
-const PLACES_URL = 'https://api.opencryptopay.io/map/places?shopName=SPAR&country=CH';
+const PLACES_URL = 'https://api.opencryptopay.io/map/places?shopType=SPAR&country=CH';
 const SHOP_SPAR = 'SPAR';
 const COUNTRY_CH = 'CH';
 
@@ -25,6 +25,11 @@ interface KeptPlace {
   lon: number;
   name: unknown;
   category: unknown;
+  description?: unknown;
+  street?: unknown;
+  houseNumber?: unknown;
+  postalCode?: unknown;
+  city?: unknown;
 }
 
 type SparPlaceMapState = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; places: KeptPlace[] };
@@ -37,8 +42,9 @@ function isPlacesResponse(value: unknown): value is { places: unknown[] } {
 
 function isKeptPlace(value: unknown): value is KeptPlace {
   if (typeof value !== 'object' || value === null) return false;
-  const place = value as { shopName?: unknown; country?: unknown; lat?: unknown; lon?: unknown };
-  if (place.shopName !== SHOP_SPAR) return false;
+  const place = value as { shopType?: unknown; shopName?: unknown; country?: unknown; lat?: unknown; lon?: unknown };
+  const shopType = place.shopType ?? (place.shopName === SHOP_SPAR ? SHOP_SPAR : undefined);
+  if (shopType !== SHOP_SPAR) return false;
   if (place.country !== COUNTRY_CH) return false;
   if (typeof place.lat !== 'number' || !Number.isFinite(place.lat) || place.lat < -90 || place.lat > 90) return false;
   if (typeof place.lon !== 'number' || !Number.isFinite(place.lon) || place.lon < -180 || place.lon > 180) {
@@ -68,6 +74,17 @@ function markerElement(label: string): HTMLButtonElement {
 
 function placeLabel(name: unknown, fallback: string): string {
   return typeof name === 'string' && name.length > 0 ? name : fallback;
+}
+
+function placeAddress(place: KeptPlace): string | undefined {
+  const streetLine = [place.street, place.houseNumber]
+    .filter((part): part is string => typeof part === 'string' && part.length > 0)
+    .join(' ');
+  const localityLine = [place.postalCode, place.city]
+    .filter((part): part is string => typeof part === 'string' && part.length > 0)
+    .join(' ');
+  const line = [streetLine, localityLine].filter((part) => part.length > 0).join(', ');
+  return line.length > 0 ? line : undefined;
 }
 
 export function SparPlaceMap(): JSX.Element {
@@ -143,6 +160,19 @@ export function SparPlaceMap(): JSX.Element {
       const label = placeLabel(place.name, translate('screens/payment', 'Location'));
       title.textContent = label;
       content.appendChild(title);
+      const address = placeAddress(place);
+      if (address !== undefined) {
+        const addressLine = document.createElement('div');
+        addressLine.textContent = address;
+        addressLine.style.cssText = 'margin-top:2px;';
+        content.appendChild(addressLine);
+      }
+      if (typeof place.description === 'string' && place.description.length > 0) {
+        const description = document.createElement('div');
+        description.textContent = place.description;
+        description.style.cssText = 'margin-top:2px;';
+        content.appendChild(description);
+      }
       if (typeof place.category === 'string' && place.category.length > 0) {
         const category = document.createElement('div');
         category.textContent = place.category;
@@ -151,7 +181,8 @@ export function SparPlaceMap(): JSX.Element {
       }
       popup.setDOMContent(content);
 
-      new Marker({ element: markerElement(label), anchor: 'bottom' })
+      const markerLabel = address === undefined ? label : `${label}, ${address}`;
+      new Marker({ element: markerElement(markerLabel), anchor: 'bottom' })
         .setLngLat([place.lon, place.lat])
         .setPopup(popup)
         .addTo(map);

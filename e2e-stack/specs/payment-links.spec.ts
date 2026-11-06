@@ -394,13 +394,17 @@ test.describe('Payment links / routes / invoice', () => {
     await page.route('https://api.opencryptopay.io/map/**', (route) => {
       const url = route.request().url();
       seen.push(url);
-      const swissSpar = url.includes('/map/places?shopName=SPAR&country=CH');
+      const swissSpar = url.includes('/map/places?shopType=SPAR&country=CH');
       const body = swissSpar
         ? {
             places: [
               {
                 name: 'SPAR Zürich',
-                shopName: 'SPAR',
+                shopType: 'SPAR',
+                street: 'Bahnhofstrasse',
+                houseNumber: '1',
+                postalCode: '8001',
+                city: 'Zürich',
                 country: 'CH',
                 category: 'grocery',
                 lat: 47.37,
@@ -428,7 +432,7 @@ test.describe('Payment links / routes / invoice', () => {
     );
 
     const places = page.waitForResponse(
-      (response) => response.url().includes('/map/places?shopName=SPAR&country=CH') && response.ok(),
+      (response) => response.url().includes('/map/places?shopType=SPAR&country=CH') && response.ok(),
     );
     await page.goto('/pl?merchant=SPAR&lang=en');
     await expect
@@ -445,7 +449,7 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByText('The location list could not be loaded.', { exact: true })).toHaveCount(0);
     await expect(page.getByText('No locations published yet.', { exact: true })).toHaveCount(0);
     expect(seen.some((url) => url.includes('/map/filters'))).toBe(false);
-    expect(seen.some((url) => url.includes('/map/places?shopName=SPAR&country=CH'))).toBe(true);
+    expect(seen.some((url) => url.includes('/map/places?shopType=SPAR&country=CH'))).toBe(true);
   });
 
   // =========================================================================
