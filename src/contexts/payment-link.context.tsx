@@ -131,9 +131,6 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
 
   const callbackUrl = useRef<string>();
 
-  // raised when the merchant page takes over, so answers for an earlier payment are dropped
-  const paymentGeneration = useRef(0);
-
   useEffect(() => {
     fetchPaymentStandards()
       .then((standards) => {
@@ -180,8 +177,11 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
       setUrlParams(newParams);
     }
 
-    // the merchant page is loaded by its own effect below
-    if (merchantUrlParam) return;
+    if (merchantUrlParam) {
+      // the merchant page has no payment, so no stored payment URL is reused from here
+      setSessionApiUrl(undefined);
+      return;
+    }
 
     let apiUrl: string | undefined = sessionApiUrl.current;
     if (lightningUrlParam) {
@@ -210,17 +210,10 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
     };
   }, []);
 
-  // Merchant page, reloaded when the merchant route in the URL changes
+  // Merchant page, reloaded when the merchant route in the URL changes. A provider opened for a
+  // payment keeps it: it reads its URL once per mount and is not built to switch to a merchant.
   useEffect(() => {
-    if (!merchantUrlParam) return;
-
-    // the merchant page has no payment: drop one shown before and its stored URL and polling
-    paymentGeneration.current += 1;
-    setSessionApiUrl(undefined);
-    stopPaymentPolling();
-    stopWaitPolling();
-    setPayRequest(undefined);
-    setPaymentStatus(PaymentLinkPaymentStatus.PENDING);
+    if (!merchantUrlParam || sessionApiUrl.current) return;
 
     // an answer for a route the URL no longer shows is dropped
     let isCurrent = true;
@@ -247,15 +240,12 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
   }, [payRequest, isInstalled, getWalletType, assetsLoading]);
 
   async function fetchPayRequest(url: string): Promise<void> {
-    const generation = paymentGeneration.current;
-    const isCurrent = () => generation === paymentGeneration.current;
     setError(undefined);
 
     try {
       const urlObj = new URL(url);
       urlObj.searchParams.set('timeout', '0');
       const payRequest = await fetchJson<PaymentLinkPayRequest>(urlObj);
-      if (!isCurrent()) return;
 
       if (payRequest.statusCode === 400 && payRequest.message?.includes('not assigned')) {
         setPayRequest(payRequest);
@@ -274,7 +264,6 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
 
       urlObj.searchParams.set('timeout', '10');
       initPaymentPolling(urlObj, (response) => {
-        if (!isCurrent()) return;
         setPayRequest(response);
 
         const status = getStatusFromPayRequest(response);
@@ -291,7 +280,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
         }
       });
     } catch (error: any) {
-      if (isCurrent()) setError(error.message ?? 'Unknown Error');
+      setError(error.message ?? 'Unknown Error');
     }
   }
 
@@ -322,8 +311,6 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
   }
 
   async function waitPayment(paymentRequest: PaymentLinkPayRequest) {
-    const generation = paymentGeneration.current;
-    const isCurrent = () => generation === paymentGeneration.current;
     setPaymentStatus(PaymentLinkPaymentStatus.PENDING);
     startTimer(new Date(paymentRequest.quote.expiration));
 
@@ -333,7 +320,6 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
     });
 
     initWaitPolling(lnurlpUrl, (response) => {
-      if (!isCurrent()) return;
       stopWaitPolling();
 
       if (response.status === PaymentLinkPaymentStatus.COMPLETED && redirectUri) {
@@ -341,7 +327,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
         closeServices({ type: CloseType.PAYMENT }, false);
       } else if (response.status) {
         setPaymentStatus(response.status);
-        setTimeout(() => isCurrent() && fetchPayRequest(sessionApiUrl.current), 3 * 1000);
+        setTimeout(() => fetchPayRequest(sessionApiUrl.current), 3 * 1000);
       } else {
         fetchPayRequest(sessionApiUrl.current);
       }
