@@ -98,7 +98,8 @@ export default function PasskeyDesk({
   const [expanded, setExpanded] = useState(false);
   const [sheet, setSheet] = useState<'settings' | 'words' | 'revoke' | 'receive' | 'pay'>();
   const [toast, setToast] = useState<string>();
-  const [acknowledged, setAcknowledged] = useState(false);
+  const [wordsAcknowledged, setWordsAcknowledged] = useState(false);
+  const [revokeAcknowledged, setRevokeAcknowledged] = useState(false);
   const [reason, setReason] = useState<'Lost' | 'Compromised'>('Lost');
   const [method, setMethod] = useState<'passkey' | 'login'>('passkey');
   const { getAuthToken } = useAuthContext();
@@ -110,6 +111,27 @@ export default function PasskeyDesk({
   const [receive, setReceive] = useState(false);
   const [checks, setChecks] = useState<{ address: string; matches: boolean }[]>();
   const busyRef = useRef(false);
+  const wordsGeneration = useRef(0);
+  const wordsKeys = useRef<KeyRing>();
+
+  useEffect(() => {
+    const unsubscribe = subscribeOpenPasskey(() => {
+      if (!wordsKeys.current) return;
+      const current = getOpenPasskey();
+      if (!current || !canUseKeys(current) || current.keys !== wordsKeys.current) {
+        wordsGeneration.current += 1;
+        wordsKeys.current = undefined;
+        setWords(undefined);
+        setWordsAcknowledged(false);
+        setSheet((currentSheet) => (currentSheet === 'words' ? undefined : currentSheet));
+      }
+    });
+    return () => {
+      wordsGeneration.current += 1;
+      wordsKeys.current = undefined;
+      unsubscribe();
+    };
+  }, []);
 
   async function run(action: (clients: PasskeyClients, session: OpenPasskey) => Promise<void>): Promise<void> {
     const session = getOpenPasskey();
@@ -245,9 +267,12 @@ export default function PasskeyDesk({
     setSheet(next);
   };
   const closeSheet = () => {
+    wordsGeneration.current += 1;
+    wordsKeys.current = undefined;
     setSheet(undefined);
     setWords(undefined);
-    setAcknowledged(false);
+    setWordsAcknowledged(false);
+    setRevokeAcknowledged(false);
     setNote(undefined);
   };
   const toastMessage = (message: string) => setToast(t(message));
@@ -259,6 +284,8 @@ export default function PasskeyDesk({
   };
   const startAnother = () => {
     if (busyRef.current) return;
+    wordsGeneration.current += 1;
+    wordsKeys.current = undefined;
     setWords(undefined);
     setReceive(false);
     setSheet(undefined);
@@ -294,11 +321,23 @@ export default function PasskeyDesk({
     if (unlocked || (walletState === 'locked' && (await unlock()))) action();
   }
   async function showWords(): Promise<void> {
+    if (busyRef.current) return;
     if (!unlocked && !(walletState === 'locked' && (await unlock()))) return;
-    openSheet('words');
-    await run(async ({ auth }) => {
-      const id = getOpenPasskey()?.wallet?.credentialId;
-      setWords(await auth.exportMnemonic(id ? credentialBytes(id) : undefined));
+    await run(async ({ auth }, session) => {
+      if (!canUseKeys(session)) return;
+      const generation = ++wordsGeneration.current;
+      wordsKeys.current = session.keys;
+      setWords(undefined);
+      setWordsAcknowledged(false);
+      const exportPromise = auth.exportMnemonic(
+        session.wallet.credentialId ? credentialBytes(session.wallet.credentialId) : undefined,
+      );
+      if (generation === wordsGeneration.current) openSheet('words');
+      const exported = await exportPromise;
+      const current = getOpenPasskey();
+      if (generation === wordsGeneration.current && current && canUseKeys(current) && current.keys === session.keys) {
+        setWords(exported);
+      }
     });
   }
   function onAction(action: WalletAction): void {
@@ -425,7 +464,7 @@ export default function PasskeyDesk({
           note={note}
           checks={checks}
           evmIndex={evmIndex}
-          validEvmIndex={index !== undefined && index !== 0}
+          validEvmIndex={index !== undefined}
           onEvmIndex={setEvmIndex}
           onWords={() => void showWords()}
           onLink={index === undefined ? undefined : () => void onLink('evm', index)}
@@ -468,9 +507,9 @@ export default function PasskeyDesk({
         <PasskeyWordsSheet
           words={words}
           note={note}
-          acknowledged={acknowledged}
+          acknowledged={wordsAcknowledged}
           busy={busy}
-          onAcknowledged={setAcknowledged}
+          onAcknowledged={setWordsAcknowledged}
           onClose={closeSheet}
           onDone={() =>
             void run(async ({ api }, session) => {
@@ -485,14 +524,14 @@ export default function PasskeyDesk({
         <PasskeyRevokeSheet
           note={note}
           backupNeeded={backupNeeded}
-          acknowledged={acknowledged}
+          acknowledged={revokeAcknowledged}
           busy={busy}
           reason={reason}
           method={method}
           onBackup={() => void showWords()}
           onReason={setReason}
           onMethod={setMethod}
-          onAcknowledged={setAcknowledged}
+          onAcknowledged={setRevokeAcknowledged}
           onClose={closeSheet}
           onRevoke={() => void (method === 'passkey' ? onRevokeWithPasskey(reason) : onRevokeById(reason))}
         />

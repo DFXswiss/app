@@ -631,8 +631,6 @@
     "Unable to derive the address.": "Impossibile derivare l’indirizzo.",
     "Revoke by id needs a fresh mail or wallet login.": "È necessario un nuovo accesso via e-mail o wallet.",
     "Receive on EVM": "Ricevi su EVM",
-    "Hide receive address": "Nascondi l’indirizzo di ricezione",
-    "This address is the same on every EVM network.": "Questo indirizzo è lo stesso su ogni rete EVM.",
     "DFX services": "Servizi DFX",
     "title": "Una semplice <1>cassetta degli attrezzi</1><2/> per tutti i <4>servizi DFX</4>",
     "Buy and sell crypto directly into your wallet!": "Compra e vendi criptovalute direttamente nel tuo portafoglio!",

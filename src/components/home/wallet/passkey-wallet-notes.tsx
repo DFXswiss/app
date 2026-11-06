@@ -105,7 +105,11 @@ export default function PasskeyWalletNotes({
             <p className="mt-1">
               {t('If you lose your passkey, only your recovery words get you back to your funds.')}
             </p>
-            <button className={`${button} mt-3 bg-dfxBlue-800 text-white`} onClick={onBackup}>
+            <button
+              disabled={busy}
+              className={`${button} mt-3 bg-dfxBlue-800 text-white disabled:opacity-50`}
+              onClick={onBackup}
+            >
               {t('Back up now')}
             </button>
           </div>

@@ -598,9 +598,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   that iOS 16.0 is the running system, that the platform check eventually finishes, a real API,
   a production build of the session hook, or the DFX session created by a service action. It does not prove that
   geolocation-db returns `CH`, that the API returns those payloads, that the server stored the
-  placeholder addresses, or that this browser's real passkey support matches the stub. Die drei Send-Baselines für
-  fehlendes Einfügen, fehlendes Scannen und die offene Kamera ersetzen die Zwischenablage, die Kamera und
-  BarcodeDetector. Ein grüner Lauf beweist keine echte Kamera und kein echtes QR-Bild.
+  placeholder addresses, or that this browser's real passkey support matches the stub. Die drei Send-Baselines für fehlendes Einfügen, fehlendes Scannen und die offene Kamera ersetzen die Zwischenablage, die Kamera und BarcodeDetector. Ein grüner Lauf beweist keine echte Kamera und kein echtes QR-Bild.
+  The denied-camera shot replaces `getUserMedia` with a rejection; a green run does not prove
+  that a real browser denies camera permission or displays the same device-specific error.
+  The Bitcoin reconnect shot fulfils the link request with an error; a green run does not prove
+  that the real service returns that error or that a real retry links a Bitcoin address.
 - **The passkey ceremony full-stack case drives the real frontend, API and database.**
   In `e2e-stack/specs/auth.spec.ts`, a run whose companion API ref is staging fails when
   `POST /v1/auth/passkey/register/begin` answers 404. Any other companion ref still skips on 404,
@@ -640,11 +642,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
   including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the
   session, store, balance and settings hooks, and `src/contexts/wallet.context`. That context's
-  `useWalletContext` returns the test's `setSession`. The same file replaces `navigator.userAgent`,
-  `navigator.clipboard`, and `document.execCommand`. The same file also replaces `react-qr-code`,
-  `BarcodeDetector`, `navigator.mediaDevices.getUserMedia`, and `window.requestAnimationFrame`. The
-  in-app test writes the page address with `history.replaceState`, because assigning `location.href`
-  in this jsdom drops the fragment.
+  `useWalletContext` returns the test's `setSession`. Tests also stub `QrCopy`,
+  `IntersectionObserver`, `getUserMedia` and navigation; a green run does not prove the real QR
+  renderer, browser observers, camera or router. The same file replaces `navigator.userAgent`,
+  `navigator.clipboard`, and `document.execCommand`. The same file also replaces `react-qr-code`, `BarcodeDetector`, `navigator.mediaDevices.getUserMedia`, and `window.requestAnimationFrame`. The in-app test writes the page address with
+  `history.replaceState`, because assigning `location.href` in this jsdom drops the fragment.
   A green run proves the idle card, the
   account choice after a dismissed login, the email form before create, the unknown card, the
   fixed error sentence, Close on the preparing card during a hanging login, and the desk
@@ -672,7 +674,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and turns its animation off, because the disabled animation frame is empty and the real
   circle is too small to read on the full page. The signed-out shot
   replaces `window.PublicKeyCredential` with a class that reports passkeys as available.
-  The blocked shot removes `window.PublicKeyCredential`. The logo, the home tiles and the
+  The blocked shot removes `window.PublicKeyCredential`. The signed-in wallet shot injects a locked
+  passkey tab session through the non-production hook; it does not prove a real passkey login or session.
+  The logo, the home tiles and the
   bottom picture are loaded from the public image host and pinned in the baseline. A green
   run proves `/wallet` renders the spinner, the idle card (`Log in with your device` and
   Log in), the blocked card (`This browser has no passkey support` and Close), and the

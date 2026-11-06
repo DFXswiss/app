@@ -484,6 +484,215 @@ describe('ConnectPasskey', () => {
     }
   });
 
+  it('links EVM account zero', async () => {
+    const keys = ring(SEED);
+    setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
+    mockLink.mockResolvedValue({ address: { family: 'Evm', address: OTHER } });
+    mockWallets.mockResolvedValue([authResult('unlocked', keys).wallet]);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.change(screen.getByLabelText(/Another EVM account/), { target: { value: '0' } });
+    expect(screen.getByRole('button', { name: 'Link' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }));
+    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('evm', 'token', keys, 0));
+    expect(await screen.findByText(`Linked Evm ${OTHER}.`)).toBeInTheDocument();
+  });
+
+  it('discards a late recovery export and does not reveal it during a later export', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    let resolveFirst: (words: string[]) => void = () => undefined;
+    let resolveSecond: (words: string[]) => void = () => undefined;
+    mockExport.mockImplementationOnce(
+      () =>
+        new Promise<string[]>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    mockExport.mockImplementationOnce(
+      () =>
+        new Promise<string[]>((resolve) => {
+          resolveSecond = resolve;
+        }),
+    );
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+    expect(screen.getByRole('dialog', { name: 'Recovery words' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Recovery words' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back up now' })).toBeDisabled();
+    await act(async () => resolveFirst(['old-secret']));
+    expect(screen.queryByText('old-secret')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Back up now' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+    expect(screen.getByRole('dialog', { name: 'Recovery words' })).toBeInTheDocument();
+    expect(screen.queryByTestId('passkey-recovery-words')).not.toBeInTheDocument();
+    expect(screen.queryByText('old-secret')).not.toBeInTheDocument();
+    await act(async () => resolveSecond(['new-secret']));
+    expect(screen.getByTestId('passkey-recovery-words')).toHaveTextContent('new-secret');
+    expect(screen.queryByText('old-secret')).not.toBeInTheDocument();
+  });
+
+  it('never writes a closed dialog’s late recovery words into React state', async () => {
+    const react = jest.requireActual<typeof import('react')>('react');
+    const originalUseState = react.useState;
+    const forbiddenWrite = jest.fn();
+    const observedWrite = jest.fn();
+    const spy = jest.spyOn(react, 'useState').mockImplementation(((initial: unknown) => {
+      const [value, setValue] = originalUseState<unknown>(initial);
+      return [
+        value,
+        (next: unknown) => {
+          if (Array.isArray(next)) observedWrite(next);
+          if (Array.isArray(next) && next.includes('late-secret')) forbiddenWrite(next);
+          setValue(next);
+        },
+      ];
+    }) as typeof react.useState);
+    try {
+      setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+      let resolveExport: (words: string[]) => void = () => undefined;
+      mockExport.mockImplementationOnce(
+        () =>
+          new Promise<string[]>((resolve) => {
+            resolveExport = resolve;
+          }),
+      );
+      render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      await act(async () => resolveExport(['late-secret']));
+      expect(forbiddenWrite).not.toHaveBeenCalled();
+      mockExport.mockResolvedValueOnce(['valid-secret']);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Back up now' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+      expect(await screen.findByTestId('passkey-recovery-words')).toHaveTextContent('valid-secret');
+      expect(observedWrite).toHaveBeenCalledWith(['valid-secret']);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('discards a recovery export if keys are lost before it completes', async () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    let resolveExport: (words: string[]) => void = () => undefined;
+    mockExport.mockImplementationOnce(
+      () =>
+        new Promise<string[]>((resolve) => {
+          resolveExport = resolve;
+        }),
+    );
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+    expect(screen.getByRole('dialog', { name: 'Recovery words' })).toBeInTheDocument();
+    act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, backupSeenDate: '2026-11-06' } }));
+    expect(screen.getByRole('dialog', { name: 'Recovery words' })).toBeInTheDocument();
+    act(() => setOpenPasskey({ ...session, state: 'locked', keys: undefined }));
+    expect(screen.queryByRole('dialog', { name: 'Recovery words' })).not.toBeInTheDocument();
+    await act(async () => resolveExport(['lost-secret']));
+    expect(screen.queryByText('lost-secret')).not.toBeInTheDocument();
+    act(() => setOpenPasskey(session));
+    mockExport.mockResolvedValueOnce(['fresh-secret']);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Back up now' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+    expect(await screen.findByTestId('passkey-recovery-words')).toHaveTextContent('fresh-secret');
+    expect(screen.queryByText('lost-secret')).not.toBeInTheDocument();
+  });
+
+  it('discards recovery words when the key ring changes during export', async () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    let resolveExport: (words: string[]) => void = () => undefined;
+    mockExport.mockImplementationOnce(
+      () =>
+        new Promise<string[]>((resolve) => {
+          resolveExport = resolve;
+        }),
+    );
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+    act(() => setOpenPasskey({ ...session, keys: ring(OTHER) as unknown as OpenPasskey['keys'] }));
+    expect(screen.queryByRole('dialog', { name: 'Recovery words' })).not.toBeInTheDocument();
+    await act(async () => resolveExport(['old-key-secret']));
+    expect(screen.queryByText('old-key-secret')).not.toBeInTheDocument();
+  });
+
+  it('clears already displayed recovery words as soon as the wallet locks', async () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    mockExport.mockResolvedValueOnce(['private-words']);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+    expect(await screen.findByTestId('passkey-recovery-words')).toHaveTextContent('private-words');
+    act(() => setOpenPasskey({ ...session, state: 'locked', keys: undefined }));
+    expect(screen.queryByText('private-words')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Recovery words' })).not.toBeInTheDocument();
+  });
+
+  it('does not reopen recovery words if keys disappear when export starts', async () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    mockExport.mockImplementationOnce(async () => {
+      setOpenPasskey({ ...session, state: 'locked', keys: undefined });
+      return ['unavailable-secret'];
+    });
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('dialog', { name: 'Recovery words' })).not.toBeInTheDocument();
+    expect(screen.queryByText('unavailable-secret')).not.toBeInTheDocument();
+  });
+
+  it('does not open the recovery dialog if export cannot start', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    mockExport.mockImplementationOnce(() => {
+      throw new Error('export did not start');
+    });
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+    expect(await screen.findByText('export did not start')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Recovery words' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('passkey-recovery-words')).not.toBeInTheDocument();
+  });
+
+  it('does not carry the revocation acknowledgement into recovery words', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    mockExport.mockResolvedValue(['alpha', 'bravo']);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
+    fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
+    expect(screen.getByRole('button', { name: 'Block', exact: true })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Back up first' }));
+    expect(await screen.findByTestId('passkey-recovery-words')).toBeInTheDocument();
+    expect(screen.getByLabelText('I have written the words down on paper.')).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled();
+  });
+
+  it('disables all backup entry points while another wallet request is running', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    let resolveDiagnostic: () => void = () => undefined;
+    mockDiagnostics.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDiagnostic = resolve;
+        }),
+    );
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+    expect(screen.getByRole('button', { name: /Recovery words/ })).toBeDisabled();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
+    expect(screen.getByRole('button', { name: 'Back up now' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
+    expect(screen.getByRole('button', { name: 'Back up first' })).toBeDisabled();
+    expect(screen.queryByRole('dialog', { name: 'Recovery words' })).not.toBeInTheDocument();
+    expect(mockExport).not.toHaveBeenCalled();
+    await act(async () => resolveDiagnostic());
+    expect(screen.getByRole('button', { name: 'Back up first' })).toBeEnabled();
+  });
+
   it('accepts EVM account 99 and does not link invalid account indices', async () => {
     const keys = ring(SEED);
     setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
@@ -493,7 +702,7 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     const input = screen.getByLabelText(/Another EVM account/);
     expect(input).toHaveAttribute('inputmode', 'numeric');
-    for (const value of ['', '0', '100', '1.5']) {
+    for (const value of ['', '100', '1.5']) {
       fireEvent.change(input, { target: { value } });
       expect(screen.getByRole('button', { name: 'Link' })).toBeDisabled();
     }
