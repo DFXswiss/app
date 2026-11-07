@@ -360,6 +360,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`/buy and /buy/info: provisional approval …`) sets the date to `NULL`
   after creating the customer, because the factory may leave one behind. A green run does **not** prove
   that a real KYC-30 customer of that wallet reaches the buy screen without a trade approval.
+- **The full-stack quote-error buy spec SQL-clears `user_data.tradeApprovalDate`.**
+  `e2e-stack/specs/buy.spec.ts` (`/buy: quote error button opens the matching KYC step`) sets the date to `NULL`
+  after creating the customer, because the factory may leave one behind. A green run does **not** prove
+  that a real KYC-30 customer without a trade approval reaches that quote error through the product path.
 - **Full-stack continue-race specs SQL-write `user_data.tradeApprovalDate`.**
   `e2e-stack/specs/kyc-continue-race.spec.ts` sets the date so recommendation is skipped. A green
   run does **not** prove that a customer obtains trade approval through the product path.
