@@ -15,9 +15,10 @@ Reject the pull request when any of these is true:
 - It adds or changes a function a visitor can use, and the same pull request
   has no real test of that function.
 - The real test did not run. A job that records `mode=none`, or a suite that
-  does not run in CI, is not a run of the real test. On a pull request into
-  `develop`, the full-stack harness has to have run, which means the `ci:full`
-  label or a run that brings the stack up.
+  does not run in CI, is not a run of the real test. On a same-repository
+  pull request into `develop`, the workflow brings the full-stack harness
+  up. A fork pull request does not receive the API checkout key, so a green
+  full-stack check on that pull request does not prove the suite ran.
 - The test offered as coverage of the function replaces the screen, the
   visitor's action, the session, the router, the navigation, this service's
   API, or this service's database.

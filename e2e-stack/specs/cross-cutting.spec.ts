@@ -16,6 +16,7 @@ import {
   queryOne,
   test,
   testWallet,
+  waitForRow,
 } from './fixtures';
 import { cleanupCreatedData, createUser } from './fixtures/factories';
 
@@ -73,6 +74,16 @@ async function selectSettingsDropdown(
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Suffix of `own` that cannot occur in `other` — used to tell two wallet addresses apart on screen. */
+function distinctiveAddressSlice(own: string, other: string): string {
+  const otherLower = other.toLowerCase();
+  for (let n = 6; n <= own.length; n++) {
+    const slice = own.slice(-n);
+    if (!otherLower.includes(slice.toLowerCase())) return slice;
+  }
+  throw new Error(`no distinctive suffix of ${own} that is absent from ${other}`);
 }
 
 /** Build a JWT-shaped token (unsigned / dummy signature). Frontend only decodes; API verifies. */
@@ -308,6 +319,81 @@ test.describe('Cross-cutting', () => {
         .toBe(true);
       await expectParamStripped(page, 'address');
       await expectParamStripped(page, 'signature');
+    });
+
+    test('second address+signature login replaces the first wallet on /account', async ({ page }) => {
+      test.setTimeout(90000);
+      const walletA = testWallet(40);
+      const walletB = testWallet(41);
+
+      const signResA = await fetch(`${apiBase()}/v1/auth/signMessage?address=${encodeURIComponent(walletA.address)}`);
+      expect(signResA.ok, `signMessage status ${signResA.status}`).toBe(true);
+      const { message: messageA } = (await signResA.json()) as { message: string };
+      const signatureA = await new ethers.Wallet(walletA.privateKey).signMessage(messageA);
+
+      await page.goto(`/?address=${encodeURIComponent(walletA.address)}&signature=${encodeURIComponent(signatureA)}`);
+      await page.waitForLoadState('domcontentloaded');
+      await expect
+        .poll(async () => Boolean(await authToken(page)), {
+          message: 'address+signature should establish a session',
+          timeout: 20000,
+        })
+        .toBe(true);
+      await expectParamStripped(page, 'address');
+      await expectParamStripped(page, 'signature');
+
+      await page.goto('/account');
+      await page.waitForLoadState('networkidle');
+      const tokenA = await authToken(page);
+      expect(tokenA, 'wallet A session token').toBeTruthy();
+
+      const signResB = await fetch(`${apiBase()}/v1/auth/signMessage?address=${encodeURIComponent(walletB.address)}`);
+      expect(signResB.ok, `signMessage status ${signResB.status}`).toBe(true);
+      const { message: messageB } = (await signResB.json()) as { message: string };
+      const signatureB = await new ethers.Wallet(walletB.privateKey).signMessage(messageB);
+
+      await page.goto(`/?address=${encodeURIComponent(walletB.address)}&signature=${encodeURIComponent(signatureB)}`);
+      await page.waitForLoadState('domcontentloaded');
+      await expect
+        .poll(async () => {
+          const token = await authToken(page);
+          return typeof token === 'string' && token.length > 0 && token !== tokenA ? token : '';
+        }, {
+          message: 'second address+signature login should replace the session token',
+          timeout: 20000,
+        })
+        .not.toBe('');
+      await expectParamStripped(page, 'address');
+      await expectParamStripped(page, 'signature');
+
+      const tokenB = await authToken(page);
+      expect(tokenB, 'wallet B session token').toBeTruthy();
+      expect(tokenB).not.toBe(tokenA);
+
+      await page.goto('/account');
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByText('Active address', { exact: true })).toBeVisible({ timeout: 20000 });
+      const tailB = walletB.address.slice(-4);
+      const tailA = walletA.address.slice(-4);
+      const addressTrigger = page.locator('#dropDownButton').filter({ hasText: tailB });
+      await expect(addressTrigger).toBeVisible({ timeout: 20000 });
+      const shown = (await addressTrigger.innerText()).trim();
+      const shownLower = shown.toLowerCase();
+      expect(shownLower).toMatch(/0x/i);
+      expect(shownLower).toContain(tailB.toLowerCase());
+      if (tailA.toLowerCase() !== tailB.toLowerCase()) {
+        expect(shownLower).not.toContain(tailA.toLowerCase());
+      } else {
+        const sliceB = distinctiveAddressSlice(walletB.address, walletA.address);
+        const sliceA = distinctiveAddressSlice(walletA.address, walletB.address);
+        expect(shownLower).toContain(sliceB.toLowerCase());
+        expect(shownLower).not.toContain(sliceA.toLowerCase());
+      }
+
+      const row = await waitForRow<{ address: string }>(`SELECT address FROM "user" WHERE address = $1`, [
+        walletB.address,
+      ]);
+      expect(row.address).toBe(walletB.address);
     });
 
     test('redirect param navigates after session and is stripped', async ({ page }) => {
