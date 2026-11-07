@@ -4,6 +4,7 @@ import PasskeySettingsSheet from '../components/home/wallet/passkey-settings-she
 import PasskeyWordsSheet from '../components/home/wallet/passkey-words-sheet';
 
 const mockChangeLanguage = jest.fn();
+const mockChangeAppLanguage = jest.fn();
 const mockLanguages = [
   { id: 1, symbol: 'EN' },
   { id: 2, symbol: 'DE' },
@@ -14,6 +15,7 @@ jest.mock('../contexts/settings.context', () => ({
     language: mockLanguages[0],
     availableLanguages: mockLanguages,
     changeLanguage: mockChangeLanguage,
+    changeAppLanguage: mockChangeAppLanguage,
   }),
 }));
 
@@ -139,9 +141,10 @@ describe('Passkey wallet dialogs', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use another passkey' }));
     fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
     fireEvent.change(screen.getByLabelText(/Language/), { target: { value: 'DE' } });
-    expect(mockChangeLanguage).toHaveBeenCalledWith(mockLanguages[1]);
+    expect(mockChangeAppLanguage).toHaveBeenCalledWith(mockLanguages[1]);
+    expect(mockChangeLanguage).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText(/Language/), { target: { value: 'XX' } });
-    expect(mockChangeLanguage).toHaveBeenCalledTimes(1);
+    expect(mockChangeAppLanguage).toHaveBeenCalledTimes(1);
     expect(onEvmIndex).toHaveBeenCalledWith('2');
     [onWords, onLink, onVerify, onRefresh, onStatus, onDiagnostics, onAnotherPasskey, onRevoke].forEach((fn) =>
       expect(fn).toHaveBeenCalledTimes(1),

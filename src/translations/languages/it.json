@@ -620,6 +620,7 @@
     "Back up first": "Salva prima",
     "What happened?": "Cosa è successo?",
     "Passkey lost": "Passkey persa",
+    "You confirmed with a different passkey. That passkey is now blocked; this wallet is still active.": "Hai confermato con un’altra passkey. Quella passkey è ora bloccata; questo wallet è ancora attivo.",
     "You confirm one last time with this passkey.": "Confermi un’ultima volta con questa passkey.",
     "Passkey compromised": "Passkey compromessa",
     "I understand that this cannot be undone.": "Capisco che l’operazione è irreversibile.",

@@ -79,7 +79,7 @@ function Chevron(): JSX.Element {
 }
 
 export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): JSX.Element {
-  const { translate, language, availableLanguages, changeLanguage } = useSettingsContext();
+  const { translate, language, availableLanguages, changeAppLanguage } = useSettingsContext();
   const t = (key: string) => translate('screens/home', key);
   const row =
     'flex min-h-[60px] w-full items-center gap-3 border-b border-dfxGray-400 px-4 py-3 text-left last:border-b-0 focus-visible:outline focus-visible:outline-2';
@@ -279,7 +279,7 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
             value={language?.symbol ?? ''}
             onChange={(event) => {
               const next = availableLanguages.find((item) => item.symbol === event.target.value);
-              if (next) changeLanguage(next);
+              if (next) changeAppLanguage(next);
             }}
           >
             {availableLanguages.map((item) => (

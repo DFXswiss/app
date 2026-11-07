@@ -617,6 +617,7 @@
     "Back up first": "Zuerst sichern",
     "What happened?": "Was ist passiert?",
     "Passkey lost": "Passkey verloren",
+    "You confirmed with a different passkey. That passkey is now blocked; this wallet is still active.": "Du hast mit einem anderen Passkey bestätigt. Dieser Passkey ist jetzt gesperrt; diese Wallet ist weiterhin aktiv.",
     "You confirm one last time with this passkey.": "Du bestätigst ein letztes Mal mit diesem Passkey.",
     "Device gone, deleted or no longer accessible": "Gerät weg, gelöscht oder nicht mehr zugänglich",
     "Passkey compromised": "Passkey kompromittiert",

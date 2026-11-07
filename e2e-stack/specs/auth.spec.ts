@@ -594,7 +594,20 @@ test.describe('Auth area e2e', () => {
       await expect(evmRow).toHaveCount(1, { timeout: 30000 });
       const evmAddress = await evmRow.locator('[title]').getAttribute('title');
       if (evmAddress === null || !/^0x[0-9a-fA-F]{40}$/.test(evmAddress)) throw new Error('Missing EVM address');
+      const authRequest = page.waitForRequest(
+        (request) => request.method() === 'POST' && new URL(request.url()).pathname === '/v1/auth',
+        { timeout: 30000 },
+      );
       await page.getByRole('button', { name: 'Buy', exact: true }).click();
+      const request = await authRequest;
+      const body = request.postDataJSON() as { address?: unknown; signature?: unknown };
+      if (typeof body.address !== 'string' || typeof body.signature !== 'string' || !body.signature.trim()) {
+        throw new Error('Missing signed EVM authentication request');
+      }
+      expect(body.address.toLowerCase()).toBe(evmAddress.toLowerCase());
+      const response = await request.response();
+      if (!response) throw new Error('Missing EVM authentication response');
+      expect(response.status()).toBe(201);
       await expect(page).toHaveURL(/\/buy/, { timeout: 30000 });
       const dfxToken = await authToken(page);
       if (!dfxToken) throw new Error('Missing DFX authentication token');

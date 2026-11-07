@@ -633,7 +633,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `"user".address` stores that address once for the registered mail, that after Reload data
   in Settings and after the second unlock exactly one list row shows that same `bc1q` address,
   and that a different address at that path does not pass.
-  It also proves that the Buy opt-in authenticates the locally derived EVM address with a wallet signature.
+  It also proves that the Buy opt-in sends the locally derived EVM address and a non-empty wallet signature to `POST /v1/auth`, which responds with 201.
   The returned DFX token names that address and differs from the passkey ceremony token.
   The database associates that address with the passkey credential's account.
   It does not prove a production sign-in, a real hardware-authenticator PRF, or a transaction or purchase.
@@ -656,14 +656,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   hardware authenticator, the production relying party, a real user activation, authenticator
   PRF output, or that the email field appears on the stack hostname or when the browser
   reports `extension:prf` as false.
-- **The passkey tile unit test replaces the wallet package and the API client.**
-  `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
-  including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the
+- **The passkey tile unit test replaces the wallet package and wallet client.**
+  `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet`, `@dfx.swiss/react`, the component library, the
   session, store, balance and settings hooks, and `src/contexts/wallet.context`. The wallet-client
   and `useWalletContext.login` are replaced; a green run does not prove calls reach the real wallet client
   or create a DFX session. `LoginAutoSigner` is replaced; a green run does not prove a real signature.
   Spies make `Storage.prototype.getItem` and `setItem` throw; a green run does not prove a browser's storage failure behaviour.
-  A test switches `process.env.NODE_ENV` to `production`; a green run does not prove the behaviour of a production build.
+  Tests in `src/__tests__/connect-passkey.test.tsx` and `src/__tests__/passkey-session.test.ts` switch `process.env.NODE_ENV` to `production`; a green run does not prove the behaviour of a production build.
   Unit tests set `window.__dfxHandbookPasskeyHistory`; a green run does not prove that real transaction history is available.
   Tests also stub `QrBasic`,
   `IntersectionObserver`, `getUserMedia` and navigation; a green run does not prove the real QR
@@ -687,6 +686,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   real BarcodeDetector, or a real QR image.
 - **The wallet-client unit test replaces the wallet package and DFX API client.**
   A green run proves forwarding to the stubs, not a real wallet ceremony or API call.
+- **The settings-context unit test replaces SDK hooks, application parameters, storage, and i18n.**
+  A green run does not prove real account updates, persistent storage, or language loading.
 - **The wallet entry unit test replaces the session, the page tree, and the connect form.**
   `src/__tests__/wallet-entry.test.tsx` replaces the service names from `App`, `@dfx.swiss/react`,
   `react-i18next`, `@dfx.swiss/react-components`, the connect wrapper, the custody-asset list, and the layout,

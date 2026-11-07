@@ -34,6 +34,7 @@ it('translates the passkey login and revocation messages in all supported langua
     'This operating system cannot sign in with a passkey.',
     'Log in',
     'The passkey wallet was revoked.',
+    'You confirmed with a different passkey. That passkey is now blocked; this wallet is still active.',
     'You confirm one last time with this passkey.',
     'Clipboard is not available.',
     'Record a diagnostic',

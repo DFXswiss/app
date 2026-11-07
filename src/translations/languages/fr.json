@@ -620,6 +620,7 @@
     "Back up first": "Sauvegarder d’abord",
     "What happened?": "Que s’est-il passé ?",
     "Passkey lost": "Clé d’accès perdue",
+    "You confirmed with a different passkey. That passkey is now blocked; this wallet is still active.": "Tu as confirmé avec une autre clé d’accès. Cette clé est maintenant bloquée ; ce wallet reste actif.",
     "You confirm one last time with this passkey.": "Tu confirmes une dernière fois avec cette clé d’accès.",
     "Passkey compromised": "Clé d’accès compromise",
     "I understand that this cannot be undone.": "Je comprends que cette action est irréversible.",
