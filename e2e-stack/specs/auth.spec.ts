@@ -559,6 +559,13 @@ test.describe('Auth area e2e', () => {
       ]);
       expect(rows.length).toBe(1);
 
+      await page.getByRole('button', { name: 'Receive' }).click();
+      await page.getByRole('button', { name: 'EVM', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
+      await page.getByRole('button', { name: 'Send' }).click();
+      await expect(page.getByText('Sending is not active yet.', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('Destination')).toBeVisible();
+
       await page.getByRole('button', { name: 'Credential status' }).click();
       await expect(page.getByText(/: Active/)).toBeVisible({ timeout: 20000 });
       await page.getByRole('button', { name: 'Refresh wallets' }).click();

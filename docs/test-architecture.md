@@ -595,7 +595,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   that iOS 16.0 is the running system, that the platform check eventually finishes, a real API,
   a production build of the session hook, or the signed-in app after Open the app. It does not prove that
   geolocation-db returns `CH`, that the API returns those payloads, that the server stored the
-  placeholder addresses, or that this browser's real passkey support matches the stub.
+  placeholder addresses, or that this browser's real passkey support matches the stub. Die drei Send-Baselines für
+  fehlendes Einfügen, fehlendes Scannen und die offene Kamera ersetzen die Zwischenablage, die Kamera und
+  BarcodeDetector. Ein grüner Lauf beweist keine echte Kamera und kein echtes QR-Bild.
 - **The passkey ceremony full-stack case drives the real frontend, API and database.**
   In `e2e-stack/specs/auth.spec.ts`, a run whose companion API ref is staging fails when
   `POST /v1/auth/passkey/register/begin` answers 404. Any other companion ref still skips on 404,
