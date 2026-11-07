@@ -25,6 +25,10 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
   const { borderless } = useAppParams();
   const webComponent = isWebComponent();
 
+  useEffect(() => {
+    if (noHeader) setIsNavigationOpen(false);
+  }, [noHeader]);
+
   // Only navigate when there is a code to drop. This effect runs after the effects of the screen
   // mounted in the same commit (e.g. when the whole tree mounts at once after the deleted-address
   // gate releases it), and clearParams replaces the URL with this render's pathname — an

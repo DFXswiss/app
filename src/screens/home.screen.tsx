@@ -84,6 +84,7 @@ function HomeScreenContent(): JSX.Element {
   const [pages, setPages] = useState(new Stack<Page>());
   const connectToRef = useRef<Wallet>();
   const previousLogin = useRef(isLoggedIn);
+  const closedPasskey = useRef<typeof openPasskey>();
 
   const currentPageId = pages.current?.page;
   const allowedTiles = pages.current?.allowedTiles;
@@ -94,6 +95,7 @@ function HomeScreenContent(): JSX.Element {
   const waitingForSession = specialMode === SpecialMode.WALLET && !isSessionInitialized;
 
   useEffect(() => {
+    if (closedPasskey.current && closedPasskey.current !== openPasskey) closedPasskey.current = undefined;
     const justLoggedIn = !previousLogin.current && isLoggedIn;
     previousLogin.current = isLoggedIn;
     const isConnectAddress = connectTo?.type === WalletType.ADDRESS;
@@ -110,7 +112,12 @@ function HomeScreenContent(): JSX.Element {
       setConnectTo(undefined);
     } else if (specialMode === SpecialMode.LOGIN_MAIL) {
       setConnectTo({ type: WalletType.MAIL });
-    } else if (specialMode === SpecialMode.WALLET && isSessionInitialized && (openPasskey || !isLoggedIn)) {
+    } else if (
+      specialMode === SpecialMode.WALLET &&
+      isSessionInitialized &&
+      (openPasskey || !isLoggedIn) &&
+      (!openPasskey || closedPasskey.current !== openPasskey)
+    ) {
       setConnectTo({ type: WalletType.PASSKEY });
     } else if (
       specialMode === SpecialMode.WALLET &&
@@ -230,7 +237,11 @@ function HomeScreenContent(): JSX.Element {
                 blockchain={selectedBlockchain}
                 isConnect={specialMode === SpecialMode.CONNECT}
                 onLogin={() => setLoginSuccessful(true)}
-                onCancel={() => setConnectTo(undefined)}
+                onCancel={() => {
+                  if (specialMode === SpecialMode.WALLET && connectTo.type === WalletType.PASSKEY)
+                    closedPasskey.current = openPasskey;
+                  setConnectTo(undefined);
+                }}
                 onSwitch={(type) => setConnectTo((c) => ({ ...c, type }))}
               />
             </Suspense>

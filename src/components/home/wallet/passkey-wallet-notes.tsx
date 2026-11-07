@@ -14,7 +14,7 @@ interface PasskeyWalletNotesProps {
 
 export function walletStateDescription(state: WalletState): string {
   return state === 'locked'
-    ? 'To send, receive or pay, unlock briefly with Face ID, fingerprint or device PIN.'
+    ? 'To use the wallet, unlock briefly with Face ID, fingerprint or device PIN.'
     : state === 'seed-mismatch'
       ? 'This passkey belongs to a different wallet. Sign in with the right passkey.'
       : state === 'compromised'

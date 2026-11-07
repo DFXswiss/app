@@ -13,7 +13,6 @@ it('translates the passkey login and revocation messages in all supported langua
   const keys = [
     'This browser has no passkey support',
     'Something went wrong. Please try again.',
-    'Sign in with mail first. The passkey is added to that account.',
     'Log in with your device',
     'Preparing your login…',
     'Do you already have an account?',
@@ -33,13 +32,18 @@ it('translates the passkey login and revocation messages in all supported langua
     'Copied',
     'This passkey cannot hold a wallet on this device.',
     'This operating system cannot sign in with a passkey.',
-    'Add passkey to this account',
     'Log in',
     'The passkey wallet was revoked.',
-    'Uses your current DFX login. If you are not signed in, sign in by e-mail or wallet first.',
+    'You confirm one last time with this passkey.',
+    'Clipboard is not available.',
   ];
   for (const language of [de, fr, italian]) {
     const messages: Record<string, string> = language['screens/home'];
-    for (const key of keys) expect(messages[key]).toEqual(expect.any(String));
+    for (const key of keys) {
+      expect(typeof messages[key]).toBe('string');
+      expect(messages[key].trim()).not.toBe('');
+      expect(messages[key]).toBe(messages[key].trim());
+      expect(messages[key]).not.toBe(key);
+    }
   }
 });

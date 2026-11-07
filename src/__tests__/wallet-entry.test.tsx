@@ -249,6 +249,23 @@ describe('/wallet passkey entry', () => {
     setOpenPasskey(undefined);
   });
 
+  it('keeps a closed wallet closed until the passkey session changes', () => {
+    mockSessionState.isLoggedIn = true;
+    const session = { state: 'locked' } as OpenPasskey;
+    setOpenPasskey(session);
+    const view = renderAt('/wallet');
+    fireEvent.click(screen.getByText('cancel-connect'));
+    mockUserState.hasAddress = true;
+    view.rerender(<Harness path="/wallet" />);
+    expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
+    act(() => setOpenPasskey({ ...session }));
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+    fireEvent.click(screen.getByText('cancel-connect'));
+    act(() => setOpenPasskey(undefined));
+    act(() => setOpenPasskey(session));
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+  });
+
   it('keeps the passkey form open when an already signed-in user chooses another passkey', () => {
     mockSessionState.isLoggedIn = true;
     setOpenPasskey({ state: 'unlocked' } as OpenPasskey);

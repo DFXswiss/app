@@ -159,7 +159,10 @@ export function PasskeySendPanel(): JSX.Element {
     const streamVideo = videoRef.current;
     const media = streamRef.current;
     const Detector = (globalThis as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
-    if (!streamVideo || media === undefined || Detector === undefined) return;
+    if (!streamVideo || media === undefined || Detector === undefined) {
+      stopScan();
+      return;
+    }
     const source = streamVideo;
 
     try {

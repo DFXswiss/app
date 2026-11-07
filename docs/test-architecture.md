@@ -599,7 +599,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   Telegram. The iPhone in-app shot sets an iPhone user agent that also contains Telegram, so that
   image includes the iPhone sentence. The old-system shot sets a user agent that reports iOS 16.0.
   The desk shots and every shot that completes a ceremony install a fixed in-page authenticator and fulfil the passkey
-  routes with one wallet. Register and claim omit a Bitcoin row so the auto-link posts the derived
+  routes with one wallet. Register omits a Bitcoin row so the auto-link posts the derived
   address; the wallet list then contains that posted Bitcoin address, the placeholder EVM and Spark
   rows, and a differing Bitcoin row. The compromised and other-tab shots set the tab session because
   the wallet package does not return those states. The locked-receive shot opens Receive on an unlocked
@@ -654,8 +654,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The passkey tile unit test replaces the wallet package and the API client.**
   `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet` and `@dfx.swiss/core`,
   including `PasskeyAuth` and `DfxApiClient`, plus `@dfx.swiss/react`, the component library, the
-  session, store, balance and settings hooks, and `src/contexts/wallet.context`. That context's
-  `useWalletContext` returns the test's `setSession`. Tests also stub `QrBasic`,
+  session, store, balance and settings hooks, and `src/contexts/wallet.context`. The wallet-client
+  and `useWalletContext.login` are replaced; a green run does not prove calls reach the real wallet client
+  or create a DFX session. `LoginAutoSigner` is replaced; a green run does not prove a real signature.
+  Tests also stub `QrBasic`,
   `IntersectionObserver`, `getUserMedia` and navigation; a green run does not prove the real QR
   renderer, browser observers, camera or router. The same applies to the new wallet unit tests: `passkey-pay-sheet.test.tsx` stubs `getUserMedia`
   with a fake stream, and
@@ -667,14 +669,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   account choice after a dismissed login, the email form before create, the unknown card, the
   fixed error sentence, Close on the preparing card during a hanging login, and the desk
   actions against those stubs, including that a link keeps the ceremony token, that an unlocked
-  list without Bitcoin links once, and that revoke-by-id uses a fresh login token. It does not
+  list without Bitcoin links once, and that revocation uses the passkey. It does not
   prove a real ceremony, that Close cancels WebAuthn or logs out, a real in-app browser, a real
   iPhone, a real operating-system version, a real clipboard, a real system copy, that assigning
   `location.href` keeps the fragment in a real browser, a real `DfxApiClient`, the
-  published components, that `setSession` stores a passkey session, that the server stored the
+  published components, that the server stored the
   mainnet login address, that `auth.link` is the real client, or that a Bitcoin row already in
   the list came from the API. WebAuthn stays a stub. A green run does not prove a real camera, a
   real BarcodeDetector, or a real QR image.
+- **The wallet-client unit test replaces the wallet package and DFX API client.**
+  A green run proves forwarding to the stubs, not a real wallet ceremony or API call.
 - **The wallet entry unit test replaces the session, the page tree, and the connect form.**
   `src/__tests__/wallet-entry.test.tsx` replaces the service names from `App`, `@dfx.swiss/react`,
   `react-i18next`, `@dfx.swiss/react-components`, the connect wrapper, the custody-asset list, and the layout,

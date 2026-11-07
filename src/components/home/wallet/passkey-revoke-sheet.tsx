@@ -9,10 +9,8 @@ interface PasskeyRevokeSheetProps {
   busy: boolean;
   returnFocus?: HTMLElement | null;
   reason: 'Lost' | 'Compromised';
-  method: 'passkey' | 'login';
   onBackup: () => void;
   onReason: (value: 'Lost' | 'Compromised') => void;
-  onMethod: (value: 'passkey' | 'login') => void;
   onAcknowledged: (value: boolean) => void;
   onRevoke: () => void;
   onClose: () => void;
@@ -27,15 +25,7 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
     <PasskeySheet title={t('Block passkey')} onClose={props.onClose} busy={props.busy} returnFocus={props.returnFocus}>
       {props.note && (
         <div role="alert" className="mb-3 rounded-[16px] bg-[#EEF2F8] p-4 text-sm">
-          {props.note === 'Wallet status is Active.' ? (
-            <>
-              <b>{t('Not blocked yet')}</b>
-              <br />
-              {t('The passkey is still active. Sign in again and try once more.')}
-            </>
-          ) : (
-            t(props.note)
-          )}
+          {t(props.note)}
         </div>
       )}
       <p className="text-sm leading-5 text-dfxGray-800">
@@ -97,33 +87,7 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
           </label>
         ))}
       </fieldset>
-      <fieldset className="mt-5">
-        <legend className="text-sm font-semibold text-dfxGray-800">{t('Confirm with')}</legend>
-        <div className="mt-2 grid grid-cols-2 rounded-md bg-dfxGray-300 p-1">
-          {(['passkey', 'login'] as const).map((item) => (
-            <label
-              key={item}
-              className={`flex min-h-[44px] cursor-pointer items-center justify-center rounded text-sm font-semibold focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 ${props.method === item ? 'bg-white text-dfxBlue-800 shadow-sm' : 'text-dfxGray-800'}`}
-            >
-              <input
-                type="radio"
-                name="method"
-                className="sr-only"
-                checked={props.method === item}
-                onChange={() => props.onMethod(item)}
-              />
-              <span>{t(item === 'passkey' ? 'This passkey' : 'New login')}</span>
-            </label>
-          ))}
-        </div>
-        <p className="mt-2 text-sm leading-5 text-dfxGray-800">
-          {t(
-            props.method === 'passkey'
-              ? 'You confirm one last time with this passkey.'
-              : 'Uses your current DFX login. If you are not signed in, sign in by e-mail or wallet first.',
-          )}
-        </p>
-      </fieldset>
+      <p className="mt-5 text-sm leading-5 text-dfxGray-800">{t('You confirm one last time with this passkey.')}</p>
       <label className="mt-5 flex min-h-[44px] items-start gap-3 text-[15px] leading-[22px]">
         <input
           type="checkbox"

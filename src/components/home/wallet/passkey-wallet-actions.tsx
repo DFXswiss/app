@@ -29,10 +29,10 @@ export default function PasskeyWalletActions({
 
   return (
     <nav aria-label={translate('screens/home', 'Actions')} className="mt-5 grid grid-cols-3 gap-y-4 sm:grid-cols-6">
-      {actions.map((action, index) => (
+      {actions.map((action) => (
         <button
           key={action}
-          disabled={busy || (index >= 3 && !unlocked && !canUnlock)}
+          disabled={busy || (!unlocked && !canUnlock)}
           className="flex min-h-[80px] flex-col items-center gap-2 rounded font-semibold focus-visible:outline focus-visible:outline-2"
           onClick={() => onAction(action)}
         >
@@ -54,7 +54,7 @@ export default function PasskeyWalletActions({
             >
               <path d={icons[action]} />
             </svg>
-            {index >= 3 && !unlocked && (
+            {!unlocked && (
               <span className="absolute -right-1 -top-1 grid h-[22px] w-[22px] place-items-center rounded-full border border-dfxGray-500 bg-white text-dfxBlue-800">
                 <svg
                   viewBox="0 0 24 24"

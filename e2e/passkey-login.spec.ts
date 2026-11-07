@@ -231,7 +231,6 @@ async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<
     const method = request.method();
     if (method === 'GET' && path === '/v1/passkey/wallets') return fulfillJson(route, [listedWallet()]);
     if (method === 'PUT' && path.endsWith('/backupSeen')) return fulfillJson(route, listedWallet());
-    if (method === 'PUT' && path.endsWith('/revoke')) return fulfillJson(route, listedWallet());
     return fulfillJson(route, []);
   });
 
@@ -263,10 +262,6 @@ async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<
     }
     if (method === 'POST' && path.endsWith('/revoke/begin')) return fulfillJson(route, DESK_CHALLENGE);
     if (method === 'POST' && path.endsWith('/revoke/finish')) return fulfillJson(route, listedWallet());
-    if (method === 'POST' && path.endsWith('/claim/begin')) return fulfillJson(route, DESK_CHALLENGE);
-    if (method === 'POST' && path.endsWith('/claim/finish')) {
-      return fulfillJson(route, deskAuth('', [DESK_EVM, DESK_SPARK]));
-    }
     return fulfillJson(route, []);
   });
 
@@ -452,17 +447,6 @@ test.describe('Passkey login', () => {
     await expect(page).toHaveScreenshot('passkey-login-preparing.png', { fullPage: true });
   });
 
-  test('asks for a mail login before adding a passkey to this account', async ({ page }) => {
-    await openDesk(page, 'unlocked', true);
-    await page.getByRole('button', { name: 'Log in' }).click();
-    await expect(page.getByText('Do you already have an account?')).toBeVisible();
-    await page.getByRole('button', { name: 'Add passkey to this account' }).click();
-    const sentence = page.getByText('Sign in with mail first. The passkey is added to that account.', { exact: true });
-    await expect(sentence).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Log in with existing account' })).toBeVisible();
-    await expect(page).toHaveScreenshot('passkey-login-no-account.png', { fullPage: true });
-  });
-
   test('shows the register error on the form', async ({ page }) => {
     await installDeskAuthenticator(page, true, true);
     await installLoginRoutes(page);
@@ -639,16 +623,6 @@ test.describe('Passkey login', () => {
     ]);
   });
 
-  test('shows the unlocked desk after claiming a passkey', async ({ page }) => {
-    await plantAccountToken(page);
-    await openDesk(page, 'unlocked', true);
-    await page.getByRole('button', { name: 'Log in' }).click();
-    await expect(page.getByText('Do you already have an account?')).toBeVisible();
-    await page.getByRole('button', { name: 'Add passkey to this account' }).click();
-    await waitForLinkedBitcoin(page);
-    await shoot(page, 'passkey-login-claimed.png', await deskControls(page));
-  });
-
   test('returns to the form when starting another ceremony', async ({ page }) => {
     await registerUnlockedDesk(page);
     await openSettings(page);
@@ -776,30 +750,6 @@ test.describe('Passkey login', () => {
     await page.getByRole('button', { name: 'Link', exact: true }).click();
     await expect(page.getByText(/^Linked Evm 0x/)).toBeVisible();
     await expect(page).toHaveScreenshot('passkey-desk-link-evm.png', { fullPage: true });
-  });
-
-  test('needs a fresh login to revoke this wallet by id', async ({ page }) => {
-    await registerUnlockedDesk(page);
-    await openRevoke(page);
-    await page.getByText('New login', { exact: true }).click();
-    await expect(page.getByRole('radio', { name: 'New login' })).toBeChecked();
-    await page.getByLabel('I understand that this cannot be undone.').check();
-    await page.getByRole('button', { name: 'Block', exact: true }).click();
-    await expect(page.getByText('Revoke by id needs a fresh mail or wallet login.')).toBeVisible();
-    await expect(page).toHaveScreenshot('passkey-desk-revoke-login.png', { fullPage: true });
-  });
-
-  test('keeps the desk when revoke by id stays Active', async ({ page }) => {
-    await plantAccountToken(page);
-    await registerUnlockedDesk(page);
-    await page.evaluate((token) => window.localStorage.setItem('dfx.authenticationToken', token), ACCOUNT_TOKEN);
-    await openRevoke(page);
-    await page.getByText('New login', { exact: true }).click();
-    await expect(page.getByRole('radio', { name: 'New login' })).toBeChecked();
-    await page.getByLabel('I understand that this cannot be undone.').check();
-    await page.getByRole('button', { name: 'Block', exact: true }).click();
-    await expect(page.getByText('Not blocked yet', { exact: true })).toBeVisible();
-    await expect(page).toHaveScreenshot('passkey-desk-revoke-kept.png', { fullPage: true });
   });
 
   test('disables Link when the EVM index is above 99', async ({ page }) => {

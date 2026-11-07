@@ -44,10 +44,9 @@ describe('Passkey wallet dialogs', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('displays revocation choices, backup warning and the active-wallet result', () => {
+  it('displays revocation choices and the backup warning', () => {
     const onBackup = jest.fn(),
       onReason = jest.fn(),
-      onMethod = jest.fn(),
       onAcknowledged = jest.fn();
     const onRevoke = jest.fn(),
       onClose = jest.fn();
@@ -57,15 +56,15 @@ describe('Passkey wallet dialogs', () => {
       acknowledged: false,
       busy: false,
       reason: 'Lost' as const,
-      method: 'passkey' as const,
       onBackup,
       onReason,
-      onMethod,
       onAcknowledged,
       onRevoke,
       onClose,
     };
     const view = render(<PasskeyRevokeSheet {...props} />);
+    expect(screen.getByText('You confirm one last time with this passkey.')).toBeInTheDocument();
+    expect(screen.queryByText('Confirm with')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Block', exact: true })).toBeDisabled();
     view.rerender(<PasskeyRevokeSheet {...props} canBackUp={false} />);
     expect(screen.getByRole('button', { name: 'Back up first' })).toBeDisabled();
@@ -75,20 +74,14 @@ describe('Passkey wallet dialogs', () => {
     expect(screen.getByRole('button', { name: 'Back up first' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Back up first' }));
     fireEvent.click(screen.getByLabelText('Passkey compromised'));
-    fireEvent.click(screen.getByLabelText('New login'));
+    expect(screen.queryByText('New login')).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
     expect(onBackup).toHaveBeenCalledTimes(1);
     expect(onReason).toHaveBeenCalledWith('Compromised');
-    expect(onMethod).toHaveBeenCalledWith('login');
     expect(onAcknowledged).toHaveBeenCalledWith(true);
-    view.rerender(<PasskeyRevokeSheet {...props} acknowledged note="Wallet status is Active." />);
-    expect(screen.getByText('Not blocked yet')).toBeInTheDocument();
+    view.rerender(<PasskeyRevokeSheet {...props} acknowledged />);
     fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
     expect(onRevoke).toHaveBeenCalledTimes(1);
-    view.rerender(<PasskeyRevokeSheet {...props} method="login" />);
-    expect(
-      screen.getByText('Uses your current DFX login. If you are not signed in, sign in by e-mail or wallet first.'),
-    ).toBeInTheDocument();
     view.rerender(<PasskeyRevokeSheet {...props} backupNeeded={false} acknowledged busy note="failure" />);
     expect(screen.getByRole('alert')).toHaveTextContent('failure');
     expect(screen.queryByRole('button', { name: 'Back up first' })).not.toBeInTheDocument();
