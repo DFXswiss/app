@@ -607,6 +607,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   routes with one wallet. Register omits a Bitcoin row so the auto-link posts the derived
   address; the wallet list then contains that posted Bitcoin address, the placeholder EVM and Spark
   rows, and a differing Bitcoin row. The backupSeen response is a fixture with a fixed date; a green run does not prove the API sets that date.
+  The wallet fixtures here and in `e2e/wallet-entry.spec.ts` set `backupRequired` themselves (`true`, and `false`
+  after backupSeen); a green run does not prove the API reports it for a passkey that is not synced.
   The compromised and other-tab shots set the tab session because
   the wallet package does not return those states. The locked-receive shot opens Receive on an unlocked
   wallet and then sets the tab session to locked; it does not prove that a real lock reaches an open dialog. A green run proves each listed screen renders

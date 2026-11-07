@@ -324,7 +324,7 @@ export default function PasskeyDesk({
   };
   async function unlock(): Promise<boolean> {
     const original = getOpenPasskey();
-    await run(async (client, session) => {
+    await run(async (client, session, isCurrent) => {
       const unlockedSession = await client.unlock();
       const latest = liveSession(session);
       if (!latest) {
@@ -342,6 +342,9 @@ export default function PasskeyDesk({
       if (unlockedSession.state !== 'unlocked' || !keys) {
         keys?.wipe();
         setOpenPasskey({ ...latest, state: unlockedSession.state, keys: undefined });
+        if (unlockedSession.state === 'locked' && isCurrent()) {
+          showMessage('This passkey did not unlock the wallet. Please try again with the passkey of this wallet.');
+        }
         return;
       }
       if (expected && !sameSeed(address, expected)) {

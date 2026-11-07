@@ -68,6 +68,7 @@ const addedHomeKeys = [
   'If you lose your passkey, only your recovery words get you back to your funds.',
   'Back up now',
   'Wallet locked',
+  'This passkey did not unlock the wallet. Please try again with the passkey of this wallet.',
   'To use the wallet, unlock briefly with Face ID, fingerprint or device PIN.',
   'Unlock',
   'Wrong passkey',

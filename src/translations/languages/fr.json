@@ -590,6 +590,7 @@
     "Back up now": "Sauvegarder",
     "Wallet locked": "Wallet verrouillé",
     "To use the wallet, unlock briefly with Face ID, fingerprint or device PIN.": "Pour utiliser le wallet, déverrouille brièvement avec Face ID, ton empreinte ou le code de ton appareil.",
+    "This passkey did not unlock the wallet. Please try again with the passkey of this wallet.": "Cette clé d’accès n’a pas déverrouillé le wallet. Réessaie avec la clé d’accès de ce wallet.",
     "Unlock": "Déverrouiller",
     "Wrong passkey": "Mauvaise clé d’accès",
     "This passkey belongs to a different wallet. Sign in with the right passkey.": "Cette clé d’accès appartient à un autre wallet. Connecte-toi avec la bonne clé.",

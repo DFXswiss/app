@@ -584,6 +584,7 @@
     "Back up now": "Jetzt sichern",
     "Wallet locked": "Wallet gesperrt",
     "To use the wallet, unlock briefly with Face ID, fingerprint or device PIN.": "Zum Nutzen der Wallet kurz mit Face ID, Fingerabdruck oder Geräte-PIN entsperren.",
+    "This passkey did not unlock the wallet. Please try again with the passkey of this wallet.": "Dieser Passkey hat die Wallet nicht entsperrt. Versuche es erneut mit dem Passkey dieser Wallet.",
     "Unlock": "Entsperren",
     "Wrong passkey": "Falscher Passkey",
     "This passkey belongs to a different wallet. Sign in with the right passkey.": "Dieser Passkey gehört zu einer anderen Wallet. Melde dich mit dem richtigen Passkey an.",

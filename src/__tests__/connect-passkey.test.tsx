@@ -1214,6 +1214,65 @@ describe('ConnectPasskey', () => {
     expect(passkeySession.getOpenPasskey()?.keys).toBeUndefined();
   });
 
+  it.each(['toast', 'settings'] as const)('shows a translated locked-unlock message in %s', async (location) => {
+    const message = 'This passkey did not unlock the wallet. Please try again with the passkey of this wallet.';
+    mockTranslate.mockImplementation((_namespace, text) => (text === message ? 'Translated unlock message' : text));
+    setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
+    mockUnlock.mockResolvedValueOnce({ state: 'locked' });
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    if (location === 'settings') {
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Translated unlock message');
+      expect(screen.getByRole('dialog', { name: 'Settings' })).toContainElement(screen.getByRole('alert'));
+      expect(mockExport).not.toHaveBeenCalled();
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+      expect(await screen.findByRole('status')).toHaveTextContent('Translated unlock message');
+    }
+    expect(mockTranslate).toHaveBeenCalledWith('screens/home', message);
+  });
+
+  it('does not show a locked-unlock message after the session is replaced', async () => {
+    const session = authResult('locked') as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    let finish: (value: { state: string }) => void = () => undefined;
+    mockUnlock.mockImplementationOnce(
+      () =>
+        new Promise<{ state: string }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+    const replacement = { ...session, wallet: { ...session.wallet, credentialId: 'other' } };
+    act(() => setOpenPasskey(replacement));
+    await act(async () => finish({ state: 'locked' }));
+    expect(passkeySession.getOpenPasskey()).toBe(replacement);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('does not show a locked-unlock message after the desk unmounts during key cleanup', async () => {
+    setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
+    let finish: (value: unknown) => void = () => undefined;
+    mockUnlock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+    const keys = { ...ring(SEED), wipe: jest.fn(() => view.unmount()) };
+    await act(async () => finish({ state: 'locked', keys }));
+    expect(keys.wipe).toHaveBeenCalledTimes(1);
+    expect(mockTranslate).not.toHaveBeenCalledWith(
+      'screens/home',
+      'This passkey did not unlock the wallet. Please try again with the passkey of this wallet.',
+    );
+  });
+
   it('does not open send when an unlock finishes after another unlocked session replaces it', async () => {
     const session = authResult('locked') as unknown as OpenPasskey;
     setOpenPasskey(session);
