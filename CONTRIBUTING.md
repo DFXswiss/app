@@ -101,7 +101,8 @@ A green check that did not run the real test does not satisfy this rule. A
 same-repository pull request into `develop` runs the full-stack harness. A
 job that records `mode=none` is not a run. A fork pull request does not
 receive the API checkout key, so that job records `mode=none` and a green
-result does not prove the suite ran. A function this pull request does not
+result does not prove the suite ran. A caller that requested a full stack
+and has no API checkout key fails the job. A function this pull request does not
 touch is not an excuse to add a fake test, and a fake test that already
 exists does not count as the real test of a function this pull request
 changes.
@@ -211,7 +212,8 @@ same-repository pull request into `develop` always brings that stack up, and
 that run may take longer than the unit job. It is called after Build and
 test succeed, so it cannot start while unit tests are still queued. A fork
 pull request has no API checkout key, so the full-stack job records
-`mode=none` and a green result does not prove the suite ran.
+`mode=none` and a green result does not prove the suite ran. A caller that
+requested a full stack and has no API checkout key fails the job.
 
 #### Coverage
 

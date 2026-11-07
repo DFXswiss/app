@@ -54,9 +54,9 @@ Basic Auth.
 
 This layer arrived with #1288 and lives in `e2e-stack/`.
 
-Measured on the head of that pull request, `acb6814a`, in CI: 223 tests, of which 219 passed, 3 were
-skipped and 1 failed, in 9.6 minutes on a single worker. The failure was the route gate doing its job —
-the merge target had gained a route the registry did not claim yet. Re-measure after any change to the
+Measured on `bbb7fe563e580c8df0c86378e40ad00338deee9d`, in CI
+(https://github.com/DFXswiss/app/actions/runs/42364315367): 285 tests, of which 282
+passed, 3 were skipped and none failed, in 12.1 minutes on a single worker. Re-measure after any change to the
 suite; the number of tests is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every

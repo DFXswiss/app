@@ -14,10 +14,12 @@
 #
 # A same-repository pull request into develop brings the stack up. The caller
 # passes full=true. If that caller forgets while the API checkout key is
-# present, this job fails instead of recording mode=none. A green no-op is
-# not a run. Fork pull requests do not receive E2E_API_CHECKOUT_KEY, so they
-# still record mode=none and exit 0. Pull requests into main, a bare
-# workflow_dispatch, and the ci:full label also run the full suite.
+# present, this job fails instead of recording mode=none. If the caller
+# requested a full stack and the key is missing, the job fails as well. A
+# green no-op is not a run. Fork pull requests do not receive
+# E2E_API_CHECKOUT_KEY, so they still record mode=none and exit 0. Pull
+# requests into main, a bare workflow_dispatch, and the ci:full label also
+# run the full suite.
 # PR CI passes the boolean `full` (derived from base branch and labels);
 # the workflow_call path only reads that input. Fork pull requests also take
 # mode=none: they do not receive repository secrets, so E2E_API_CHECKOUT_KEY is
@@ -99,6 +101,10 @@ jobs:
           # Fork PRs never receive repository secrets. Probe the secret, not
           # github.head_ref (that name is fork-spoofable).
           if [ "$HAS_API_KEY" != 'true' ]; then
+            if [ "$FULL" = 'true' ]; then
+              echo "::error::The caller requested a full stack, but E2E_API_CHECKOUT_KEY is not available. mode=none is not a run."
+              exit 1
+            fi
             echo 'No run: E2E_API_CHECKOUT_KEY is not available (typical of a fork pull request).'
             echo "mode=none" >> "$GITHUB_OUTPUT"
             exit 0
