@@ -138,11 +138,12 @@ on that run does
 not prove the suite ran. The `ci:full` label does not make a fork run the
 stack. There is no selected/partial mode. A caller that requested a full
 stack without the API checkout key fails. A manual `workflow_dispatch` of
-this workflow without that key fails. A `workflow_call` that has the API
-checkout key and does not pass `full=true` fails when the base is `develop`,
-`main`, or empty. Any other base records `mode=none` and exits 0. With the
-key, a manual dispatch is a full run for every base, including an empty
-`base_ref`. Both suites exist
+this workflow without that key fails. A reusable call (`called=true`) that
+has the API checkout key and does not pass `full=true` fails when the base
+is `develop`, `main`, or empty. Any other base records `mode=none` and
+exits 0, including a same-repository pull request into another base (for
+example `staging`). With the key, a direct dispatch of this workflow is a
+full run for every base, including an empty `base_ref`. Both suites exist
 side by side and serve different purposes.
 
 ## Relationship with the API repository

@@ -105,9 +105,11 @@ pull request does not receive the API checkout key. The `ci:full` label does
 not make a fork run the stack, so that job records `mode=none` and a green
 result does not prove the suite ran. A caller that requested a full stack and
 has no API checkout key fails the job. A manual dispatch of the full-stack
-workflow without that key fails the job. A `workflow_call` that has the API
-checkout key and does not pass `full=true` fails when the base is `develop`,
-`main`, or empty. Any other base records `mode=none` and exits 0. A function
+workflow without that key fails the job. A reusable call (`called=true`)
+that has the API checkout key and does not pass `full=true` fails when the
+base is `develop`, `main`, or empty. Any other base records `mode=none` and
+exits 0, including a same-repository pull request into another base (for
+example `staging`). A function
 this pull request does not
 touch is not an excuse to add a fake test, and a fake test that already
 exists does not count as the real test of a function this pull request
@@ -223,9 +225,10 @@ API checkout key. The `ci:full` label does not make a fork run the stack, so
 the full-stack job records `mode=none` and a green result does not prove the
 suite ran. A caller that requested a full stack and has no API checkout key
 fails the job. A manual dispatch of the full-stack workflow without that key
-fails the job. A `workflow_call` that has the API checkout key and does not
-pass `full=true` fails when the base is `develop`, `main`, or empty. Any other
-base records `mode=none` and exits 0.
+fails the job. A reusable call (`called=true`) that has the API checkout key
+and does not pass `full=true` fails when the base is `develop`, `main`, or
+empty. Any other base records `mode=none` and exits 0, including a
+same-repository pull request into another base (for example `staging`).
 
 #### Coverage
 
@@ -360,9 +363,11 @@ request records `mode=none` and a green result does not prove the suite ran.
 The `ci:full`
 label does not make a fork run the stack. A caller that requested a full
 stack without the API checkout key fails. A manual dispatch of the full-stack
-workflow without that key fails. A `workflow_call` that has the API checkout
-key and does not pass `full=true` fails when the base is `develop`, `main`, or
-empty. Any other base records `mode=none` and exits 0.
+workflow without that key fails. A reusable call (`called=true`) that has the
+API checkout key and does not pass `full=true` fails when the base is
+`develop`, `main`, or empty. Any other base records `mode=none` and exits 0,
+including a same-repository pull request into another base (for example
+`staging`).
 
 A pull request that adds or changes a website function must add or update the
 real test of that function in this harness, and that test must have run. See
@@ -385,9 +390,10 @@ request records
 `mode=none`, and a green check on that run does not prove the suite ran. A
 caller that requested a full stack without the API checkout key fails. A
 manual dispatch of the full-stack workflow without that key fails. A
-`workflow_call` that has the API checkout key and does not pass `full=true`
-fails when the base is `develop`, `main`, or empty. Any other base records
-`mode=none` and exits 0. Opening a
+reusable call (`called=true`) that has the API checkout key and does not
+pass `full=true` fails when the base is `develop`, `main`, or empty. Any
+other base records `mode=none` and exits 0, including a same-repository pull
+request into another base (for example `staging`). Opening a
 route satisfies only this route gate. It does not satisfy
 [Real tests](#real-tests). A green check on a run that records `mode=none`
 does not satisfy that rule either.

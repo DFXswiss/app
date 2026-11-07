@@ -1,9 +1,10 @@
 # Full-stack E2E: real frontend + API + Postgres against mocked external providers.
 #
 # This file has no pull_request trigger. pr.yml workflow_calls it after Build
-# and test. workflow_dispatch remains for a manual full run. Without the
-# API checkout key, that run fails instead of recording mode=none. Never listen to
-# ready_for_review here. Scope (full vs none) still happens inside the job
+# and test and passes called=true. A direct workflow_dispatch remains a
+# manual full run. Without the API checkout key, that direct run fails
+# instead of recording mode=none. Never listen to ready_for_review here.
+# Scope (full vs none) still happens inside the job
 # (the "Determine e2e scope" step) instead of `on.paths` or a job `if:` that
 # would skip a required check. If you ever consider adding another skip
 # anywhere in this file, justify it in a comment right there.
@@ -13,25 +14,31 @@
 # request has merged, that workflow bootstraps the harness from this pull request's head
 # instead, which means neither side is blocked on the other and either merge order works.
 #
-# Scope, after the API checkout key is probed (the secret, never github.head_ref,
-# which is fork-spoofable):
+# Scope, after the API checkout key is probed (the secret, never
+# github.head_ref, which is fork-spoofable). A reusable workflow keeps the
+# caller's github context, so github.event_name is never workflow_call.
+# pr.yml passes called=true. The scope step reads that input, not the
+# event name.
 # - No key, and the caller passed full=true: exit 1. mode=none is not a run.
-# - No key, and the event is workflow_dispatch: exit 1. A direct dispatch is a
-#   full request. A missing key does not record mode=none.
-# - No key otherwise (a fork pull request, which pr.yml calls with full=false):
-#   record mode=none and exit 0. A green check does not prove the suite ran.
-#   The ci:full label does not reach this file and does not change that.
-# - workflow_call with the key and full=true: mode=full.
-# - workflow_call with the key and full not true: exit 1 when the base is
-#   develop, main, or empty. Any other base (for example staging) records
-#   mode=none and exits 0.
-# - workflow_dispatch with the key: mode=full for every base, including an
-#   empty base and a named base.
+# - No key, not a reusable call, and the event is workflow_dispatch (a
+#   direct dispatch of this file): exit 1. A direct dispatch is a full
+#   request. A missing key does not record mode=none.
+# - No key otherwise (a fork pull request, which pr.yml calls with
+#   full=false and called=true): record mode=none and exit 0. A green check
+#   does not prove the suite ran. The ci:full label does not reach this
+#   file and does not change that.
+# - called=true with the key and full=true: mode=full.
+# - called=true with the key and full not true: exit 1 when the base is
+#   develop, main, or empty. Any other base records mode=none and exits 0,
+#   including a same-repository pull request into another base (for example
+#   staging).
+# - Direct workflow_dispatch with the key (called is not true): mode=full
+#   for every base, including an empty base and a named base.
 # pr.yml sets full=true for a same-repository pull request into develop or
 # main, and for ci:full only when the head repository is this repository.
-# A fork stays full=false. There is no job-level draft skip. API checkout,
-# bootstrap resolution, and harness tsc run only when mode != none.
-# There is no selected/partial spec mapping in this repository.
+# A fork stays full=false. pr.yml passes called=true. There is no job-level
+# draft skip. API checkout, bootstrap resolution, and harness tsc run only
+# when mode != none. There is no selected/partial spec mapping here.
 
 name: Full-stack E2E
 
@@ -49,7 +56,12 @@ on:
         required: false
         type: string
       full:
-        description: Caller requested a full stack (workflow_call only; a direct dispatch is always a full request)
+        description: Caller requested a full stack (reusable call only; a direct dispatch is always a full request)
+        required: false
+        type: boolean
+        default: false
+      called:
+        description: Set by PR CI; true means this run is a reusable call
         required: false
         type: boolean
         default: false
@@ -75,11 +87,12 @@ on:
 permissions:
   contents: read
 
-# workflow_call (PR path) and workflow_dispatch (manual) must not share a
-# cancel group. Include event_name so a dispatch cannot cancel the nested
-# required check.
+# A reusable call and a direct workflow_dispatch must not share a cancel
+# group. event_name is kept, but it is the caller's event: a dispatched
+# PR CI run and a direct dispatch of this file are both workflow_dispatch.
+# inputs.called separates them (call when true, direct otherwise).
 concurrency:
-  group: e2e-stack-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ github.event_name }}
+  group: e2e-stack-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ github.event_name }}-${{ inputs.called && 'call' || 'direct' }}
   cancel-in-progress: true
 
 jobs:
@@ -88,24 +101,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      # Event-only: no checkout. No key plus a requested full run (caller
-      # full=true, or a direct workflow_dispatch) exits 1. A fork pull request
-      # (full=false, no key) records mode=none and exits 0. Modes are only
-      # full and none; there is no selected/partial spec mapping here.
+      # No checkout. No key plus full=true exits 1. No key on a direct
+      # workflow_dispatch (called is not true) also exits 1. A fork
+      # (called=true, full=false, no key) records mode=none and exits 0.
+      # Modes are only full and none. There is no selected/partial mapping.
       - name: Determine e2e scope
         id: scope
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE: ${{ github.base_ref || inputs.base_ref }}
           FULL: ${{ inputs.full }}
+          CALLED: ${{ inputs.called }}
           HAS_API_KEY: ${{ secrets.E2E_API_CHECKOUT_KEY != '' }}
         run: |
           set -euo pipefail
 
+          # github.event_name cannot detect a reusable call: the call keeps
+          # the caller's github context, so the name stays pull_request or
+          # workflow_dispatch. inputs.called is the marker (pr.yml sets it).
           # Fork PRs never receive repository secrets. Probe the secret, not
           # github.head_ref (that name is fork-spoofable).
           if [ "$HAS_API_KEY" != 'true' ]; then
-            if [ "$FULL" = 'true' ] || [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+            if [ "$FULL" = 'true' ]; then
+              echo "::error::A full stack was requested, but E2E_API_CHECKOUT_KEY is not available. mode=none is not a run."
+              exit 1
+            fi
+            if [ "$CALLED" != 'true' ] && [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
               echo "::error::A full stack was requested, but E2E_API_CHECKOUT_KEY is not available. mode=none is not a run."
               exit 1
             fi
@@ -114,15 +135,16 @@ jobs:
             exit 0
           fi
 
-          # Caller (PR CI) already decided full vs none after unit tests passed.
-          # develop, main, and an empty base are bases where that caller must
-          # request a full run. Any other base keeps mode=none.
-          if [ "$EVENT_NAME" = 'workflow_call' ]; then
+          # Reusable call (called=true). develop, main, and an empty base
+          # must request a full run. Any other base, including a
+          # same-repository pull request into staging, records mode=none.
+          # Then exit: the rest of this step is for a direct dispatch only.
+          if [ "$CALLED" = 'true' ]; then
             if [ "$FULL" = 'true' ]; then
               echo 'Full run: caller requested a full stack.'
               echo "mode=full" >> "$GITHUB_OUTPUT"
             elif [ -z "${BASE:-}" ] || [ "$BASE" = 'develop' ] || [ "$BASE" = 'main' ]; then
-              echo "::error::workflow_call with the API key must pass full=true for base develop, main, or an empty base (base='${BASE:-}'). mode=none is not a run."
+              echo "::error::A reusable call with the API key must pass full=true for base develop, main, or an empty base (base='${BASE:-}'). mode=none is not a run."
               exit 1
             else
               echo 'E2E skipped: this caller did not request a full stack.'
@@ -131,10 +153,11 @@ jobs:
             exit 0
           fi
 
-          # Only a workflow_dispatch with the key reaches here. A dispatch without
-          # the key already exited 1. A non-empty base_ref is remapped onto the
-          # pull_request comparison below. Every such dispatch records mode=full:
-          # an empty base, develop, main, and any other named base.
+          # Direct workflow_dispatch of this file, with the key. A dispatch
+          # without the key already exited 1. called is not true here. A
+          # non-empty base_ref is remapped onto the pull_request comparison
+          # below. Every such dispatch records mode=full: an empty base,
+          # develop, main, and any other named base.
           if [ "$EVENT_NAME" = 'workflow_dispatch' ] && [ -n "${BASE:-}" ]; then
             EVENT_NAME=pull_request
           fi

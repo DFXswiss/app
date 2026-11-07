@@ -10,12 +10,12 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 ## The layers this repository owns
 
-| Layer              | Location                        | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                                                                                                                                                                                      |
-| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts run (forks may wait as `action_required`); suite full / related / none                                                                                                                                                                   |
-| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                                                                                                                                                               |
-| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts run; a same-repository pull request into develop or main brings the stack up when the API checkout key is available and fails when a full stack is requested without it; a fork records mode=none and a green check does not prove a run |
-| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                           | no                                                                                                                                                                                                                                              |
+| Layer              | Location                        | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                                                                                                                                                                                                                                                                                |
+| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts run (forks may wait as `action_required`); suite full / related / none                                                                                                                                                                                                                                                             |
+| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                                                                                                                                                                                                                                                         |
+| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts run; a same-repository pull request into develop or main brings the stack up when the API checkout key is available and fails when a full stack is requested without it; a fork records mode=none and a green check does not prove a run; a same-repository pull request into another base (for example staging) records mode=none |
+| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                           | no                                                                                                                                                                                                                                                                                                                                        |
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
 payout, ledger booking — is **not** testable from this repository. It belongs to the integration
@@ -84,10 +84,11 @@ A same-repository pull request into `develop` or `main` brings the stack up when
 available and fails when a full stack is requested without it. The `ci:full` label does not make a
 fork pull request run the stack. A fork records `mode=none` and exits 0, and a green check does not prove
 the suite ran. A caller that passed `full=true` without the API checkout key fails. A manual
-`workflow_dispatch` of the full-stack workflow without that key fails. A `workflow_call` that has the
-API checkout key and does not pass `full=true` fails when the base is `develop`, `main`, or empty. Any
-other base records `mode=none` and exits 0. With the key, a manual dispatch is a full run for every base,
-including an empty `base_ref`.
+`workflow_dispatch` of the full-stack workflow without that key fails. A reusable call (`called=true`)
+that has the API checkout key and does not pass `full=true` fails when the base is `develop`, `main`, or
+empty. Any other base records `mode=none` and exits 0, including a same-repository pull request into
+another base (for example `staging`). With the key, a direct dispatch of this workflow is a full run for
+every base, including an empty `base_ref`.
 Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
 there.
 
@@ -370,7 +371,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`/buy: KycRequired opens the KYC screen`) creates that customer, clears
   `provisionalApprovalDate` when a stamp is present, and quotes CHF for an asset that is not REALU.
   `collectionAccountOrThrow` then answers `KycRequired` because the level is below 50. A green run does
-  **not** prove that an AML rule produced that answer.
+  **not** prove that an AML rule produced that answer. The test writes the starting state (KYC level 30
+  and completed personal data through the factory, `provisionalApprovalDate` cleared by SQL), so a green
+  run does **not** prove that a visitor reaches that state through the product flows.
 - **Full-stack continue-race specs SQL-write `user_data.tradeApprovalDate`.**
   `e2e-stack/specs/kyc-continue-race.spec.ts` sets the date so recommendation is skipped. A green
   run does **not** prove that a customer obtains trade approval through the product path.
@@ -648,7 +651,7 @@ The document checks from the deleted accessibility spec (title contains DFX, non
 
 Gasless sell and an on-chain payment stay outside this suite. The existing known gap that no layer verifies a payment end to end still applies. No wallet mock was added.
 
-Handbook screenshot baselines are unchanged and are not that coverage.
+The 21 screenshots of those six handbook groups (bug-session, signature-login, subpage, swap-btc-to-ln, swap-ln-to-btc, and swap-lightning-url-param) were written only by the removed files, could not be regenerated, and are removed with their metadata entries; the screens stay in the handbook through the maintained baselines of other specs.
 
 ## Known gaps
 
@@ -676,9 +679,10 @@ All five points below concern the full-stack harness.
 - **A fork pull request does not bring the stack up.** The job has no API checkout key. The `ci:full`
   label does not change that. The job records `mode=none` and exits 0. A green Full-stack E2E check on a
   fork does not prove the suite ran. A caller that requested a full stack without the key fails. A manual
-  dispatch of the full-stack workflow without the key fails. A `workflow_call` that has the key and does
-  not pass `full=true` fails when the base is `develop`, `main`, or empty. Any other base records
-  `mode=none` and exits 0.
+  dispatch of the full-stack workflow without the key fails. A reusable call (`called=true`) that has the
+  key and does not pass `full=true` fails when the base is `develop`, `main`, or empty. Any other base
+  records `mode=none` and exits 0, including a same-repository pull request into another base (for
+  example `staging`).
 
 ## Target architecture
 

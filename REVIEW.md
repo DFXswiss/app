@@ -23,9 +23,10 @@ Reject the pull request when any of these is true:
   so it records `mode=none` and a green full-stack check does not prove the
   suite ran. A caller that requested a full stack without that key fails. A
   manual dispatch of the full-stack workflow without that key fails. A
-  `workflow_call` that has the API checkout key and does not pass `full=true`
-  fails when the base is `develop`, `main`, or empty. Any other base records
-  `mode=none` and exits 0.
+  reusable call (`called=true`) that has the API checkout key and does not
+  pass `full=true` fails when the base is `develop`, `main`, or empty. Any
+  other base records `mode=none` and exits 0, including a same-repository
+  pull request into another base (for example `staging`).
 - The test offered as coverage of the function replaces the screen, the
   visitor's action, the session, the router, the navigation, this service's
   API, or this service's database.
