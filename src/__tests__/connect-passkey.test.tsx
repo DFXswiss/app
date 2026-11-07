@@ -72,7 +72,7 @@ jest.mock('../contexts/settings.context', () => ({
 }));
 
 jest.mock('../components/payment/qr-code', () => ({
-  QrCopy: ({ data }: { data: string }) => <div data-testid="receive-qr">{data}</div>,
+  QrBasic: ({ data }: { data: string }) => <div data-testid="qr-code">{data}</div>,
 }));
 
 const mockCheckPasskeyPlatform = jest.fn(() => new Promise(() => undefined));
@@ -172,6 +172,8 @@ import { createRef } from 'react';
 import { RP_IDS } from '@dfx.swiss/wallet';
 import ConnectPasskey, { passkeyPlatformBlock, walletEnvForHost } from '../components/home/wallet/connect-passkey';
 import PasskeyDesk from '../components/home/wallet/passkey-desk';
+import { PasskeyReceivePanel } from '../components/home/wallet/passkey-transfer';
+import PasskeySheet from '../components/home/wallet/passkey-sheet';
 import {
   PASSKEY_IN_APP_BODY,
   PASSKEY_UNKNOWN_BODY,
@@ -325,7 +327,7 @@ describe('ConnectPasskey', () => {
     }
   });
 
-  it('shows a balance placeholder or the supplied balance and exposes the send fallback', async () => {
+  it('shows a balance placeholder or the supplied balance and opens send', () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     expect(screen.getByLabelText('Loading balance')).toBeInTheDocument();
@@ -340,7 +342,7 @@ describe('ConnectPasskey', () => {
     expect(screen.getByText('1,234')).toBeInTheDocument();
     expect(screen.getByText('.50')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('Coming soon');
+    expect(screen.getByRole('dialog', { name: 'Send' })).toBeInTheDocument();
   });
 
   it('changes both balance and asset currency locally without a DFX user', () => {
@@ -398,17 +400,15 @@ describe('ConnectPasskey', () => {
     expect(screen.getByRole('button', { name: 'EUR' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('forwards service, send and paste actions and displays supplied assets', async () => {
+  it('forwards service and paste actions and displays supplied assets', async () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     const openApp = jest.fn(),
-      send = jest.fn(),
       paste = jest.fn();
     render(
       <PasskeyDesk
         onOpenApp={openApp}
         onCancel={mockOnCancel}
         onRevoked={mockOnSwitch}
-        onSend={send}
         onPasteLink={paste}
         assets={[{ name: 'Bitcoin', amount: '1 BTC', chf: 100, eur: 90, network: 'Bitcoin' }]}
       />,
@@ -418,7 +418,8 @@ describe('ConnectPasskey', () => {
     expect(openApp).toHaveBeenCalledWith('/sell');
     expect(openApp).toHaveBeenCalledWith('/swap');
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog', { name: 'Send' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
     expect(screen.getByText('1 BTC')).toBeInTheDocument();
     expect(screen.getByText('CHF 100.00')).toBeInTheDocument();
@@ -1422,9 +1423,10 @@ describe('ConnectPasskey', () => {
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
     expect(keys.evm).toHaveBeenCalledWith(0);
     expect(screen.getByTestId('passkey-receive-address').textContent).toBe(SEED);
-    expect(screen.getByTestId('receive-qr').textContent).toBe(SEED);
+    expect(screen.getByTestId('qr-code').textContent).toBe(SEED);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
   });
@@ -1443,6 +1445,7 @@ describe('ConnectPasskey', () => {
     setOpenPasskey(session);
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
     expect(screen.getByTestId('passkey-receive-address')).toBeInTheDocument();
     act(() => setOpenPasskey({ ...session, state: 'locked', keys: undefined }));
     expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
@@ -1455,6 +1458,7 @@ describe('ConnectPasskey', () => {
       setOpenPasskey(session);
       render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
       fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
       expect(screen.getByTestId('passkey-receive-address')).toBeInTheDocument();
       act(() => setOpenPasskey({ ...session, state }));
       expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
@@ -1470,14 +1474,17 @@ describe('ConnectPasskey', () => {
     setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     expect(() => fireEvent.click(screen.getByRole('button', { name: 'Receive' }))).not.toThrow();
+    fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('wiped');
     expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
   });
 
-  it('does not render an empty derived address', () => {
+  it('shows an empty derived address without inventing a value', () => {
     setOpenPasskey(authResult('unlocked', ring('')) as unknown as OpenPasskey);
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-    expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
+    expect(screen.getByTestId('passkey-receive-address')).toBeEmptyDOMElement();
   });
 
   it.each(['Start another ceremony', 'Revoke with passkey as lost', 'Revoke this wallet by id as lost'])(
@@ -1490,6 +1497,7 @@ describe('ConnectPasskey', () => {
       mockRevokeById.mockResolvedValue({ status: 'Lost' });
       render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
       fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
       expect(screen.getByTestId('passkey-receive-address')).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'Close' }));
       fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -1705,8 +1713,9 @@ describe('ConnectPasskey', () => {
     try {
       render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
       fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
       fireEvent.click(screen.getByRole('button', { name: 'Copy address' }));
-      expect(await screen.findByRole('status')).toHaveTextContent('Address copied');
+      expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
       expect(writeText).toHaveBeenCalledWith(SEED);
     } finally {
       if (original) Object.defineProperty(navigator, 'clipboard', original);
@@ -3109,13 +3118,81 @@ describe('ConnectPasskey', () => {
         else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
       }
     });
+    it('does not derive a selected receive family while locked or when it becomes locked', () => {
+      const readReceive = jest.fn(() => 'local-address');
+      const onReceiveError = jest.fn();
+      const panel = (unlocked: boolean) => (
+        <PasskeySheet title="Receive" onClose={() => undefined}>
+          <PasskeyReceivePanel unlocked={unlocked} readReceive={readReceive} onReceiveError={onReceiveError} />
+        </PasskeySheet>
+      );
+      const view = render(panel(false));
+      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
+      expect(screen.getByText('Unlock the wallet to show this address.')).toBeInTheDocument();
+      expect(readReceive).not.toHaveBeenCalled();
+      expect(onReceiveError).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('passkey-receive-qr')).not.toBeInTheDocument();
+      view.rerender(panel(true));
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('local-address');
+      expect(screen.getByTestId('passkey-receive-qr')).toBeInTheDocument();
+      expect(readReceive).toHaveBeenCalledTimes(1);
+      view.rerender(panel(false));
+      expect(screen.getByText('Unlock the wallet to show this address.')).toBeInTheDocument();
+      expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('passkey-receive-qr')).not.toBeInTheDocument();
+      expect(readReceive).toHaveBeenCalledTimes(1);
+      expect(onReceiveError).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it.each(['Receive', 'Send'] as const)('unlocks before opening the %s dialog', async (action) => {
+      openDesk(undefined, 'locked');
+      mockUnlock.mockResolvedValueOnce({ state: 'unlocked', keys: ring(SEED) });
+      fireEvent.click(screen.getByRole('button', { name: action }));
+      expect(await screen.findByRole('dialog', { name: action })).toBeInTheDocument();
+      expect(mockUnlock).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows a receive derivation failure inside the dialog', () => {
+      openDesk({
+        evm: () => {
+          throw new Error('derivation failed');
+        },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
+      expect(screen.getByRole('dialog', { name: 'Receive' })).toContainElement(screen.getByRole('alert'));
+      expect(screen.getByRole('alert')).toHaveTextContent('derivation failed');
+    });
+
+    it.each(['missing', 'locked'] as const)(
+      'shows a locked receive error when the session is %s at derivation',
+      (state) => {
+        const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+        setOpenPasskey(session);
+        renderDesk();
+        fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+        const stale = jest.spyOn(passkeySession, 'getOpenPasskey');
+        try {
+          stale.mockReturnValueOnce(state === 'missing' ? undefined : { ...session, state: 'locked', keys: undefined });
+          fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
+          const alert = screen.getByRole('alert');
+          expect(alert).toHaveTextContent('locked');
+          expect(screen.getByRole('dialog', { name: 'Receive' })).toContainElement(alert);
+          expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+          expect(screen.queryByTestId('passkey-receive-qr')).not.toBeInTheDocument();
+        } finally {
+          stale.mockRestore();
+        }
+      },
+    );
 
     it('shows receive and send on an unlocked desk with the existing actions', () => {
       openDesk({ id: 'keys' });
 
-      expect(screen.getByRole('button', { name: 'Open the app' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Link Bitcoin' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Buy' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Receive' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
     });
@@ -3124,14 +3201,27 @@ describe('ConnectPasskey', () => {
       const evm = jest.fn((index: number) => ({ path: `m/${index}`, address: `addr-${index}` }));
       openDesk({ evm });
 
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      expect(screen.getByLabelText(/Another EVM account/)).toHaveValue('1');
+      fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
       fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
       fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
 
       expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('addr-0');
       expect(screen.getByTestId('qr-code')).toHaveTextContent('addr-0');
-      expect(screen.getByLabelText('EVM account index')).toHaveValue('1');
       expect(evm).toHaveBeenCalledWith(0);
       expect(evm).not.toHaveBeenCalledWith(1);
+    });
+
+    it('keeps the address without deriving again when the selected family is clicked twice', () => {
+      const evm = jest.fn(() => ({ address: 'addr-0' }));
+      openDesk({ evm });
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('addr-0');
+      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('addr-0');
+      expect(evm).toHaveBeenCalledTimes(1);
     });
 
     it('hides the previous receive address before the next family is read', () => {
@@ -3214,10 +3304,12 @@ describe('ConnectPasskey', () => {
     });
 
     it('asks to unlock instead of showing a receive address when the desk is locked', () => {
-      openDesk(undefined, 'locked');
-
+      const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+      setOpenPasskey(session);
+      renderDesk();
       fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
       fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
+      act(() => setOpenPasskey({ ...session, state: 'locked', keys: undefined }));
 
       expect(screen.getByText('Unlock the wallet to show this address.')).toBeInTheDocument();
       expect(screen.queryByTestId('qr-code')).not.toBeInTheDocument();
@@ -3319,6 +3411,250 @@ describe('ConnectPasskey', () => {
       }
     });
 
+    it('ignores a late QR detection after the send dialog closes', async () => {
+      const react = jest.requireActual<typeof import('react')>('react');
+      const originalUseState = react.useState;
+      const destinationWrite = jest.fn();
+      const spy = jest.spyOn(react, 'useState').mockImplementation(((initial: unknown) => {
+        const [value, setValue] = originalUseState<unknown>(initial);
+        return [
+          value,
+          (next: unknown) => {
+            if (next === 'bc1qlate') destinationWrite(next);
+            setValue(next);
+          },
+        ];
+      }) as typeof react.useState);
+      const stop = jest.fn();
+      let finish: (codes: { rawValue: string }[]) => void = () => undefined;
+      const detect = jest.fn(
+        () =>
+          new Promise<{ rawValue: string }[]>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const schedule = jest.fn(() => 42);
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const previousRaf = window.requestAnimationFrame;
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+      globalWithDetector.BarcodeDetector = class {
+        detect = detect;
+      };
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: () => Promise.resolve({ getTracks: () => [{ stop }] }) },
+      });
+      window.requestAnimationFrame = schedule;
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        await waitFor(() => expect(detect).toHaveBeenCalledTimes(1));
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+        expect(stop).toHaveBeenCalledTimes(1);
+        await act(async () => finish([{ rawValue: 'bc1qlate' }]));
+        expect(destinationWrite).not.toHaveBeenCalled();
+        expect(schedule).not.toHaveBeenCalled();
+      } finally {
+        spy.mockRestore();
+        window.requestAnimationFrame = previousRaf;
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    it('retries a failed detect on the next frame and uses a later result', async () => {
+      const stop = jest.fn();
+      const detect = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('frame failed'))
+        .mockResolvedValueOnce([{ rawValue: 'bc1qretry' }]);
+      let nextFrame: FrameRequestCallback | undefined;
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const previousRaf = window.requestAnimationFrame;
+      const previousCancel = window.cancelAnimationFrame;
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+      globalWithDetector.BarcodeDetector = class {
+        detect = detect;
+      };
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: () => Promise.resolve({ getTracks: () => [{ stop }] }) },
+      });
+      window.requestAnimationFrame = (callback) => {
+        nextFrame = callback;
+        return 17;
+      };
+      window.cancelAnimationFrame = jest.fn();
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        await waitFor(() => expect(nextFrame).toBeDefined());
+        expect(screen.getByTestId('passkey-send-scan')).toBeInTheDocument();
+        const callback = nextFrame;
+        if (!callback) throw new Error('Expected a retry frame');
+        await act(async () => callback(0));
+        expect(detect).toHaveBeenCalledTimes(2);
+        expect(screen.getByLabelText('Destination')).toHaveValue('bc1qretry');
+        expect(stop).toHaveBeenCalledTimes(1);
+      } finally {
+        window.requestAnimationFrame = previousRaf;
+        window.cancelAnimationFrame = previousCancel;
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    it.each(['missing', 'undefined', 'throws', 'rejects'] as const)(
+      'continues scanning when video play is %s and stream assignment throws',
+      async (mode) => {
+        const stop = jest.fn();
+        const detect = jest.fn().mockResolvedValue([{ rawValue: 'bc1qvideo' }]);
+        const assign = jest.fn((value: unknown) => {
+          if (value !== null) throw new Error('stream rejected');
+        });
+        const play = jest.fn(() => {
+          if (mode === 'throws') throw new Error('play failed');
+          if (mode === 'rejects') return Promise.reject(new Error('play rejected'));
+          return undefined;
+        });
+        const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+        const previousSource = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'srcObject');
+        const previousPlay = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'play');
+        const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+        const previousDetector = globalWithDetector.BarcodeDetector;
+        globalWithDetector.BarcodeDetector = class {
+          detect = detect;
+        };
+        Object.defineProperty(navigator, 'mediaDevices', {
+          configurable: true,
+          value: { getUserMedia: () => Promise.resolve({ getTracks: () => [{ stop }] }) },
+        });
+        Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', { configurable: true, set: assign });
+        Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+          configurable: true,
+          value: mode === 'missing' ? undefined : play,
+        });
+        try {
+          openDesk({ id: 'keys' });
+          fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+          fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+          await waitFor(() => expect(screen.getByLabelText('Destination')).toHaveValue('bc1qvideo'));
+          expect(assign).toHaveBeenCalled();
+          expect(detect).toHaveBeenCalledTimes(1);
+          expect(stop).toHaveBeenCalledTimes(1);
+          expect(play).toHaveBeenCalledTimes(mode === 'missing' ? 0 : 1);
+        } finally {
+          if (previousSource) Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', previousSource);
+          else delete (HTMLMediaElement.prototype as { srcObject?: unknown }).srcObject;
+          if (previousPlay) Object.defineProperty(HTMLMediaElement.prototype, 'play', previousPlay);
+          else delete (HTMLMediaElement.prototype as { play?: unknown }).play;
+          if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+          else globalWithDetector.BarcodeDetector = previousDetector;
+          if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+          else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+        }
+      },
+    );
+
+    it('stops the acquired stream if BarcodeDetector disappears before the camera effect', async () => {
+      const stop = jest.fn();
+      const detect = jest.fn();
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+      globalWithDetector.BarcodeDetector = class {
+        detect = detect;
+      };
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          getUserMedia: () => {
+            delete globalWithDetector.BarcodeDetector;
+            return Promise.resolve({ getTracks: () => [{ stop }] });
+          },
+        },
+      });
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        await screen.findByTestId('passkey-send-scan');
+        expect(detect).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+        expect(stop).toHaveBeenCalledTimes(1);
+      } finally {
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    it.each(['next frame', 'scan again', 'close'] as const)('handles a scheduled scan frame on %s', async (action) => {
+      const stop = jest.fn();
+      const detect = jest
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ rawValue: 'bc1qsecond' }]);
+      const getUserMedia = jest
+        .fn()
+        .mockResolvedValueOnce({ getTracks: () => [{ stop }] })
+        .mockImplementationOnce(() => new Promise(() => undefined));
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const previousRaf = window.requestAnimationFrame;
+      const previousCancel = window.cancelAnimationFrame;
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+      let frame: FrameRequestCallback | undefined;
+      const cancel = jest.fn();
+      globalWithDetector.BarcodeDetector = class {
+        detect = detect;
+      };
+      Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
+      window.requestAnimationFrame = (callback: FrameRequestCallback) => {
+        frame = callback;
+        return 42;
+      };
+      window.cancelAnimationFrame = cancel;
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        await waitFor(() => expect(frame).toBeDefined());
+        expect(detect).toHaveBeenCalledTimes(1);
+        if (action === 'next frame') {
+          const callback = frame;
+          if (!callback) throw new Error('Expected a scheduled frame');
+          await act(async () => callback(0));
+          expect(detect).toHaveBeenCalledTimes(2);
+          expect(screen.getByLabelText('Destination')).toHaveValue('bc1qsecond');
+        } else if (action === 'scan again') {
+          fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+          expect(getUserMedia).toHaveBeenCalledTimes(2);
+        } else {
+          fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+          expect(screen.queryByRole('dialog', { name: 'Send' })).not.toBeInTheDocument();
+        }
+        expect(cancel).toHaveBeenCalledWith(42);
+        expect(stop).toHaveBeenCalledTimes(1);
+      } finally {
+        window.requestAnimationFrame = previousRaf;
+        window.cancelAnimationFrame = previousCancel;
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
     it('stops the first camera when scan is pressed again', async () => {
       const firstStop = jest.fn();
       const secondStop = jest.fn();
@@ -3362,6 +3698,80 @@ describe('ConnectPasskey', () => {
         expect(mockLink).not.toHaveBeenCalled();
       } finally {
         window.requestAnimationFrame = previousRaf;
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    it.each(['running', 'pending'] as const)('stops a %s camera when the send dialog closes', async (state) => {
+      const stop = jest.fn();
+      let finish: (stream: unknown) => void = () => undefined;
+      const stream = { getTracks: () => [{ stop }] };
+      const getUserMedia = jest.fn(() =>
+        state === 'pending'
+          ? new Promise((resolve) => {
+              finish = resolve;
+            })
+          : Promise.resolve(stream),
+      );
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const previousRaf = window.requestAnimationFrame;
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+      globalWithDetector.BarcodeDetector = class {
+        detect() {
+          return Promise.resolve([]);
+        }
+      };
+      Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
+      window.requestAnimationFrame = ((_callback: FrameRequestCallback) => 1) as typeof requestAnimationFrame;
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        if (state === 'running') await screen.findByTestId('passkey-send-scan');
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+        if (state === 'pending') await act(async () => finish(stream));
+        await waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
+        expect(screen.queryByRole('dialog', { name: 'Send' })).not.toBeInTheDocument();
+      } finally {
+        window.requestAnimationFrame = previousRaf;
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    it('ignores a camera rejection after the send dialog closes', async () => {
+      let fail: (error: Error) => void = () => undefined;
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+      globalWithDetector.BarcodeDetector = class {
+        detect() {
+          return Promise.resolve([]);
+        }
+      };
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          getUserMedia: () =>
+            new Promise((_resolve, reject) => {
+              fail = reject;
+            }),
+        },
+      });
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+        await act(async () => fail(new Error('camera denied')));
+        expect(screen.queryByText('QR scanning is not available in this browser.')).not.toBeInTheDocument();
+      } finally {
         if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
         else globalWithDetector.BarcodeDetector = previousDetector;
         if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);

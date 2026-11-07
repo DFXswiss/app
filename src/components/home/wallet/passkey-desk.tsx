@@ -6,8 +6,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { createPasskeyClients, type PasskeyClients, passkeyMessage } from './passkey-host';
 import { getOpenPasskey, setOpenPasskey, subscribeOpenPasskey, type OpenPasskey } from './passkey-session';
-import PasskeyTransfer, { type ReceiveFamily } from './passkey-transfer';
-import PasskeyReceive from './passkey-receive';
+import { PasskeyReceivePanel, PasskeySendPanel, type ReceiveFamily } from './passkey-transfer';
 import PasskeyWalletCard from './passkey-wallet-card';
 import PasskeyWalletActions, { WalletAction } from './passkey-wallet-actions';
 import PasskeyWalletNotes, { walletStateDescription } from './passkey-wallet-notes';
@@ -24,7 +23,6 @@ export interface PasskeyDeskProps {
   balance?: { chf: number; eur: number };
   assets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
   history?: PasskeyHistory;
-  onSend?: () => void;
   onPasteLink?: () => void;
   onCancel: () => void;
   onRevoked: () => void;
@@ -90,7 +88,6 @@ export default function PasskeyDesk({
   balance,
   assets,
   history,
-  onSend,
   onPasteLink,
 }: PasskeyDeskProps): JSX.Element {
   const { translate, currency, changeCurrency } = useSettingsContext();
@@ -98,7 +95,7 @@ export default function PasskeyDesk({
   const { user } = useUserContext();
   const [currentSymbol, setCurrentSymbol] = useState<'CHF' | 'EUR'>(currency?.name === 'EUR' ? 'EUR' : 'CHF');
   const [expanded, setExpanded] = useState(false);
-  const [sheet, setSheet] = useState<'settings' | 'words' | 'revoke' | 'receive' | 'pay'>();
+  const [sheet, setSheet] = useState<'settings' | 'words' | 'revoke' | 'receive' | 'send' | 'pay'>();
   const [toast, setToast] = useState<string>();
   const [wordsAcknowledged, setWordsAcknowledged] = useState(false);
   const [revokeAcknowledged, setRevokeAcknowledged] = useState(false);
@@ -110,7 +107,6 @@ export default function PasskeyDesk({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string>();
   const [words, setWords] = useState<string[]>();
-  const [receive, setReceive] = useState(false);
   const [checks, setChecks] = useState<{ family: string; address: string; matches: boolean }[]>();
   const busyRef = useRef(false);
   const mounted = useRef(false);
@@ -249,7 +245,6 @@ export default function PasskeyDesk({
         return;
       }
       setWords(undefined);
-      setReceive(false);
       setSheet(undefined);
       setOpenPasskey(undefined);
       onRevoked();
@@ -281,7 +276,6 @@ export default function PasskeyDesk({
       }
       if (updated.status !== 'Active') {
         setWords(undefined);
-        setReceive(false);
         setSheet(undefined);
         setOpenPasskey(undefined);
         onRevoked();
@@ -310,14 +304,6 @@ export default function PasskeyDesk({
 
   const walletState = open.state;
   const index = evmIndexOf(evmIndex);
-  let receiveAddress: string | undefined;
-  if (receive && unlocked) {
-    try {
-      receiveAddress = open.keys.evm(0).address;
-    } catch {
-      receiveAddress = undefined;
-    }
-  }
 
   const t = (key: string) => translate('screens/home', key);
   const button =
@@ -358,7 +344,6 @@ export default function PasskeyDesk({
     wordsKeys.current = undefined;
     setWords(undefined);
     setChecks(undefined);
-    setReceive(false);
     setSheet(undefined);
     setOpenPasskey(undefined);
   };
@@ -424,10 +409,8 @@ export default function PasskeyDesk({
     }
     void withKeys(() => {
       if (action === 'Send') {
-        if (onSend) onSend();
-        else toastMessage('Coming soon');
+        openSheet('send');
       } else if (action === 'Receive') {
-        setReceive(true);
         openSheet('receive');
       } else {
         openSheet('pay');
@@ -637,25 +620,14 @@ export default function PasskeyDesk({
         />
       )}
       {sheet === 'receive' && (
-        <PasskeySheet
-          title={t('Receive')}
-          busy={busy}
-          onClose={() => {
-            if (busyRef.current) return;
-            setReceive(false);
-            closeSheet();
-          }}
-        >
-          <p className="my-3 inline-block rounded-full bg-[#EEF2F8] px-3 py-1 text-sm font-semibold">
-            {t('Ethereum & EVM networks')}
-          </p>
-          {receiveAddress ? (
-            <>
-              <PasskeyReceive address={receiveAddress} onCopy={() => copyAddress(receiveAddress)} />
-            </>
-          ) : (
-            <p role="alert">{t('Unable to derive the address.')}</p>
-          )}
+        <PasskeySheet title={t('Receive')} busy={busy} onClose={requestCloseSheet}>
+          {note && <p role="alert">{t(note)}</p>}
+          <PasskeyReceivePanel unlocked={unlocked} readReceive={readReceive} onReceiveError={setNote} />
+        </PasskeySheet>
+      )}
+      {sheet === 'send' && (
+        <PasskeySheet title={t('Send')} busy={busy} onClose={requestCloseSheet}>
+          <PasskeySendPanel />
         </PasskeySheet>
       )}
       {sheet === 'pay' && (

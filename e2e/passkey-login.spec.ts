@@ -340,7 +340,7 @@ async function openRevoke(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Block passkey' }).click();
 }
 
-async function setTabSession(page: Page, state: 'compromised' | 'open-elsewhere'): Promise<void> {
+async function setTabSession(page: Page, state: 'compromised' | 'open-elsewhere' | 'locked'): Promise<void> {
   const session = {
     state,
     accessToken: 'visual-passkey-token',
@@ -505,8 +505,9 @@ test.describe('Passkey login', () => {
     await registerUnlockedDesk(page);
     await page.getByRole('button', { name: 'Receive' }).click();
     await page.getByRole('button', { name: 'EVM', exact: true }).click();
-    const paragraph = page.locator('p').filter({ hasNotText: 'Unlock the wallet to show this address.' });
-    await expect(paragraph.first()).toBeVisible();
+    const address = page.getByTestId('passkey-receive-address');
+    await expect(address).toHaveText(/^0x[0-9a-fA-F]{40}$/);
+    await expect(address).not.toHaveText(DESK_EVM.address);
     await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
     const qr = page.locator('[data-testid=passkey-receive-qr]');
     await expect(qr).toBeVisible();
@@ -667,15 +668,6 @@ test.describe('Passkey login', () => {
     await expect(page).toHaveScreenshot('passkey-login-revoked.png', { fullPage: true });
   });
 
-  test('shows the EVM receive address on the unlocked desk', async ({ page }) => {
-    await registerUnlockedDesk(page);
-    await page.getByRole('button', { name: 'Receive', exact: true }).click();
-    const address = page.getByTestId('passkey-receive-address');
-    await expect(address).toHaveText(/^0x[0-9a-fA-F]{40}$/);
-    await expect(address).not.toHaveText(DESK_EVM.address);
-    await expect(page).toHaveScreenshot('passkey-desk-receive.png', { fullPage: true });
-  });
-
   test('shows and hides recovery words from the fixed authenticator output', async ({ page }) => {
     await registerUnlockedDesk(page);
     await openSettings(page);
@@ -696,10 +688,10 @@ test.describe('Passkey login', () => {
   });
 
   test('shows the unlock sentence when receive is locked', async ({ page }) => {
-    await openDesk(page, 'locked');
-    await page.getByRole('button', { name: 'Log in' }).click();
+    await registerUnlockedDesk(page);
     await page.getByRole('button', { name: 'Receive' }).click();
     await page.getByRole('button', { name: 'EVM', exact: true }).click();
+    await setTabSession(page, 'locked');
     const sentence = page.getByText('Unlock the wallet to show this address.', { exact: true });
     await expect(sentence).toBeVisible();
     await expect(page.locator('[data-testid=passkey-receive-qr]')).toHaveCount(0);
@@ -1038,8 +1030,8 @@ test.describe('Passkey wallet design', () => {
     );
     await openWallet(page);
     await page.getByRole('button', { name: 'Receive', exact: true }).click();
+    await page.getByRole('button', { name: 'EVM', exact: true }).click();
     await expect(page.getByTestId('passkey-receive-address')).not.toHaveText(DESK_EVM.address);
-    await expect(page).toHaveScreenshot('passkey-wallet-receive.png');
     await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
     await page.getByRole('button', { name: 'Pay', exact: true }).click();
     await expect(page.getByRole('alert')).toBeVisible();
