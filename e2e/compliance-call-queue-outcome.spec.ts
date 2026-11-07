@@ -112,7 +112,7 @@ async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: st
     }
 
     if (request.method() === 'GET' && path === '/v1/support/issue/clerk') {
-      await fulfillJson(route, { clerk: SIGNATURE });
+      await fulfillJson(route, { clerkUserDataId: STAFF_ACCOUNT, clerk: SIGNATURE });
       return;
     }
 
