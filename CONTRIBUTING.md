@@ -98,11 +98,17 @@ same pull request contains a real test of that function and that test has run.
 A pull request that adds a fake test, or that presents a fake test as the
 coverage of a website function, is rejected. Removing a fake test is allowed.
 A green check that did not run the real test does not satisfy this rule. A
-same-repository pull request into `develop` runs the full-stack harness. A
-job that records `mode=none` is not a run. A fork pull request does not
-receive the API checkout key, so that job records `mode=none` and a green
-result does not prove the suite ran. A caller that requested a full stack
-and has no API checkout key fails the job. A function this pull request does not
+same-repository pull request into `develop` or `main` runs the full-stack
+harness when the API checkout key is available and fails when a full stack
+is requested without it. A job that records `mode=none` is not a run. A fork
+pull request does not receive the API checkout key. The `ci:full` label does
+not make a fork run the stack, so that job records `mode=none` and a green
+result does not prove the suite ran. A caller that requested a full stack and
+has no API checkout key fails the job. A manual dispatch of the full-stack
+workflow without that key fails the job. A `workflow_call` that has the API
+checkout key and does not pass `full=true` fails when the base is `develop`,
+`main`, or empty. Any other base records `mode=none` and exits 0. A function
+this pull request does not
 touch is not an excuse to add a fake test, and a fake test that already
 exists does not count as the real test of a function this pull request
 changes.
@@ -207,13 +213,19 @@ characters, test/build infrastructure, and deleting or renaming files under
 `src/` or `functions/`. Lint, Markdown formatting (`format:md:check`),
 `build:dev` and `widget:dev` always run in full when the job runs. The
 unit-test job on a develop pull request without `ci:full` stays on the
-related-test path described above. The full-stack E2E job is separate. A
-same-repository pull request into `develop` always brings that stack up, and
-that run may take longer than the unit job. It is called after Build and
-test succeed, so it cannot start while unit tests are still queued. A fork
-pull request has no API checkout key, so the full-stack job records
-`mode=none` and a green result does not prove the suite ran. A caller that
-requested a full stack and has no API checkout key fails the job.
+related-test path described above. The full-stack E2E job is separate from
+the Jest `ci:full` label above. A same-repository pull request into
+`develop` or `main` brings that stack up when the API checkout key is
+available and fails when a full stack is requested without it. That run may
+take longer than the unit job. It is called after Build and test succeed, so
+it cannot start while unit tests are still queued. A fork pull request has no
+API checkout key. The `ci:full` label does not make a fork run the stack, so
+the full-stack job records `mode=none` and a green result does not prove the
+suite ran. A caller that requested a full stack and has no API checkout key
+fails the job. A manual dispatch of the full-stack workflow without that key
+fails the job. A `workflow_call` that has the API checkout key and does not
+pass `full=true` fails when the base is `develop`, `main`, or empty. Any other
+base records `mode=none` and exits 0.
 
 #### Coverage
 
@@ -342,10 +354,15 @@ does not start CI. After a
 fresh A38 enforce pass on
 the current head, `dfx pr guard` approves those waiting initial runs. Do not
 ask a maintainer to approve workflow runs. A same-repository pull request
-into `develop` brings the stack up. A fork pull request records `mode=none`
-and a green result does not prove the suite ran. Apply `ci:full`, target
-`main`, or run a bare `workflow_dispatch` when the pull request is not
-already covered by that rule.
+into `develop` or `main` brings the stack up when the API checkout key is
+available and fails when a full stack is requested without it. A fork pull
+request records `mode=none` and a green result does not prove the suite ran.
+The `ci:full`
+label does not make a fork run the stack. A caller that requested a full
+stack without the API checkout key fails. A manual dispatch of the full-stack
+workflow without that key fails. A `workflow_call` that has the API checkout
+key and does not pass `full=true` fails when the base is `develop`, `main`, or
+empty. Any other base records `mode=none` and exits 0.
 
 A pull request that adds or changes a website function must add or update the
 real test of that function in this harness, and that test must have run. See
@@ -354,18 +371,26 @@ does not meet that rule.
 
 Coverage of the route tree is enforced, not tracked by hand. The suite reads the
 route definitions out of `src/App.tsx` and fails if a route is claimed by no test
-file or by more than one, and — on a full run (`E2E_FULL_RUN=1`, which CI sets
-whenever it brings the stack up) — if a route
+file or by more than one, and — on a full run (`E2E_FULL_RUN=1`, which the
+Playwright step sets only when mode=full) — if a route
 was never actually opened by any test. The browser records every navigation it
 makes, and the gate compares that recording against the route list, so a claim
 pointing at a file that never visits the route does not satisfy it. Adding a route
 therefore means adding a claim in `e2e-stack/specs/registry/` and a test that
 navigates there. That gate runs when the stack comes up. A same-repository
-pull request into `develop` brings the stack up, as do a pull request into
-`main`, the `ci:full` label, and a bare `workflow_dispatch`. A fork pull
-request does not. Opening a route satisfies only this route gate. It does
-not satisfy [Real tests](#real-tests). A green check on a run that records
-`mode=none` does not satisfy that rule either.
+pull request into `develop` or `main` brings the stack up when the API checkout
+key is available and fails when a full stack is requested without it. The
+`ci:full` label does not make a fork pull request run the stack. A fork pull
+request records
+`mode=none`, and a green check on that run does not prove the suite ran. A
+caller that requested a full stack without the API checkout key fails. A
+manual dispatch of the full-stack workflow without that key fails. A
+`workflow_call` that has the API checkout key and does not pass `full=true`
+fails when the base is `develop`, `main`, or empty. Any other base records
+`mode=none` and exits 0. Opening a
+route satisfies only this route gate. It does not satisfy
+[Real tests](#real-tests). A green check on a run that records `mode=none`
+does not satisfy that rule either.
 
 Run locally:
 

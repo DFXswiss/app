@@ -16,6 +16,14 @@
 # `src/` or `functions/`. A workflow_dispatch with base_ref follows
 # pull-request scope. Lint, Markdown format check, `build:dev`, and
 # `widget:dev` always run in full.
+#
+# The e2e job is not that Jest scope. For pull_request it passes full=true only
+# when the head repository is this repository and (the base is main or develop,
+# or the pull request has the ci:full label). A fork pull request gets
+# full=false. e2e-stack.yml then records mode=none and exits 0: a fork never
+# receives E2E_API_CHECKOUT_KEY, and the ci:full label does not make it run
+# the stack. A workflow_dispatch of this file still passes full=true when
+# base_ref is empty, main, or develop.
 
 name: PR CI
 
@@ -263,8 +271,10 @@ jobs:
         run: npm run widget:dev
 
   # After Build and test so E2E cannot start while unit tests are still queued.
-  # A same-repository pull request into develop always brings the stack up.
-  # A fork has no API checkout key; e2e-stack.yml records mode=none for that call.
+  # pull_request: full=true only when head.repo.full_name == github.repository
+  # and (base is main or develop, or the pull request has ci:full). A fork gets
+  # full=false, so e2e-stack.yml records mode=none and exits 0. workflow_dispatch
+  # of this file is unchanged: full=true when base_ref is empty, main, or develop.
   e2e:
     name: Full-stack E2E
     needs: [build]
@@ -272,5 +282,5 @@ jobs:
     with:
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
       base_ref: ${{ github.base_ref || inputs.base_ref }}
-      full: ${{ (github.event_name == 'pull_request' && (github.base_ref == 'main' || (github.base_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) || contains(github.event.pull_request.labels.*.name, 'ci:full'))) || (github.event_name != 'pull_request' && (inputs.base_ref == '' || inputs.base_ref == 'main' || inputs.base_ref == 'develop')) }}
+      full: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (github.base_ref == 'main' || github.base_ref == 'develop' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) || (github.event_name != 'pull_request' && (inputs.base_ref == '' || inputs.base_ref == 'main' || inputs.base_ref == 'develop')) }}
     secrets: inherit

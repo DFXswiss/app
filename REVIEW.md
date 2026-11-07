@@ -16,9 +16,16 @@ Reject the pull request when any of these is true:
   has no real test of that function.
 - The real test did not run. A job that records `mode=none`, or a suite that
   does not run in CI, is not a run of the real test. On a same-repository
-  pull request into `develop`, the workflow brings the full-stack harness
-  up. A fork pull request does not receive the API checkout key, so a green
-  full-stack check on that pull request does not prove the suite ran.
+  pull request into `develop` or `main`, the workflow brings the full-stack
+  harness up when the API checkout key is available and fails when a full
+  stack is requested without it. The `ci:full` label does not make a fork
+  pull request run the stack. A fork does not receive the API checkout key,
+  so it records `mode=none` and a green full-stack check does not prove the
+  suite ran. A caller that requested a full stack without that key fails. A
+  manual dispatch of the full-stack workflow without that key fails. A
+  `workflow_call` that has the API checkout key and does not pass `full=true`
+  fails when the base is `develop`, `main`, or empty. Any other base records
+  `mode=none` and exits 0.
 - The test offered as coverage of the function replaces the screen, the
   visitor's action, the session, the router, the navigation, this service's
   API, or this service's database.

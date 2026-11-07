@@ -10,15 +10,17 @@ import { ethers } from 'ethers';
 import {
   decodeJwtPayload,
   expect,
+  freshTestWallet,
   gotoWithSession,
   normPath,
   openScreen,
   queryOne,
+  queryRows,
   test,
   testWallet,
   waitForRow,
 } from './fixtures';
-import { cleanupCreatedData, createUser } from './fixtures/factories';
+import { cleanupCreatedData, createUser, trackRow } from './fixtures/factories';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -74,6 +76,40 @@ async function selectSettingsDropdown(
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function assertAddressHasNoUser(address: string): Promise<void> {
+  const existing = await queryOne<{ id: number }>(`SELECT id FROM "user" WHERE address = $1`, [address]);
+  expect(existing, `address ${address} must have no user row before this login`).toBeUndefined();
+}
+
+/**
+ * Sign-up (POST /v1/auth) inserts user_data, user, a kyc_log when the seed wallet's
+ * autoTradeApproval stamps tradeApprovalDate, and an ip_log. IpCountryGuard inserts ip_log
+ * (nullable userId and userDataId) before the user exists; updateUserIpLogs then sets both
+ * foreign keys. doSignUp does not insert a kyc_step. cleanupCreatedData deletes in reverse
+ * registration order, so parents are registered first and ip_log last.
+ */
+async function trackSignedUpWallet(address: string, token: string): Promise<void> {
+  const row = await waitForRow<{ id: number; userDataId: number }>(
+    `SELECT id, "userDataId" AS "userDataId" FROM "user" WHERE address = $1`,
+    [address],
+  );
+  const payload = decodeJwtPayload(token);
+  expect(payload.address, 'JWT address claim').toBe(address);
+  expect(payload.user, 'JWT user claim').toBe(row.id);
+  expect(typeof payload.account, 'JWT account claim').toBe('number');
+  expect(payload.account, 'JWT account claim is the user_data id').toBe(row.userDataId);
+
+  const logs = await queryRows<{ id: number }>(`SELECT id FROM kyc_log WHERE "userDataId" = $1 ORDER BY id`, [
+    row.userDataId,
+  ]);
+  const ipLogs = await queryRows<{ id: number }>(`SELECT id FROM ip_log WHERE address = $1 ORDER BY id`, [address]);
+
+  trackRow('user_data', row.userDataId);
+  for (const log of logs) trackRow('kyc_log', log.id);
+  trackRow('user', row.id);
+  for (const ipLog of ipLogs) trackRow('ip_log', ipLog.id);
 }
 
 /** Suffix of `own` that cannot occur in `other` — used to tell two wallet addresses apart on screen. */
@@ -323,14 +359,15 @@ test.describe('Cross-cutting', () => {
 
     test('second address+signature login replaces the first wallet on /account', async ({ page }) => {
       test.setTimeout(90000);
-      const walletA = testWallet(40);
-      const walletB = testWallet(41);
+      const walletA = freshTestWallet();
+      const walletB = freshTestWallet();
 
       const signResA = await fetch(`${apiBase()}/v1/auth/signMessage?address=${encodeURIComponent(walletA.address)}`);
       expect(signResA.ok, `signMessage status ${signResA.status}`).toBe(true);
       const { message: messageA } = (await signResA.json()) as { message: string };
       const signatureA = await new ethers.Wallet(walletA.privateKey).signMessage(messageA);
 
+      await assertAddressHasNoUser(walletA.address);
       await page.goto(`/?address=${encodeURIComponent(walletA.address)}&signature=${encodeURIComponent(signatureA)}`);
       await page.waitForLoadState('domcontentloaded');
       await expect
@@ -345,30 +382,37 @@ test.describe('Cross-cutting', () => {
       await page.goto('/account');
       await page.waitForLoadState('networkidle');
       const tokenA = await authToken(page);
-      expect(tokenA, 'wallet A session token').toBeTruthy();
+      if (!tokenA) {
+        throw new Error('wallet A session token is missing');
+      }
+      await trackSignedUpWallet(walletA.address, tokenA);
 
       const signResB = await fetch(`${apiBase()}/v1/auth/signMessage?address=${encodeURIComponent(walletB.address)}`);
       expect(signResB.ok, `signMessage status ${signResB.status}`).toBe(true);
       const { message: messageB } = (await signResB.json()) as { message: string };
       const signatureB = await new ethers.Wallet(walletB.privateKey).signMessage(messageB);
 
+      await assertAddressHasNoUser(walletB.address);
       await page.goto(`/?address=${encodeURIComponent(walletB.address)}&signature=${encodeURIComponent(signatureB)}`);
       await page.waitForLoadState('domcontentloaded');
       await expect
-        .poll(async () => {
-          const token = await authToken(page);
-          return typeof token === 'string' && token.length > 0 && token !== tokenA ? token : '';
-        }, {
-          message: 'second address+signature login should replace the session token',
-          timeout: 20000,
-        })
+        .poll(
+          async () => {
+            const token = await authToken(page);
+            return typeof token === 'string' && token.length > 0 && token !== tokenA ? token : '';
+          },
+          { message: 'second address+signature login should replace the session token', timeout: 20000 },
+        )
         .not.toBe('');
       await expectParamStripped(page, 'address');
       await expectParamStripped(page, 'signature');
 
       const tokenB = await authToken(page);
-      expect(tokenB, 'wallet B session token').toBeTruthy();
+      if (!tokenB) {
+        throw new Error('wallet B session token is missing');
+      }
       expect(tokenB).not.toBe(tokenA);
+      await trackSignedUpWallet(walletB.address, tokenB);
 
       await page.goto('/account');
       await page.waitForLoadState('networkidle');
@@ -389,11 +433,6 @@ test.describe('Cross-cutting', () => {
         expect(shownLower).toContain(sliceB.toLowerCase());
         expect(shownLower).not.toContain(sliceA.toLowerCase());
       }
-
-      const row = await waitForRow<{ address: string }>(`SELECT address FROM "user" WHERE address = $1`, [
-        walletB.address,
-      ]);
-      expect(row.address).toBe(walletB.address);
     });
 
     test('redirect param navigates after session and is stripped', async ({ page }) => {

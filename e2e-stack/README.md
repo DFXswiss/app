@@ -131,11 +131,19 @@ This harness checks function, not appearance. Draft pull requests run the
 job after Build and test. GitHub may hold fork runs as `action_required`.
 Ready does not start CI. After a fresh A38 enforce pass, `dfx pr guard`
 approves those waiting initial runs. A same-repository pull request into
-`develop` brings the stack up. A fork pull request records `mode=none` and
-does not bring the stack up. There is no selected/partial mode. A pull
-request into `main`, the `ci:full` label, and a bare `workflow_dispatch`
-(empty `base_ref`) also force a full run. Both suites exist side by side
-and serve different purposes.
+`develop` or `main` brings the stack up when the API checkout key is
+available and fails when a full stack is requested without it. A fork pull
+request records `mode=none` and does not bring the stack up. A green check
+on that run does
+not prove the suite ran. The `ci:full` label does not make a fork run the
+stack. There is no selected/partial mode. A caller that requested a full
+stack without the API checkout key fails. A manual `workflow_dispatch` of
+this workflow without that key fails. A `workflow_call` that has the API
+checkout key and does not pass `full=true` fails when the base is `develop`,
+`main`, or empty. Any other base records `mode=none` and exits 0. With the
+key, a manual dispatch is a full run for every base, including an empty
+`base_ref`. Both suites exist
+side by side and serve different purposes.
 
 ## Relationship with the API repository
 
