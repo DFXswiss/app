@@ -663,8 +663,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   PRF output, or that the email field appears on the stack hostname or when the browser
   reports `extension:prf` as false.
 - **The passkey tile unit test replaces the wallet package and wallet client.**
-  `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet`, `@dfx.swiss/react`, the component library, the
-  `useSessionContext`, navigation and settings hooks, and `src/contexts/wallet.context`. The wallet-client
+  `src/__tests__/connect-passkey.test.tsx` replaces `@dfx.swiss/wallet`, `@dfx.swiss/react` and its auth
+  definitions, the component library, the `useSessionContext`, navigation, store, MetaMask and settings hooks,
+  the balance and app-handling contexts, `browser-lang`, `jwt-decode`, the `QrBasic` component and
+  `src/contexts/wallet.context`; a green run proves none of them. The wallet-client
   and `useWalletContext.login` are replaced; a green run does not prove calls reach the real wallet client
   or create a DFX session. `LoginAutoSigner` is replaced; a green run does not prove a real signature.
   Spies make `Storage.prototype.getItem` and `setItem` throw; a green run does not prove a browser's storage failure behaviour.

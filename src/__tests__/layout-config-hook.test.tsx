@@ -32,7 +32,11 @@ describe('useLayoutOptions', () => {
     expect(mockSetConfig).toHaveBeenCalledTimes(1);
     rerender(<Configured options={{ title: 'Wallet', noHeader: true, noMaxWidth: true, onBack: secondBack }} />);
     expect(mockSetConfig).toHaveBeenCalledTimes(1);
+    rerender(<Configured options={{ title: 'Wallet', noHeader: true, noMaxWidth: false, onBack: secondBack }} />);
+    expect(mockSetConfig).toHaveBeenCalledTimes(2);
+    expect(mockSetConfig).toHaveBeenLastCalledWith(expect.objectContaining({ noHeader: true, noMaxWidth: false }));
     rerender(<Configured options={{ title: 'Wallet', noHeader: false, noMaxWidth: false }} />);
+    expect(mockSetConfig).toHaveBeenCalledTimes(3);
     expect(mockSetConfig).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Wallet',
