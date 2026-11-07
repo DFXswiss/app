@@ -122,6 +122,10 @@ test.describe('Auth area e2e', () => {
     await expect(page.locator('img[src$="/kaufen_en.jpg"]')).toBeVisible();
     await expect(page.locator('img[src$="/verkaufen_en.jpg"]')).toBeVisible();
     await expect(page.locator('img[src*="swap"]')).toBeVisible();
+
+    const htmlLang = await page.locator('html').getAttribute('lang');
+    expect(htmlLang, 'html lang must be non-empty').toMatch(/\S/);
+    await expect(page).toHaveTitle(/dfx/i);
   });
 
   // ---------------------------------------------------------------------------

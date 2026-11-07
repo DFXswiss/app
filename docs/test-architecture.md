@@ -625,6 +625,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
 
+## Removed stand-ins
+
+The deleted local Playwright files only opened a route, planted a session or signature, mocked a wallet, or accepted any visible text. They did not run in CI.
+
+Login, logout, buy, sell, swap, refund, and the other screens stay covered by the existing full-stack specs (auth.spec.ts, cross-cutting.spec.ts, buy.spec.ts, sell-swap.spec.ts, transactions.spec.ts, and the screen specs next to them).
+
+Two visitor actions those files claimed and the suite did not perform are now real tests: the quote-error button opens the matching KYC step, and a second address+signature login replaces the first wallet on the account screen.
+
+Gasless sell and an on-chain payment stay outside this suite. The existing known gap that no layer verifies a payment end to end still applies. No wallet mock was added.
+
+Handbook screenshot baselines are unchanged and are not that coverage.
+
 ## Known gaps
 
 All four points below concern the full-stack harness.

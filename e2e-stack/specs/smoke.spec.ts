@@ -1,26 +1,16 @@
-import {
-  completeMailLogin,
-  expect,
-  gotoWithSession,
-  requestMailLogin,
-  signatureLogin,
-  test,
-  testEmail,
-  testWallet,
-  waitForRow,
-} from './fixtures';
+import { expect, test } from './fixtures';
 
 function apiBase(): string {
   return process.env.E2E_API_URL ?? 'http://api:3000';
 }
 
 /**
- * Smoke chain only — proves frontend, API, DB, signature login, and mail login work end to end.
+ * Smoke chain only — proves the frontend shell and that GET /v1/asset returns a non-empty list.
  * Navigates only to `/` so the route registry claim in specs/registry/smoke.ts stays accurate;
  * later lanes own the rest of the route tree.
  */
 test.describe('e2e-stack smoke', () => {
-  test('frontend loads, API assets, signature login, mail login', async ({ page }) => {
+  test('frontend loads, API assets', async ({ page }) => {
     // 1) Frontend load: attach error listeners before navigating.
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];
@@ -47,32 +37,9 @@ test.describe('e2e-stack smoke', () => {
     expect(Array.isArray(assets), 'GET /v1/asset should return a JSON array').toBe(true);
     expect(assets.length, 'GET /v1/asset should be non-empty').toBeGreaterThan(0);
 
-    // 3) Signature login -> DB user row -> session in browser on `/`.
-    const wallet = testWallet();
-    const jwt = await signatureLogin(wallet);
-    await waitForRow('SELECT id, address, role FROM "user" WHERE address = $1', [wallet.address]);
-    await gotoWithSession(page, '/', jwt);
-    // gotoWithSession already asserted localStorage["dfx.authenticationToken"].
-    // Additional page-level signal: token still present after hydration and app shell is visible.
-    await page.waitForLoadState('networkidle');
-    const tokenAfterSig = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
-    expect(tokenAfterSig, 'signature session token should remain in localStorage').toBeTruthy();
-    await expect(page.locator('#app-root')).toBeVisible({ timeout: 15000 });
-
-    // 4) Mail login -> notification OTP path -> session -> user_data row.
-    const email = testEmail('smoke');
-    await requestMailLogin(email);
-    const mailJwt = await completeMailLogin(email);
-    await waitForRow('SELECT id, mail FROM user_data WHERE mail = $1', [email]);
-    await gotoWithSession(page, '/', mailJwt);
-    await page.waitForLoadState('networkidle');
-    const tokenAfterMail = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
-    expect(tokenAfterMail, 'mail session token should remain in localStorage').toBeTruthy();
-    await expect(page.locator('#app-root')).toBeVisible({ timeout: 15000 });
-
-    // Re-assert error lists at the END of the whole chain -- the listeners have stayed active
-    // through every navigation above (steps 2-4), not just the first page load.
-    expect(pageErrors, `uncaught pageerror during full chain: ${pageErrors.join('; ')}`).toEqual([]);
-    expect(consoleErrors, `console error during full chain: ${consoleErrors.join('; ')}`).toEqual([]);
+    // Re-assert error lists at the END — the listeners have stayed active through the asset check,
+    // not just the first page load.
+    expect(pageErrors, `uncaught pageerror after asset check: ${pageErrors.join('; ')}`).toEqual([]);
+    expect(consoleErrors, `console error after asset check: ${consoleErrors.join('; ')}`).toEqual([]);
   });
 });

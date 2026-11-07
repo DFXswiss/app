@@ -678,6 +678,73 @@ test.describe('Buy flow', () => {
     await expect(page.getByRole('button', { name: /Click here once you have issued the transfer/i })).toHaveCount(0);
   });
 
+  test('/buy: quote error button opens the matching KYC step', async ({ page }) => {
+    test.setTimeout(90000);
+    const user = await createUser({
+      tag: 'buy-quote-error-kyc',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    // The factory may leave a trade approval behind; the quote-error case needs a customer without one.
+    await withDb((client) =>
+      client.query('UPDATE user_data SET "tradeApprovalDate" = NULL WHERE id = $1', [user.userDataId]),
+    );
+    const eligibility = await queryOne<{ status: string; tradeApprovalDate: Date | null }>(
+      `SELECT status, "tradeApprovalDate" AS "tradeApprovalDate" FROM user_data WHERE id = $1`,
+      [user.userDataId],
+    );
+    expect(['Active', 'NA']).toContain(eligibility?.status);
+    expect(eligibility?.tradeApprovalDate).toBeNull();
+
+    await openScreen(page, '/buy', user.jwt);
+    const rejectedResponsePromise = page.waitForResponse(
+      (response) => {
+        if (response.request().method() !== 'PUT' || !response.url().includes('/buy/paymentInfos')) return false;
+        if (response.url().includes('/confirm') || response.url().includes('/invoice')) return false;
+        return Number(response.request().postDataJSON()?.amount) === 100;
+      },
+      { timeout: 45000 },
+    );
+    await page.goto('/buy?asset-in=CHF&asset-out=ETH&amount-in=100&blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+    const rejectedResponse = await rejectedResponsePromise;
+    expect(rejectedResponse.status()).toBe(400);
+    const rejectedMessage = ((await rejectedResponse.json()) as { message?: string }).message;
+    const rejectionHints: Record<string, string> = {
+      RecommendationRequired: 'To trade, you need a recommendation from an existing DFX customer.',
+      KycRequired:
+        'This transaction is only possible with a verified account. Please complete our KYC (Know-Your-Customer) process.',
+    };
+    expect(Object.keys(rejectionHints), `unexpected quote error: ${rejectedMessage}`).toContain(rejectedMessage);
+    if (rejectedMessage !== 'RecommendationRequired' && rejectedMessage !== 'KycRequired') {
+      throw new Error(`unexpected quote error: ${rejectedMessage}`);
+    }
+    await expect(page.getByText(rejectionHints[rejectedMessage], { exact: true })).toBeVisible();
+
+    if (rejectedMessage === 'RecommendationRequired') {
+      const button = page.getByRole('button', { name: 'Enter recommendation', exact: true });
+      await expect(button).toBeVisible();
+      await button.click();
+      await expect
+        .poll(
+          () => {
+            const dest = new URL(page.url());
+            return normPath(dest.pathname) === '/kyc' && dest.searchParams.get('step') === 'Recommendation';
+          },
+          { timeout: 20000, message: 'Enter recommendation should open /kyc?step=Recommendation' },
+        )
+        .toBe(true);
+      await expect(page.getByPlaceholder('Invitation/referral code or email')).toBeVisible({ timeout: 20000 });
+    } else {
+      const button = page.getByRole('button', { name: 'Complete KYC', exact: true });
+      await expect(button).toBeVisible();
+      await button.click();
+      await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/kyc');
+      await expect(page.getByText('Level 30', { exact: true })).toBeVisible({ timeout: 15000 });
+    }
+  });
+
   test('/buy: confirm after already confirmed shows completion, not error', async ({ page }) => {
     test.setTimeout(90000);
     const user = await openQuoteCapableBuy(page, 'buy-409-replay');
