@@ -94,13 +94,13 @@ export async function gotoWithSession(page: Page, path: string, jwt: string): Pr
 }
 
 /** Decode the middle (payload) segment of a JWT without verifying the signature. */
-export function decodeJwtPayload(jwt: string): { role?: string; user?: number; address?: string } {
+export function decodeJwtPayload(jwt: string): { role?: string; user?: number; address?: string; account?: number } {
   const parts = jwt.split('.');
   if (parts.length !== 3) {
     throw new Error(`decodeJwtPayload: expected 3 JWT segments, got ${parts.length}`);
   }
   const json = Buffer.from(parts[1], 'base64url').toString('utf8');
-  return JSON.parse(json) as { role?: string; user?: number; address?: string };
+  return JSON.parse(json) as { role?: string; user?: number; address?: string; account?: number };
 }
 
 /**

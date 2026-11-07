@@ -53,7 +53,6 @@ async function installLoginRoutes(page: Page): Promise<void> {
     if (request.method() === 'GET' && path === '/v1/fiat') {
       return fulfillJson(route, [
         { id: 1, name: 'CHF', buyable: true, sellable: true },
-        { id: 2, name: 'EUR', buyable: true, sellable: true },
       ]);
     }
     if (request.method() === 'GET' && path === '/v1/setting/infoBanner') return fulfillJson(route, null);

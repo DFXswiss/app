@@ -614,6 +614,7 @@ test.describe('Auth area e2e', () => {
       const tokenAddress = decodeJwtPayload(dfxToken).address;
       if (typeof tokenAddress !== 'string') throw new Error('Missing DFX token address');
       expect(tokenAddress.toLowerCase()).toBe(evmAddress.toLowerCase());
+      expect(decodeJwtPayload(dfxToken).account).toBe(stored.id);
       expect(dfxToken).not.toBe(ceremonyToken);
       const evmUser = await waitForRow<{ userDataId: number }>(
         `SELECT u."userDataId" AS "userDataId" FROM "user" u

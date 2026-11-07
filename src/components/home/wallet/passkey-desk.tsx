@@ -19,6 +19,7 @@ import PasskeyWalletHistory, { PasskeyHistory } from './passkey-wallet-history';
 export type { PasskeyTx } from './passkey-wallet-history';
 
 export interface PasskeyDeskProps {
+  opening?: boolean;
   onOpenApp: (path: '/buy' | '/sell' | '/swap') => void;
   balance?: { chf: number; eur: number };
   assets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
@@ -83,6 +84,7 @@ function credentialBytes(id: string): Uint8Array {
 
 // Keys stay in tab memory; existing account operations are exposed by the wallet interface.
 export default function PasskeyDesk({
+  opening = false,
   onOpenApp,
   onCancel,
   onHome = onCancel,
@@ -108,7 +110,8 @@ export default function PasskeyDesk({
   const [reason, setReason] = useState<'Lost' | 'Compromised'>('Lost');
   const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
   const [evmIndex, setEvmIndex] = useState('1');
-  const [busy, setBusy] = useState(false);
+  const [operationBusy, setBusy] = useState(false);
+  const busy = operationBusy || opening;
   const [note, setNote] = useState<string>();
   const [words, setWords] = useState<string[]>();
   const [checks, setChecks] = useState<{ family: string; address: string; matches: boolean }[]>();
@@ -295,7 +298,7 @@ export default function PasskeyDesk({
     setChecks(undefined);
   };
   const requestCloseSheet = () => {
-    if (!busyRef.current) closeSheet();
+    if (!busyRef.current && !opening) closeSheet();
   };
   const toastMessage = (message: string) => setToast(t(message));
   const copyAddress = async (address: string) => {

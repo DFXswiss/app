@@ -936,6 +936,22 @@ describe('ConnectPasskey', () => {
     expect(await screen.findByTestId('passkey-recovery-words')).toHaveTextContent('alpha');
   });
 
+  it('keeps settings open during opt-in, including Escape and backdrop clicks', () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    view.rerender(
+      <PasskeyDesk opening onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Settings' });
+    screen.getAllByRole('button', { name: 'Close' }).forEach((button) => expect(button).toBeDisabled());
+    fireEvent.keyDown(document, { key: 'Escape' });
+    if (!dialog.parentElement) throw new Error('Missing backdrop');
+    fireEvent.mouseDown(dialog.parentElement);
+    expect(dialog).toBeInTheDocument();
+    expect(mockOnCancel).not.toHaveBeenCalled();
+  });
+
   it('shows an asynchronous export error in the recovery dialog', async () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     mockExport.mockRejectedValueOnce(new Error('export failed'));
@@ -1932,10 +1948,49 @@ describe('ConnectPasskey', () => {
     expect(mockServiceLogin).toHaveBeenCalledTimes(1);
     view.unmount();
     await act(async () => finish());
-    expect(mockLogout).not.toHaveBeenCalled();
+    if (reject) expect(mockLogout).not.toHaveBeenCalled();
+    else expect(mockLogout).toHaveBeenCalledTimes(1);
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockOnLogin).not.toHaveBeenCalled();
     expect(mockOnCancel).not.toHaveBeenCalled();
+  });
+
+  it('starts only one opt-in for two synchronous Buy clicks before rendering', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    let finish: () => void = () => undefined;
+    mockServiceLogin.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderPasskey();
+    const buy = screen.getByRole('button', { name: 'Buy', exact: true });
+    act(() => {
+      buy.click();
+      buy.click();
+    });
+    expect(mockServiceLogin).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+  });
+
+  it('disables wallet actions and settings while opt-in is pending', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    let finish: () => void = () => undefined;
+    mockServiceLogin.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderPasskey();
+    fireEvent.click(screen.getByRole('button', { name: 'Buy', exact: true }));
+    for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay', 'Settings']) {
+      expect(screen.getByRole('button', { name, exact: true })).toBeDisabled();
+    }
+    await act(async () => finish());
+    expect(mockNavigate).toHaveBeenCalledWith('/buy');
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled();
   });
 
   it('logs in from the choice card and opens the desk', async () => {

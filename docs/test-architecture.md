@@ -582,13 +582,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   Their `translate` returns the key; a green run does not prove real translation.
   `changeAppLanguage` and `changeLanguage` are mocked; a green run does not prove real language changes or that the account stays untouched.
 - **The late recovery-word test spies on React state.**
-  `src/__tests__/connect-passkey.test.tsx` replaces `useState` with a spy; a green run does not prove behaviour without that instrumentation.
+  `src/__tests__/connect-passkey.test.tsx` replaces `useState` with a spy; a green run does not prove recovery-word state behaviour without that instrumentation.
+- **The late diagnostic test spies on React state.**
+  Its `useState` spy observes updates after unmount; a green run does not prove that behaviour without the spy.
+- **The late QR detection test spies on React state.**
+  Its `useState` spy observes updates after closing the send dialog; a green run does not prove that behaviour without the spy.
 - **The passkey reload test replaces `window.location.reload`.**
   A green run does not prove that a browser actually reloads the page.
 - **The passkey login visual spec stubs the browser and the bootstrap calls.**
   `e2e/passkey-login.spec.ts` fulfils geolocation-db with country `CH` and fulfils the bootstrap
-  GETs with fixtures. The fiat fixture includes CHF and EUR; a green run does not prove either currency is
-  returned by the API. The EUR shot selects the local wallet currency without a DFX user; it does not prove the
+  GETs with fixtures. The EUR shot selects the local wallet currency without a DFX user; it does not prove the
   service saves an account currency. A `/v2/**` call without the account token is 401. A call that sends that
   token returns the user for `GET /v2/user` and an empty list otherwise. The tile shots replace WebAuthn.
   An available report resolves `PublicKeyCredential.getClientCapabilities` with `extension:prf`.
@@ -635,7 +638,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   in Settings and after the second unlock exactly one list row shows that same `bc1q` address,
   and that a different address at that path does not pass.
   It also proves that the Buy opt-in sends the locally derived EVM address and a non-empty wallet signature to `POST /v1/auth`, which responds with 201.
-  The returned DFX token names that address and differs from the passkey ceremony token.
+  The returned DFX token names that address and the passkey account and differs from the passkey ceremony token.
   The database associates that address with the passkey credential's account.
   It does not prove a production sign-in, a real hardware-authenticator PRF, or a transaction or purchase.
   It does not prove the ceremony
@@ -687,8 +690,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   real BarcodeDetector, or a real QR image.
 - **The wallet-client unit test replaces the wallet package and DFX API client.**
   A green run proves forwarding to the stubs, not a real wallet ceremony or API call.
-- **The settings-context unit test replaces SDK hooks, application parameters, storage, and i18n.**
-  A green run does not prove real account updates, persistent storage, or language loading.
+- **The settings-context unit test replaces SDK hooks, app-handling context, browser-lang, application parameters, storage, and i18n.**
+  A green run does not prove real account updates, app handling, browser language detection, persistent storage, or language loading.
 - **The wallet entry unit test replaces the session, the page tree, and the connect form.**
   `src/__tests__/wallet-entry.test.tsx` replaces the service names from `App`, `@dfx.swiss/react`,
   `react-i18next`, `@dfx.swiss/react-components`, the connect wrapper, the custody-asset list, and the layout,

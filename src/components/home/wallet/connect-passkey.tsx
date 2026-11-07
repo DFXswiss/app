@@ -107,6 +107,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const [report, setReport] = useState<PlatformReport | undefined>();
   const [mail, setMail] = useState('');
   const [busy, setBusy] = useState(false);
+  const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [view, setView] = useState<SheetView>('idle');
@@ -205,12 +206,16 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     if (!session || session.state !== 'unlocked' || !session.keys) return;
     const keys = session.keys;
     busyRef.current = true;
+    setOpening(true);
     setError(undefined);
     try {
       await login(WalletType.PASSKEY, keys.evm(0).address, Blockchain.ETHEREUM, async (address, message) =>
         new LoginAutoSigner(keys, walletEnvForHost(window.location.hostname)).sign('evm', address, message),
       );
-      if (abandonedRef.current) return;
+      if (abandonedRef.current) {
+        await logout();
+        return;
+      }
       if (!sameSession(getOpenPasskey(), session)) {
         await logout();
         return;
@@ -225,6 +230,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       setError(passkeyMessage(caught));
     } finally {
       busyRef.current = false;
+      if (!abandonedRef.current) setOpening(false);
     }
   }
 
@@ -303,6 +309,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       <StyledVerticalStack gap={2} center>
         {error ? <p className="text-dfxRed-150">{translate('screens/home', error)}</p> : null}
         <PasskeyDesk
+          opening={opening}
           onHome={() => navigate('/')}
           history={process.env.NODE_ENV === 'production' ? undefined : window.__dfxHandbookPasskeyHistory}
           onOpenApp={(path) => void openApp(path)}
