@@ -358,6 +358,8 @@ async function deskControls(page: Page): Promise<Locator[]> {
   }
   const recoveryToggle = hideCount === 1 ? hide : show;
   return [
+    page.getByRole('button', { name: 'Receive' }),
+    page.getByRole('button', { name: 'Send' }),
     page.getByRole('button', { name: 'Open the app' }),
     page.getByRole('button', { name: 'Unlock wallet' }),
     page.getByRole('button', { name: 'Link Bitcoin' }),
@@ -523,6 +525,45 @@ test.describe('Passkey login', () => {
     ]);
   });
 
+  test('shows the receive address on the unlocked desk', async ({ page }) => {
+    await registerUnlockedDesk(page);
+    await page.getByRole('button', { name: 'Receive' }).click();
+    await page.getByRole('button', { name: 'EVM', exact: true }).click();
+    const paragraph = page.locator('p').filter({ hasNotText: 'Unlock the wallet to show this address.' });
+    await expect(paragraph.first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
+    const qr = page.locator('[data-testid=passkey-receive-qr]');
+    await expect(qr).toBeVisible();
+    await shoot(page, 'passkey-desk-receive.png', [
+      ...(await deskControls(page)),
+      page.getByRole('button', { name: 'Copy address' }),
+      qr,
+    ]);
+  });
+
+  test('shows the send form without sending', async ({ page }) => {
+    await registerUnlockedDesk(page);
+    await page.getByRole('button', { name: 'Send' }).click();
+    const destination = page.getByLabel('Destination');
+    const amount = page.getByLabel('Amount');
+    const paste = page.getByRole('button', { name: 'Paste' });
+    const scan = page.getByRole('button', { name: 'Scan' });
+    const sentence = page.getByText('Sending is not active yet.', { exact: true });
+    await expect(destination).toBeVisible();
+    await expect(amount).toBeVisible();
+    await expect(paste).toBeVisible();
+    await expect(scan).toBeVisible();
+    await expect(sentence).toBeVisible();
+    await shoot(page, 'passkey-desk-send.png', [
+      ...(await deskControls(page)),
+      destination,
+      amount,
+      paste,
+      scan,
+      sentence,
+    ]);
+  });
+
   test('shows the unlocked desk after claiming a passkey', async ({ page }) => {
     await plantAccountToken(page);
     await openDesk(page, 'unlocked', true);
@@ -586,6 +627,17 @@ test.describe('Passkey login', () => {
     await expect(page.getByRole('button', { name: 'Link Bitcoin' })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Link EVM account' })).toBeDisabled();
     await shoot(page, 'passkey-desk-locked.png', [...(await deskControls(page)), sentence]);
+  });
+
+  test('shows the unlock sentence when receive is locked', async ({ page }) => {
+    await openDesk(page, 'locked');
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await page.getByRole('button', { name: 'Receive' }).click();
+    await page.getByRole('button', { name: 'EVM', exact: true }).click();
+    const sentence = page.getByText('Unlock the wallet to show this address.', { exact: true });
+    await expect(sentence).toBeVisible();
+    await expect(page.locator('[data-testid=passkey-receive-qr]')).toHaveCount(0);
+    await shoot(page, 'passkey-desk-receive-locked.png', [...(await deskControls(page)), sentence]);
   });
 
   test('shows a seed mismatch when the server address differs', async ({ page }) => {

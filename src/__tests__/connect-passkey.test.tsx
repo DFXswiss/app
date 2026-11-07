@@ -145,6 +145,11 @@ jest.mock('@dfx.swiss/react-components', () => ({
   StyledButtonColor: { GRAY: 'GRAY', RED: 'RED' },
 }));
 
+jest.mock('react-qr-code', () => ({
+  __esModule: true,
+  default: ({ value }: { value: string }) => <div data-testid="qr-code">{value}</div>,
+}));
+
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createRef } from 'react';
 import { RP_IDS } from '@dfx.swiss/wallet';
@@ -1469,6 +1474,353 @@ describe('ConnectPasskey', () => {
     });
     expect(mockLogout).not.toHaveBeenCalled();
     expect(passkeySession.getOpenPasskey()).toBeUndefined();
+  });
+
+  describe('desk transfer actions', () => {
+    function renderDesk() {
+      return render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    }
+
+    function openDesk(keys?: unknown, state = 'unlocked') {
+      act(() => {
+        setOpenPasskey(authResult(state, keys) as OpenPasskey);
+      });
+      return renderDesk();
+    }
+
+    it('shows receive and send on an unlocked desk with the existing actions', () => {
+      openDesk({ id: 'keys' });
+
+      expect(screen.getByRole('button', { name: 'Open the app' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Link Bitcoin' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Receive' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
+    });
+
+    it('shows the evm(0) receive address and qr without using the account index field', () => {
+      const evm = jest.fn((index: number) => ({ path: `m/${index}`, address: `addr-${index}` }));
+      openDesk({ evm });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
+
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('addr-0');
+      expect(screen.getByTestId('qr-code')).toHaveTextContent('addr-0');
+      expect(screen.getByLabelText('EVM account index')).toHaveValue('1');
+      expect(evm).toHaveBeenCalledWith(0);
+      expect(evm).not.toHaveBeenCalledWith(1);
+    });
+
+    it('hides the previous receive address before the next family is read', () => {
+      const evm = jest.fn((index: number) => ({ path: `m/${index}`, address: `addr-${index}` }));
+      const bitcoinAddress = jest.fn(() => {
+        expect(screen.queryByText('addr-0')).not.toBeInTheDocument();
+        return { path: "m/84'/0'/0'/0/0", address: 'bc1qnext', publicKey: new Uint8Array() };
+      });
+      openDesk({ evm, bitcoinNetwork: 'mainnet', bitcoinAddress });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('addr-0');
+
+      fireEvent.click(screen.getByRole('button', { name: /^Bitcoin$/ }));
+
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('bc1qnext');
+      expect(screen.queryByText('addr-0')).not.toBeInTheDocument();
+      expect(bitcoinAddress).toHaveBeenCalledWith(0, 0);
+      expect(evm).toHaveBeenCalledWith(0);
+      expect(evm).not.toHaveBeenCalledWith(1);
+    });
+
+    it('shows the spark identity receive address', () => {
+      openDesk({
+        sparkIdentity: () => ({ path: "m/879'/0'/0'", publicKey: new Uint8Array(), address: 'spark1identity' }),
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Spark' }));
+
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('spark1identity');
+    });
+
+    it('shows bitcoinAddress(0, 0) on a mainnet ring without building a login ring', () => {
+      const bitcoinAddress = jest.fn((_chain: 0 | 1, _index: number) => ({
+        path: "m/84'/0'/0'/0/0",
+        address: 'bc1qreceive',
+        publicKey: new Uint8Array(),
+      }));
+      openDesk({ bitcoinNetwork: 'mainnet', bitcoinAddress });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Bitcoin$/ }));
+
+      expect(bitcoinAddress).toHaveBeenCalledWith(0, 0);
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('bc1qreceive');
+    });
+
+    it('shows the mainnet login receive address for a testnet4 ring and wipes that ring', () => {
+      const wipe = jest.fn();
+      mockBuildLoginRing = () => {
+        const loginRing = {
+          wipe,
+          bitcoinAddress: (_chain: 0 | 1, _index: number) => ({
+            path: "m/84'/0'/0'/0/0",
+            address: 'bc1qmain',
+            publicKey: new Uint8Array(),
+          }),
+        };
+        return loginRing;
+      };
+      const sessionBitcoinAddress = jest.fn(() => ({
+        path: "m/84'/1'/0'/0/0",
+        address: 'tb1qsession',
+        publicKey: new Uint8Array(),
+      }));
+      openDesk({
+        bitcoinNetwork: 'testnet4',
+        mnemonic: () => 'seed phrase',
+        bitcoinAddress: sessionBitcoinAddress,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Bitcoin$/ }));
+
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('bc1qmain');
+      expect(screen.queryByText('tb1qsession')).not.toBeInTheDocument();
+      expect(wipe).toHaveBeenCalled();
+    });
+
+    it('asks to unlock instead of showing a receive address when the desk is locked', () => {
+      openDesk(undefined, 'locked');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
+
+      expect(screen.getByText('Unlock the wallet to show this address.')).toBeInTheDocument();
+      expect(screen.queryByTestId('qr-code')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+    });
+
+    it('copies the shown receive address', async () => {
+      const writeText = jest.fn().mockResolvedValue(undefined);
+      const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+
+      try {
+        openDesk({ evm: () => ({ path: 'm/0', address: '0xcopyme' }) });
+        fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+        fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Copy address' }));
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith('0xcopyme'));
+      } finally {
+        if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard);
+        else delete (navigator as { clipboard?: Clipboard }).clipboard;
+      }
+    });
+
+    it('keeps a typed send destination and amount without sending', () => {
+      openDesk({ id: 'keys' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      fireEvent.change(screen.getByLabelText('Destination'), { target: { value: 'bc1qdest' } });
+      fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '1.5abc' } });
+
+      expect(screen.getByLabelText('Destination')).toHaveValue('bc1qdest');
+      expect(screen.getByLabelText('Amount')).toHaveValue('1.5abc');
+      expect(screen.getByText('Sending is not active yet.')).toBeInTheDocument();
+      expect(mockLink).not.toHaveBeenCalled();
+      expect(mockWallets).not.toHaveBeenCalled();
+      expect(mockDiagnostics).not.toHaveBeenCalled();
+    });
+
+    it('pastes into the destination and leaves a typed value when paste is rejected', async () => {
+      const readText = jest.fn();
+      const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { readText } });
+
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+        readText.mockResolvedValueOnce('bc1qpasted');
+        fireEvent.click(screen.getByRole('button', { name: 'Paste' }));
+        await waitFor(() => expect(screen.getByLabelText('Destination')).toHaveValue('bc1qpasted'));
+
+        fireEvent.change(screen.getByLabelText('Destination'), { target: { value: 'keep-typed' } });
+        readText.mockRejectedValueOnce(new Error('denied'));
+        fireEvent.click(screen.getByRole('button', { name: 'Paste' }));
+        await waitFor(() => expect(screen.getByText('Paste is not available in this browser.')).toBeInTheDocument());
+        expect(screen.getByLabelText('Destination')).toHaveValue('keep-typed');
+      } finally {
+        if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard);
+        else delete (navigator as { clipboard?: Clipboard }).clipboard;
+      }
+    });
+
+    it('fills the destination from a scanned qr and stops the camera', async () => {
+      const stop = jest.fn();
+      const getUserMedia = jest.fn().mockResolvedValue({ getTracks: () => [{ stop }] });
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const previousRaf = window.requestAnimationFrame;
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+
+      class MockBarcodeDetector {
+        detect(): Promise<{ rawValue: string }[]> {
+          return Promise.resolve([{ rawValue: 'bc1qfromqr' }]);
+        }
+      }
+      globalWithDetector.BarcodeDetector = MockBarcodeDetector;
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia },
+      });
+      window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      }) as typeof requestAnimationFrame;
+
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        await waitFor(() => expect(screen.getByLabelText('Destination')).toHaveValue('bc1qfromqr'));
+        expect(stop).toHaveBeenCalled();
+        expect(mockLink).not.toHaveBeenCalled();
+      } finally {
+        window.requestAnimationFrame = previousRaf;
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    it('stops the first camera when scan is pressed again', async () => {
+      const firstStop = jest.fn();
+      const secondStop = jest.fn();
+      let resolveFirst: (stream: { getTracks: () => { stop: () => void }[] }) => void = () => undefined;
+      const getUserMedia = jest
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveFirst = resolve;
+            }),
+        )
+        .mockResolvedValueOnce({ getTracks: () => [{ stop: secondStop }] });
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const previousRaf = window.requestAnimationFrame;
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+
+      class MockBarcodeDetector {
+        detect(): Promise<{ rawValue: string }[]> {
+          return Promise.resolve([]);
+        }
+      }
+      globalWithDetector.BarcodeDetector = MockBarcodeDetector;
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia },
+      });
+      window.requestAnimationFrame = ((_callback: FrameRequestCallback) => 1) as typeof requestAnimationFrame;
+
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        resolveFirst({ getTracks: () => [{ stop: firstStop }] });
+        await waitFor(() => expect(firstStop).toHaveBeenCalled());
+        expect(getUserMedia).toHaveBeenCalledTimes(2);
+        expect(secondStop).not.toHaveBeenCalled();
+        expect(screen.getByLabelText('Destination')).toHaveValue('');
+        expect(mockLink).not.toHaveBeenCalled();
+      } finally {
+        window.requestAnimationFrame = previousRaf;
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    it('explains when qr scanning is not available', () => {
+      const getUserMedia = jest.fn();
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+      delete globalWithDetector.BarcodeDetector;
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia },
+      });
+
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        expect(screen.getByText('QR scanning is not available in this browser.')).toBeInTheDocument();
+        expect(getUserMedia).not.toHaveBeenCalled();
+      } finally {
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    it('explains when the camera rejects the scan', async () => {
+      const getUserMedia = jest.fn().mockRejectedValue(new Error('denied'));
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+
+      class MockBarcodeDetector {
+        detect(): Promise<{ rawValue: string }[]> {
+          return Promise.resolve([]);
+        }
+      }
+      globalWithDetector.BarcodeDetector = MockBarcodeDetector;
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia },
+      });
+
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        await waitFor(() =>
+          expect(screen.getByText('QR scanning is not available in this browser.')).toBeInTheDocument(),
+        );
+        expect(getUserMedia).toHaveBeenCalledTimes(1);
+      } finally {
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    it('explains when paste has no clipboard', () => {
+      const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.change(screen.getByLabelText('Destination'), { target: { value: 'keep-typed' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Paste' }));
+        expect(screen.getByText('Paste is not available in this browser.')).toBeInTheDocument();
+        expect(screen.getByLabelText('Destination')).toHaveValue('keep-typed');
+      } finally {
+        if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard);
+        else delete (navigator as { clipboard?: Clipboard }).clipboard;
+      }
+    });
   });
 });
 

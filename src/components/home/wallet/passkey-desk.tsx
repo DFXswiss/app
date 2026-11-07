@@ -12,6 +12,7 @@ import {
   PASSKEY_SEED_MISMATCH,
 } from './passkey-host';
 import { getOpenPasskey, setOpenPasskey, subscribeOpenPasskey, type OpenPasskey } from './passkey-session';
+import PasskeyTransfer, { type ReceiveFamily } from './passkey-transfer';
 
 export interface PasskeyDeskProps {
   onOpenApp: () => void;
@@ -47,6 +48,19 @@ function bitcoinLoginRing(keys: KeyRing): { ring: KeyRing; release: () => void }
   if (keys.bitcoinNetwork !== 'testnet4') return { ring: keys, release: releaseNothing };
   const ring = KeyRing.fromMnemonic(keys.mnemonic(), { bitcoinNetwork: 'mainnet' });
   return { ring, release: () => ring.wipe() };
+}
+
+function readReceive(family: ReceiveFamily): string {
+  const session = getOpenPasskey();
+  if (!session || !canUseKeys(session)) throw new Error('locked');
+  if (family === 'evm') return session.keys.evm(0).address;
+  if (family === 'spark') return session.keys.sparkIdentity().address;
+  const login = bitcoinLoginRing(session.keys);
+  try {
+    return login.ring.bitcoinAddress(0, 0).address;
+  } finally {
+    login.release();
+  }
 }
 
 const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -193,6 +207,11 @@ export default function PasskeyDesk({ onOpenApp, onCancel, onRevoked }: PasskeyD
 
   return (
     <StyledVerticalStack gap={2} center>
+      <PasskeyTransfer
+        unlocked={unlocked}
+        readReceive={readReceive}
+        onReceiveError={(message) => setNote(message)}
+      />
       <p className="text-dfxBlue-800">{translate('screens/home', 'Passkey wallet')}</p>
       <p className="text-dfxGray-700">
         {translate(
