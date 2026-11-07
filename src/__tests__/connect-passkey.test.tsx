@@ -1812,6 +1812,15 @@ describe('ConnectPasskey', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/buy'));
   });
 
+  it('navigates home without discarding the open passkey session', () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    renderPasskey();
+    fireEvent.click(screen.getByRole('link', { name: 'DFX home' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/');
+    expect(passkeySession.getOpenPasskey()).toBe(session);
+  });
+
   it('unlocks before service login and does not log in if unlock fails', async () => {
     setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
     mockUnlock

@@ -303,6 +303,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       <StyledVerticalStack gap={2} center>
         {error ? <p className="text-dfxRed-150">{translate('screens/home', error)}</p> : null}
         <PasskeyDesk
+          onHome={() => navigate('/')}
           history={process.env.NODE_ENV === 'production' ? undefined : window.__dfxHandbookPasskeyHistory}
           onOpenApp={(path) => void openApp(path)}
           onCancel={onCancel}

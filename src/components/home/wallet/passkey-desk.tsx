@@ -25,6 +25,7 @@ export interface PasskeyDeskProps {
   history?: PasskeyHistory;
   onPasteLink?: () => void;
   onCancel: () => void;
+  onHome?: () => void;
   onRevoked: () => void;
 }
 
@@ -84,6 +85,7 @@ function credentialBytes(id: string): Uint8Array {
 export default function PasskeyDesk({
   onOpenApp,
   onCancel,
+  onHome = onCancel,
   onRevoked,
   balance,
   assets,
@@ -395,6 +397,7 @@ export default function PasskeyDesk({
   return (
     <main className="mx-auto w-full max-w-[560px] pb-10 text-left text-dfxBlue-800">
       <PasskeyWalletCard
+        onHome={onHome}
         balance={balance}
         busy={busy}
         currency={currentSymbol}

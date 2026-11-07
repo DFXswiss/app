@@ -95,4 +95,3 @@ export function passkeyMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim() !== '') return error.message;
   return PASSKEY_GENERIC_ERROR;
 }
-

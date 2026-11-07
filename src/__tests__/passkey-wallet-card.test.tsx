@@ -13,7 +13,8 @@ it('renders balance, currency controls and wallet toggles', () => {
   const onExpandedChange = jest.fn();
   const onSettings = jest.fn();
   const onCurrencyChange = jest.fn();
-  const props = { currency: 'CHF' as const, onCurrencyChange, expanded: false, onExpandedChange, onSettings };
+  const onHome = jest.fn();
+  const props = { currency: 'CHF' as const, onCurrencyChange, expanded: false, onExpandedChange, onSettings, onHome };
   const view = render(<PasskeyWalletCard {...props} />);
   expect(screen.getByLabelText('Loading balance')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'CHF' })).toHaveAttribute('aria-pressed', 'true');
@@ -33,6 +34,31 @@ it('renders balance, currency controls and wallet toggles', () => {
   expect(onExpandedChange).toHaveBeenLastCalledWith(false);
   fireEvent.click(screen.getByRole('button', { name: 'CHF' }));
   expect(onCurrencyChange).toHaveBeenLastCalledWith('CHF');
+});
+
+it('navigates home only on an unmodified left click', () => {
+  const onHome = jest.fn();
+  render(
+    <PasskeyWalletCard
+      currency="CHF"
+      onCurrencyChange={jest.fn()}
+      expanded={false}
+      onExpandedChange={jest.fn()}
+      onSettings={jest.fn()}
+      onHome={onHome}
+    />,
+  );
+  const link = screen.getByRole('link', { name: 'DFX home' });
+  const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+  fireEvent(link, click);
+  expect(click.defaultPrevented).toBe(true);
+  expect(onHome).toHaveBeenCalledTimes(1);
+  for (const options of [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }]) {
+    const modified = new MouseEvent('click', { bubbles: true, cancelable: true, ...options });
+    fireEvent(link, modified);
+    expect(modified.defaultPrevented).toBe(false);
+  }
+  expect(onHome).toHaveBeenCalledTimes(1);
 });
 
 it('enables key actions only when unlocked or unlockable and disables every action while busy', () => {

@@ -5,6 +5,7 @@ const mockLanguages = [
   { id: 1, symbol: 'EN' },
   { id: 2, symbol: 'DE' },
   { id: 3, symbol: 'SQ' },
+  { id: 4, symbol: 'FR' },
 ];
 const mockCurrencies = [
   { id: 1, name: 'CHF' },
@@ -108,6 +109,55 @@ it('changes the app language without updating the user and keeps the account cha
   expect(mockSetParams).toHaveBeenCalledWith({ lang: undefined });
   act(() => current.changeLanguage({ id: 99, symbol: 'XX' } as any));
   expect(mockUpdateLanguage).toHaveBeenCalledTimes(1);
+});
+
+it('hydrates a new user language after a local selection', async () => {
+  mockUser = { language: mockLanguages[0], kyc: {} };
+  const view = show();
+  await waitFor(() => expect(current.language?.symbol).toBe('EN'));
+  act(() => current.changeAppLanguage(mockLanguages[1] as any));
+  expect(current.language?.symbol).toBe('DE');
+  mockUser = { language: mockLanguages[3], kyc: {} };
+  view.rerender(
+    <SettingsContextProvider>
+      <Consumer />
+    </SettingsContextProvider>,
+  );
+  await waitFor(() => expect(current.language?.symbol).toBe('FR'));
+  expect(mockUpdateLanguage).not.toHaveBeenCalled();
+});
+
+it('hydrates a changed language parameter after a local selection', async () => {
+  mockParams = { setParams: mockSetParams, lang: 'en' };
+  const view = show();
+  await waitFor(() => expect(current.language?.symbol).toBe('EN'));
+  act(() => current.changeAppLanguage(mockLanguages[1] as any));
+  expect(current.language?.symbol).toBe('DE');
+  mockParams = { setParams: mockSetParams, lang: 'fr' };
+  view.rerender(
+    <SettingsContextProvider>
+      <Consumer />
+    </SettingsContextProvider>,
+  );
+  await waitFor(() => expect(current.language?.symbol).toBe('FR'));
+  expect(mockUpdateLanguage).not.toHaveBeenCalled();
+});
+
+it('hydrates the user language when it becomes available after a local selection', async () => {
+  mockUser = { language: mockLanguages[3], kyc: {} };
+  mockLanguageList = mockLanguages.slice(0, 3);
+  const view = show();
+  await waitFor(() => expect(current.language?.symbol).toBe('EN'));
+  act(() => current.changeAppLanguage(mockLanguages[1] as any));
+  expect(current.language?.symbol).toBe('DE');
+  mockLanguageList = [...mockLanguages];
+  view.rerender(
+    <SettingsContextProvider>
+      <Consumer />
+    </SettingsContextProvider>,
+  );
+  await waitFor(() => expect(current.language?.symbol).toBe('FR'));
+  expect(mockUpdateLanguage).not.toHaveBeenCalled();
 });
 
 it('updates currency, mail, phone and the local store through their respective handlers', async () => {

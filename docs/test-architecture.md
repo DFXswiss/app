@@ -579,7 +579,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The passkey sheet unit test replaces the active element in one case.**
   `src/__tests__/passkey-sheet.test.tsx` stubs `document.activeElement`; a green run does not prove browser focus behaviour for that case.
 - **The passkey wallet unit tests replace the settings context.**
-  Their `translate` returns the key and `changeLanguage` is mocked; a green run does not prove real translation or language changes.
+  Their `translate` returns the key; a green run does not prove real translation.
+  `changeAppLanguage` and `changeLanguage` are mocked; a green run does not prove real language changes or that the account stays untouched.
 - **The late recovery-word test spies on React state.**
   `src/__tests__/connect-passkey.test.tsx` replaces `useState` with a spy; a green run does not prove behaviour without that instrumentation.
 - **The passkey reload test replaces `window.location.reload`.**

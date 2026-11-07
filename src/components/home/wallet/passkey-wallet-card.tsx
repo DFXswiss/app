@@ -8,6 +8,7 @@ interface PasskeyWalletCardProps {
   busy?: boolean;
   onExpandedChange: (expanded: boolean) => void;
   onSettings: () => void;
+  onHome: () => void;
 }
 
 export default function PasskeyWalletCard({
@@ -18,6 +19,7 @@ export default function PasskeyWalletCard({
   busy,
   onExpandedChange,
   onSettings,
+  onHome,
 }: PasskeyWalletCardProps): JSX.Element {
   const { translate, locale } = useSettingsContext();
   const t = (key: string) => translate('screens/home', key);
@@ -46,6 +48,12 @@ export default function PasskeyWalletCard({
             <a
               href="/"
               aria-label={t('DFX home')}
+              onClick={(event) => {
+                if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                  event.preventDefault();
+                  onHome();
+                }
+              }}
               className="flex min-h-[44px] items-center focus-visible:outline focus-visible:outline-2"
             >
               <svg
