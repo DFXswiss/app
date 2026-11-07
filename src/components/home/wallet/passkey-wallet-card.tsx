@@ -31,10 +31,7 @@ export default function PasskeyWalletCard({
     'min-h-[44px] rounded-lg px-4 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2';
   const currentSymbol = currency;
   const value = balance?.[currentSymbol.toLowerCase() as 'chf' | 'eur'];
-  const formatted =
-    value === undefined
-      ? undefined
-      : formatWalletAmount(value, locale);
+  const formatted = value === undefined ? undefined : formatWalletAmount(value, locale);
   const lastSeparator = formatted ? Math.max(formatted.lastIndexOf('.'), formatted.lastIndexOf(',')) : -1;
   return (
     <header

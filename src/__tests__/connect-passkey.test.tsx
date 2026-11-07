@@ -960,9 +960,7 @@ describe('ConnectPasskey', () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    view.rerender(
-      <PasskeyDesk opening onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />,
-    );
+    view.rerender(<PasskeyDesk opening onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     const dialog = screen.getByRole('dialog', { name: 'Settings' });
     screen.getAllByRole('button', { name: 'Close' }).forEach((button) => expect(button).toBeDisabled());
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -1697,32 +1695,29 @@ describe('ConnectPasskey', () => {
     expect(screen.getByTestId('passkey-receive-address')).toBeEmptyDOMElement();
   });
 
-  it.each(['Use another passkey', 'Block passkey as lost'])(
-    'resets receive after %s',
-    async (action) => {
-      mockUser = { id: 1, addresses: [{ passkey: { credentialId: 'cred' } }] };
-      const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
-      setOpenPasskey(session);
-      mockRevoke.mockResolvedValue({ id: 7, status: 'Lost' });
-      render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
-      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
-      expect(screen.getByTestId('passkey-receive-address')).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-      if (action === 'Use another passkey') {
-        fireEvent.click(screen.getByRole('button', { name: 'Use another passkey' }));
-      } else {
-        fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
-        fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
-        fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
-      }
-      await waitFor(() => expect(passkeySession.getOpenPasskey()).toBeUndefined());
-      act(() => setOpenPasskey(session));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Receive' })).toBeInTheDocument());
-      expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
-    },
-  );
+  it.each(['Use another passkey', 'Block passkey as lost'])('resets receive after %s', async (action) => {
+    mockUser = { id: 1, addresses: [{ passkey: { credentialId: 'cred' } }] };
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    mockRevoke.mockResolvedValue({ id: 7, status: 'Lost' });
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
+    expect(screen.getByTestId('passkey-receive-address')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    if (action === 'Use another passkey') {
+      fireEvent.click(screen.getByRole('button', { name: 'Use another passkey' }));
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
+      fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
+      fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
+    }
+    await waitFor(() => expect(passkeySession.getOpenPasskey()).toBeUndefined());
+    act(() => setOpenPasskey(session));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Receive' })).toBeInTheDocument());
+    expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+  });
 
   it('shows preparing while the platform check is pending', () => {
     renderPasskey();
@@ -2375,7 +2370,7 @@ describe('ConnectPasskey', () => {
     expect(mockSetSession).not.toHaveBeenCalled();
   });
 
-  it('keeps the account token after a link and refuses a second passkey on unlock', async () => {
+  it('keeps the ceremony token after a link and refuses a second passkey on unlock', async () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
     const keys = ring(SEED);
     mockLogin.mockResolvedValue(authResult('locked'));

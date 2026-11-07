@@ -592,8 +592,15 @@ test.describe('Auth area e2e', () => {
 
       const evmRow = page.locator('li', { has: page.getByText('Ethereum & EVM', { exact: true }) });
       await expect(evmRow).toHaveCount(1, { timeout: 30000 });
-      const evmAddress = await evmRow.locator('[title]').getAttribute('title');
+      await page.getByRole('button', { name: 'Receive', exact: true }).click();
+      await receive.getByRole('button', { name: 'EVM', exact: true }).click();
+      const receiveAddress = receive.getByTestId('passkey-receive-address');
+      await expect(receiveAddress).toHaveText(/^0x[0-9a-fA-F]{40}$/, { timeout: 30000 });
+      const evmAddress = await receiveAddress.textContent();
       if (evmAddress === null || !/^0x[0-9a-fA-F]{40}$/.test(evmAddress)) throw new Error('Missing EVM address');
+      const serverEvmAddress = await evmRow.locator('[title]').getAttribute('title');
+      expect(serverEvmAddress?.toLowerCase()).toBe(evmAddress.toLowerCase());
+      await receive.getByRole('button', { name: 'Close' }).click();
       const authRequest = page.waitForRequest(
         (request) => request.method() === 'POST' && new URL(request.url()).pathname === '/v1/auth',
         { timeout: 30000 },

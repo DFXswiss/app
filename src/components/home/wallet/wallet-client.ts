@@ -22,7 +22,12 @@ export interface WalletClient {
   login(): Promise<AuthResult>;
   register(extras: RegisterExtras): Promise<AuthResult>;
   unlock(): Promise<{ keys?: KeyRing; state: WalletState }>;
-  link(family: 'evm' | 'bitcoin', sessionToken: string, keys: KeyRing, evmIndex?: number): Promise<{
+  link(
+    family: 'evm' | 'bitcoin',
+    sessionToken: string,
+    keys: KeyRing,
+    evmIndex?: number,
+  ): Promise<{
     accessToken: string;
     address: PasskeyAddress;
   }>;

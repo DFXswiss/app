@@ -637,7 +637,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `"user".address` stores that address once for the registered mail, that after Reload data
   in Settings and after the second unlock exactly one list row shows that same `bc1q` address,
   and that a different address at that path does not pass.
-  It also proves that the Buy opt-in sends the locally derived EVM address and a non-empty wallet signature to `POST /v1/auth`, which responds with 201.
+  It also proves that the EVM address in the Receive dialog matches the server address row and that the Buy opt-in sends that locally derived address and a non-empty wallet signature to `POST /v1/auth`, which responds with 201.
   The returned DFX token names that address and the passkey account and differs from the passkey ceremony token.
   The database associates that address with the passkey credential's account.
   It does not prove a production sign-in, a real hardware-authenticator PRF, or a transaction or purchase.

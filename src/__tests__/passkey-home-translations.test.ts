@@ -35,7 +35,7 @@ const addedHomeKeys = [
   'This device offered a passkey that DFX does not recognize. Open a new account. If the device offers that same passkey again, delete the saved DFX passkey in your password settings, then try again.',
   'Open this page in your browser',
   'Passkeys do not work inside Telegram or other in-app browsers. Open this page in Safari or Chrome to log in.',
-  'On iPhone, you\'ll find the compass or Safari icon at the top right.',
+  "On iPhone, you'll find the compass or Safari icon at the top right.",
   'Open in browser',
   'Copy link',
   'Copied',

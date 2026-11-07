@@ -111,11 +111,7 @@ export default function PasskeyWalletHistory({ history }: { history?: PasskeyHis
               <div className="text-right">
                 <div
                   className={`text-base font-semibold ${
-                    tx.pending
-                      ? 'text-[#8A5A00]'
-                      : tx.direction === 'in'
-                        ? 'text-dfxGreen-300'
-                        : ''
+                    tx.pending ? 'text-[#8A5A00]' : tx.direction === 'in' ? 'text-dfxGreen-300' : ''
                   }`}
                 >
                   {tx.amount}

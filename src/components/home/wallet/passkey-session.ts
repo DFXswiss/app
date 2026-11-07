@@ -7,9 +7,9 @@ export type OpenPasskey = AuthResult;
 export function sameSession(a: OpenPasskey | undefined, b: OpenPasskey): boolean {
   return Boolean(
     a?.wallet &&
-      a.wallet.id === b.wallet.id &&
-      a.wallet.credentialId === b.wallet.credentialId &&
-      a.accessToken === b.accessToken,
+    a.wallet.id === b.wallet.id &&
+    a.wallet.credentialId === b.wallet.credentialId &&
+    a.accessToken === b.accessToken,
   );
 }
 

@@ -51,9 +51,7 @@ async function installLoginRoutes(page: Page): Promise<void> {
     const path = new URL(request.url()).pathname;
     if (request.method() === 'GET' && path === '/v1/language') return fulfillJson(route, LANGUAGES);
     if (request.method() === 'GET' && path === '/v1/fiat') {
-      return fulfillJson(route, [
-        { id: 1, name: 'CHF', buyable: true, sellable: true },
-      ]);
+      return fulfillJson(route, [{ id: 1, name: 'CHF', buyable: true, sellable: true }]);
     }
     if (request.method() === 'GET' && path === '/v1/setting/infoBanner') return fulfillJson(route, null);
     if (request.method() === 'GET' && ['/v1/country', '/v1/asset', '/v1/bankAccount'].includes(path)) {
@@ -959,7 +957,7 @@ test.describe('Passkey wallet design', () => {
           },
           {
             type: 'swap',
-            direction: 'out',
+            direction: 'in',
             title: 'Swap',
             date: '3 Nov 2026',
             amount: '+0.01 ETH',
