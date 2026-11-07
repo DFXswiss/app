@@ -22,8 +22,8 @@
 # or the pull request has the ci:full label). A fork pull request gets
 # full=false. e2e-stack.yml then records mode=none and exits 0: a fork never
 # receives E2E_API_CHECKOUT_KEY, and the ci:full label does not make it run
-# the stack. A workflow_dispatch of this file still passes full=true when
-# base_ref is empty, main, or develop.
+# the stack. A workflow_dispatch of this file passes full=true when base_ref
+# is empty, main, or develop. base_ref=develop now also requests a full stack.
 
 name: PR CI
 
@@ -273,8 +273,9 @@ jobs:
   # After Build and test so E2E cannot start while unit tests are still queued.
   # pull_request: full=true only when head.repo.full_name == github.repository
   # and (base is main or develop, or the pull request has ci:full). A fork gets
-  # full=false, so e2e-stack.yml records mode=none and exits 0. workflow_dispatch
-  # of this file is unchanged: full=true when base_ref is empty, main, or develop.
+  # full=false, so e2e-stack.yml records mode=none and exits 0.
+  # A workflow_dispatch of this file passes full=true when base_ref is
+  # empty, main, or develop. base_ref=develop now also requests a full stack.
   e2e:
     name: Full-stack E2E
     needs: [build]
