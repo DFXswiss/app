@@ -593,8 +593,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e/passkey-login.spec.ts` fulfils geolocation-db with country `CH` and fulfils the bootstrap
   GETs with fixtures. The wallet card background is loaded from the public image host; a green run does
   not prove that this image is served or unchanged. The EUR shot selects the local wallet currency without a DFX user; it does not prove the
-  service saves an account currency. A `/v2/**` call without the account token is 401. A call that sends that
-  token returns the user for `GET /v2/user` and an empty list otherwise. The tile shots replace WebAuthn.
+  service saves an account currency. Every `/v2/**` call is answered with 401. The tile shots replace WebAuthn.
   An available report resolves `PublicKeyCredential.getClientCapabilities` with `extension:prf`.
   A missing report removes `PublicKeyCredential` or `credentials.create` and `credentials.get`.
   The preparing shot leaves `getClientCapabilities` pending, so the sheet stays on the preparing
@@ -643,7 +642,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and that a different address at that path does not pass.
   It also proves that the EVM address in the Receive dialog matches the server address row and that the Buy opt-in sends that locally derived address and a non-empty wallet signature to `POST /v1/auth`, which responds with 201.
   The returned DFX token names that address and the passkey account and differs from the passkey ceremony token.
-  The database associates that address with the passkey credential's account.
+  As a consistency check, the database associates that address with the passkey credential's account; that check alone
+  does not tell the opt-in from the ceremony token, the request and token checks above do.
   It does not prove a production sign-in, a real hardware-authenticator PRF, or a transaction or purchase.
   It does not prove the ceremony
   when the test skips, the wallet
@@ -676,8 +676,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   Tests in `src/__tests__/connect-passkey.test.tsx` and `src/__tests__/passkey-session.test.ts` switch `process.env.NODE_ENV` to `production`; a green run does not prove the behaviour of a production build.
   Unit tests set `window.__dfxHandbookPasskeyHistory`; a green run does not prove that real transaction history is available.
   Tests also stub `QrBasic`,
-  `IntersectionObserver`, `getUserMedia` and navigation; a green run does not prove the real QR
-  renderer, browser observers, camera or router. The same applies to the new wallet unit tests: `passkey-pay-sheet.test.tsx` stubs `getUserMedia`
+  `getUserMedia` and navigation; a green run does not prove the real QR
+  renderer, camera or router. The same applies to the new wallet unit tests: `passkey-pay-sheet.test.tsx` stubs `getUserMedia`
   with a fake stream, and
   `passkey-wallet-history.test.tsx` replaces `IntersectionObserver`; a green run does not prove a
   real camera, QR code or scroll observer. The same file replaces `navigator.userAgent`,

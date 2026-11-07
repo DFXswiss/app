@@ -1,4 +1,7 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
+import type { AuthResult } from '@dfx.swiss/wallet';
+
+type PasskeyWindow = { __dfxSetOpenPasskey?: (next: AuthResult | undefined) => void };
 
 // A value jwt-decode cannot read is removed on boot. The expiry is in the future. The signature is not checked.
 const ACCOUNT_TOKEN = 'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDAsImJsb2NrY2hhaW5zIjpbXX0.x';
@@ -217,9 +220,9 @@ test.describe('/wallet passkey entry', () => {
     await page.goto('/wallet?lang=en');
     await expect(page.locator('img[src*="/kaufen_"]')).toBeVisible();
     await expect(page.locator('img[alt="logo"]')).toBeVisible();
-    await page.waitForFunction(() => typeof window.__dfxSetOpenPasskey === 'function');
+    await page.waitForFunction(() => typeof (window as unknown as PasskeyWindow).__dfxSetOpenPasskey === 'function');
     await page.evaluate(() => {
-      window.__dfxSetOpenPasskey?.({
+      (window as unknown as PasskeyWindow).__dfxSetOpenPasskey?.({
         state: 'locked',
         accessToken: 'handbook-passkey-token',
         wallet: {
@@ -234,7 +237,7 @@ test.describe('/wallet passkey entry', () => {
           backupRequired: true,
           addresses: [],
         },
-      } as Parameters<NonNullable<typeof window.__dfxSetOpenPasskey>>[0]);
+      } as AuthResult);
     });
     const settings = page.getByRole('button', { name: 'Settings' });
     await expect(settings).toBeVisible();

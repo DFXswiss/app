@@ -1,15 +1,20 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { DESK_CREDENTIAL_BYTES, deskBase64Url, installDeskAuthenticator } from './passkey-desk-authenticator';
 
-// A value jwt-decode cannot read is removed on boot. The expiry is in the future. The signature is not checked.
-// blockchains is an array so the login screen can read session.blockchains without throwing.
-const ACCOUNT_TOKEN = 'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDAsImJsb2NrY2hhaW5zIjpbXX0.x';
-
-const VISUAL_USER = {
-  mail: 'user@example.com',
-  language: { id: 2, name: 'English', symbol: 'EN' },
-  kyc: { hash: '' },
-  addresses: [],
+type HistoryWindow = {
+  __dfxHandbookPasskeyHistory?: {
+    items: {
+      type: 'buy' | 'sell' | 'swap' | 'send' | 'receive' | 'pay';
+      title: string;
+      date: string;
+      amount: string;
+      direction: 'in' | 'out';
+      fiatValue: string;
+      pending?: boolean;
+    }[];
+    hasMore: boolean;
+    loadMore: () => Promise<void>;
+  };
 };
 
 // Bootstrap calls are mocked so the login screen renders without a live API. The tile shots stub
@@ -61,14 +66,7 @@ async function installLoginRoutes(page: Page): Promise<void> {
   });
 
   await page.route('**/v2/**', async (route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    const authorization = request.headers()['authorization'] ?? '';
-    // A 401 for this token clears it. The login screen stays up, and later getAuthToken() is empty.
-    if (authorization.includes(ACCOUNT_TOKEN)) {
-      if (request.method() === 'GET' && path === '/v2/user') return fulfillJson(route, VISUAL_USER);
-      return fulfillJson(route, []);
-    }
+    // All account requests receive 401 so the login screen stays signed out.
     await route.fulfill({
       status: 401,
       contentType: 'application/json',
@@ -294,12 +292,6 @@ async function installRegisterErrorRoutes(page: Page): Promise<void> {
     }
     return fulfillJson(route, []);
   });
-}
-
-async function plantAccountToken(page: Page): Promise<void> {
-  await page.addInitScript((token) => {
-    window.localStorage.setItem('dfx.authenticationToken', token);
-  }, ACCOUNT_TOKEN);
 }
 
 async function openDesk(page: Page, mode: 'unlocked' | 'locked' | 'mismatch', dismissFirstGet = false): Promise<void> {
@@ -981,7 +973,11 @@ test.describe('Passkey wallet design', () => {
   test('shows an empty transaction history from test props', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
-      window.__dfxHandbookPasskeyHistory = { items: [], hasMore: false, loadMore: async () => undefined };
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyHistory = {
+        items: [],
+        hasMore: false,
+        loadMore: async () => undefined,
+      };
     });
     await openWallet(page);
     await expect(page.getByText('No transactions yet.', { exact: true })).toBeVisible();
@@ -991,7 +987,7 @@ test.describe('Passkey wallet design', () => {
   test('shows populated transaction history before and after show more', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
-      window.__dfxHandbookPasskeyHistory = {
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyHistory = {
         items: [
           {
             type: 'buy',
