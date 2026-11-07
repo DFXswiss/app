@@ -97,12 +97,14 @@ A pull request that adds or changes a website function is rejected unless the
 same pull request contains a real test of that function and that test has run.
 A pull request that adds a fake test, or that presents a fake test as the
 coverage of a website function, is rejected. Removing a fake test is allowed.
-A green check that did not run the real test does not satisfy this rule. On a
-pull request into `develop`, apply `ci:full` so the full-stack harness runs
-the test. A job that records `mode=none` is not a run. A function this pull
-request does not touch is not an excuse to add a fake test, and a fake test
-that already exists does not count as the real test of a function this pull
-request changes.
+A green check that did not run the real test does not satisfy this rule. A
+same-repository pull request into `develop` runs the full-stack harness. A
+job that records `mode=none` is not a run. A fork pull request does not
+receive the API checkout key, so that job records `mode=none` and a green
+result does not prove the suite ran. A function this pull request does not
+touch is not an excuse to add a fake test, and a fake test that already
+exists does not count as the real test of a function this pull request
+changes.
 
 A unit test of pure logic may exist. It is not coverage of a website function,
 and it must not stand in for the real test.
@@ -202,12 +204,14 @@ and `functions/`. A PR with no such files and no full-run trigger records
 full suite, as do PRs into `main`, a bare `workflow_dispatch`, unsafe path
 characters, test/build infrastructure, and deleting or renaming files under
 `src/` or `functions/`. Lint, Markdown formatting (`format:md:check`),
-`build:dev` and `widget:dev` always run in full when the job runs. A standard
-PR into `develop` (no `ci:full`) must finish CI in under 10 minutes wall-clock;
-the full-stack E2E job is an in-job no-op unless `ci:full` is set. Full-stack
-E2E is called from PR CI after Build and test succeed, so it cannot start
-while unit tests are still queued. Full runs (`ci:full`, PRs into `main`, a
-bare `workflow_dispatch`) may take longer.
+`build:dev` and `widget:dev` always run in full when the job runs. The
+unit-test job on a develop pull request without `ci:full` stays on the
+related-test path described above. The full-stack E2E job is separate. A
+same-repository pull request into `develop` always brings that stack up, and
+that run may take longer than the unit job. It is called after Build and
+test succeed, so it cannot start while unit tests are still queued. A fork
+pull request has no API checkout key, so the full-stack job records
+`mode=none` and a green result does not prove the suite ran.
 
 #### Coverage
 
@@ -335,9 +339,11 @@ also holds fork runs from external contributors as `action_required`. Ready
 does not start CI. After a
 fresh A38 enforce pass on
 the current head, `dfx pr guard` approves those waiting initial runs. Do not
-ask a maintainer to approve workflow runs. A develop PR without `ci:full`
-records `mode=none` and does not bring the stack up (the job still runs). Apply
-`ci:full`, target `main`, or run a bare `workflow_dispatch` to force a full run.
+ask a maintainer to approve workflow runs. A same-repository pull request
+into `develop` brings the stack up. A fork pull request records `mode=none`
+and a green result does not prove the suite ran. Apply `ci:full`, target
+`main`, or run a bare `workflow_dispatch` when the pull request is not
+already covered by that rule.
 
 A pull request that adds or changes a website function must add or update the
 real test of that function in this harness, and that test must have run. See
@@ -352,11 +358,12 @@ was never actually opened by any test. The browser records every navigation it
 makes, and the gate compares that recording against the route list, so a claim
 pointing at a file that never visits the route does not satisfy it. Adding a route
 therefore means adding a claim in `e2e-stack/specs/registry/` and a test that
-navigates there. That gate runs only when the stack comes up (`ci:full`, a PR
-into `main`, or a bare `workflow_dispatch`); a standard develop PR without
-`ci:full` does not enforce it. Opening a route satisfies only this route gate.
-It does not satisfy [Real tests](#real-tests). A green check on a run that
-records `mode=none` does not satisfy that rule either.
+navigates there. That gate runs when the stack comes up. A same-repository
+pull request into `develop` brings the stack up, as do a pull request into
+`main`, the `ci:full` label, and a bare `workflow_dispatch`. A fork pull
+request does not. Opening a route satisfies only this route gate. It does
+not satisfy [Real tests](#real-tests). A green check on a run that records
+`mode=none` does not satisfy that rule either.
 
 Run locally:
 

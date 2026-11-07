@@ -10,12 +10,12 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 ## The layers this repository owns
 
-| Layer              | Location                        | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                                       |
-| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts run (forks may wait as `action_required`); suite full / related / none                    |
-| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                |
-| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts run (job `mode=none` without `ci:full`); stack only with `ci:full` / main / bare dispatch |
-| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                           | no                                                                                               |
+| Layer              | Location                        | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                                                                                           |
+| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts run (forks may wait as `action_required`); suite full / related / none                                                                        |
+| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                                                                    |
+| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts run; a same-repository pull request into develop brings the stack up; a fork records mode=none and a green check does not prove the suite ran |
+| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                           | no                                                                                                                                                   |
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
 payout, ledger booking — is **not** testable from this repository. It belongs to the integration
@@ -80,8 +80,8 @@ claimed route the browser never opened. That flag is declared by the run, not me
 only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
 no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
 whatever the caller's environment holds — and the CI workflow sets it when it brings the stack up (full run).
-Develop PRs without `ci:full` never set it; `ci:full`, PRs into `main`, and a bare `workflow_dispatch`
-(empty `base_ref`) force that full invocation.
+A same-repository pull request into `develop`, a pull request into `main`, and a bare `workflow_dispatch`
+(empty `base_ref`) set it. A fork pull request does not.
 Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
 there.
 
@@ -643,7 +643,7 @@ Handbook screenshot baselines are unchanged and are not that coverage.
 
 ## Known gaps
 
-All four points below concern the full-stack harness.
+All five points below concern the full-stack harness.
 
 - **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*`
   (`e2e-stack/env/api.env`); what that switches off in the API is described in the companion document
@@ -661,6 +661,8 @@ All four points below concern the full-stack harness.
   worker with retries disabled (`workers: 1` and `retries: 0` in `e2e-stack/playwright.config.ts`, whose
   comment states the reason): a retry would mask exactly the order-dependent failure this arrangement
   produces. It bounds how far the suite can grow.
+- **A fork pull request does not bring the stack up.** The job has no API checkout key, records
+  `mode=none`, and exits 0. A green Full-stack E2E check on a fork does not prove the suite ran.
 
 ## Target architecture
 
