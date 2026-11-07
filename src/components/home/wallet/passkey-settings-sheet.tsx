@@ -101,7 +101,11 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
       ? props.note
       : undefined;
   const linkResult = /^Linked Evm 0x[0-9a-f]{40}\.$/i.test(props.note ?? '');
-  const checksColor = props.checks?.every((item) => item.matches) ? 'text-dfxGreen-300' : 'text-dfxRed-150';
+  const checksColor = !props.checks?.length
+    ? ''
+    : props.checks.every((item) => item.matches)
+      ? 'text-dfxGreen-300'
+      : 'text-dfxRed-150';
   return (
     <PasskeySheet title={t('Settings')} onClose={props.onClose} busy={props.busy}>
       <div className="mb-5 flex items-center gap-3 rounded-[16px] bg-[#EEF2F8] px-4 py-3.5">

@@ -169,6 +169,22 @@ describe('Passkey wallet dialogs', () => {
     expect(screen.getByText('Backed up on 2026-11-06')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('failure');
     expect(screen.getByText('0 / 1 addresses match')).toBeInTheDocument();
+    view.rerender(<PasskeySettingsSheet {...props} checks={[]} />);
+    expect(screen.getByText('0 / 0 addresses match')).not.toHaveClass('text-dfxGreen-300');
+    expect(screen.getByText('0 / 0 addresses match')).not.toHaveClass('text-dfxRed-150');
+    view.rerender(<PasskeySettingsSheet {...props} checks={[{ family: 'Evm', address: 'a', matches: true }]} />);
+    expect(screen.getByText('1 / 1 addresses match')).toHaveClass('text-dfxGreen-300');
+    view.rerender(
+      <PasskeySettingsSheet
+        {...props}
+        unlocked={false}
+        backupNeeded={false}
+        backupSeenDate="2026-11-06"
+        credentialId=""
+        note="failure"
+        checks={[{ family: 'Evm', address: 'a', matches: false }]}
+      />,
+    );
     expect(screen.getByRole('button', { name: 'Link' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Check passkey status' })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Recovery words/ })).toBeDisabled();

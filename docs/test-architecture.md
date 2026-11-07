@@ -630,8 +630,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and credential status plus the wallet list come from the API. It also proves that the first
   unlock shows a Bitcoin row whose full `bc1q` address matches the database path
   `m/84'/0'/0'/0/0`, that `passkey_address` together with
-  `"user".address` stores that address once for the registered mail, that after Refresh
-  wallets and after the second unlock exactly one list row shows that same `bc1q` address,
+  `"user".address` stores that address once for the registered mail, that after Reload data
+  in Settings and after the second unlock exactly one list row shows that same `bc1q` address,
   and that a different address at that path does not pass. It does not prove the ceremony
   when the test skips, the wallet
   migration (the row is copied with SQL, forces `autoTradeApproval`, and clears `ownerId` and

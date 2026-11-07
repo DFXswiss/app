@@ -748,7 +748,8 @@ test.describe('Passkey login', () => {
     await registerUnlockedDesk(page);
     await openSettings(page);
     await page.getByRole('button', { name: /Check addresses/ }).click();
-    await expect(page.getByText(/\d+ \/ 4 addresses match/)).toBeVisible();
+    await expect(page.getByText('1 / 4 addresses match', { exact: true })).toBeVisible();
+    await expect(page.getByRole('listitem').filter({ hasText: 'bc1qdeskdi…kdiffers' })).toContainText('Differs');
     await expect(page).toHaveScreenshot('passkey-desk-addresses.png', { fullPage: true });
   });
 

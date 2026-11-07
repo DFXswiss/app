@@ -116,6 +116,15 @@ export default function PasskeyDesk({
   const wordsGeneration = useRef(0);
   const wordsKeys = useRef<KeyRing>();
 
+  function showMessage(message: string): void {
+    const current = sheetRef.current;
+    if (current === 'settings' || current === 'words' || current === 'revoke' || current === 'receive') {
+      setNote(message);
+    } else {
+      setToast(translate('screens/home', message));
+    }
+  }
+
   useEffect(() => {
     if (currency?.name === 'CHF' || currency?.name === 'EUR') setCurrentSymbol(currency.name);
   }, [currency?.name]);
@@ -162,9 +171,7 @@ export default function PasskeyDesk({
       await result;
     } catch (caught) {
       if (!isCurrent()) return;
-      const message = passkeyMessage(caught);
-      if (sheetRef.current) setNote(message);
-      else setToast(translate('screens/home', message));
+      showMessage(passkeyMessage(caught));
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -205,7 +212,7 @@ export default function PasskeyDesk({
     return match;
   }
 
-  async function onLink(family: 'bitcoin' | 'evm', accountIndex: number): Promise<void> {
+  async function onLink(family: 'bitcoin' | 'evm', accountIndex: number, reportSuccess: boolean): Promise<void> {
     const session = getOpenPasskey();
     if (!session || !session.wallet || !canUseKeys(session)) return;
     const keys = session.keys;
@@ -224,12 +231,11 @@ export default function PasskeyDesk({
         await refreshWallet(api, original, isCurrent);
       } catch (caught) {
         if (isCurrent()) {
-          if (sheetRef.current) setNote(`${linkedText} ${passkeyMessage(caught)}`);
-          else setToast(`${linkedText} ${translate('screens/home', passkeyMessage(caught))}`);
+          showMessage(`${linkedText} ${translate('screens/home', passkeyMessage(caught))}`);
         }
         return;
       }
-      if (isCurrent() && sheetRef.current) setNote(linkedText);
+      if (isCurrent() && reportSuccess) showMessage(linkedText);
     });
   }
 
@@ -297,7 +303,7 @@ export default function PasskeyDesk({
     if (sessionWallet === undefined) return;
     if (addresses.some((address) => address.family === 'Bitcoin')) return;
     bitcoinLinkStarted.current = true;
-    void onLink('bitcoin', 0);
+    void onLink('bitcoin', 0, false);
   }, [unlocked, sessionWallet, addresses, onLink]);
 
   if (!open?.wallet) return <StyledVerticalStack gap={2} center />;
@@ -499,7 +505,7 @@ export default function PasskeyDesk({
                   <button
                     className={`${button} border border-dfxGray-500`}
                     disabled={busy || !unlocked}
-                    onClick={() => void onLink('bitcoin', 0)}
+                    onClick={() => void onLink('bitcoin', 0, true)}
                   >
                     {t('Connect again')}
                   </button>
@@ -533,7 +539,7 @@ export default function PasskeyDesk({
           validEvmIndex={index !== undefined}
           onEvmIndex={setEvmIndex}
           onWords={() => void showWords()}
-          onLink={index === undefined ? undefined : () => void onLink('evm', index)}
+          onLink={index === undefined ? undefined : () => void onLink('evm', index, true)}
           onVerify={() =>
             void run(async ({ auth }, session, isCurrent) => {
               if (!canUseKeys(session)) return;
