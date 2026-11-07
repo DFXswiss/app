@@ -277,7 +277,7 @@ export default function PasskeyDesk({
   const t = (key: string) => translate('screens/home', key);
   const button =
     'min-h-[44px] rounded-lg px-4 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2';
-  const backupNeeded = !open.wallet.backupSeenDate;
+  const backupMissing = !open.wallet.backupSeenDate;
   const openSheet = (next: typeof sheet) => {
     if (sheetRef.current === undefined) sheetOrigin.current = document.activeElement as HTMLElement | null;
     sheetGeneration.current += 1;
@@ -419,7 +419,7 @@ export default function PasskeyDesk({
       <PasskeyWalletNotes
         state={walletState}
         unlocked={unlocked}
-        backupNeeded={backupNeeded}
+        backupNeeded={open.wallet.backupRequired}
         busy={busy}
         onUnlock={() => void unlock()}
         onBackup={() => void showWords()}
@@ -503,7 +503,7 @@ export default function PasskeyDesk({
         <PasskeySettingsSheet
           unlocked={unlocked}
           canUnlock={walletState === 'locked'}
-          backupNeeded={backupNeeded}
+          backupNeeded={backupMissing}
           backupSeenDate={open.wallet.backupSeenDate}
           credentialId={open.wallet.credentialId}
           busy={busy}
@@ -581,7 +581,7 @@ export default function PasskeyDesk({
       {sheet === 'revoke' && (
         <PasskeyRevokeSheet
           note={note}
-          backupNeeded={backupNeeded}
+          backupNeeded={backupMissing}
           canBackUp={unlocked || walletState === 'locked'}
           acknowledged={revokeAcknowledged}
           busy={busy}

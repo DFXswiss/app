@@ -229,9 +229,9 @@ test.describe('/wallet passkey entry', () => {
           created: '2026-11-04',
           derivationVersion: 'V1',
           seedCheckAddress: '',
-          backupEligible: true,
+          backupEligible: false,
           backedUp: false,
-          backupRequired: false,
+          backupRequired: true,
           addresses: [],
         },
       } as Parameters<NonNullable<typeof window.__dfxSetOpenPasskey>>[0]);

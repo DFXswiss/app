@@ -206,7 +206,7 @@ function authResult(state: string, keys?: unknown, includeBitcoin = true) {
       created: '2026-11-04',
       derivationVersion: 'V1',
       seedCheckAddress: SEED,
-      backupEligible: true,
+      backupEligible: false,
       backedUp: false,
       backupRequired: true,
       addresses: [
@@ -327,6 +327,21 @@ describe('ConnectPasskey', () => {
     renderPasskey();
     expect(screen.getByRole('main').parentElement).toHaveAttribute('data-full', 'true');
     expect(screen.getByRole('main')).toHaveClass('w-full', 'max-w-[560px]');
+  });
+
+  it('uses the wallet backup requirement for the reminder and the seen date for the settings badge', () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    expect(screen.getByText('Back up your wallet')).toBeInTheDocument();
+    act(() =>
+      setOpenPasskey({ ...session, wallet: { ...session.wallet, backupEligible: true, backupRequired: false } }),
+    );
+    expect(screen.queryByText('Back up your wallet')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByText('Not backed up')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
+    expect(screen.getByRole('button', { name: 'Back up first' })).toBeInTheDocument();
   });
 
   it('shows a balance placeholder or the supplied balance and opens send', () => {

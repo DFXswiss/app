@@ -712,7 +712,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   replaces `window.PublicKeyCredential` with a class that reports passkeys as available.
   The blocked shot removes `window.PublicKeyCredential`. The signed-in wallet shot injects a locked
   passkey tab session through the non-production hook; it does not prove a real passkey login or session.
-  The logo, the home tiles and the
+  The logo, the home tiles, the wallet card background and the
   bottom picture are loaded from the public image host and pinned in the baseline. A green
   run proves `/wallet` renders the spinner, the idle card (`Log in with your device` and
   Log in), the blocked card (`This browser has no passkey support` and Close), and the

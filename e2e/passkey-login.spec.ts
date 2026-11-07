@@ -189,9 +189,9 @@ function deskWallet(seedCheckAddress: string, addresses: Record<string, unknown>
     created: '2026-01-01T00:00:00.000Z',
     derivationVersion: 'V1',
     seedCheckAddress,
-    backupEligible: true,
+    backupEligible: false,
     backedUp: false,
-    backupRequired: false,
+    backupRequired: true,
     addresses,
   };
 }
@@ -228,7 +228,11 @@ async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<
     const method = request.method();
     if (method === 'GET' && path === '/v1/passkey/wallets') return fulfillJson(route, [listedWallet()]);
     if (method === 'PUT' && path.endsWith('/backupSeen')) {
-      return fulfillJson(route, { ...listedWallet(), backupSeenDate: '2026-11-06T10:00:00.000Z' });
+      return fulfillJson(route, {
+        ...listedWallet(),
+        backupRequired: false,
+        backupSeenDate: '2026-11-06T10:00:00.000Z',
+      });
     }
     return fulfillJson(route, []);
   });
@@ -909,6 +913,17 @@ test.describe('Passkey wallet design', () => {
     await expect(page).toHaveScreenshot('passkey-wallet-settings.png');
   });
 
+  test('shows the danger zone of the settings', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWallet(page);
+    await page.getByRole('button', { name: 'Settings' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    const blockPasskey = dialog.getByRole('button', { name: 'Block passkey' });
+    await blockPasskey.scrollIntoViewIfNeeded();
+    await expect(blockPasskey).toBeInViewport();
+    await expect(page).toHaveScreenshot('passkey-wallet-settings-danger.png');
+  });
+
   test('shows the wallet with EUR selected', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openWallet(page);
@@ -1002,9 +1017,11 @@ test.describe('Passkey wallet design', () => {
     });
     await openWallet(page);
     await expect(page.getByText('Payout pending')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Show more' })).toBeVisible();
+    const showMore = page.getByRole('button', { name: 'Show more' });
+    await showMore.scrollIntoViewIfNeeded();
+    await expect(showMore).toBeInViewport();
     await expect(page).toHaveScreenshot('passkey-wallet-history-populated.png', { fullPage: true });
-    await page.getByRole('button', { name: 'Show more' }).click();
+    await showMore.click();
     await expect(page.getByText('Payment', { exact: true })).toBeVisible();
     await expect(page).toHaveScreenshot('passkey-wallet-history-expanded.png', { fullPage: true });
   });
@@ -1048,8 +1065,10 @@ test('wallet shows Bitcoin reconnect after an auto-link failure', async ({ page 
   await page.route('**/v1/auth/passkey/link', fulfillNotOk);
   await registerThroughGuidance(page);
   await page.getByRole('button', { name: 'Show wallet' }).first().click();
-  await expect(page.getByText('Not connected yet')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Connect again' })).toBeVisible();
+  const bitcoinRow = page.locator('li', { has: page.getByText('Not connected yet', { exact: true }) });
+  await bitcoinRow.scrollIntoViewIfNeeded();
+  await expect(bitcoinRow.getByText('Not connected yet')).toBeInViewport();
+  await expect(bitcoinRow.getByRole('button', { name: 'Connect again' })).toBeInViewport();
   await expect(page).toHaveScreenshot('passkey-wallet-bitcoin-offline.png');
 });
 
