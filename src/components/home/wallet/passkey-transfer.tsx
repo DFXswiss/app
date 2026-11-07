@@ -197,10 +197,6 @@ export default function PasskeyTransfer({
 
     return () => {
       alive = false;
-      if (frameIdRef.current !== undefined) {
-        cancelAnimationFrame(frameIdRef.current);
-        frameIdRef.current = undefined;
-      }
     };
   }, [cameraOpen]);
 

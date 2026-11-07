@@ -564,6 +564,101 @@ test.describe('Passkey login', () => {
     ]);
   });
 
+  test('shows the paste failure on the send form', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { readText: () => Promise.reject(new Error('denied')) },
+      });
+    });
+    await registerUnlockedDesk(page);
+
+    await page.getByRole('button', { name: 'Send' }).click();
+    const destination = page.getByLabel('Destination');
+    const paste = page.getByRole('button', { name: 'Paste' });
+    const scan = page.getByRole('button', { name: 'Scan' });
+    await paste.click();
+    const sentence = page.getByText('Paste is not available in this browser.', { exact: true });
+
+    await expect(sentence).toBeVisible();
+    await shoot(page, 'passkey-desk-send-paste.png', [
+      ...(await deskControls(page)),
+      destination,
+      paste,
+      scan,
+      sentence,
+    ]);
+  });
+
+  test('shows the scan failure on the send form', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          ...navigator.mediaDevices,
+          getUserMedia: () => Promise.reject(new Error('denied')),
+        },
+      });
+    });
+    await registerUnlockedDesk(page);
+
+    await page.getByRole('button', { name: 'Send' }).click();
+    const destination = page.getByLabel('Destination');
+    const paste = page.getByRole('button', { name: 'Paste' });
+    const scan = page.getByRole('button', { name: 'Scan' });
+    await scan.click();
+    const sentence = page.getByText('QR scanning is not available in this browser.', { exact: true });
+
+    await expect(sentence).toBeVisible();
+    await shoot(page, 'passkey-desk-send-scan.png', [
+      ...(await deskControls(page)),
+      destination,
+      paste,
+      scan,
+      sentence,
+    ]);
+  });
+
+  test('shows the scan camera on the send form', async ({ page }) => {
+    await page.addInitScript(() => {
+      class BarcodeDetectorStub {
+        detect() {
+          return Promise.resolve([]);
+        }
+      }
+
+      Object.defineProperty(globalThis, 'BarcodeDetector', { configurable: true, value: BarcodeDetectorStub });
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          ...navigator.mediaDevices,
+          getUserMedia: () => Promise.resolve({ getTracks: () => [{ stop() {} }] }),
+        },
+      });
+    });
+    await registerUnlockedDesk(page);
+
+    await page.getByRole('button', { name: 'Send' }).click();
+    const destination = page.getByLabel('Destination');
+    const paste = page.getByRole('button', { name: 'Paste' });
+    const scan = page.getByRole('button', { name: 'Scan' });
+    const sentence = page.getByText('Sending is not active yet.', { exact: true });
+    await scan.click();
+    const video = page.locator('[data-testid="passkey-send-scan"]');
+
+    await expect(video).toBeVisible();
+    await expect(destination).toHaveValue('');
+    await expect(sentence).toBeVisible();
+    await shoot(page, 'passkey-desk-send-camera.png', [
+      ...(await deskControls(page)),
+      destination,
+      paste,
+      scan,
+      sentence,
+      video,
+    ]);
+  });
+
   test('shows the unlocked desk after claiming a passkey', async ({ page }) => {
     await plantAccountToken(page);
     await openDesk(page, 'unlocked', true);

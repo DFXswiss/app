@@ -1477,6 +1477,136 @@ describe('ConnectPasskey', () => {
   });
 
   describe('desk transfer actions', () => {
+    it('closes receive and send when the same action is clicked again', () => {
+      openDesk({ evm: () => ({ path: 'm/0', address: '0xabc' }) });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      expect(screen.getByRole('button', { name: /^EVM$/ })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      expect(screen.queryByRole('button', { name: /^EVM$/ })).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      expect(screen.getByLabelText('Destination')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      expect(screen.queryByLabelText('Destination')).toBeNull();
+    });
+
+    it('shows the receive failure as a desk note', () => {
+      openDesk({
+        evm: () => {
+          throw new Error('no address');
+        },
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
+
+      expect(screen.queryByTestId('passkey-receive-address')).toBeNull();
+      expect(screen.queryByTestId('qr-code')).toBeNull();
+      expect(screen.getByText('no address', { selector: 'p' })).toBeInTheDocument();
+    });
+
+    it('leaves the scan video idle when the detector disappears as the camera opens', async () => {
+      const previousDetectorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'BarcodeDetector');
+      const previousMediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const stop = jest.fn();
+
+      class MockBarcodeDetector {
+        detect = jest.fn().mockResolvedValue([]);
+      }
+
+      Object.defineProperty(globalThis, 'BarcodeDetector', {
+        configurable: true,
+        value: MockBarcodeDetector,
+      });
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          getUserMedia: jest.fn().mockImplementation(async () => {
+            Reflect.deleteProperty(globalThis, 'BarcodeDetector');
+            return { getTracks: () => [{ stop }] };
+          }),
+        },
+      });
+
+      try {
+        openDesk({ evm: () => ({ path: 'm/0', address: '0xabc' }) });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+
+        expect(await screen.findByTestId('passkey-send-scan')).toBeInTheDocument();
+        expect(screen.getByLabelText('Destination')).toHaveValue('');
+      } finally {
+        if (previousDetectorDescriptor) {
+          Object.defineProperty(globalThis, 'BarcodeDetector', previousDetectorDescriptor);
+        } else {
+          Reflect.deleteProperty(globalThis, 'BarcodeDetector');
+        }
+        if (previousMediaDevicesDescriptor) {
+          Object.defineProperty(navigator, 'mediaDevices', previousMediaDevicesDescriptor);
+        } else {
+          Reflect.deleteProperty(navigator, 'mediaDevices');
+        }
+      }
+    });
+
+    it('ignores a camera rejection from an older scan', async () => {
+      const previousDetectorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'BarcodeDetector');
+      const previousMediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      let rejectFirst: (reason?: unknown) => void = () => undefined;
+      const firstRequest = new Promise<MediaStream>((_, reject) => {
+        rejectFirst = reject;
+      });
+      const getUserMedia = jest.fn().mockReturnValueOnce(firstRequest).mockRejectedValue(new Error('denied'));
+
+      class MockBarcodeDetector {
+        detect = jest.fn().mockResolvedValue([]);
+      }
+
+      Object.defineProperty(globalThis, 'BarcodeDetector', {
+        configurable: true,
+        value: MockBarcodeDetector,
+      });
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia },
+      });
+
+      try {
+        openDesk({ evm: () => ({ path: 'm/0', address: '0xabc' }) });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+
+        await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(1));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+
+        const unavailable = 'QR scanning is not available in this browser.';
+        expect(await screen.findByText(unavailable)).toBeInTheDocument();
+
+        await act(async () => {
+          rejectFirst(new Error('older scan failed'));
+          await firstRequest.catch(() => undefined);
+        });
+
+        expect(screen.getAllByText(unavailable)).toHaveLength(1);
+        expect(screen.getByLabelText('Destination')).toHaveValue('');
+      } finally {
+        if (previousDetectorDescriptor) {
+          Object.defineProperty(globalThis, 'BarcodeDetector', previousDetectorDescriptor);
+        } else {
+          Reflect.deleteProperty(globalThis, 'BarcodeDetector');
+        }
+        if (previousMediaDevicesDescriptor) {
+          Object.defineProperty(navigator, 'mediaDevices', previousMediaDevicesDescriptor);
+        } else {
+          Reflect.deleteProperty(navigator, 'mediaDevices');
+        }
+      }
+    });
+
     function renderDesk() {
       return render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     }
@@ -1487,6 +1617,178 @@ describe('ConnectPasskey', () => {
       });
       return renderDesk();
     }
+
+
+    test('keeps the current receive address when the same family is clicked twice', () => {
+      const evm = jest.fn(() => ({ path: 'm/0', address: '0xabc' }));
+      openDesk({ evm });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('0xabc');
+
+      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('0xabc');
+      expect(evm).toHaveBeenCalledTimes(1);
+    });
+
+    test.each(['resolved play', 'rejected play'])('scans after a %s promise', async (playCase) => {
+      const stop = jest.fn();
+      const getUserMedia = jest.fn().mockResolvedValue({ getTracks: () => [{ stop }] });
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+      const play = jest.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => {
+        if (playCase === 'resolved play') return Promise.resolve();
+        const rejected = Promise.reject(new Error('no play'));
+        rejected.catch(() => undefined);
+        return rejected;
+      });
+
+      class MockBarcodeDetector {
+        detect(): Promise<{ rawValue: string }[]> {
+          return Promise.resolve([{ rawValue: 'bc1qplayed' }]);
+        }
+      }
+      globalWithDetector.BarcodeDetector = MockBarcodeDetector;
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia },
+      });
+
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        await waitFor(() => expect(screen.getByLabelText('Destination')).toHaveValue('bc1qplayed'));
+        expect(play).toHaveBeenCalled();
+      } finally {
+        play.mockRestore();
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    test('schedules another scan frame and cancels it when the send panel closes', async () => {
+      const stop = jest.fn();
+      const getUserMedia = jest.fn().mockResolvedValue({ getTracks: () => [{ stop }] });
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const previousRaf = window.requestAnimationFrame;
+      const previousCancelRaf = window.cancelAnimationFrame;
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+      let frameCallback: FrameRequestCallback = () => undefined;
+      const requestAnimationFrame = jest.fn((callback: FrameRequestCallback) => {
+        frameCallback = callback;
+        return 7;
+      });
+      const cancelAnimationFrame = jest.fn();
+
+      class MockBarcodeDetector {
+        detect(): Promise<{ rawValue: string }[]> {
+          return Promise.resolve([]);
+        }
+      }
+      globalWithDetector.BarcodeDetector = MockBarcodeDetector;
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia },
+      });
+      window.requestAnimationFrame = requestAnimationFrame;
+      window.cancelAnimationFrame = cancelAnimationFrame;
+
+      try {
+        openDesk({ id: 'keys' });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        await waitFor(() => expect(frameCallback).toBeDefined());
+        await waitFor(() => expect(requestAnimationFrame).toHaveBeenCalledTimes(1));
+        act(() => {
+          frameCallback(0);
+        });
+        await waitFor(() => expect(requestAnimationFrame).toHaveBeenCalledTimes(2));
+        expect(screen.getByLabelText('Destination')).toHaveValue('');
+        expect(mockLink).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        expect(cancelAnimationFrame).toHaveBeenCalledWith(7);
+
+        act(() => {
+          frameCallback(0);
+        });
+      } finally {
+        window.requestAnimationFrame = previousRaf;
+        window.cancelAnimationFrame = previousCancelRaf;
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
+
+    test('ignores a detection result from an earlier scan', async () => {
+      const firstStop = jest.fn();
+      const secondStop = jest.fn();
+      const getUserMedia = jest
+        .fn()
+        .mockResolvedValueOnce({ getTracks: () => [{ stop: firstStop }] })
+        .mockResolvedValueOnce({ getTracks: () => [{ stop: secondStop }] });
+      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+      const previousRaf = window.requestAnimationFrame;
+      const previousCancelRaf = window.cancelAnimationFrame;
+      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
+      const previousDetector = globalWithDetector.BarcodeDetector;
+      const requestAnimationFrame = jest.fn((_callback: FrameRequestCallback) => 7);
+      const cancelAnimationFrame = jest.fn();
+      let resolveFirst: (codes: { rawValue: string }[]) => void = () => undefined;
+      const firstDetect = new Promise<{ rawValue: string }[]>((resolve) => {
+        resolveFirst = resolve;
+      });
+      const detect = jest.fn().mockImplementationOnce(() => firstDetect).mockResolvedValueOnce([]);
+
+      class MockBarcodeDetector {
+        detect(source: CanvasImageSource): Promise<{ rawValue: string }[]> {
+          return detect(source);
+        }
+      }
+      globalWithDetector.BarcodeDetector = MockBarcodeDetector;
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia },
+      });
+      window.requestAnimationFrame = requestAnimationFrame;
+      window.cancelAnimationFrame = cancelAnimationFrame;
+
+      const view = openDesk({ id: 'keys' });
+      try {
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        await waitFor(() => expect(screen.getByTestId('passkey-send-scan')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+        await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+        await act(async () => {
+          resolveFirst([{ rawValue: 'bc1qignored' }]);
+          await firstDetect;
+        });
+
+        await waitFor(() => expect(requestAnimationFrame).toHaveBeenCalled());
+        expect(screen.getByTestId('passkey-send-scan')).toBeInTheDocument();
+        expect(screen.getByLabelText('Destination')).toHaveValue('');
+        expect(firstStop).toHaveBeenCalled();
+        expect(mockLink).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+        window.requestAnimationFrame = previousRaf;
+        window.cancelAnimationFrame = previousCancelRaf;
+        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
+        else globalWithDetector.BarcodeDetector = previousDetector;
+        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
+        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+      }
+    });
 
     it('shows receive and send on an unlocked desk with the existing actions', () => {
       openDesk({ id: 'keys' });
