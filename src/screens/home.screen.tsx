@@ -1,9 +1,10 @@
 import { Blockchain, useAuthContext, useSessionContext, useUserContext } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { Fragment, Suspense, useEffect, useRef, useState } from 'react';
+import { Fragment, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Trans } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import { CustodyAssets } from 'src/components/home/wallet/connect-address';
+import { getOpenPasskey, subscribeOpenPasskey } from 'src/components/home/wallet/passkey-session';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { Service } from '../App';
@@ -66,6 +67,7 @@ type Page = { page: string; allowedTiles: string[] | undefined };
 
 function HomeScreenContent(): JSX.Element {
   const { translate } = useSettingsContext();
+  const openPasskey = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
   const { isLoggedIn, isInitialized: isSessionInitialized } = useSessionContext();
   const { session } = useAuthContext();
   const { user, isUserLoading, hasAddress } = useUserContext();
@@ -81,6 +83,8 @@ function HomeScreenContent(): JSX.Element {
   const [loginSuccessful, setLoginSuccessful] = useState(false);
   const [pages, setPages] = useState(new Stack<Page>());
   const connectToRef = useRef<Wallet>();
+  const previousLogin = useRef(isLoggedIn);
+  const closedPasskey = useRef<typeof openPasskey>();
 
   const currentPageId = pages.current?.page;
   const allowedTiles = pages.current?.allowedTiles;
@@ -91,6 +95,9 @@ function HomeScreenContent(): JSX.Element {
   const waitingForSession = specialMode === SpecialMode.WALLET && !isSessionInitialized;
 
   useEffect(() => {
+    if (closedPasskey.current && closedPasskey.current !== openPasskey) closedPasskey.current = undefined;
+    const justLoggedIn = !previousLogin.current && isLoggedIn;
+    previousLogin.current = isLoggedIn;
     const isConnectAddress = connectTo?.type === WalletType.ADDRESS;
 
     if (
@@ -105,14 +112,23 @@ function HomeScreenContent(): JSX.Element {
       setConnectTo(undefined);
     } else if (specialMode === SpecialMode.LOGIN_MAIL) {
       setConnectTo({ type: WalletType.MAIL });
-    } else if (specialMode === SpecialMode.WALLET && isSessionInitialized && !isLoggedIn) {
+    } else if (
+      specialMode === SpecialMode.WALLET &&
+      isSessionInitialized &&
+      (openPasskey || !isLoggedIn) &&
+      (!openPasskey || closedPasskey.current !== openPasskey)
+    ) {
       setConnectTo({ type: WalletType.PASSKEY });
-    } else if (specialMode === SpecialMode.WALLET && isLoggedIn && connectTo?.type === WalletType.PASSKEY) {
-      // A sign-in that finishes on this page must leave the form. connectTo stays out of the
-      // dependency list so closing the form does not open it again.
+    } else if (
+      specialMode === SpecialMode.WALLET &&
+      justLoggedIn &&
+      !openPasskey &&
+      connectTo?.type === WalletType.PASSKEY
+    ) {
+      // A newly completed DFX sign-in leaves the form only when no passkey session is open.
       setConnectTo(undefined);
     }
-  }, [specialMode, isLoggedIn, session, hasAddress, isSessionInitialized]);
+  }, [specialMode, isLoggedIn, session, hasAddress, isSessionInitialized, openPasskey]);
 
   useEffect(() => {
     if (isInitialized && isLoggedIn && user && loginSuccessful) {
@@ -199,6 +215,7 @@ function HomeScreenContent(): JSX.Element {
     (canClose && !isEmbedded) || connectTo != null || (currentPageId != null && currentPageId !== appParams.mode);
 
   useLayoutOptions({
+    noHeader: Boolean(openPasskey && connectTo?.type === WalletType.PASSKEY),
     title: isEmbedded ? title : undefined,
     backButton: hasBackButton,
     onBack: connectTo || (specialMode === SpecialMode.CONNECT && isLoggedIn) || currentPageId ? handleBack : undefined,
@@ -220,7 +237,11 @@ function HomeScreenContent(): JSX.Element {
                 blockchain={selectedBlockchain}
                 isConnect={specialMode === SpecialMode.CONNECT}
                 onLogin={() => setLoginSuccessful(true)}
-                onCancel={() => setConnectTo(undefined)}
+                onCancel={() => {
+                  if (specialMode === SpecialMode.WALLET && connectTo.type === WalletType.PASSKEY)
+                    closedPasskey.current = openPasskey;
+                  setConnectTo(undefined);
+                }}
                 onSwitch={(type) => setConnectTo((c) => ({ ...c, type }))}
               />
             </Suspense>

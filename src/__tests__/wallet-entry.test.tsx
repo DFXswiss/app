@@ -3,6 +3,7 @@ import { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { CustodyAssets } from '../components/home/wallet/connect-address';
 import HomeScreen from '../screens/home.screen';
+import { setOpenPasskey, type OpenPasskey } from '../components/home/wallet/passkey-session';
 
 const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
@@ -93,6 +94,17 @@ jest.mock('../components/home/connect-wrapper', () => ({
       <button onClick={onCancel}>cancel-connect</button>
       <button onClick={() => onSwitch('Mail')}>switch-wallet</button>
       <button onClick={() => onSwitch('Address')}>switch-address</button>
+      <button
+        onClick={() =>
+          jest
+            .requireActual<typeof import('../components/home/wallet/passkey-session')>(
+              '../components/home/wallet/passkey-session',
+            )
+            .setOpenPasskey(undefined)
+        }
+      >
+        Use another passkey
+      </button>
     </div>
   ),
 }));
@@ -157,6 +169,7 @@ jest.mock('../hooks/resize-observer.hook', () => ({
 }));
 
 function resetWorld(): void {
+  setOpenPasskey(undefined);
   mockSessionState.isLoggedIn = false;
   mockSessionState.isInitialized = true;
   mockAuthState.session = undefined;
@@ -224,6 +237,42 @@ describe('/wallet passkey entry', () => {
 
     expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
     expect(document.querySelector('img[src="/buy.jpg"]')).not.toBeNull();
+  });
+
+  it('keeps an open passkey visible with a DFX session', () => {
+    mockSessionState.isLoggedIn = true;
+    setOpenPasskey({ state: 'locked' } as OpenPasskey);
+    const view = renderAt('/wallet');
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+    expect(mockLayoutOptions).toMatchObject({ noHeader: true });
+    view.unmount();
+    setOpenPasskey(undefined);
+  });
+
+  it('keeps a closed wallet closed until the passkey session changes', () => {
+    mockSessionState.isLoggedIn = true;
+    const session = { state: 'locked' } as OpenPasskey;
+    setOpenPasskey(session);
+    const view = renderAt('/wallet');
+    fireEvent.click(screen.getByText('cancel-connect'));
+    mockUserState.hasAddress = true;
+    view.rerender(<Harness path="/wallet" />);
+    expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
+    act(() => setOpenPasskey({ ...session }));
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+    fireEvent.click(screen.getByText('cancel-connect'));
+    act(() => setOpenPasskey(undefined));
+    act(() => setOpenPasskey(session));
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+  });
+
+  it('keeps the passkey form open when an already signed-in user chooses another passkey', () => {
+    mockSessionState.isLoggedIn = true;
+    setOpenPasskey({ state: 'unlocked' } as OpenPasskey);
+    renderAt('/wallet');
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+    fireEvent.click(screen.getByRole('button', { name: 'Use another passkey' }));
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
   });
 
   it('shows the home tiles when the session is already logged in', () => {

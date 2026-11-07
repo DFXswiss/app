@@ -8,6 +8,7 @@
 import type { Page, Route } from '@playwright/test';
 import { ethers } from 'ethers';
 import {
+  authToken,
   decodeJwtPayload,
   expect,
   gotoWithSession,
@@ -37,10 +38,6 @@ async function expectParamStripped(page: Page, param: string, timeoutMs = 15000)
       timeout: timeoutMs,
     })
     .toBe(false);
-}
-
-async function authToken(page: Page): Promise<string | null> {
-  return page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
 }
 
 /** Open the top-right nav menu (hamburger / close icon in Navigation). */

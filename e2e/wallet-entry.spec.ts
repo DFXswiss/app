@@ -211,6 +211,40 @@ test.describe('/wallet passkey entry', () => {
     await shoot(page, 'wallet-entry-signed-out.png', [heading, login]);
   });
 
+  test('shows the passkey wallet on /wallet without the header while a DFX session is signed in', async ({ page }) => {
+    await plantAccountToken(page);
+    await installRoutes(page);
+    await page.goto('/wallet?lang=en');
+    await expect(page.locator('img[src*="/kaufen_"]')).toBeVisible();
+    await expect(page.locator('img[alt="logo"]')).toBeVisible();
+    await page.waitForFunction(() => typeof window.__dfxSetOpenPasskey === 'function');
+    await page.evaluate(() => {
+      window.__dfxSetOpenPasskey?.({
+        state: 'locked',
+        accessToken: 'handbook-passkey-token',
+        wallet: {
+          id: 7,
+          credentialId: 'handbook-credential',
+          status: 'Active',
+          created: '2026-11-04',
+          derivationVersion: 'V1',
+          seedCheckAddress: '',
+          backupEligible: true,
+          backedUp: false,
+          backupRequired: false,
+          addresses: [],
+        },
+      } as Parameters<NonNullable<typeof window.__dfxSetOpenPasskey>>[0]);
+    });
+    const settings = page.getByRole('button', { name: 'Settings' });
+    await expect(settings).toBeVisible();
+    await expect(page.getByText('Wallet locked', { exact: true })).toBeVisible();
+    await expect(page.locator('img[alt="logo"]')).toHaveCount(0);
+    await expect(page.locator('img[src*="/kaufen_"]')).toHaveCount(0);
+    await expectWalletAddress(page);
+    await shoot(page, 'wallet-entry-signed-in-passkey.png', [settings]);
+  });
+
   test('shows the home services when the session is already signed in', async ({ page }) => {
     await plantAccountToken(page);
     await installRoutes(page);

@@ -1,10 +1,21 @@
 import {
   getOpenPasskey,
   installHandbookSessionHook,
+  sameSession,
   setOpenPasskey,
   subscribeOpenPasskey,
   type OpenPasskey,
 } from '../components/home/wallet/passkey-session';
+
+it('compares wallet, credential and token when identifying a session', () => {
+  const session = { accessToken: 'token', wallet: { id: 7, credentialId: 'credential' } } as unknown as OpenPasskey;
+  expect(sameSession(session, session)).toBe(true);
+  expect(sameSession(undefined, session)).toBe(false);
+  expect(sameSession({ ...session, wallet: undefined } as unknown as OpenPasskey, session)).toBe(false);
+  expect(sameSession({ ...session, wallet: { ...session.wallet, id: 8 } }, session)).toBe(false);
+  expect(sameSession({ ...session, wallet: { ...session.wallet, credentialId: 'other' } }, session)).toBe(false);
+  expect(sameSession({ ...session, accessToken: 'other' }, session)).toBe(false);
+});
 
 describe('installHandbookSessionHook', () => {
   it('does not install the hook on a production target', () => {

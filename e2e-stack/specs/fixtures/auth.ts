@@ -62,6 +62,10 @@ export async function signatureLogin(wallet: TestWallet): Promise<string> {
   return accessToken;
 }
 
+export async function authToken(page: Page): Promise<string | null> {
+  return page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
+}
+
 /**
  * Opens `path` with `?session=<jwt>`, waits for navigation, and asserts the frontend stored
  * the token in localStorage["dfx.authenticationToken"] (handleParamSession in wallet.context).
