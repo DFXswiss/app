@@ -135,7 +135,7 @@ describe('Passkey wallet dialogs', () => {
     fireEvent.click(screen.getByRole('button', { name: /Check addresses/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Reload data' }));
     fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
     fireEvent.click(screen.getByRole('button', { name: 'Use another passkey' }));
     fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
     fireEvent.change(screen.getByLabelText(/Language/), { target: { value: 'DE' } });
@@ -191,8 +191,8 @@ describe('Passkey wallet dialogs', () => {
     expect(screen.getByRole('button', { name: 'Reload data' })).toHaveTextContent('Wallets on this account: 1.');
     view.rerender(<PasskeySettingsSheet {...props} note="credential: Active" />);
     expect(screen.getByRole('button', { name: 'Check passkey status' })).toHaveTextContent('credential: Active');
-    view.rerender(<PasskeySettingsSheet {...props} note="Sent. Thank you!" />);
-    expect(screen.getByRole('button', { name: 'Send diagnostics to support' })).toHaveTextContent('Sent. Thank you!');
+    view.rerender(<PasskeySettingsSheet {...props} note="Diagnostic recorded." />);
+    expect(screen.getByRole('button', { name: 'Record a diagnostic' })).toHaveTextContent('Diagnostic recorded.');
     view.rerender(<PasskeySettingsSheet {...props} note="Linked Evm 0x1111111111111111111111111111111111111111." />);
     expect(screen.getByRole('status')).toHaveTextContent('Linked Evm');
     view.rerender(<PasskeySettingsSheet {...props} validEvmIndex={false} busy />);

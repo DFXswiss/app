@@ -36,6 +36,8 @@ it('translates the passkey login and revocation messages in all supported langua
     'The passkey wallet was revoked.',
     'You confirm one last time with this passkey.',
     'Clipboard is not available.',
+    'Record a diagnostic',
+    'Diagnostic recorded.',
   ];
   for (const language of [de, fr, italian]) {
     const messages: Record<string, string> = language['screens/home'];

@@ -45,7 +45,7 @@ import {
   PASSKEY_UNKNOWN_HEADING,
   walletEnvForHost,
 } from './passkey-host';
-import { getOpenPasskey, setOpenPasskey, subscribeOpenPasskey } from './passkey-session';
+import { getOpenPasskey, sameSession, setOpenPasskey, subscribeOpenPasskey } from './passkey-session';
 import { createWalletClient } from './wallet-client';
 
 export { passkeyPlatformBlock, walletEnvForHost };
@@ -210,7 +210,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       await login(WalletType.PASSKEY, keys.evm(0).address, Blockchain.ETHEREUM, async (address, message) =>
         new LoginAutoSigner(keys, walletEnvForHost(window.location.hostname)).sign('evm', address, message),
       );
-      if (abandonedRef.current) return;
+      if (abandonedRef.current || !sameSession(getOpenPasskey(), session)) return;
       if (isConnect) {
         onLogin();
         onCancel();

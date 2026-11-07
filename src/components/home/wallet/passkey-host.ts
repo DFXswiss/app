@@ -4,8 +4,6 @@ const STG_HOST = 'stg.app.dfx.swiss';
 
 export const PASSKEY_PLATFORM_BLOCK = 'This browser has no passkey support';
 export const PASSKEY_GENERIC_ERROR = 'Something went wrong. Please try again.';
-export const PASSKEY_LOCKED = 'This passkey did not unlock the wallet';
-export const PASSKEY_SEED_MISMATCH = 'This passkey does not match the wallet';
 export const PASSKEY_LOGIN_HEADING = 'Log in with your device';
 export const PASSKEY_PREPARING = 'Preparing your login…';
 export const PASSKEY_CHOICE_HEADING = 'Do you already have an account?';

@@ -738,8 +738,8 @@ test.describe('Passkey login', () => {
   test('records a diagnostic', async ({ page }) => {
     await registerUnlockedDesk(page);
     await openSettings(page);
-    await page.getByRole('button', { name: 'Send diagnostics to support' }).click();
-    await expect(page.getByText('Sent. Thank you!', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Record a diagnostic' }).click();
+    await expect(page.getByText('Diagnostic recorded.', { exact: true })).toBeVisible();
     await expect(page).toHaveScreenshot('passkey-desk-diagnostic.png', { fullPage: true });
   });
 

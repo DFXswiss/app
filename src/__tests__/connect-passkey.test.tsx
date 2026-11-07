@@ -580,7 +580,7 @@ describe('ConnectPasskey', () => {
     );
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
     const block = screen.getByRole('button', { name: 'Block passkey' });
     const words = screen.getByRole('button', { name: /Recovery words/ });
     expect(block).toBeDisabled();
@@ -668,8 +668,8 @@ describe('ConnectPasskey', () => {
       fireEvent.click(block);
       return Promise.resolve();
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
-    expect(await screen.findByText('Sent. Thank you!')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
+    expect(await screen.findByText('Diagnostic recorded.')).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
   });
 
@@ -862,7 +862,7 @@ describe('ConnectPasskey', () => {
       return [
         value,
         (next: unknown) => {
-          if (next === 'Sent. Thank you!' || next === 'late diagnostic error') staleWrite(next);
+          if (next === 'Diagnostic recorded.' || next === 'late diagnostic error') staleWrite(next);
           setValue(next);
         },
       ];
@@ -880,7 +880,7 @@ describe('ConnectPasskey', () => {
       );
       const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
       fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
       expect(mockDiagnostics).toHaveBeenCalledTimes(1);
       view.unmount();
       await act(async () => {
@@ -1243,7 +1243,7 @@ describe('ConnectPasskey', () => {
     );
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
     fireEvent.click(screen.getAllByRole('button', { name: 'Use another passkey' })[0]);
     expect(passkeySession.getOpenPasskey()).toBeDefined();
@@ -1495,7 +1495,7 @@ describe('ConnectPasskey', () => {
     );
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
     expect(screen.getByRole('button', { name: /Recovery words/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Back up now' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Block passkey' })).toBeDisabled();
@@ -1645,7 +1645,7 @@ describe('ConnectPasskey', () => {
     expect(screen.getByTestId('passkey-receive-address')).toBeEmptyDOMElement();
   });
 
-  it.each(['Start another ceremony', 'Revoke with passkey as lost'])(
+  it.each(['Use another passkey', 'Block passkey as lost'])(
     'resets receive after %s',
     async (action) => {
       mockUser = { id: 1, addresses: [{ passkey: { credentialId: 'cred' } }] };
@@ -1658,7 +1658,7 @@ describe('ConnectPasskey', () => {
       expect(screen.getByTestId('passkey-receive-address')).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'Close' }));
       fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-      if (action === 'Start another ceremony') {
+      if (action === 'Use another passkey') {
         fireEvent.click(screen.getByRole('button', { name: 'Use another passkey' }));
       } else {
         fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
@@ -1841,6 +1841,42 @@ describe('ConnectPasskey', () => {
     } finally {
       current.mockRestore();
     }
+  });
+
+  it.each([
+    [false, 'changed'],
+    [false, 'cleared'],
+    [true, 'changed'],
+    [true, 'cleared'],
+  ] as const)('ignores a late service login in connect mode %s when the session is %s', async (isConnect, change) => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    let finish: () => void = () => undefined;
+    mockServiceLogin.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(
+      <ConnectPasskey
+        rootRef={createRef<HTMLDivElement>()}
+        wallet={WalletType.PASSKEY}
+        isConnect={isConnect}
+        onLogin={mockOnLogin}
+        onCancel={mockOnCancel}
+        onSwitch={mockOnSwitch}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
+    expect(mockServiceLogin).toHaveBeenCalledTimes(1);
+    const next = { ...session, wallet: { ...session.wallet, credentialId: 'other' } };
+    act(() => setOpenPasskey(change === 'changed' ? next : undefined));
+    await act(async () => finish());
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockOnLogin).not.toHaveBeenCalled();
+    expect(mockOnCancel).not.toHaveBeenCalled();
+    expect(passkeySession.getOpenPasskey()).toBe(change === 'changed' ? next : undefined);
   });
 
   it.each([
@@ -2126,9 +2162,9 @@ describe('ConnectPasskey', () => {
     await waitFor(() => expect(mockWallets).toHaveBeenCalledWith('token'));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
     await waitFor(() => expect(mockDiagnostics).toHaveBeenCalledWith({ stage: 'Authentication', outcome: 'Success' }));
-    expect(await screen.findByText('Sent. Thank you!')).toBeInTheDocument();
+    expect(await screen.findByText('Diagnostic recorded.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
     expect(await screen.findByTestId('passkey-recovery-words')).toHaveTextContent('alpha');
     expect(screen.getByTestId('passkey-recovery-words')).toHaveTextContent('bravo');
@@ -2549,13 +2585,13 @@ describe('ConnectPasskey', () => {
     );
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
     expect(screen.getByRole('button', { name: 'Use another passkey' })).toBeDisabled();
     expect(passkeySession.getOpenPasskey()).toBeDefined();
     await act(async () => release());
-    expect(await screen.findByText('Sent. Thank you!')).toBeInTheDocument();
+    expect(await screen.findByText('Diagnostic recorded.')).toBeInTheDocument();
     const missing = jest.spyOn(passkeySession, 'getOpenPasskey').mockReturnValue(undefined);
-    fireEvent.click(screen.getByRole('button', { name: 'Send diagnostics to support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
     missing.mockRestore();
     expect(mockDiagnostics).toHaveBeenCalledTimes(1);
   });

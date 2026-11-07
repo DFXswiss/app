@@ -93,7 +93,7 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
     ? 'border border-[#F2D38A] bg-[#FFF6E0] text-[#8A5A00]'
     : 'bg-[#E9F6EE] text-dfxGreen-300';
   const refreshResult = props.note?.startsWith('Wallets on this account:');
-  const diagnosticsResult = props.note === 'Sent. Thank you!';
+  const diagnosticsResult = props.note === 'Diagnostic recorded.';
   const statusResult =
     props.note &&
     (props.note === 'No credential status.' ||
@@ -236,16 +236,16 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
         </button>
         <button
           className={row}
-          aria-label={t('Send diagnostics to support')}
+          aria-label={t('Record a diagnostic')}
           disabled={props.busy}
           onClick={props.onDiagnostics}
         >
           <Icon path={icons.diagnostic} />
           <span className={text}>
-            {t('Send diagnostics to support')}
+            {t('Record a diagnostic')}
             {diagnosticsResult && (
               <small role="status" className="block text-sm font-semibold text-dfxGreen-300">
-                {t('Sent. Thank you!')}
+                {t('Diagnostic recorded.')}
               </small>
             )}
           </span>

@@ -1,20 +1,38 @@
-import { DfxApiClient } from '@dfx.swiss/core';
-import { CredentialCache, PasskeyAuth, PasskeyCeremonies, RP_IDS } from '@dfx.swiss/wallet';
+import {
+  DfxApiClient,
+  type PasskeyAddress,
+  type PasskeyCredentialStatusResult,
+  type PasskeyDiagnosticParams,
+  type PasskeyWallet,
+} from '@dfx.swiss/core';
+import {
+  CredentialCache,
+  PasskeyAuth,
+  PasskeyCeremonies,
+  RP_IDS,
+  type AuthResult,
+  type KeyRing,
+  type RegisterExtras,
+  type WalletState,
+} from '@dfx.swiss/wallet';
 import { Api } from '../../../config/api';
 import { walletEnvForHost } from './passkey-host';
 
 export interface WalletClient {
-  login: PasskeyAuth['login'];
-  register: PasskeyAuth['register'];
-  unlock: PasskeyAuth['unlock'];
-  link: PasskeyAuth['link'];
-  revoke: PasskeyAuth['revoke'];
-  exportMnemonic: PasskeyAuth['exportMnemonic'];
-  verifyServerAddresses: PasskeyAuth['verifyServerAddresses'];
-  wallets: (sessionToken: string) => ReturnType<DfxApiClient['passkey']['wallets']>;
-  backupSeen: DfxApiClient['passkey']['backupSeen'];
-  credentialStatus: DfxApiClient['passkey']['credentialStatus'];
-  diagnostics: DfxApiClient['passkey']['diagnostics'];
+  login(): Promise<AuthResult>;
+  register(extras: RegisterExtras): Promise<AuthResult>;
+  unlock(): Promise<{ keys?: KeyRing; state: WalletState }>;
+  link(family: 'evm' | 'bitcoin', sessionToken: string, keys: KeyRing, evmIndex?: number): Promise<{
+    accessToken: string;
+    address: PasskeyAddress;
+  }>;
+  revoke(reason: 'Lost' | 'Compromised'): Promise<PasskeyWallet>;
+  exportMnemonic(credentialId?: Uint8Array): Promise<string[]>;
+  verifyServerAddresses(wallet: PasskeyWallet, keys: KeyRing): { address: string; family: string; matches: boolean }[];
+  wallets(sessionToken: string): Promise<PasskeyWallet[]>;
+  backupSeen(walletId: number, sessionToken: string): Promise<PasskeyWallet>;
+  credentialStatus(ids: string[]): Promise<PasskeyCredentialStatusResult[]>;
+  diagnostics(input: PasskeyDiagnosticParams): Promise<void>;
 }
 
 // DFXswiss/wallet-api will connect here; until then calls use the DFX API passkey routes.

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { passkeyMessage } from './passkey-host';
 import { createWalletClient, type WalletClient } from './wallet-client';
-import { getOpenPasskey, setOpenPasskey, subscribeOpenPasskey, type OpenPasskey } from './passkey-session';
+import { getOpenPasskey, sameSession, setOpenPasskey, subscribeOpenPasskey, type OpenPasskey } from './passkey-session';
 import { PasskeyReceivePanel, PasskeySendPanel, type ReceiveFamily } from './passkey-transfer';
 import PasskeyWalletCard from './passkey-wallet-card';
 import PasskeyWalletActions, { WalletAction } from './passkey-wallet-actions';
@@ -37,15 +37,6 @@ function evmIndexOf(value: string): number | undefined {
 
 function canUseKeys(open: OpenPasskey): open is OpenPasskey & { keys: KeyRing } {
   return open.state === 'unlocked' && open.keys !== undefined;
-}
-
-function sameSession(a: OpenPasskey | undefined, b: OpenPasskey): boolean {
-  return Boolean(
-    a?.wallet &&
-      a.wallet.id === b.wallet.id &&
-      a.wallet.credentialId === b.wallet.credentialId &&
-      a.accessToken === b.accessToken,
-  );
 }
 
 function releaseNothing(): void {
@@ -545,7 +536,7 @@ export default function PasskeyDesk({
           onDiagnostics={() =>
             void run(async (client, _session, isCurrent) => {
               await client.diagnostics({ stage: 'Authentication', outcome: 'Success' });
-              if (isCurrent()) setNote('Sent. Thank you!');
+              if (isCurrent()) setNote('Diagnostic recorded.');
             })
           }
           onAnotherPasskey={startAnother}
