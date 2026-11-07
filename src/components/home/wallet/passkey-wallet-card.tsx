@@ -1,5 +1,9 @@
 import { useSettingsContext } from '../../../contexts/settings.context';
 
+export function formatWalletAmount(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
 interface PasskeyWalletCardProps {
   balance?: { chf: number; eur: number };
   currency: 'CHF' | 'EUR';
@@ -30,7 +34,7 @@ export default function PasskeyWalletCard({
   const formatted =
     value === undefined
       ? undefined
-      : new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+      : formatWalletAmount(value, locale);
   const lastSeparator = formatted ? Math.max(formatted.lastIndexOf('.'), formatted.lastIndexOf(',')) : -1;
   return (
     <header

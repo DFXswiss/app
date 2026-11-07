@@ -6,6 +6,7 @@ export interface PasskeyTx {
   title: string;
   date: string;
   amount: string;
+  direction: 'in' | 'out';
   fiatValue: string;
   pending?: boolean;
 }
@@ -112,7 +113,7 @@ export default function PasskeyWalletHistory({ history }: { history?: PasskeyHis
                   className={`text-base font-semibold ${
                     tx.pending
                       ? 'text-[#8A5A00]'
-                      : tx.type === 'receive' || (tx.type === 'buy' && tx.amount.trimStart().startsWith('+'))
+                      : tx.direction === 'in'
                         ? 'text-dfxGreen-300'
                         : ''
                   }`}

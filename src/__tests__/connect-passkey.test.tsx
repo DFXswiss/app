@@ -6,6 +6,7 @@ const mockLogout = jest.fn(() => Promise.resolve());
 let mockCurrency: { name: string } | undefined;
 let mockUser: { id: number; addresses?: { passkey?: { credentialId: string } }[] } | undefined;
 let mockCurrencies: { name: string }[] | undefined;
+let mockLocale = 'en-US';
 const mockChangeCurrency = jest.fn();
 const mockTranslate = jest.fn((_key: string, text: string) => text);
 
@@ -63,7 +64,7 @@ jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({
     translate: mockTranslate,
     availableLanguages: [],
-    locale: 'en-US',
+    locale: mockLocale,
     currency: mockCurrency,
     changeCurrency: mockChangeCurrency,
     changeLanguage: () => undefined,
@@ -257,6 +258,7 @@ describe('ConnectPasskey', () => {
     mockCurrency = undefined;
     mockUser = undefined;
     mockCurrencies = undefined;
+    mockLocale = 'en-US';
     mockLogout.mockResolvedValue(undefined);
     mockSetSession.mockResolvedValue(undefined);
     mockServiceLogin.mockResolvedValue(undefined);
@@ -357,6 +359,24 @@ describe('ConnectPasskey', () => {
     expect(mockChangeCurrency).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'CHF' }));
     expect(screen.getByText('CHF 100.00')).toBeInTheDocument();
+  });
+
+  it('formats asset values with the same locale as the balance', () => {
+    mockLocale = 'de-DE';
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    render(
+      <PasskeyDesk
+        onOpenApp={mockOnLogin}
+        onCancel={mockOnCancel}
+        onRevoked={mockOnSwitch}
+        balance={{ chf: 1234.5, eur: 1000 }}
+        assets={[{ name: 'Bitcoin', amount: '1 BTC', chf: 1234.5, eur: 1000 }]}
+      />,
+    );
+    expect(screen.getByText('1.234')).toBeInTheDocument();
+    expect(screen.getByText(',50')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+    expect(screen.getByText('CHF 1.234,50')).toBeInTheDocument();
   });
 
   it('stores the wallet currency without updating the signed-in DFX user', () => {
@@ -3153,6 +3173,24 @@ describe('ConnectPasskey', () => {
       await Promise.resolve();
     });
     expect(mockLogout).not.toHaveBeenCalled();
+    expect(passkeySession.getOpenPasskey()).toBeUndefined();
+  });
+
+  it('does not store the passkey session when unmounted during logout', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockResolvedValueOnce(authResult('unlocked'));
+    let finish: () => void = () => undefined;
+    mockLogout.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { unmount } = renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+    unmount();
+    await act(async () => finish());
     expect(passkeySession.getOpenPasskey()).toBeUndefined();
   });
 

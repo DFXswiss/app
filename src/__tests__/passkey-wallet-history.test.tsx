@@ -7,6 +7,7 @@ jest.mock('../contexts/settings.context', () => ({
 
 const items: PasskeyTx[] = Array.from({ length: 6 }, (_, index) => ({
   type: 'receive',
+  direction: 'in',
   title: `Transaction ${index}`,
   date: '2026-11-06',
   amount: '1 BTC',
@@ -15,27 +16,30 @@ const items: PasskeyTx[] = Array.from({ length: 6 }, (_, index) => ({
 
 describe('Passkey wallet history', () => {
   it.each([
-    ['buy', '+1 BTC', 'text-dfxGreen-300', 'M12 5v14M5 12h14'],
-    ['buy', '-1 BTC', '', 'M12 5v14M5 12h14'],
-    ['receive', '1 BTC', 'text-dfxGreen-300', 'M17 7L7 17M15 17H7V9'],
+    ['buy', 'in', '-1 BTC', 'text-dfxGreen-300', 'M12 5v14M5 12h14'],
+    ['buy', 'out', '+1 BTC', '', 'M12 5v14M5 12h14'],
+    ['receive', 'in', '1 BTC', 'text-dfxGreen-300', 'M17 7L7 17M15 17H7V9'],
     [
       'sell',
+      'out',
       '-1 BTC',
       '',
       'M3 8a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2zM12 9.5a2.5 2.5 0 110 5 2.5 2.5 0 010-5z',
     ],
-    ['swap', '1 BTC', '', 'M5 8h13l-3-3M19 16H6l3 3'],
-    ['send', '-1 BTC', '', 'M7 17L17 7M9 7h8v8'],
+    ['swap', 'out', '1 BTC', '', 'M5 8h13l-3-3M19 16H6l3 3'],
+    ['swap', 'in', '-1 BTC', 'text-dfxGreen-300', 'M5 8h13l-3-3M19 16H6l3 3'],
+    ['send', 'out', '-1 BTC', '', 'M7 17L17 7M9 7h8v8'],
     [
       'pay',
+      'out',
       '-1 BTC',
       '',
       'M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3M7 12h10',
     ],
-  ] as const)('renders the %s transaction icon and amount', (type, amount, color, path) => {
+  ] as const)('renders the %s transaction icon and %s amount', (type, direction, amount, color, path) => {
     render(
       <PasskeyWalletHistory
-        history={{ items: [{ ...items[0], type, amount }], hasMore: false, loadMore: async () => undefined }}
+        history={{ items: [{ ...items[0], type, direction, amount }], hasMore: false, loadMore: async () => undefined }}
       />,
     );
     const title = screen.getByText('Transaction 0');

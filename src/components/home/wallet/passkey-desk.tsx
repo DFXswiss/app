@@ -7,7 +7,7 @@ import { passkeyMessage } from './passkey-host';
 import { createWalletClient, type WalletClient } from './wallet-client';
 import { getOpenPasskey, sameSession, setOpenPasskey, subscribeOpenPasskey, type OpenPasskey } from './passkey-session';
 import { PasskeyReceivePanel, PasskeySendPanel, type ReceiveFamily } from './passkey-transfer';
-import PasskeyWalletCard from './passkey-wallet-card';
+import PasskeyWalletCard, { formatWalletAmount } from './passkey-wallet-card';
 import PasskeyWalletActions, { WalletAction } from './passkey-wallet-actions';
 import PasskeyWalletNotes, { walletStateDescription } from './passkey-wallet-notes';
 import PasskeyWordsSheet from './passkey-words-sheet';
@@ -94,7 +94,7 @@ export default function PasskeyDesk({
   history,
   onPasteLink,
 }: PasskeyDeskProps): JSX.Element {
-  const { translate } = useSettingsContext();
+  const { translate, locale } = useSettingsContext();
   const [currentSymbol, setCurrentSymbol] = useState<'CHF' | 'EUR'>(() => {
     try {
       return localStorage.getItem('dfx.wallet.currency') === 'EUR' ? 'EUR' : 'CHF';
@@ -443,7 +443,7 @@ export default function PasskeyDesk({
                 <div className="text-right">
                   <div>{asset.amount}</div>
                   <div className="text-sm">
-                    {currentSymbol} {asset[currentSymbol.toLowerCase() as 'chf' | 'eur'].toFixed(2)}
+                    {currentSymbol} {formatWalletAmount(asset[currentSymbol.toLowerCase() as 'chf' | 'eur'], locale)}
                   </div>
                 </div>
               </div>
