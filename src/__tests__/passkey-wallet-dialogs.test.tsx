@@ -12,6 +12,7 @@ const mockLanguages = [
 jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({
     translate: (_namespace: string, text: string) => text,
+    locale: 'de-DE',
     language: mockLanguages[0],
     availableLanguages: mockLanguages,
     changeLanguage: mockChangeLanguage,
@@ -156,13 +157,26 @@ describe('Passkey wallet dialogs', () => {
         {...props}
         unlocked={false}
         backupNeeded={false}
-        backupSeenDate="2026-11-06"
+        backupSeenDate="2026-11-06T10:00:00.000Z"
         credentialId=""
         note="failure"
         checks={[{ family: 'Evm', address: 'a', matches: false }]}
       />,
     );
-    expect(screen.getByText('Backed up on 2026-11-06')).toBeInTheDocument();
+    expect(screen.getByText('Backed up on 06.11.2026')).toBeInTheDocument();
+    view.rerender(<PasskeySettingsSheet {...props} backupNeeded={false} backupSeenDate="invalid-date" />);
+    expect(screen.getByText('Backed up on invalid-date')).toBeInTheDocument();
+    view.rerender(
+      <PasskeySettingsSheet
+        {...props}
+        unlocked={false}
+        backupNeeded={false}
+        backupSeenDate="2026-11-06T10:00:00.000Z"
+        credentialId=""
+        note="failure"
+        checks={[{ family: 'Evm', address: 'a', matches: false }]}
+      />,
+    );
     expect(screen.getByRole('alert')).toHaveTextContent('failure');
     expect(screen.getByText('0 / 1 addresses match')).toBeInTheDocument();
     view.rerender(<PasskeySettingsSheet {...props} checks={[]} />);

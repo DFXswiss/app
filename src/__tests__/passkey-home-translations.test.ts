@@ -51,6 +51,8 @@ const addedHomeKeys = [
   'Hide wallet',
   'Your wallet',
   'Addresses',
+  'Lightning (Spark)',
+  'Ethereum & EVM',
   'Buy',
   'Sell',
   'Swap',
@@ -143,9 +145,9 @@ const addedHomeKeys = [
 ];
 
 const unchangedTranslations: Record<string, string[]> = {
-  de: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'App'],
-  fr: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'Actions'],
-  it: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'App'],
+  de: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'App', 'Lightning (Spark)', 'Ethereum & EVM'],
+  fr: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'Actions', 'Lightning (Spark)', 'Ethereum & EVM'],
+  it: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'App', 'Lightning (Spark)', 'Ethereum & EVM'],
 };
 
 function checkAddedTranslations(language: string, messages: Record<string, string>): void {

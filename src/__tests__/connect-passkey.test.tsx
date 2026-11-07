@@ -532,6 +532,12 @@ describe('ConnectPasskey', () => {
   });
 
   it('labels Spark and EVM addresses and displays supplied EUR values', () => {
+    mockTranslate.mockImplementation((_namespace, text) => {
+      if (text === 'Lightning (Spark)') return 'Spark translated';
+      if (text === 'Ethereum & EVM') return 'EVM translated';
+      if (text === 'Copy address') return 'Copy translated';
+      return text;
+    });
     localStorage.setItem('dfx.wallet.currency', 'EUR');
     const session = authResult('unlocked', ring(SEED));
     session.wallet.addresses.push({
@@ -551,10 +557,11 @@ describe('ConnectPasskey', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
-    expect(screen.getByText('Lightning (Spark)')).toBeInTheDocument();
-    expect(screen.getByText('Ethereum & EVM')).toBeInTheDocument();
+    expect(screen.getByText('Spark translated')).toBeInTheDocument();
+    expect(screen.getByText('EVM translated')).toBeInTheDocument();
     expect(screen.getByText('EUR 90.00')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Copy address Lightning (Spark)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy translated Spark translated' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy translated EVM translated' })).toBeInTheDocument();
   });
 
   it('reports SDK errors inside the open settings dialog', async () => {

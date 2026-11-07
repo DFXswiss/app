@@ -79,8 +79,12 @@ function Chevron(): JSX.Element {
 }
 
 export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): JSX.Element {
-  const { translate, language, availableLanguages, changeAppLanguage } = useSettingsContext();
+  const { translate, locale, language, availableLanguages, changeAppLanguage } = useSettingsContext();
   const t = (key: string) => translate('screens/home', key);
+  const backupDate = new Date(props.backupSeenDate ?? '');
+  const formattedBackupDate = Number.isNaN(backupDate.getTime())
+    ? props.backupSeenDate
+    : new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(backupDate);
   const row =
     'flex min-h-[60px] w-full items-center gap-3 border-b border-dfxGray-400 px-4 py-3 text-left last:border-b-0 focus-visible:outline focus-visible:outline-2';
   const text = 'min-w-0 flex-1 text-base font-medium';
@@ -132,7 +136,7 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
             {t('Recovery words')}
             <small className={sub}>{t(props.unlocked ? 'In case the passkey is gone' : 'Unlock to view')}</small>
             <small className={`mt-1 inline-block rounded-[6px] px-2 py-0.5 text-xs font-semibold ${badge}`}>
-              {props.backupNeeded ? t('Not backed up') : `${t('Backed up on')} ${props.backupSeenDate}`}
+              {props.backupNeeded ? t('Not backed up') : `${t('Backed up on')} ${formattedBackupDate}`}
             </small>
           </span>
           <Chevron />

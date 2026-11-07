@@ -398,7 +398,7 @@ export default function PasskeyDesk({
   }
   const bitcoin = addresses.some((address) => address.family === 'Bitcoin');
   const addressLabel = (family: string) =>
-    family === 'Spark' ? 'Lightning (Spark)' : family === 'Evm' ? 'Ethereum & EVM' : family;
+    family === 'Spark' ? t('Lightning (Spark)') : family === 'Evm' ? t('Ethereum & EVM') : family;
 
   return (
     <main className="mx-auto w-full max-w-[560px] pb-10 text-left text-dfxBlue-800">
