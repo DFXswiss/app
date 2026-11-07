@@ -2826,78 +2826,30 @@ describe('ConnectPasskey', () => {
   });
 
   describe('desk transfer actions', () => {
-    it('closes receive and send when the same action is clicked again', () => {
-      openDesk({ evm: () => ({ path: 'm/0', address: '0xabc' }) });
-
-      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      expect(screen.getByRole('button', { name: /^EVM$/ })).toBeInTheDocument();
-
-      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      expect(screen.queryByRole('button', { name: /^EVM$/ })).toBeNull();
-
-      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-      expect(screen.getByLabelText('Destination')).toBeInTheDocument();
-
-      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-      expect(screen.queryByLabelText('Destination')).toBeNull();
-    });
-
-    it('shows the receive failure as a desk note', () => {
-      openDesk({
-        evm: () => {
-          throw new Error('no address');
-        },
-      });
-
-      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
-
-      expect(screen.queryByTestId('passkey-receive-address')).toBeNull();
-      expect(screen.queryByTestId('qr-code')).toBeNull();
-      expect(screen.getByText('no address', { selector: 'p' })).toBeInTheDocument();
-    });
-
-    it('leaves the scan video idle when the detector disappears as the camera opens', async () => {
-      const previousDetectorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'BarcodeDetector');
-      const previousMediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
-      const stop = jest.fn();
-
-      class MockBarcodeDetector {
-        detect = jest.fn().mockResolvedValue([]);
-      }
-
-      Object.defineProperty(globalThis, 'BarcodeDetector', {
-        configurable: true,
-        value: MockBarcodeDetector,
-      });
-      Object.defineProperty(navigator, 'mediaDevices', {
-        configurable: true,
-        value: {
-          getUserMedia: jest.fn().mockImplementation(async () => {
-            Reflect.deleteProperty(globalThis, 'BarcodeDetector');
-            return { getTracks: () => [{ stop }] };
-          }),
-        },
-      });
-
+    it('clears receive and send state when their dialogs close', () => {
+      const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
       try {
         openDesk({ evm: () => ({ path: 'm/0', address: '0xabc' }) });
+        fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+        fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
+        expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('0xabc');
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+        expect(screen.getByRole('button', { name: 'EVM' })).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+        fireEvent.keyDown(document, { key: 'Escape' });
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
-
-        expect(await screen.findByTestId('passkey-send-scan')).toBeInTheDocument();
+        fireEvent.change(screen.getByLabelText('Destination'), { target: { value: 'bc1qdest' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Paste' }));
+        expect(screen.getByText('Paste is not available in this browser.')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
         expect(screen.getByLabelText('Destination')).toHaveValue('');
+        expect(screen.queryByText('Paste is not available in this browser.')).not.toBeInTheDocument();
       } finally {
-        if (previousDetectorDescriptor) {
-          Object.defineProperty(globalThis, 'BarcodeDetector', previousDetectorDescriptor);
-        } else {
-          Reflect.deleteProperty(globalThis, 'BarcodeDetector');
-        }
-        if (previousMediaDevicesDescriptor) {
-          Object.defineProperty(navigator, 'mediaDevices', previousMediaDevicesDescriptor);
-        } else {
-          Reflect.deleteProperty(navigator, 'mediaDevices');
-        }
+        if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard);
+        else delete (navigator as { clipboard?: Clipboard }).clipboard;
       }
     });
 
@@ -2967,20 +2919,6 @@ describe('ConnectPasskey', () => {
       return renderDesk();
     }
 
-
-    test('keeps the current receive address when the same family is clicked twice', () => {
-      const evm = jest.fn(() => ({ path: 'm/0', address: '0xabc' }));
-      openDesk({ evm });
-
-      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
-      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('0xabc');
-
-      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
-      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('0xabc');
-      expect(evm).toHaveBeenCalledTimes(1);
-    });
-
     test.each(['resolved play', 'rejected play'])('scans after a %s promise', async (playCase) => {
       const stop = jest.fn();
       const getUserMedia = jest.fn().mockResolvedValue({ getTracks: () => [{ stop }] });
@@ -3020,63 +2958,6 @@ describe('ConnectPasskey', () => {
       }
     });
 
-    test('schedules another scan frame and cancels it when the send panel closes', async () => {
-      const stop = jest.fn();
-      const getUserMedia = jest.fn().mockResolvedValue({ getTracks: () => [{ stop }] });
-      const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
-      const previousRaf = window.requestAnimationFrame;
-      const previousCancelRaf = window.cancelAnimationFrame;
-      const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
-      const previousDetector = globalWithDetector.BarcodeDetector;
-      let frameCallback: FrameRequestCallback = () => undefined;
-      const requestAnimationFrame = jest.fn((callback: FrameRequestCallback) => {
-        frameCallback = callback;
-        return 7;
-      });
-      const cancelAnimationFrame = jest.fn();
-
-      class MockBarcodeDetector {
-        detect(): Promise<{ rawValue: string }[]> {
-          return Promise.resolve([]);
-        }
-      }
-      globalWithDetector.BarcodeDetector = MockBarcodeDetector;
-      Object.defineProperty(navigator, 'mediaDevices', {
-        configurable: true,
-        value: { getUserMedia },
-      });
-      window.requestAnimationFrame = requestAnimationFrame;
-      window.cancelAnimationFrame = cancelAnimationFrame;
-
-      try {
-        openDesk({ id: 'keys' });
-        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
-        await waitFor(() => expect(frameCallback).toBeDefined());
-        await waitFor(() => expect(requestAnimationFrame).toHaveBeenCalledTimes(1));
-        act(() => {
-          frameCallback(0);
-        });
-        await waitFor(() => expect(requestAnimationFrame).toHaveBeenCalledTimes(2));
-        expect(screen.getByLabelText('Destination')).toHaveValue('');
-        expect(mockLink).not.toHaveBeenCalled();
-
-        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-        expect(cancelAnimationFrame).toHaveBeenCalledWith(7);
-
-        act(() => {
-          frameCallback(0);
-        });
-      } finally {
-        window.requestAnimationFrame = previousRaf;
-        window.cancelAnimationFrame = previousCancelRaf;
-        if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
-        else globalWithDetector.BarcodeDetector = previousDetector;
-        if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
-        else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
-      }
-    });
-
     test('ignores a detection result from an earlier scan', async () => {
       const firstStop = jest.fn();
       const secondStop = jest.fn();
@@ -3095,7 +2976,10 @@ describe('ConnectPasskey', () => {
       const firstDetect = new Promise<{ rawValue: string }[]>((resolve) => {
         resolveFirst = resolve;
       });
-      const detect = jest.fn().mockImplementationOnce(() => firstDetect).mockResolvedValueOnce([]);
+      const detect = jest
+        .fn()
+        .mockImplementationOnce(() => firstDetect)
+        .mockResolvedValueOnce([]);
 
       class MockBarcodeDetector {
         detect(source: CanvasImageSource): Promise<{ rawValue: string }[]> {
@@ -3184,6 +3068,8 @@ describe('ConnectPasskey', () => {
       fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
       expect(screen.getByRole('dialog', { name: 'Receive' })).toContainElement(screen.getByRole('alert'));
       expect(screen.getByRole('alert')).toHaveTextContent('derivation failed');
+      expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('qr-code')).not.toBeInTheDocument();
     });
 
     it.each(['missing', 'locked'] as const)(
@@ -3606,7 +3492,8 @@ describe('ConnectPasskey', () => {
         openDesk({ id: 'keys' });
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
         fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
-        await screen.findByTestId('passkey-send-scan');
+        expect(await screen.findByTestId('passkey-send-scan')).toBeInTheDocument();
+        expect(screen.getByLabelText('Destination')).toHaveValue('');
         expect(detect).not.toHaveBeenCalled();
         fireEvent.click(screen.getByRole('button', { name: 'Close' }));
         expect(stop).toHaveBeenCalledTimes(1);
@@ -3623,7 +3510,7 @@ describe('ConnectPasskey', () => {
       const detect = jest
         .fn()
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ rawValue: 'bc1qsecond' }]);
+        .mockResolvedValueOnce(action === 'close' ? [] : [{ rawValue: 'bc1qsecond' }]);
       const getUserMedia = jest
         .fn()
         .mockResolvedValueOnce({ getTracks: () => [{ stop }] })
@@ -3639,10 +3526,11 @@ describe('ConnectPasskey', () => {
         detect = detect;
       };
       Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
-      window.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      const schedule = jest.fn((callback: FrameRequestCallback) => {
         frame = callback;
         return 42;
-      };
+      });
+      window.requestAnimationFrame = schedule;
       window.cancelAnimationFrame = cancel;
       try {
         openDesk({ id: 'keys' });
@@ -3660,8 +3548,19 @@ describe('ConnectPasskey', () => {
           fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
           expect(getUserMedia).toHaveBeenCalledTimes(2);
         } else {
+          const firstFrame = frame;
+          if (!firstFrame) throw new Error('Expected a scheduled frame');
+          await act(async () => firstFrame(0));
+          expect(detect).toHaveBeenCalledTimes(2);
+          expect(schedule).toHaveBeenCalledTimes(2);
+          expect(screen.getByLabelText('Destination')).toHaveValue('');
+          expect(mockLink).not.toHaveBeenCalled();
           fireEvent.click(screen.getByRole('button', { name: 'Close' }));
           expect(screen.queryByRole('dialog', { name: 'Send' })).not.toBeInTheDocument();
+          const callback = frame;
+          if (!callback) throw new Error('Expected a scheduled frame');
+          act(() => callback(0));
+          expect(detect).toHaveBeenCalledTimes(2);
         }
         expect(cancel).toHaveBeenCalledWith(42);
         expect(stop).toHaveBeenCalledTimes(1);

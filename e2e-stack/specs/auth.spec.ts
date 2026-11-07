@@ -552,6 +552,17 @@ test.describe('Auth area e2e', () => {
       ]);
       expect(rows.length).toBe(1);
 
+      await page.getByRole('button', { name: 'Receive', exact: true }).click();
+      const receive = page.getByRole('dialog', { name: 'Receive' });
+      await receive.getByRole('button', { name: 'EVM', exact: true }).click();
+      await expect(receive.getByRole('button', { name: 'Copy address' })).toBeVisible();
+      await receive.getByRole('button', { name: 'Close' }).click();
+      await page.getByRole('button', { name: 'Send', exact: true }).click();
+      const send = page.getByRole('dialog', { name: 'Send' });
+      await expect(send.getByText('Sending is not active yet.', { exact: true })).toBeVisible();
+      await expect(send.getByLabel('Destination')).toBeVisible();
+      await send.getByRole('button', { name: 'Close' }).click();
+
       await page.getByRole('button', { name: 'Settings' }).click();
       await page.getByRole('button', { name: 'Check passkey status' }).click();
       await expect(page.getByText(/: Active/)).toBeVisible({ timeout: 20000 });

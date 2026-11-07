@@ -551,11 +551,12 @@ test.describe('Passkey login', () => {
     await registerUnlockedDesk(page);
 
     await page.getByRole('button', { name: 'Send' }).click();
-    const destination = page.getByLabel('Destination');
-    const paste = page.getByRole('button', { name: 'Paste' });
-    const scan = page.getByRole('button', { name: 'Scan' });
+    const dialog = page.getByRole('dialog', { name: 'Send' });
+    const destination = dialog.getByLabel('Destination');
+    const paste = dialog.getByRole('button', { name: 'Paste' });
+    const scan = dialog.getByRole('button', { name: 'Scan' });
     await paste.click();
-    const sentence = page.getByText('Paste is not available in this browser.', { exact: true });
+    const sentence = dialog.getByText('Paste is not available in this browser.', { exact: true });
 
     await expect(sentence).toBeVisible();
     await shoot(page, 'passkey-desk-send-paste.png', [
@@ -580,11 +581,12 @@ test.describe('Passkey login', () => {
     await registerUnlockedDesk(page);
 
     await page.getByRole('button', { name: 'Send' }).click();
-    const destination = page.getByLabel('Destination');
-    const paste = page.getByRole('button', { name: 'Paste' });
-    const scan = page.getByRole('button', { name: 'Scan' });
+    const dialog = page.getByRole('dialog', { name: 'Send' });
+    const destination = dialog.getByLabel('Destination');
+    const paste = dialog.getByRole('button', { name: 'Paste' });
+    const scan = dialog.getByRole('button', { name: 'Scan' });
     await scan.click();
-    const sentence = page.getByText('QR scanning is not available in this browser.', { exact: true });
+    const sentence = dialog.getByText('QR scanning is not available in this browser.', { exact: true });
 
     await expect(sentence).toBeVisible();
     await shoot(page, 'passkey-desk-send-scan.png', [
@@ -616,12 +618,13 @@ test.describe('Passkey login', () => {
     await registerUnlockedDesk(page);
 
     await page.getByRole('button', { name: 'Send' }).click();
-    const destination = page.getByLabel('Destination');
-    const paste = page.getByRole('button', { name: 'Paste' });
-    const scan = page.getByRole('button', { name: 'Scan' });
-    const sentence = page.getByText('Sending is not active yet.', { exact: true });
+    const dialog = page.getByRole('dialog', { name: 'Send' });
+    const destination = dialog.getByLabel('Destination');
+    const paste = dialog.getByRole('button', { name: 'Paste' });
+    const scan = dialog.getByRole('button', { name: 'Scan' });
+    const sentence = dialog.getByText('Sending is not active yet.', { exact: true });
     await scan.click();
-    const video = page.locator('[data-testid="passkey-send-scan"]');
+    const video = dialog.locator('[data-testid="passkey-send-scan"]');
 
     await expect(video).toBeVisible();
     await expect(destination).toHaveValue('');
