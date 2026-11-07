@@ -225,7 +225,7 @@ export default function PasskeyDesk({
       } catch (caught) {
         if (isCurrent()) {
           if (sheetRef.current) setNote(`${linkedText} ${passkeyMessage(caught)}`);
-          else setToast(passkeyMessage(caught));
+          else setToast(`${linkedText} ${translate('screens/home', passkeyMessage(caught))}`);
         }
         return;
       }
@@ -336,7 +336,7 @@ export default function PasskeyDesk({
     void navigator.clipboard
       .writeText(address)
       .then(() => toastMessage('Address copied'))
-      .catch((caught) => setToast(passkeyMessage(caught)));
+      .catch((caught) => setToast(translate('screens/home', passkeyMessage(caught))));
   };
   const startAnother = () => {
     if (busyRef.current) return;

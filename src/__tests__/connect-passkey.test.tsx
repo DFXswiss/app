@@ -7,6 +7,7 @@ let mockCurrency: { name: string } | undefined;
 let mockUser: { id: number } | undefined;
 let mockCurrencies: { name: string }[] | undefined;
 const mockChangeCurrency = jest.fn();
+const mockTranslate = jest.fn((_key: string, text: string) => text);
 const mockGetAuthToken = jest.fn((): string | undefined => undefined);
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -62,7 +63,7 @@ jest.mock('../contexts/app-handling.context', () => ({
 
 jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({
-    translate: (_key: string, defaultText: string) => defaultText,
+    translate: mockTranslate,
     availableLanguages: [],
     locale: 'en-US',
     currency: mockCurrency,
@@ -264,6 +265,7 @@ describe('ConnectPasskey', () => {
       throw new Error('unexpected login ring');
     };
     jest.clearAllMocks();
+    mockTranslate.mockImplementation((_key, text) => text);
     mockGetAuthToken.mockReturnValue(undefined);
     mockCurrency = undefined;
     mockUser = undefined;
@@ -451,6 +453,7 @@ describe('ConnectPasskey', () => {
       fireEvent.click(screen.getByRole('status'));
       fireEvent.click(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' }));
       expect(await screen.findByRole('status')).toHaveTextContent('clipboard denied');
+      expect(mockTranslate).toHaveBeenCalledWith('screens/home', 'clipboard denied');
     } finally {
       if (original) Object.defineProperty(navigator, 'clipboard', original);
       else delete (navigator as { clipboard?: Clipboard }).clipboard;
@@ -1652,15 +1655,32 @@ describe('ConnectPasskey', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/buy'));
   });
 
-  it('reports a wallet refresh error after the automatic Bitcoin link', async () => {
+  it('reports the Bitcoin link and translated refresh error in a toast', async () => {
     const keys = ring(SEED);
+    mockTranslate.mockImplementation((namespace, text) =>
+      namespace === 'screens/home' && text === 'wallet refresh failed' ? 'translated refresh error' : text,
+    );
     mockLink.mockResolvedValue({ address: { family: 'Bitcoin', address: 'bc1qlogin' } });
     mockWallets.mockRejectedValue(new Error('wallet refresh failed'));
     setOpenPasskey(authResult('unlocked', keys, false) as unknown as OpenPasskey);
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
-    expect(await screen.findByRole('status')).toHaveTextContent('wallet refresh failed');
+    expect(await screen.findByRole('status')).toHaveTextContent('Linked Bitcoin bc1qlogin. translated refresh error');
+    expect(mockTranslate).toHaveBeenCalledWith('screens/home', 'wallet refresh failed');
     expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0);
     expect(mockWallets).toHaveBeenCalledWith('token');
+  });
+
+  it('reports a Bitcoin link and refresh error inside an open settings dialog', async () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    mockLink.mockResolvedValueOnce({ address: { family: 'Bitcoin', address: 'bc1qlogin' } });
+    mockWallets.mockRejectedValueOnce(new Error('wallet refresh failed'));
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, addresses: [] } }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Linked Bitcoin bc1qlogin. wallet refresh failed');
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toContainElement(screen.getByRole('alert'));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('opens recovery words from the backup prompt and clears them after closing', async () => {

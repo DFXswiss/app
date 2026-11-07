@@ -602,7 +602,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   routes with one wallet. Register and claim omit a Bitcoin row so the auto-link posts the derived
   address; the wallet list then contains that posted Bitcoin address, the placeholder EVM and Spark
   rows, and a differing Bitcoin row. The compromised and other-tab shots set the tab session because
-  the wallet package does not return those states. A green run proves each listed screen renders
+  the wallet package does not return those states. The locked-receive shot opens Receive on an unlocked
+  wallet and then sets the tab session to locked; it does not prove that a real lock reaches an open dialog. A green run proves each listed screen renders
   from fixtures, including the idle card, the preparing card, the account choice, the email form,
   the unknown card, the in-app card and the iPhone in-app card, the old-system card,
   the blocked card, and the desk. It does
@@ -660,7 +661,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   with a fake stream, and
   `passkey-wallet-history.test.tsx` replaces `IntersectionObserver`; a green run does not prove a
   real camera, QR code or scroll observer. The same file replaces `navigator.userAgent`,
-  `navigator.clipboard`, and `document.execCommand`. The same file also replaces `react-qr-code`, `BarcodeDetector`, `navigator.mediaDevices.getUserMedia`, and `window.requestAnimationFrame`. Spies on `getOpenPasskey` supply stale, locked or missing tab sessions; a green run does not prove real session-store behaviour under concurrent changes. The in-app test writes the page address with
+  `navigator.clipboard`, and `document.execCommand`. The same file also replaces `react-qr-code`, `BarcodeDetector`, `navigator.mediaDevices.getUserMedia`, `window.requestAnimationFrame`, `window.cancelAnimationFrame`, and the `srcObject` setter and `play` of `HTMLMediaElement.prototype`. Spies on `getOpenPasskey` supply stale, locked or missing tab sessions; a green run does not prove real session-store behaviour under concurrent changes. The in-app test writes the page address with
   `history.replaceState`, because assigning `location.href` in this jsdom drops the fragment.
   A green run proves the idle card, the
   account choice after a dismissed login, the email form before create, the unknown card, the
