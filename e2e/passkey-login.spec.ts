@@ -227,7 +227,9 @@ async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<
     const path = new URL(request.url()).pathname;
     const method = request.method();
     if (method === 'GET' && path === '/v1/passkey/wallets') return fulfillJson(route, [listedWallet()]);
-    if (method === 'PUT' && path.endsWith('/backupSeen')) return fulfillJson(route, listedWallet());
+    if (method === 'PUT' && path.endsWith('/backupSeen')) {
+      return fulfillJson(route, { ...listedWallet(), backupSeenDate: '2026-11-06T10:00:00.000Z' });
+    }
     return fulfillJson(route, []);
   });
 
@@ -704,6 +706,7 @@ test.describe('Passkey login', () => {
     await page.getByLabel('I have written the words down on paper.').check();
     await page.getByRole('button', { name: 'Done' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByText('Back up your wallet', { exact: true })).not.toBeVisible();
     await expect(page).toHaveScreenshot('passkey-desk-backup-seen.png', { fullPage: true });
   });
 
@@ -913,6 +916,19 @@ test.describe('Passkey wallet design', () => {
     await eur.click();
     await expect(eur).toHaveAttribute('aria-pressed', 'true');
     await expect(page).toHaveScreenshot('passkey-wallet-start-eur.png');
+  });
+
+  test('wallet page after backup at phone width', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await registerUnlockedDesk(page);
+    await openSettings(page);
+    await page.getByRole('button', { name: /Recovery words/ }).click();
+    await expect(page.getByTestId('passkey-recovery-words')).toBeVisible();
+    await page.getByLabel('I have written the words down on paper.').check();
+    await page.getByRole('button', { name: 'Done' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByText('Back up your wallet', { exact: true })).not.toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-backed-up.png');
   });
 
   test('shows an empty transaction history from test props', async ({ page }) => {

@@ -307,8 +307,8 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
 
   if (open) {
     return (
-      <StyledVerticalStack gap={2} center>
-        {error ? <p className="text-dfxRed-150">{translate('screens/home', error)}</p> : null}
+      <StyledVerticalStack gap={2} center full>
+        {error ? <p className="text-center text-dfxRed-150">{translate('screens/home', error)}</p> : null}
         <PasskeyDesk
           opening={opening}
           onHome={() => navigate('/')}

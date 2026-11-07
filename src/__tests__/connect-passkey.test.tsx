@@ -140,7 +140,9 @@ jest.mock('../components/home/wallet/wallet-client', () => ({
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
-  StyledVerticalStack: ({ children }: { children?: unknown }) => <div>{children}</div>,
+  StyledVerticalStack: ({ children, full }: { children?: unknown; full?: boolean }) => (
+    <div data-full={full ? 'true' : undefined}>{children}</div>
+  ),
   StyledButton: ({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) => (
     <button type="button" onClick={onClick} data-disabled={disabled ? 'true' : undefined}>
       {label}
@@ -318,6 +320,13 @@ describe('ConnectPasskey', () => {
       process.env.NODE_ENV = previous;
       delete window.__dfxHandbookPasskeyHistory;
     }
+  });
+
+  it('places the desk in a full-width stack', () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    renderPasskey();
+    expect(screen.getByRole('main').parentElement).toHaveAttribute('data-full', 'true');
+    expect(screen.getByRole('main')).toHaveClass('w-full', 'max-w-[560px]');
   });
 
   it('shows a balance placeholder or the supplied balance and opens send', () => {
