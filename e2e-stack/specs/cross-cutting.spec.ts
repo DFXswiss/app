@@ -112,16 +112,6 @@ async function trackSignedUpWallet(address: string, token: string): Promise<void
   for (const ipLog of ipLogs) trackRow('ip_log', ipLog.id);
 }
 
-/** Suffix of `own` that cannot occur in `other` — used to tell two wallet addresses apart on screen. */
-function distinctiveAddressSlice(own: string, other: string): string {
-  const otherLower = other.toLowerCase();
-  for (let n = 6; n <= own.length; n++) {
-    const slice = own.slice(-n);
-    if (!otherLower.includes(slice.toLowerCase())) return slice;
-  }
-  throw new Error(`no distinctive suffix of ${own} that is absent from ${other}`);
-}
-
 /** Build a JWT-shaped token (unsigned / dummy signature). Frontend only decodes; API verifies. */
 function makeJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' }), 'utf8').toString('base64url');
@@ -417,22 +407,14 @@ test.describe('Cross-cutting', () => {
       await page.goto('/account');
       await page.waitForLoadState('networkidle');
       await expect(page.getByText('Active address', { exact: true })).toBeVisible({ timeout: 20000 });
-      const tailB = walletB.address.slice(-4);
-      const tailA = walletA.address.slice(-4);
-      const addressTrigger = page.locator('#dropDownButton').filter({ hasText: tailB });
+      // The harness viewport shows the whole address; random wallets make short tails ambiguous.
+      const addressTrigger = page.locator('#dropDownButton').filter({ hasText: walletB.address });
       await expect(addressTrigger).toBeVisible({ timeout: 20000 });
       const shown = (await addressTrigger.innerText()).trim();
       const shownLower = shown.toLowerCase();
       expect(shownLower).toMatch(/0x/i);
-      expect(shownLower).toContain(tailB.toLowerCase());
-      if (tailA.toLowerCase() !== tailB.toLowerCase()) {
-        expect(shownLower).not.toContain(tailA.toLowerCase());
-      } else {
-        const sliceB = distinctiveAddressSlice(walletB.address, walletA.address);
-        const sliceA = distinctiveAddressSlice(walletA.address, walletB.address);
-        expect(shownLower).toContain(sliceB.toLowerCase());
-        expect(shownLower).not.toContain(sliceA.toLowerCase());
-      }
+      expect(shownLower).toContain(walletB.address.toLowerCase());
+      expect(shownLower).not.toContain(walletA.address.toLowerCase());
     });
 
     test('redirect param navigates after session and is stripped', async ({ page }) => {
