@@ -487,6 +487,86 @@ describe('ConnectPasskey', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Coming soon');
   });
 
+  it('dismisses a toast after 4000 milliseconds', () => {
+    jest.useFakeTimers();
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Pay' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Paste payment link' }));
+      act(() => jest.advanceTimersByTime(3999));
+      expect(screen.getByRole('status')).toHaveTextContent('Coming soon');
+      act(() => jest.advanceTimersByTime(1));
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    } finally {
+      view.unmount();
+      jest.useRealTimers();
+    }
+  });
+
+  it('restarts the toast timeout when a newer toast replaces it', () => {
+    jest.useFakeTimers();
+    let messages = 0;
+    mockTranslate.mockImplementation((_namespace, text) => (text === 'Coming soon' ? `Message ${++messages}` : text));
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Pay' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Paste payment link' }));
+      expect(screen.getByRole('status')).toHaveTextContent('Message 1');
+      act(() => jest.advanceTimersByTime(3000));
+      fireEvent.click(screen.getByRole('button', { name: 'Paste payment link' }));
+      expect(screen.getByRole('status')).toHaveTextContent('Message 2');
+      act(() => jest.advanceTimersByTime(1000));
+      expect(screen.getByRole('status')).toHaveTextContent('Message 2');
+      act(() => jest.advanceTimersByTime(3000));
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    } finally {
+      view.unmount();
+      jest.useRealTimers();
+    }
+  });
+
+  it('dismisses a clicked toast and cancels its timeout', () => {
+    jest.useFakeTimers();
+    const clear = jest.spyOn(global, 'clearTimeout');
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Pay' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Paste payment link' }));
+      fireEvent.click(screen.getByRole('status'));
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(clear).toHaveBeenCalledTimes(1);
+      act(() => jest.advanceTimersByTime(4000));
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    } finally {
+      view.unmount();
+      clear.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
+  it('clears a pending toast timeout when the desk unmounts', () => {
+    jest.useFakeTimers();
+    const clear = jest.spyOn(global, 'clearTimeout');
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Pay' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Paste payment link' }));
+      expect(screen.getByRole('status')).toHaveTextContent('Coming soon');
+      view.unmount();
+      expect(clear).toHaveBeenCalledTimes(1);
+      act(() => jest.advanceTimersByTime(4000));
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    } finally {
+      clear.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
   it('copies a listed address and reports clipboard failure', async () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     const writeText = jest.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('clipboard denied'));

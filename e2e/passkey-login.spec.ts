@@ -505,6 +505,38 @@ test.describe('Passkey login', () => {
     ]);
   });
 
+  test('shows the Bitcoin receive address on the unlocked desk', async ({ page }) => {
+    await registerUnlockedDesk(page);
+    await page.getByRole('button', { name: 'Receive' }).click();
+    await page.getByRole('button', { name: 'Bitcoin', exact: true }).click();
+    const address = page.getByTestId('passkey-receive-address');
+    await expect(address).toHaveText(/^bc1q[023456789acdefghjklmnpqrstuvwxyz]+$/);
+    await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
+    const qr = page.locator('[data-testid=passkey-receive-qr]');
+    await expect(qr).toBeVisible();
+    await shoot(page, 'passkey-desk-receive-bitcoin.png', [
+      ...(await deskControls(page)),
+      page.getByRole('button', { name: 'Copy address' }),
+      qr,
+    ]);
+  });
+
+  test('shows the Spark receive address on the unlocked desk', async ({ page }) => {
+    await registerUnlockedDesk(page);
+    await page.getByRole('button', { name: 'Receive' }).click();
+    await page.getByRole('button', { name: 'Spark', exact: true }).click();
+    const address = page.getByTestId('passkey-receive-address');
+    await expect(address).toHaveText(/^spark1[023456789acdefghjklmnpqrstuvwxyz]{62}$/);
+    await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
+    const qr = page.locator('[data-testid=passkey-receive-qr]');
+    await expect(qr).toBeVisible();
+    await shoot(page, 'passkey-desk-receive-spark.png', [
+      ...(await deskControls(page)),
+      page.getByRole('button', { name: 'Copy address' }),
+      qr,
+    ]);
+  });
+
   test('shows the send form without sending', async ({ page }) => {
     await registerUnlockedDesk(page);
     await page.getByRole('button', { name: 'Send' }).click();

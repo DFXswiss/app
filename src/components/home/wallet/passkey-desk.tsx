@@ -16,7 +16,8 @@ import PasskeySettingsSheet from './passkey-settings-sheet';
 import PasskeySheet from './passkey-sheet';
 import PasskeyPaySheet from './passkey-pay-sheet';
 import PasskeyWalletHistory, { PasskeyHistory } from './passkey-wallet-history';
-export type { PasskeyTx } from './passkey-wallet-history';
+
+const TOAST_DURATION_MS = 4000;
 
 export interface PasskeyDeskProps {
   opening?: boolean;
@@ -122,13 +123,35 @@ export default function PasskeyDesk({
   const sheetGeneration = useRef(0);
   const wordsGeneration = useRef(0);
   const wordsKeys = useRef<KeyRing>();
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  function clearToastTimer(): void {
+    if (toastTimer.current !== undefined) {
+      clearTimeout(toastTimer.current);
+      toastTimer.current = undefined;
+    }
+  }
+
+  function displayToast(message: string): void {
+    clearToastTimer();
+    setToast(message);
+    toastTimer.current = setTimeout(() => {
+      toastTimer.current = undefined;
+      setToast(undefined);
+    }, TOAST_DURATION_MS);
+  }
+
+  function dismissToast(): void {
+    clearToastTimer();
+    setToast(undefined);
+  }
 
   function showMessage(message: string): void {
     const current = sheetRef.current;
     if (current === 'settings' || current === 'words' || current === 'revoke' || current === 'receive') {
       setNote(message);
     } else {
-      setToast(translate('screens/home', message));
+      displayToast(translate('screens/home', message));
     }
   }
 
@@ -154,6 +177,7 @@ export default function PasskeyDesk({
       sheetGeneration.current += 1;
       wordsGeneration.current += 1;
       wordsKeys.current = undefined;
+      clearToastTimer();
       unsubscribe();
     };
   }, []);
@@ -302,14 +326,14 @@ export default function PasskeyDesk({
   const requestCloseSheet = () => {
     if (!busyRef.current && !opening) closeSheet();
   };
-  const toastMessage = (message: string) => setToast(t(message));
+  const toastMessage = (message: string) => displayToast(t(message));
   const copyAddress = async (address: string) => {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard is not available.');
       await navigator.clipboard.writeText(address);
       toastMessage('Address copied');
     } catch (caught) {
-      setToast(translate('screens/home', passkeyMessage(caught)));
+      displayToast(translate('screens/home', passkeyMessage(caught)));
     }
   };
   const startAnother = () => {
@@ -500,7 +524,7 @@ export default function PasskeyDesk({
         <div
           role="status"
           className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-lg bg-dfxBlue-800 px-4 py-3 text-white"
-          onClick={() => setToast(undefined)}
+          onClick={dismissToast}
         >
           {toast}
         </div>

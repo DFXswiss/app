@@ -672,6 +672,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and `useWalletContext.login` are replaced; a green run does not prove calls reach the real wallet client
   or create a DFX session. `LoginAutoSigner` is replaced; a green run does not prove a real signature.
   Spies make `Storage.prototype.getItem` and `setItem` throw; a green run does not prove a browser's storage failure behaviour.
+  The toast tests run on Jest fake timers; a green run does not prove when a real browser timer fires.
   Tests in `src/__tests__/connect-passkey.test.tsx` and `src/__tests__/passkey-session.test.ts` switch `process.env.NODE_ENV` to `production`; a green run does not prove the behaviour of a production build.
   Unit tests set `window.__dfxHandbookPasskeyHistory`; a green run does not prove that real transaction history is available.
   Tests also stub `QrBasic`,
