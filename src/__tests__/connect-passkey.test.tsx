@@ -4,8 +4,6 @@ jest.mock('@dfx.swiss/react/dist/definitions/auth', () => ({
 
 const mockLogout = jest.fn(() => Promise.resolve());
 let mockCurrency: { name: string } | undefined;
-let mockUser: { id: number; addresses?: { passkey?: { credentialId: string } }[] } | undefined;
-let mockCurrencies: { name: string }[] | undefined;
 let mockLocale = 'en-US';
 const mockChangeCurrency = jest.fn();
 const mockTranslate = jest.fn((_key: string, text: string) => text);
@@ -13,16 +11,12 @@ const mockTranslate = jest.fn((_key: string, text: string) => text);
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: { ETHEREUM: 'Ethereum', BITCOIN: 'Bitcoin' },
   Utils: { isJwt: () => false },
-  useApiSession: () => ({ updateSession: () => undefined }),
-  useAuth: () => ({ getSignMessage: () => undefined }),
-  useFiatContext: () => ({ currencies: mockCurrencies }),
   useSessionContext: () => ({
     isInitialized: false,
     isLoggedIn: false,
     logout: () => mockLogout(),
     authenticate: () => undefined,
   }),
-  useUserContext: () => ({ user: mockUser, addSpecialCode: () => undefined, reloadUser: () => undefined }),
 }));
 
 const mockNavigate = jest.fn();
@@ -258,8 +252,6 @@ describe('ConnectPasskey', () => {
     mockTranslate.mockImplementation((_key, text) => text);
     mockSign.mockReturnValue('signature');
     mockCurrency = undefined;
-    mockUser = undefined;
-    mockCurrencies = undefined;
     mockLocale = 'en-US';
     mockLogout.mockResolvedValue(undefined);
     mockSetSession.mockResolvedValue(undefined);
@@ -363,7 +355,6 @@ describe('ConnectPasskey', () => {
   });
 
   it('changes both balance and asset currency locally without a DFX user', () => {
-    mockCurrencies = [{ name: 'CHF' }, { name: 'EUR' }];
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     render(
       <PasskeyDesk
@@ -403,25 +394,20 @@ describe('ConnectPasskey', () => {
     expect(screen.getByText('CHF 1.234,50')).toBeInTheDocument();
   });
 
-  it('stores the wallet currency without updating the signed-in DFX user', () => {
-    mockUser = { id: 1, addresses: [{ passkey: { credentialId: 'cred' } }] };
-    mockCurrencies = [{ name: 'CHF' }, { name: 'EUR' }];
+  it('stores wallet currency without calling changeCurrency', () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     const view = render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'EUR' }));
     expect(screen.getByRole('button', { name: 'EUR' })).toHaveAttribute('aria-pressed', 'true');
     expect(mockChangeCurrency).not.toHaveBeenCalled();
     expect(localStorage.getItem('dfx.wallet.currency')).toBe('EUR');
-    mockCurrencies = [];
     view.rerender(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'CHF' }));
     expect(screen.getByRole('button', { name: 'CHF' })).toHaveAttribute('aria-pressed', 'true');
     expect(mockChangeCurrency).not.toHaveBeenCalled();
   });
 
-  it('keeps currency local for a different DFX account', () => {
-    mockUser = { id: 1, addresses: [{ passkey: { credentialId: 'other' } }, {}] };
-    mockCurrencies = [{ name: 'CHF' }, { name: 'EUR' }];
+  it('does not call changeCurrency when selecting EUR', () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'EUR' }));
@@ -929,7 +915,6 @@ describe('ConnectPasskey', () => {
   });
 
   it.each(['close', 'another', 'revoke'] as const)('clears address checks on %s', async (action) => {
-    mockUser = { id: 1, addresses: [{ passkey: { credentialId: 'cred' } }] };
     const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
     setOpenPasskey(session);
     mockVerify.mockReturnValueOnce([{ family: 'Evm', address: SEED, matches: true }]);
@@ -1048,7 +1033,8 @@ describe('ConnectPasskey', () => {
   });
 
   it('keeps the current wallet open when a different passkey is revoked', async () => {
-    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys) as unknown as OpenPasskey;
     setOpenPasskey(session);
     mockRevoke.mockResolvedValueOnce({ id: 8, status: 'Lost' });
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
@@ -1060,6 +1046,7 @@ describe('ConnectPasskey', () => {
       'You confirmed with a different passkey. That passkey is now blocked; this wallet is still active.',
     );
     expect(passkeySession.getOpenPasskey()).toBe(session);
+    expect(keys.wipe).not.toHaveBeenCalled();
     expect(mockOnSwitch).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'Block passkey' })).toBeInTheDocument();
   });
@@ -1096,7 +1083,6 @@ describe('ConnectPasskey', () => {
   );
 
   it('does not close a newer dialog after late passkey revocation', async () => {
-    mockUser = { id: 1, addresses: [{ passkey: { credentialId: 'cred' } }] };
     const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
     setOpenPasskey(session);
     let finish: (value: unknown) => void = () => undefined;
@@ -1121,8 +1107,8 @@ describe('ConnectPasskey', () => {
   });
 
   it('clears the same session after late passkey revocation', async () => {
-    mockUser = { id: 1, addresses: [{ passkey: { credentialId: 'cred' } }] };
-    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    const keys = ring(SEED);
+    setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
     let finish: (value: unknown) => void = () => undefined;
     mockRevoke.mockImplementationOnce(
       () =>
@@ -1138,12 +1124,45 @@ describe('ConnectPasskey', () => {
     view.unmount();
     await act(async () => finish({ id: 7, status: 'Lost' }));
     expect(passkeySession.getOpenPasskey()).toBeUndefined();
+    expect(keys.wipe).toHaveBeenCalledTimes(1);
+    expect(mockOnSwitch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not wipe a session that disappeared during revocation', async () => {
+    const keys = ring(SEED);
+    setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
+    let finish: (value: { id: number }) => void = () => undefined;
+    mockRevoke.mockImplementationOnce(
+      () =>
+        new Promise<{ id: number }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
+    fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
+    act(() => setOpenPasskey(undefined));
+    await act(async () => finish({ id: 7 }));
+    expect(keys.wipe).not.toHaveBeenCalled();
+    expect(mockOnSwitch).not.toHaveBeenCalled();
+  });
+
+  it('clears a revoked locked session that has no keys', async () => {
+    setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
+    fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
+    await waitFor(() => expect(passkeySession.getOpenPasskey()).toBeUndefined());
     expect(mockOnSwitch).toHaveBeenCalledTimes(1);
   });
 
   it.each([false, true])('preserves a replacement credential during revocation (unmounted: %s)', async (unmount) => {
-    mockUser = { id: 1, addresses: [{ passkey: { credentialId: 'cred' } }] };
-    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys) as unknown as OpenPasskey;
     setOpenPasskey(session);
     let finish: (value: unknown) => void = () => undefined;
     mockRevoke.mockImplementationOnce(
@@ -1162,6 +1181,7 @@ describe('ConnectPasskey', () => {
     act(() => setOpenPasskey(replacement));
     await act(async () => finish({ id: 7, status: 'Lost' }));
     expect(passkeySession.getOpenPasskey()).toBe(replacement);
+    expect(keys.wipe).not.toHaveBeenCalled();
     expect(mockOnSwitch).not.toHaveBeenCalled();
   });
 
@@ -1720,8 +1740,8 @@ describe('ConnectPasskey', () => {
   });
 
   it.each(['Use another passkey', 'Block passkey as lost'])('resets receive after %s', async (action) => {
-    mockUser = { id: 1, addresses: [{ passkey: { credentialId: 'cred' } }] };
-    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys) as unknown as OpenPasskey;
     setOpenPasskey(session);
     mockRevoke.mockResolvedValue({ id: 7, status: 'Lost' });
     render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
@@ -1738,6 +1758,7 @@ describe('ConnectPasskey', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
     }
     await waitFor(() => expect(passkeySession.getOpenPasskey()).toBeUndefined());
+    expect(keys.wipe).toHaveBeenCalledTimes(1);
     act(() => setOpenPasskey(session));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Receive' })).toBeInTheDocument());
     expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
@@ -2190,6 +2211,19 @@ describe('ConnectPasskey', () => {
     expect(passkeySession.getOpenPasskey()).toBeUndefined();
   });
 
+  it('handles a missing session when choosing another passkey', () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    const missing = jest.spyOn(passkeySession, 'getOpenPasskey').mockReturnValueOnce(undefined);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Use another passkey' }));
+    } finally {
+      missing.mockRestore();
+    }
+    expect(passkeySession.getOpenPasskey()).toBeUndefined();
+  });
+
   it('reloads the page from the other-tab warning', () => {
     const original = Object.getOwnPropertyDescriptor(window, 'location');
     const reload = jest.fn();
@@ -2253,9 +2287,8 @@ describe('ConnectPasskey', () => {
     expect(mockLink).not.toHaveBeenCalled();
   });
 
-  it('does not offer claim to a signed-in user', async () => {
+  it('does not offer claim on the account choice card', async () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
-    mockUser = { id: 1 };
     renderPasskey();
     await goToChoice();
     expect(screen.queryByRole('button', { name: 'Add passkey to this account' })).not.toBeInTheDocument();
@@ -2362,7 +2395,7 @@ describe('ConnectPasskey', () => {
 
   it('returns to the form after the passkey revokes the wallet', async () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
-    mockLogin.mockResolvedValue(authResult('seed-mismatch', { id: 'keys' }));
+    mockLogin.mockResolvedValue(authResult('seed-mismatch', ring(SEED)));
     mockRevoke.mockResolvedValue({ id: 7, status: 'Lost' });
     renderPasskey();
     fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));

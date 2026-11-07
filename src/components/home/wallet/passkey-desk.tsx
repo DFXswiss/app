@@ -248,7 +248,9 @@ export default function PasskeyDesk({
         setWords(undefined);
         setSheet(undefined);
       }
-      if (sameSession(getOpenPasskey(), session)) {
+      const current = getOpenPasskey();
+      if (current && sameSession(current, session)) {
+        current.keys?.wipe();
         setOpenPasskey(undefined);
         onRevoked();
       }
@@ -317,6 +319,7 @@ export default function PasskeyDesk({
     setWords(undefined);
     setChecks(undefined);
     setSheet(undefined);
+    getOpenPasskey()?.keys?.wipe();
     setOpenPasskey(undefined);
   };
   async function unlock(): Promise<boolean> {
