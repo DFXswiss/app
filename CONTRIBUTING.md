@@ -59,6 +59,23 @@ decision, and it follows the same route as any other deferral above: the
 reviewer grants the exception in writing on the pull request. It is never a
 reason to leave the bug unreported.
 
+## Where the logic lives
+
+This repository stays a thin client for the wallet. Wallet logic, data preparation, and calculations belong in
+[DFXswiss/wallet-api](https://github.com/DFXswiss/wallet-api). The screen shows what that API returns and sends the
+user's intent back. It does not talk to a chain node. A pull request that does that work here is incomplete, including
+work the service does not expose yet.
+
+For Bitcoin and EVM, balances, prices, fees, input selection, destination checks, history, the unsigned payment, and
+submission belong in that service. The device holds the seed, derives an address from that seed, signs the WebAuthn
+challenge, and signs the unsigned payment. It returns the signed payment.
+
+Any Spark step that needs `WALLET_BREEZ_API_KEY` or the seed stays on the device. That service may store the Spark
+address and return destination checks and prices. Lightning-address and LNURL lookup belong in that service. A pull
+request that moves the seed or the private key off the device is incomplete.
+
+Buy, sell, swap, KYC, and banking stay on the DFX API. This rule does not move that work.
+
 ## Compliance AML UI
 
 Manual `amlCheck = Pass` is **Admin-only**. The Compliance UI hides Pass for non-Admin roles

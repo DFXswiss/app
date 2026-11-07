@@ -4,6 +4,12 @@ Reusable web widget to buy, sell and swap crypto assets
 
 ![ ](https://dfx.swiss/images/app/iframe.png)
 
+## Where wallet logic lives
+
+Wallet logic, data preparation, and calculations belong in
+[DFXswiss/wallet-api](https://github.com/DFXswiss/wallet-api). This repository stays a thin client for that wallet.
+The binding rule is [CONTRIBUTING.md](CONTRIBUTING.md#where-the-logic-lives).
+
 ## Local Development
 
 ### Prerequisites
