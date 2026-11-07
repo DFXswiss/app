@@ -12,7 +12,9 @@
 
 import type { Page } from '@playwright/test';
 import {
+  authToken,
   completeMailLogin,
+  decodeJwtPayload,
   expect,
   gotoWithSession,
   normPath,
@@ -573,10 +575,40 @@ test.describe('Auth area e2e', () => {
       await page.getByRole('button', { name: 'Settings' }).click();
       await page.getByRole('button', { name: 'Use another passkey' }).click();
       await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+      const authentication = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          new URL(response.url()).pathname === '/v1/auth/passkey/authenticate/finish',
+        { timeout: 30000 },
+      );
       await page.getByRole('button', { name: 'Log in' }).click();
+      const authenticationResponse = await authentication;
+      expect(authenticationResponse.ok()).toBe(true);
+      const { accessToken: ceremonyToken } = (await authenticationResponse.json()) as { accessToken?: string };
+      if (!ceremonyToken) throw new Error('Missing passkey ceremony token');
       await expect(page.getByRole('button', { name: 'Show wallet' }).first()).toBeVisible({ timeout: 30000 });
       await page.getByRole('button', { name: 'Show wallet' }).first().click();
       await expect(bitcoinRow.locator('[title]')).toHaveAttribute('title', address);
+
+      const evmRow = page.locator('li', { has: page.getByText('Ethereum & EVM', { exact: true }) });
+      await expect(evmRow).toHaveCount(1, { timeout: 30000 });
+      const evmAddress = await evmRow.locator('[title]').getAttribute('title');
+      if (evmAddress === null || !/^0x[0-9a-fA-F]{40}$/.test(evmAddress)) throw new Error('Missing EVM address');
+      await page.getByRole('button', { name: 'Buy', exact: true }).click();
+      await expect(page).toHaveURL(/\/buy/, { timeout: 30000 });
+      const dfxToken = await authToken(page);
+      if (!dfxToken) throw new Error('Missing DFX authentication token');
+      const tokenAddress = decodeJwtPayload(dfxToken).address;
+      if (typeof tokenAddress !== 'string') throw new Error('Missing DFX token address');
+      expect(tokenAddress.toLowerCase()).toBe(evmAddress.toLowerCase());
+      expect(dfxToken).not.toBe(ceremonyToken);
+      const evmUser = await waitForRow<{ userDataId: number }>(
+        `SELECT u."userDataId" AS "userDataId" FROM "user" u
+         WHERE LOWER(u.address) = LOWER($1)`,
+        [evmAddress],
+        30000,
+      );
+      expect(evmUser.userDataId).toBe(stored.id);
     } finally {
       await trackPasskeyUser();
     }

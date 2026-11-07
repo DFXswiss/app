@@ -632,7 +632,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `m/84'/0'/0'/0/0`, that `passkey_address` together with
   `"user".address` stores that address once for the registered mail, that after Reload data
   in Settings and after the second unlock exactly one list row shows that same `bc1q` address,
-  and that a different address at that path does not pass. It does not prove the ceremony
+  and that a different address at that path does not pass.
+  It also proves that the Buy opt-in authenticates the locally derived EVM address with a wallet signature.
+  The returned DFX token names that address and differs from the passkey ceremony token.
+  The database associates that address with the passkey credential's account.
+  It does not prove a production sign-in, a real hardware-authenticator PRF, or a transaction or purchase.
+  It does not prove the ceremony
   when the test skips, the wallet
   migration (the row is copied with SQL, forces `autoTradeApproval`, and clears `ownerId` and
   `address`), authenticator PRF output (the harness inserts fixed bytes when they are missing
