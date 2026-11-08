@@ -113,7 +113,8 @@ export default function PasskeyDesk({
   const [evmIndex, setEvmIndex] = useState('1');
   const [operationBusy, setBusy] = useState(false);
   const busy = operationBusy || opening;
-  const [note, setNote] = useState<string>();
+  const [note, setNoteValue] = useState<string>();
+  const [noteKind, setNoteKind] = useState<'message' | 'refresh' | 'status' | 'diagnostics' | 'link'>('message');
   const [words, setWords] = useState<string[]>();
   const [checks, setChecks] = useState<{ family: string; address: string; matches: boolean }[]>();
   const busyRef = useRef(false);
@@ -146,12 +147,20 @@ export default function PasskeyDesk({
     setToast(undefined);
   }
 
-  function showMessage(message: string): void {
+  function setNote(
+    message?: string,
+    kind: 'message' | 'refresh' | 'status' | 'diagnostics' | 'link' = 'message',
+  ): void {
+    setNoteValue(message);
+    setNoteKind(kind);
+  }
+
+  function showMessage(message: string, kind: 'message' | 'link' = 'message'): void {
     const current = sheetRef.current;
     if (current === 'settings' || current === 'words' || current === 'revoke' || current === 'receive') {
-      setNote(message);
+      setNote(message, kind);
     } else {
-      displayToast(translate('screens/home', message));
+      displayToast(kind === 'link' ? message : translate('screens/home', message));
     }
   }
 
@@ -229,7 +238,9 @@ export default function PasskeyDesk({
     const list = await client.wallets(session.accessToken);
     const match = list.find((item) => item.id === session.wallet.id);
     if (match) replaceWallet(match, session);
-    if (reportCount && isLive(session) && isCurrent()) setNote(`Wallets on this account: ${list.length}.`);
+    if (reportCount && isLive(session) && isCurrent()) {
+      setNote(translate('screens/home', 'Wallets on this account: {{count}}.', { count: list.length }), 'refresh');
+    }
     return match;
   }
 
@@ -247,7 +258,10 @@ export default function PasskeyDesk({
         login.release();
       }
       // The link response is an address token. Further account routes still need the ceremony token.
-      const linkedText = `Linked ${linked.address.family} ${linked.address.address}.`;
+      const linkedText = translate('screens/home', 'Linked {{family}} {{address}}.', {
+        family: linked.address.family,
+        address: linked.address.address,
+      });
       try {
         await refreshWallet(client, original, isCurrent, false);
       } catch (caught) {
@@ -256,7 +270,7 @@ export default function PasskeyDesk({
         }
         return;
       }
-      if (isCurrent() && reportSuccess) showMessage(linkedText);
+      if (isCurrent() && reportSuccess) showMessage(linkedText, 'link');
     });
   }
 
@@ -547,6 +561,7 @@ export default function PasskeyDesk({
           credentialId={open.wallet.credentialId}
           busy={busy}
           note={note}
+          noteKind={noteKind}
           checks={checks}
           evmIndex={evmIndex}
           validEvmIndex={index !== undefined}
@@ -579,7 +594,15 @@ export default function PasskeyDesk({
               const rows = await client.credentialStatus([session.wallet.credentialId]);
               if (isCurrent()) {
                 setNote(
-                  rows.map((item) => `${item.credentialId}: ${item.status}`).join(', ') || 'No credential status.',
+                  rows
+                    .map((item) =>
+                      translate('screens/home', '{{credentialId}}: {{status}}', {
+                        credentialId: item.credentialId,
+                        status: translate('screens/home', item.status),
+                      }),
+                    )
+                    .join(', ') || translate('screens/home', 'No credential status.'),
+                  'status',
                 );
               }
             })
@@ -587,7 +610,7 @@ export default function PasskeyDesk({
           onDiagnostics={() =>
             void run(async (client, _session, isCurrent) => {
               await client.diagnostics({ stage: 'Authentication', outcome: 'Success' });
-              if (isCurrent()) setNote('Diagnostic recorded.');
+              if (isCurrent()) setNote('Diagnostic recorded.', 'diagnostics');
             })
           }
           onAnotherPasskey={startAnother}

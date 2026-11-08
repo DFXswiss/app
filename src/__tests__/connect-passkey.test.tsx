@@ -6,7 +6,14 @@ const mockLogout = jest.fn(() => Promise.resolve());
 let mockCurrency: { name: string } | undefined;
 let mockLocale = 'en-US';
 const mockChangeCurrency = jest.fn();
-const mockTranslate = jest.fn((_key: string, text: string) => text);
+function interpolate(text: string, values?: Record<string, string | number>): string {
+  return text.replace(/{{(\w+)}}/g, (match, key: string) =>
+    values?.[key] === undefined ? match : String(values[key]),
+  );
+}
+const mockTranslate = jest.fn((_key: string, text: string, values?: Record<string, string | number>) =>
+  interpolate(text, values),
+);
 
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: { ETHEREUM: 'Ethereum', BITCOIN: 'Bitcoin' },
@@ -249,7 +256,7 @@ describe('ConnectPasskey', () => {
       throw new Error('unexpected login ring');
     };
     jest.clearAllMocks();
-    mockTranslate.mockImplementation((_key, text) => text);
+    mockTranslate.mockImplementation((_key, text, values) => interpolate(text, values));
     mockSign.mockReturnValue('signature');
     mockCurrency = undefined;
     mockLocale = 'en-US';
@@ -1823,6 +1830,46 @@ describe('ConnectPasskey', () => {
     expect(await screen.findByText(`Linked Evm ${OTHER}.`)).toBeInTheDocument();
   });
 
+  it('renders translated wallet count, link and credential status in their settings rows', async () => {
+    const translations: Record<string, string> = {
+      'Wallets on this account: {{count}}.': 'Konten: {{count}}.',
+      'Linked {{family}} {{address}}.': 'Verbunden {{family}} {{address}}.',
+      '{{credentialId}}: {{status}}': '{{credentialId}}: {{status}}',
+      Active: 'Aktiv',
+      Lost: 'Verloren',
+      Compromised: 'Kompromittiert',
+      Unknown: 'Unbekannt',
+    };
+    mockTranslate.mockImplementation((_namespace, text, values) => interpolate(translations[text] ?? text, values));
+    const keys = ring(SEED);
+    const wallet = authResult('unlocked', keys).wallet;
+    setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
+    mockWallets.mockResolvedValue([wallet]);
+    mockLink.mockResolvedValue({ address: { family: 'Evm', address: OTHER } });
+    mockCredentialStatus.mockResolvedValue([
+      { credentialId: 'cred', status: 'Active' },
+      { credentialId: 'lost', status: 'Lost' },
+      { credentialId: 'bad', status: 'Compromised' },
+      { credentialId: 'unknown', status: 'Unknown' },
+    ]);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reload data' }));
+    expect(await screen.findByText('Konten: 1.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reload data' })).toHaveTextContent('Konten: 1.');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Link' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }));
+    const linkResult = await screen.findByRole('status');
+    expect(linkResult).toHaveTextContent(`Verbunden Evm ${OTHER}.`);
+    expect(screen.getByRole('button', { name: 'Link' }).parentElement?.parentElement).toContainElement(linkResult);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Check passkey status' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
+    expect(
+      await screen.findByText('cred: Aktiv, lost: Verloren, bad: Kompromittiert, unknown: Unbekannt'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check passkey status' })).toHaveTextContent('cred: Aktiv');
+  });
+
   it('reports a successful linked EVM address in its settings row', async () => {
     const keys = ring(SEED);
     setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
@@ -2335,8 +2382,10 @@ describe('ConnectPasskey', () => {
 
   it('reports the Bitcoin link and translated refresh error in a toast', async () => {
     const keys = ring(SEED);
-    mockTranslate.mockImplementation((namespace, text) =>
-      namespace === 'screens/home' && text === 'wallet refresh failed' ? 'translated refresh error' : text,
+    mockTranslate.mockImplementation((namespace, text, values) =>
+      namespace === 'screens/home' && text === 'wallet refresh failed'
+        ? 'translated refresh error'
+        : interpolate(text, values),
     );
     mockLink.mockResolvedValue({ address: { family: 'Bitcoin', address: 'bc1qlogin' } });
     mockWallets.mockRejectedValue(new Error('wallet refresh failed'));
@@ -2351,8 +2400,10 @@ describe('ConnectPasskey', () => {
   it('reports a Bitcoin link and refresh error inside an open settings dialog', async () => {
     const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
     setOpenPasskey(session);
-    mockTranslate.mockImplementation((namespace, text) =>
-      namespace === 'screens/home' && text === 'wallet refresh failed' ? 'translated refresh error' : text,
+    mockTranslate.mockImplementation((namespace, text, values) =>
+      namespace === 'screens/home' && text === 'wallet refresh failed'
+        ? 'translated refresh error'
+        : interpolate(text, values),
     );
     mockLink.mockResolvedValueOnce({ address: { family: 'Bitcoin', address: 'bc1qlogin' } });
     mockWallets.mockRejectedValueOnce(new Error('wallet refresh failed'));

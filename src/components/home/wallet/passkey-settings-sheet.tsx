@@ -9,6 +9,7 @@ interface PasskeySettingsSheetProps {
   credentialId: string;
   busy: boolean;
   note?: string;
+  noteKind?: 'message' | 'refresh' | 'status' | 'diagnostics' | 'link';
   checks?: { family: string; address: string; matches: boolean }[];
   evmIndex: string;
   validEvmIndex: boolean;
@@ -96,15 +97,10 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
   const badge = props.backupNeeded
     ? 'border border-[#F2D38A] bg-[#FFF6E0] text-[#8A5A00]'
     : 'bg-[#E9F6EE] text-dfxGreen-300';
-  const refreshResult = props.note?.startsWith('Wallets on this account:');
-  const diagnosticsResult = props.note === 'Diagnostic recorded.';
-  const statusResult =
-    props.note &&
-    (props.note === 'No credential status.' ||
-      Boolean(props.credentialId && props.note.includes(`${props.credentialId}:`)))
-      ? props.note
-      : undefined;
-  const linkResult = /^Linked Evm 0x[0-9a-f]{40}\.$/i.test(props.note ?? '');
+  const refreshResult = props.noteKind === 'refresh';
+  const diagnosticsResult = props.noteKind === 'diagnostics';
+  const statusResult = props.noteKind === 'status';
+  const linkResult = props.noteKind === 'link';
   const checksColor = !props.checks?.length
     ? ''
     : props.checks.every((item) => item.matches)
@@ -232,7 +228,7 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
             {t('Check passkey status')}
             {statusResult && (
               <small role="status" className="block text-sm font-semibold text-dfxGreen-300">
-                {t(statusResult)}
+                {props.note}
               </small>
             )}
           </span>

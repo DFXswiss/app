@@ -610,6 +610,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   wallet's addresses. Register omits a Bitcoin row so the auto-link posts the derived
   address; the wallet list then contains that posted Bitcoin address, the placeholder EVM and Spark
   rows, and a differing Bitcoin row. The backupSeen response is a fixture with a fixed date; a green run does not prove the API sets that date.
+  The successful-revocation scenes answer `revoke/finish` with the wallet fixture and status `Lost`; a green run does not prove the API returns that status after a successful revocation.
   The unsuccessful-revocation shot returns an Active wallet fixture; a green run does not prove the API returns that status after a revocation attempt.
   The wallet fixtures here and in `e2e/wallet-entry.spec.ts` set `backupRequired` themselves (`true`, and `false`
   after backupSeen); a green run does not prove the API reports it for a passkey that is not synced.

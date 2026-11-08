@@ -130,6 +130,13 @@ const addedHomeKeys = [
   'Not connected yet',
   'Connect again',
   'Diagnostic recorded.',
+  'Wallets on this account: {{count}}.',
+  'Linked {{family}} {{address}}.',
+  '{{credentialId}}: {{status}}',
+  'Active',
+  'Lost',
+  'Compromised',
+  'Unknown',
   'Copy address',
   'Another EVM account',
   'Link account 1 to 99 to this passkey',
@@ -147,9 +154,36 @@ const addedHomeKeys = [
 ];
 
 const unchangedTranslations: Record<string, string[]> = {
-  de: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'App', 'Lightning (Spark)', 'Ethereum & EVM'],
-  fr: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'Actions', 'Lightning (Spark)', 'Ethereum & EVM'],
-  it: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'App', 'Lightning (Spark)', 'Ethereum & EVM'],
+  de: [
+    'EVM',
+    'Bitcoin',
+    'Spark',
+    'Wallet',
+    'App',
+    'Lightning (Spark)',
+    'Ethereum & EVM',
+    '{{credentialId}}: {{status}}',
+  ],
+  fr: [
+    'EVM',
+    'Bitcoin',
+    'Spark',
+    'Wallet',
+    'Actions',
+    'Lightning (Spark)',
+    'Ethereum & EVM',
+    '{{credentialId}}: {{status}}',
+  ],
+  it: [
+    'EVM',
+    'Bitcoin',
+    'Spark',
+    'Wallet',
+    'App',
+    'Lightning (Spark)',
+    'Ethereum & EVM',
+    '{{credentialId}}: {{status}}',
+  ],
 };
 
 function checkAddedTranslations(language: string, messages: Record<string, string>): void {
