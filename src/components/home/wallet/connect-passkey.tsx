@@ -160,6 +160,11 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       result.keys?.wipe();
       return;
     }
+    if (result.state !== 'unlocked') {
+      result.keys?.wipe();
+      setOpenPasskey({ ...result, keys: undefined });
+      return;
+    }
     setOpenPasskey(result);
   }
 

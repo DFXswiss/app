@@ -26,7 +26,7 @@ export function PasskeyReceivePanel({
 }: {
   unlocked: boolean;
   readReceive: (family: ReceiveFamily) => string;
-  onReceiveError: (message: string) => void;
+  onReceiveError: (message?: string) => void;
 }): JSX.Element {
   const { translate } = useSettingsContext();
   const { copy, isCopying } = useClipboard();
@@ -44,6 +44,7 @@ export function PasskeyReceivePanel({
     }
     try {
       setAddress(readReceiveRef.current(family));
+      onReceiveErrorRef.current(undefined);
     } catch (caught) {
       setAddress(undefined);
       onReceiveErrorRef.current(passkeyMessage(caught));

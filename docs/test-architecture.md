@@ -683,6 +683,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   The toast tests run on Jest fake timers; a green run does not prove when a real browser timer fires.
   Tests in `src/__tests__/connect-passkey.test.tsx` and `src/__tests__/passkey-session.test.ts` switch `process.env.NODE_ENV` to `production`; a green run does not prove the behaviour of a production build.
   Unit tests set `window.__dfxHandbookPasskeyHistory`; a green run does not prove that real transaction history is available.
+  The late-platform-report and late-camera-rejection tests spy on React state setters; a green run does not prove those updates are suppressed without that instrumentation.
   Tests also stub `QrBasic`,
   `getUserMedia` and navigation; a green run does not prove the real QR
   renderer, camera or router. The same applies to the new wallet unit tests: `passkey-pay-sheet.test.tsx` stubs `getUserMedia`

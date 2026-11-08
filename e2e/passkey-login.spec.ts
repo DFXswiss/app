@@ -776,10 +776,12 @@ test.describe('Passkey login', () => {
   });
 
   test('checks server addresses after the auto-link', async ({ page }) => {
-    await registerUnlockedDesk(page);
+    const bitcoinAddress = await registerUnlockedDesk(page);
     await openSettings(page);
     await page.getByRole('button', { name: /Check addresses/ }).click();
     await expect(page.getByText('1 / 4 addresses match', { exact: true })).toBeVisible();
+    const linkedBitcoin = `${bitcoinAddress.slice(0, 10)}…${bitcoinAddress.slice(-8)}`;
+    await expect(page.getByRole('listitem').filter({ hasText: linkedBitcoin })).toContainText('Matches');
     await expect(page.getByRole('listitem').filter({ hasText: 'bc1qdeskdi…kdiffers' })).toContainText('Differs');
     await expect(page).toHaveScreenshot('passkey-desk-addresses.png', { fullPage: true });
   });

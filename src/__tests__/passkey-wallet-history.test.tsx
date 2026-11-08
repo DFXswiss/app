@@ -137,7 +137,7 @@ describe('Passkey wallet history', () => {
       global.IntersectionObserver = original;
     }
   });
-  it('shows pending status and keeps the expanded list usable without IntersectionObserver', () => {
+  it('shows pending status and expands the existing list without IntersectionObserver', () => {
     const original = global.IntersectionObserver;
     global.IntersectionObserver = undefined as unknown as typeof IntersectionObserver;
     try {

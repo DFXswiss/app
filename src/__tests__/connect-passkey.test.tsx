@@ -2682,7 +2682,7 @@ describe('ConnectPasskey', () => {
     expect(await screen.findByText('Open in another tab')).toBeInTheDocument();
     act(() => {
       const current = requireWallet();
-      setOpenPasskey({ ...current.session, state: 'unlocked' });
+      setOpenPasskey({ ...current.session, state: 'unlocked', keys: ring(SEED) as unknown as OpenPasskey['keys'] });
     });
     mockVerify.mockReturnValue([{ address: SEED, family: 'Evm', matches: false }]);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -2750,6 +2750,20 @@ describe('ConnectPasskey', () => {
   });
 
   it('ignores a platform report that arrives after the tile unmounts', async () => {
+    const react = jest.requireActual<typeof import('react')>('react');
+    const originalUseState = react.useState;
+    const lateReport = { available: false, reason: 'no-webauthn', prf: 'unknown' };
+    const staleWrite = jest.fn();
+    const spy = jest.spyOn(react, 'useState').mockImplementation(((initial: unknown) => {
+      const [value, setValue] = originalUseState<unknown>(initial);
+      return [
+        value,
+        (next: unknown) => {
+          if (next === lateReport) staleWrite(next);
+          setValue(next);
+        },
+      ];
+    }) as typeof react.useState);
     let settle: (report: { available: boolean; reason: string; prf: string }) => void = () => undefined;
     mockCheckPasskeyPlatform.mockImplementation(
       () =>
@@ -2758,12 +2772,14 @@ describe('ConnectPasskey', () => {
         }),
     );
 
-    const { unmount } = renderPasskey();
-    unmount();
-
-    await act(async () => {
-      settle({ available: false, reason: 'no-webauthn', prf: 'unknown' });
-    });
+    try {
+      const { unmount } = renderPasskey();
+      unmount();
+      await act(async () => settle(lateReport));
+      expect(staleWrite).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('covers the remaining ceremony and desk branches', async () => {
@@ -3461,6 +3477,18 @@ describe('ConnectPasskey', () => {
     expect(keys.wipe).not.toHaveBeenCalled();
   });
 
+  it('wipes login keys before storing a seed-mismatch session', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const keys = ring(SEED);
+    mockLogin.mockResolvedValueOnce(authResult('seed-mismatch', keys));
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText('Wrong passkey')).toBeInTheDocument();
+    expect(keys.wipe).toHaveBeenCalledTimes(1);
+    expect(passkeySession.getOpenPasskey()?.state).toBe('seed-mismatch');
+    expect(passkeySession.getOpenPasskey()?.keys).toBeUndefined();
+  });
+
   it('A login that rejects after unmount does not log out and does not store a session.', async () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
     const gate: { promise?: Promise<unknown>; reject?: (reason: unknown) => void } = {};
@@ -3703,12 +3731,14 @@ describe('ConnectPasskey', () => {
       expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('local-address');
       expect(screen.getByTestId('passkey-receive-qr')).toBeInTheDocument();
       expect(readReceive).toHaveBeenCalledTimes(1);
+      expect(onReceiveError).toHaveBeenCalledTimes(1);
+      expect(onReceiveError).toHaveBeenCalledWith(undefined);
       view.rerender(panel(false));
       expect(screen.getByText('Unlock the wallet to show this address.')).toBeInTheDocument();
       expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
       expect(screen.queryByTestId('passkey-receive-qr')).not.toBeInTheDocument();
       expect(readReceive).toHaveBeenCalledTimes(1);
-      expect(onReceiveError).not.toHaveBeenCalled();
+      expect(onReceiveError).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
@@ -3725,6 +3755,7 @@ describe('ConnectPasskey', () => {
         evm: () => {
           throw new Error('derivation failed');
         },
+        sparkIdentity: () => ({ address: 'spark1local' }),
       });
       fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
       fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
@@ -3732,6 +3763,10 @@ describe('ConnectPasskey', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('derivation failed');
       expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
       expect(screen.queryByTestId('qr-code')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Spark', exact: true }));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('spark1local');
+      expect(screen.getByTestId('qr-code')).toHaveTextContent('spark1local');
     });
 
     it.each(['missing', 'locked'] as const)(
@@ -4330,6 +4365,19 @@ describe('ConnectPasskey', () => {
     });
 
     it('ignores a camera rejection after the send dialog closes', async () => {
+      const react = jest.requireActual<typeof import('react')>('react');
+      const originalUseState = react.useState;
+      const staleWrite = jest.fn();
+      const spy = jest.spyOn(react, 'useState').mockImplementation(((initial: unknown) => {
+        const [value, setValue] = originalUseState<unknown>(initial);
+        return [
+          value,
+          (next: unknown) => {
+            if (next === 'QR scanning is not available in this browser.') staleWrite(next);
+            setValue(next);
+          },
+        ];
+      }) as typeof react.useState);
       let fail: (error: Error) => void = () => undefined;
       const previousDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
       const globalWithDetector = globalThis as { BarcodeDetector?: unknown };
@@ -4354,8 +4402,10 @@ describe('ConnectPasskey', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
         fireEvent.click(screen.getByRole('button', { name: 'Close' }));
         await act(async () => fail(new Error('camera denied')));
+        expect(staleWrite).not.toHaveBeenCalled();
         expect(screen.queryByText('QR scanning is not available in this browser.')).not.toBeInTheDocument();
       } finally {
+        spy.mockRestore();
         if (previousDetector === undefined) delete globalWithDetector.BarcodeDetector;
         else globalWithDetector.BarcodeDetector = previousDetector;
         if (previousDevices) Object.defineProperty(navigator, 'mediaDevices', previousDevices);
