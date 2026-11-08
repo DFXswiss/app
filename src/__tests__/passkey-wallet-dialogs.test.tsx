@@ -5,13 +5,17 @@ import PasskeyWordsSheet from '../components/home/wallet/passkey-words-sheet';
 
 const mockChangeLanguage = jest.fn();
 const mockChangeAppLanguage = jest.fn();
+let mockTranslateAddresses = false;
 const mockLanguages = [
   { id: 1, symbol: 'EN' },
   { id: 2, symbol: 'DE' },
 ];
 jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({
-    translate: (_namespace: string, text: string) => text,
+    translate: (_namespace: string, text: string) =>
+      mockTranslateAddresses && ['Bitcoin', 'Lightning (Spark)', 'Ethereum & EVM'].includes(text)
+        ? `translated ${text}`
+        : text,
     locale: 'de-DE',
     language: mockLanguages[0],
     availableLanguages: mockLanguages,
@@ -214,6 +218,24 @@ describe('Passkey wallet dialogs', () => {
     );
     expect(screen.getByRole('alert')).toHaveTextContent('failure');
     expect(screen.getByText('0 / 1 addresses match')).toBeInTheDocument();
+    mockTranslateAddresses = true;
+    try {
+      view.rerender(
+        <PasskeySettingsSheet
+          {...props}
+          checks={[
+            { family: 'Evm', address: 'a', matches: true },
+            { family: 'Spark', address: 'b', matches: true },
+            { family: 'Bitcoin', address: 'c', matches: true },
+          ]}
+        />,
+      );
+      expect(screen.getByText(/translated Ethereum & EVM/)).toBeInTheDocument();
+      expect(screen.getByText(/translated Lightning \(Spark\)/)).toBeInTheDocument();
+      expect(screen.getByText(/translated Bitcoin/)).toBeInTheDocument();
+    } finally {
+      mockTranslateAddresses = false;
+    }
     view.rerender(<PasskeySettingsSheet {...props} checks={[]} />);
     expect(screen.getByText('0 / 0 addresses match')).not.toHaveClass('text-dfxGreen-300');
     expect(screen.getByText('0 / 0 addresses match')).not.toHaveClass('text-dfxRed-150');

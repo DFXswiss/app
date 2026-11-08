@@ -603,6 +603,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   The first `credentials.get` rejects with `NotAllowedError` and later calls succeed; a green run does not prove a real dismissal.
 - **`e2e/passkey-login.spec.ts`: unknown credential.**
   `POST /v1/auth/passkey/authenticate/finish` returns 400 with `Unknown credential`; a green run does not prove the real API returns that response.
+- **`e2e/passkey-login.spec.ts`: registration failure.**
+  The error card uses a fixture returning HTTP 500 for `register/finish`; a green run does not prove that the real API returns that error.
+- **`e2e/passkey-login.spec.ts`: missing PRF output.**
+  The PRF card uses a fixed authenticator without PRF output; a green run does not prove how a real authenticator behaves without PRF output.
 - **`e2e/passkey-login.spec.ts`: in-app and operating-system reports.**
   The in-app, iPhone in-app and old-system shots set user agents for Telegram, iPhone and iOS 16.0; a green run does not prove a real in-app browser, iPhone or running iOS 16.0.
 - **`e2e/passkey-login.spec.ts`: fixed authenticator and wallet routes.**
@@ -630,7 +634,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **`e2e/passkey-login.spec.ts`: paused clock.**
   The reconnect shot holds the link response and pauses Playwright's clock before releasing it; a green run does not prove how long a real browser shows the toast.
 - **`e2e/passkey-login.spec.ts`: fixture coverage.**
-  The shots render the idle, preparing, choice, email, unknown, in-app, iPhone in-app, old-system and blocked cards and the desk against fixtures; a green run does not prove a real API.
+  The shots render the idle, preparing, choice, email, unknown, in-app, iPhone in-app, old-system, blocked, error and PRF cards and the desk against fixtures; a green run does not prove a real API.
 - **The passkey ceremony full-stack case drives the real frontend, API and database.**
   In `e2e-stack/specs/auth.spec.ts`, a run whose companion API ref is staging fails when
   `POST /v1/auth/passkey/register/begin` answers 404. Any other companion ref still skips on 404,

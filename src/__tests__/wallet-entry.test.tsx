@@ -267,6 +267,8 @@ describe('/wallet passkey entry', () => {
     mockUserState.hasAddress = true;
     view.rerender(<Harness path="/wallet" />);
     expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
+    act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet } }));
+    expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
     act(() => setOpenPasskey(other));
     expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
     fireEvent.click(screen.getByText('cancel-connect'));

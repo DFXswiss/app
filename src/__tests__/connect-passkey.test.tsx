@@ -1479,8 +1479,12 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: /Check addresses/ }));
     expect(await screen.findByText('1 / 2 addresses match')).toHaveClass('text-dfxRed-150');
-    expect(screen.getByText(/Bitcoin.*Matches/)).toHaveClass('text-dfxGreen-300');
-    expect(screen.getByText(/Evm.*Differs/)).toHaveClass('text-dfxRed-150');
+    const bitcoin = screen.getByText(/Bitcoin.*Matches/);
+    expect(bitcoin).toHaveClass('text-dfxGreen-300');
+    expect(bitcoin).toHaveTextContent('bc1q123456…34567890');
+    const evm = screen.getByText(/Ethereum & EVM.*Differs/);
+    expect(evm).toHaveClass('text-dfxRed-150');
+    expect(evm).toHaveTextContent(`${SEED.slice(0, 10)}…${SEED.slice(-8)}`);
   });
 
   it('unlocks before exporting recovery words from settings', async () => {

@@ -4,7 +4,7 @@ import { Fragment, Suspense, useEffect, useRef, useState, useSyncExternalStore }
 import { Trans } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import { CustodyAssets } from 'src/components/home/wallet/connect-address';
-import { getOpenPasskey, subscribeOpenPasskey } from 'src/components/home/wallet/passkey-session';
+import { getOpenPasskey, sameSession, subscribeOpenPasskey } from 'src/components/home/wallet/passkey-session';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { Service } from '../App';
@@ -95,7 +95,7 @@ function HomeScreenContent(): JSX.Element {
   const waitingForSession = specialMode === SpecialMode.WALLET && !isSessionInitialized;
 
   useEffect(() => {
-    if (closedPasskey.current && closedPasskey.current !== openPasskey) closedPasskey.current = undefined;
+    if (closedPasskey.current && !sameSession(openPasskey, closedPasskey.current)) closedPasskey.current = undefined;
     const justLoggedIn = !previousLogin.current && isLoggedIn;
     previousLogin.current = isLoggedIn;
     const isConnectAddress = connectTo?.type === WalletType.ADDRESS;
@@ -116,7 +116,7 @@ function HomeScreenContent(): JSX.Element {
       specialMode === SpecialMode.WALLET &&
       isSessionInitialized &&
       (openPasskey || !isLoggedIn) &&
-      (!openPasskey || closedPasskey.current !== openPasskey)
+      (!openPasskey || !closedPasskey.current || !sameSession(openPasskey, closedPasskey.current))
     ) {
       setConnectTo({ type: WalletType.PASSKEY });
     } else if (

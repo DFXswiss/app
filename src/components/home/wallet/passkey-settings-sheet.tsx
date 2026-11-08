@@ -186,7 +186,13 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
                 key={`${item.family}:${item.address}:${index}`}
                 className={item.matches ? 'text-dfxGreen-300' : 'text-dfxRed-150'}
               >
-                {item.family}{' '}
+                {t(
+                  item.family === 'Spark'
+                    ? 'Lightning (Spark)'
+                    : item.family === 'Evm'
+                      ? 'Ethereum & EVM'
+                      : item.family,
+                )}{' '}
                 <span className="font-mono">
                   {item.address.slice(0, 10)}…{item.address.slice(-8)}
                 </span>
