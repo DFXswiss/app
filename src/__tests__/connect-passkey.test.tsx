@@ -1833,6 +1833,7 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Link' }));
     expect(await screen.findByText(`Linked Evm ${OTHER}.`)).toBeInTheDocument();
     expect(mockLink).toHaveBeenCalledWith('evm', 'token', keys, 1);
+    expect(screen.queryByText('Wallets on this account: 1.')).not.toBeInTheDocument();
   });
 
   it('ignores a reconnect when the session or usable keys disappeared', async () => {
@@ -2362,6 +2363,25 @@ describe('ConnectPasskey', () => {
     expect(mockTranslate).toHaveBeenCalledWith('screens/home', 'wallet refresh failed');
     expect(screen.getByRole('dialog', { name: 'Settings' })).toContainElement(screen.getByRole('alert'));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('does not show a wallet count after automatic Bitcoin linking while Receive is open', async () => {
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    mockLink.mockResolvedValueOnce({ address: { family: 'Bitcoin', address: 'bc1qlogin' } });
+    mockWallets.mockResolvedValueOnce([session.wallet]);
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'EVM', exact: true }));
+    expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent(SEED);
+    act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, addresses: [] } }));
+    await waitFor(() => expect(mockWallets).toHaveBeenCalledWith('token'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled());
+    await act(async () => undefined);
+    expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
+    expect(screen.queryByText('Wallets on this account: 1.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('shows an automatic Bitcoin link failure as a toast while the send dialog is open', async () => {

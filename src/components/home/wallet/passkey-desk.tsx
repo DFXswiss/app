@@ -224,11 +224,12 @@ export default function PasskeyDesk({
     client: WalletClient,
     session: OpenPasskey,
     isCurrent: () => boolean,
+    reportCount: boolean,
   ): Promise<PasskeyWallet | undefined> {
     const list = await client.wallets(session.accessToken);
     const match = list.find((item) => item.id === session.wallet.id);
     if (match) replaceWallet(match, session);
-    if (isLive(session) && isCurrent()) setNote(`Wallets on this account: ${list.length}.`);
+    if (reportCount && isLive(session) && isCurrent()) setNote(`Wallets on this account: ${list.length}.`);
     return match;
   }
 
@@ -248,7 +249,7 @@ export default function PasskeyDesk({
       // The link response is an address token. Further account routes still need the ceremony token.
       const linkedText = `Linked ${linked.address.family} ${linked.address.address}.`;
       try {
-        await refreshWallet(client, original, isCurrent);
+        await refreshWallet(client, original, isCurrent, false);
       } catch (caught) {
         if (isCurrent()) {
           showMessage(`${linkedText} ${translate('screens/home', passkeyMessage(caught))}`);
@@ -570,7 +571,7 @@ export default function PasskeyDesk({
           }
           onRefresh={() =>
             void run(async (client, session, isCurrent) => {
-              await refreshWallet(client, session, isCurrent);
+              await refreshWallet(client, session, isCurrent, true);
             })
           }
           onStatus={() =>
