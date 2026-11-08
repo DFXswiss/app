@@ -33,6 +33,23 @@ export function testWallet(index = 0): TestWallet {
   };
 }
 
+/**
+ * A new random wallet for one run. testWallet(index) is stable across runs and leaves a
+ * "user" row behind when a spec signs up through the browser. This one does not.
+ */
+export function freshTestWallet(): TestWallet {
+  const wallet = ethers.Wallet.createRandom();
+  const mnemonic = wallet.mnemonic;
+  if (!mnemonic) {
+    throw new Error('freshTestWallet: Wallet.createRandom() returned no mnemonic');
+  }
+  return {
+    address: wallet.address,
+    privateKey: wallet.privateKey,
+    mnemonic: mnemonic.phrase,
+  };
+}
+
 /** Full signature login: GET /v1/auth/signMessage -> sign with ethers v5 -> POST /v1/auth. Returns the JWT. */
 export async function signatureLogin(wallet: TestWallet): Promise<string> {
   const base = apiBase();
@@ -76,11 +93,9 @@ export async function gotoWithSession(page: Page, path: string, jwt: string): Pr
     // Compare against this call's token, not just "some token is set": a page that kept the
     // previous account's session would otherwise satisfy the wait, and the test would run as
     // whoever was logged in before — the kind of role mix-up these tests exist to catch.
-    await page.waitForFunction(
-      (expected) => window.localStorage.getItem('dfx.authenticationToken') === expected,
-      jwt,
-      { timeout: 15000 },
-    );
+    await page.waitForFunction((expected) => window.localStorage.getItem('dfx.authenticationToken') === expected, jwt, {
+      timeout: 15000,
+    });
   } catch {
     const actual = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
     throw new Error(
@@ -90,13 +105,18 @@ export async function gotoWithSession(page: Page, path: string, jwt: string): Pr
 }
 
 /** Decode the middle (payload) segment of a JWT without verifying the signature. */
-export function decodeJwtPayload(jwt: string): { role?: string; user?: number; address?: string } {
+export function decodeJwtPayload(jwt: string): {
+  role?: string;
+  user?: number;
+  address?: string;
+  account?: number;
+} {
   const parts = jwt.split('.');
   if (parts.length !== 3) {
     throw new Error(`decodeJwtPayload: expected 3 JWT segments, got ${parts.length}`);
   }
   const json = Buffer.from(parts[1], 'base64url').toString('utf8');
-  return JSON.parse(json) as { role?: string; user?: number; address?: string };
+  return JSON.parse(json) as { role?: string; user?: number; address?: string; account?: number };
 }
 
 /**

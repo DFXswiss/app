@@ -1,8 +1,10 @@
 # Full-stack E2E: real frontend + API + Postgres against mocked external providers.
 #
 # This file has no pull_request trigger. pr.yml workflow_calls it after Build
-# and test. workflow_dispatch remains for manual runs. Never listen to
-# ready_for_review here. Scope (full vs none) still happens inside the job
+# and test and passes called=true. A direct workflow_dispatch remains a
+# manual full run. Without the API checkout key, that direct run fails
+# instead of recording mode=none. Never listen to ready_for_review here.
+# Scope (full vs none) still happens inside the job
 # (the "Determine e2e scope" step) instead of `on.paths` or a job `if:` that
 # would skip a required check. If you ever consider adding another skip
 # anywhere in this file, justify it in a comment right there.
@@ -12,17 +14,32 @@
 # request has merged, that workflow bootstraps the harness from this pull request's head
 # instead, which means neither side is blocked on the other and either merge order works.
 #
-# A develop PR without the ci:full label does not bring up the stack (mode=none
-# inside the job). That is what keeps a standard develop PR under 10 minutes.
-# PRs into main, a bare workflow_dispatch, and the ci:full label run the full
-# suite. PR CI passes the boolean `full` (derived from base branch and labels);
-# the workflow_call path only reads that input. Fork pull requests also take
-# mode=none: they do not receive repository secrets, so E2E_API_CHECKOUT_KEY is
-# empty and Checkout API would fail as "repository not found". The probe is the
-# secret, not github.head_ref
-# (that name is fork-spoofable). There is no job-level draft skip. API
-# checkout, bootstrap resolution, and harness tsc run only when mode != none.
-# There is no selected/partial spec mapping in this repository.
+# Scope, after the API checkout key is probed (the secret, never
+# github.head_ref, which is fork-spoofable). A reusable workflow keeps the
+# caller's github context, so github.event_name is never workflow_call.
+# pr.yml passes called=true. The scope step reads that input, not the
+# event name.
+# - No key, and the caller passed full=true: exit 1. mode=none is not a run.
+# - No key, not a reusable call, and the event is workflow_dispatch (a
+#   direct dispatch of this file): exit 1. A direct dispatch is a full
+#   request. A missing key does not record mode=none.
+# - No key otherwise (a fork pull request, which pr.yml calls with
+#   full=false and called=true): record mode=none and exit 0. A green check
+#   does not prove the suite ran. The ci:full label does not reach this
+#   file and does not change that.
+# - called=true with the key and full=true: mode=full.
+# - called=true with the key and full not true: exit 1 when the base is
+#   develop, main, or empty. Any other base records mode=none and exits 0.
+#   PR CI runs only for pull requests into develop and main. Another base
+#   reaches the scope step only through a manual dispatch; PR CI dispatched
+#   with that base_ref records mode=none and exits 0.
+# - Direct workflow_dispatch with the key (called is not true): mode=full
+#   for every base, including an empty base and a named base.
+# pr.yml sets full=true for a same-repository pull request into develop or
+# main, and for ci:full only when the head repository is this repository.
+# A fork stays full=false. pr.yml passes called=true. There is no job-level
+# draft skip. API checkout, bootstrap resolution, and harness tsc run only
+# when mode != none. There is no selected/partial spec mapping here.
 
 name: Full-stack E2E
 
@@ -40,7 +57,12 @@ on:
         required: false
         type: string
       full:
-        description: Bring up the stack (main / ci:full / bare dispatch)
+        description: Caller requested a full stack (reusable call only; a direct dispatch is always a full request)
+        required: false
+        type: boolean
+        default: false
+      called:
+        description: Set by PR CI; true means this run is a reusable call
         required: false
         type: boolean
         default: false
@@ -59,18 +81,19 @@ on:
         required: false
         type: string
       base_ref:
-        description: PR base branch for manual dispatch (empty = bare/full run)
+        description: PR base branch for manual dispatch (with the API key, empty and every named base are a full run)
         required: false
         type: string
 
 permissions:
   contents: read
 
-# workflow_call (PR path) and workflow_dispatch (manual) must not share a
-# cancel group. Include event_name so a dispatch cannot cancel the nested
-# required check.
+# A reusable call and a direct workflow_dispatch must not share a cancel
+# group. event_name is kept, but it is the caller's event: a dispatched
+# PR CI run and a direct dispatch of this file are both workflow_dispatch.
+# inputs.called separates them (call when true, direct otherwise).
 concurrency:
-  group: e2e-stack-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ github.event_name }}
+  group: e2e-stack-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ github.event_name }}-${{ inputs.called && 'call' || 'direct' }}
   cancel-in-progress: true
 
 jobs:
@@ -79,70 +102,81 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      # Event-only: no checkout. Develop PRs without ci:full stop here.
-      # Modes are only full and none; there is no selected/partial spec
-      # mapping in this repository.
+      # No checkout. No key plus full=true exits 1. No key on a direct
+      # workflow_dispatch (called is not true) also exits 1. A fork
+      # (called=true, full=false, no key) records mode=none and exits 0.
+      # Modes are only full and none. There is no selected/partial mapping.
       - name: Determine e2e scope
         id: scope
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE: ${{ github.base_ref || inputs.base_ref }}
           FULL: ${{ inputs.full }}
+          CALLED: ${{ inputs.called }}
           HAS_API_KEY: ${{ secrets.E2E_API_CHECKOUT_KEY != '' }}
         run: |
           set -euo pipefail
 
+          # github.event_name cannot detect a reusable call: the call keeps
+          # the caller's github context, so the name stays pull_request or
+          # workflow_dispatch. inputs.called is the marker (pr.yml sets it).
           # Fork PRs never receive repository secrets. Probe the secret, not
           # github.head_ref (that name is fork-spoofable).
           if [ "$HAS_API_KEY" != 'true' ]; then
+            if [ "$FULL" = 'true' ]; then
+              echo "::error::A full stack was requested, but E2E_API_CHECKOUT_KEY is not available. mode=none is not a run."
+              exit 1
+            fi
+            if [ "$CALLED" != 'true' ] && [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+              echo "::error::A full stack was requested, but E2E_API_CHECKOUT_KEY is not available. mode=none is not a run."
+              exit 1
+            fi
             echo 'No run: E2E_API_CHECKOUT_KEY is not available (typical of a fork pull request).'
             echo "mode=none" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Caller (PR CI) already decided full vs none after unit tests passed.
-          if [ "$EVENT_NAME" = 'workflow_call' ]; then
+          # Reusable call (called=true). develop, main, and an empty base
+          # must request a full run. Any other base records mode=none.
+          # PR CI runs only for pull requests into develop and main.
+          # Another base reaches the scope step only through a manual
+          # dispatch: PR CI dispatched with that base_ref records mode=none
+          # and exits 0, and a direct dispatch of e2e-stack.yml is a full
+          # run with the API checkout key and fails without it.
+          # Then exit: the rest of this step is for a direct dispatch only.
+          if [ "$CALLED" = 'true' ]; then
             if [ "$FULL" = 'true' ]; then
               echo 'Full run: caller requested a full stack.'
               echo "mode=full" >> "$GITHUB_OUTPUT"
+            elif [ -z "${BASE:-}" ] || [ "$BASE" = 'develop' ] || [ "$BASE" = 'main' ]; then
+              echo "::error::A reusable call with the API key must pass full=true for base develop, main, or an empty base (base='${BASE:-}'). mode=none is not a run."
+              exit 1
             else
-              echo 'E2E skipped: add the ci:full label to run the stack.'
+              echo 'E2E skipped: this caller did not request a full stack.'
               echo "mode=none" >> "$GITHUB_OUTPUT"
             fi
             exit 0
           fi
 
-          # Manual workflow_dispatch with a non-empty base_ref maps to
-          # pull-request scope. A bare manual dispatch has empty BASE and stays full.
+          # Direct workflow_dispatch of this file, with the key. A dispatch
+          # without the key already exited 1. called is not true here. A
+          # non-empty base_ref is remapped onto the pull_request comparison
+          # below. Every such dispatch records mode=full: an empty base,
+          # develop, main, and any other named base.
           if [ "$EVENT_NAME" = 'workflow_dispatch' ] && [ -n "${BASE:-}" ]; then
             EVENT_NAME=pull_request
           fi
 
-          # Release PRs into main (and any non-develop base) and manual dispatches always
-          # run everything: they are the last gate before a release, so no selection there.
           if [ "$EVENT_NAME" != 'pull_request' ] || [ "$BASE" != 'develop' ]; then
             echo "Scope: full (event=$EVENT_NAME, base=${BASE:-n/a})"
             echo "mode=full" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Exact `.name == "ci:full"` via jq: GitHub's `contains()` on label arrays is
-          # not case-sensitive. jq exit 1 (no match) must not be conflated with >=2
-          # (failure) - a failed jq must fail the step, not silently shrink the gate.
-          rc=0
-          jq -e 'any(.pull_request.labels[]?; .name == "ci:full")' "$GITHUB_EVENT_PATH" >/dev/null || rc=$?
-          if (( rc >= 2 )); then
-            echo "::error::jq failed while checking for the ci:full label (exit $rc)."
-            exit 1
-          fi
-          if (( rc == 0 )); then
-            echo 'Full run: the PR has the ci:full label.'
-            echo "mode=full" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo 'E2E skipped: add the ci:full label to run the stack.'
-          echo "mode=none" >> "$GITHUB_OUTPUT"
+          # Remapped dispatch whose base is develop. The key is present, so this
+          # is still a full run.
+          echo 'Full run: dispatch of develop brings the stack up.'
+          echo "mode=full" >> "$GITHUB_OUTPUT"
 
       - name: Checkout services
         if: steps.scope.outputs.mode != 'none'
@@ -150,10 +184,9 @@ jobs:
 
       # GITHUB_TOKEN of this public repository cannot read the private API
       # repository. A read-only deploy key (secret E2E_API_CHECKOUT_KEY) is
-      # the checkout credential. Fork PRs do not receive that secret; detect
-      # the empty value here (never print it) so the job still runs and the
-      # Playwright step can take the documented no-stack path instead of
-      # failing at checkout with "repository not found".
+      # the checkout credential. This step runs only when mode is not none.
+      # Never print the key. A mode=full run that reaches the Playwright step
+      # without this credential fails that step. It does not exit 0.
       - name: Detect API checkout credential
         if: steps.scope.outputs.mode != 'none'
         id: api_cred
@@ -276,13 +309,13 @@ jobs:
           set -euo pipefail
           case "$MODE" in
             none)
-              echo 'E2E skipped: add the ci:full label to run the stack (or target main / dispatch).'
+              echo 'E2E skipped: this run recorded mode=none, so the stack did not start. A green result does not prove the suite ran.'
               exit 0
               ;;
             full)
               if [ "${API_CRED}" != 'yes' ]; then
-                echo 'No API checkout credential — not starting the e2e stack. The job ran.'
-                exit 0
+                echo "::error::mode=full but the API checkout credential is missing. The suite did not run."
+                exit 1
               fi
               # Every spec is in scope here, so the coverage gate checks navigations, not just claims.
               # E2E_FULL_RUN is inline on this command only — not a static step env that would also

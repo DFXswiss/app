@@ -10,14 +10,17 @@ import { ethers } from 'ethers';
 import {
   decodeJwtPayload,
   expect,
+  freshTestWallet,
   gotoWithSession,
   normPath,
   openScreen,
   queryOne,
+  queryRows,
   test,
   testWallet,
+  waitForRow,
 } from './fixtures';
-import { cleanupCreatedData, createUser } from './fixtures/factories';
+import { cleanupCreatedData, createUser, trackRow } from './fixtures/factories';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -73,6 +76,64 @@ async function selectSettingsDropdown(
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function assertAddressHasNoUser(address: string): Promise<void> {
+  const existing = await queryOne<{ id: number }>(`SELECT id FROM "user" WHERE address = $1`, [address]);
+  expect(existing, `address ${address} must have no user row before this login`).toBeUndefined();
+}
+
+/**
+ * Sign-up (POST /v1/auth) inserts user_data, user, a kyc_log when the seed wallet's
+ * autoTradeApproval stamps tradeApprovalDate, and an ip_log. IpCountryGuard inserts ip_log
+ * (nullable userId and userDataId) before the user exists; updateUserIpLogs then sets both
+ * foreign keys. doSignUp does not insert a kyc_step. cleanupCreatedData deletes in reverse
+ * registration order and does not delete parents of a tracked row, so user_data is registered
+ * first and ip_log last. Those rows are registered before the JWT-claim expectations, so a
+ * failed claim still cleans them up. An address already tracked is not registered again.
+ */
+const trackedSignUpAddresses = new Set<string>();
+
+async function registerSignUpRows(address: string): Promise<{ id: number; userDataId: number }> {
+  const row = await waitForRow<{ id: number; userDataId: number }>(
+    `SELECT id, "userDataId" AS "userDataId" FROM "user" WHERE address = $1`,
+    [address],
+  );
+  if (trackedSignUpAddresses.has(address)) return row;
+
+  const logs = await queryRows<{ id: number }>(`SELECT id FROM kyc_log WHERE "userDataId" = $1 ORDER BY id`, [
+    row.userDataId,
+  ]);
+  const ipLogs = await queryRows<{ id: number }>(`SELECT id FROM ip_log WHERE address = $1 ORDER BY id`, [address]);
+
+  trackRow('user_data', row.userDataId);
+  for (const log of logs) trackRow('kyc_log', log.id);
+  trackRow('user', row.id);
+  trackedSignUpAddresses.add(address);
+  for (const ipLog of ipLogs) trackRow('ip_log', ipLog.id);
+  return row;
+}
+
+async function trackSignedUpWallet(address: string, token: string): Promise<void> {
+  const row = await registerSignUpRows(address);
+
+  const payload = decodeJwtPayload(token);
+  expect(payload.address, 'JWT address claim').toBe(address);
+  expect(payload.user, 'JWT user claim').toBe(row.id);
+  expect(typeof payload.account, 'JWT account claim').toBe('number');
+  expect(payload.account, 'JWT account claim is the user_data id').toBe(row.userDataId);
+}
+
+/**
+ * A failure between the browser sign-in and the token read can insert "user"
+ * before trackSignedUpWallet runs. Register the same rows, without JWT expects,
+ * when that address has a user row and is not tracked yet.
+ */
+async function trackUntrackedSignUpUser(address: string): Promise<void> {
+  if (trackedSignUpAddresses.has(address)) return;
+  const row = await queryOne<{ id: number }>(`SELECT id FROM "user" WHERE address = $1`, [address]);
+  if (!row) return;
+  await registerSignUpRows(address);
 }
 
 /** Build a JWT-shaped token (unsigned / dummy signature). Frontend only decodes; API verifies. */
@@ -308,6 +369,80 @@ test.describe('Cross-cutting', () => {
         .toBe(true);
       await expectParamStripped(page, 'address');
       await expectParamStripped(page, 'signature');
+    });
+
+    test('second address+signature login replaces the first wallet on /account', async ({ page }) => {
+      test.setTimeout(90000);
+      const walletA = freshTestWallet();
+      const walletB = freshTestWallet();
+
+      try {
+        const signResA = await fetch(`${apiBase()}/v1/auth/signMessage?address=${encodeURIComponent(walletA.address)}`);
+        expect(signResA.ok, `signMessage status ${signResA.status}`).toBe(true);
+        const { message: messageA } = (await signResA.json()) as { message: string };
+        const signatureA = await new ethers.Wallet(walletA.privateKey).signMessage(messageA);
+
+        await assertAddressHasNoUser(walletA.address);
+        await page.goto(`/?address=${encodeURIComponent(walletA.address)}&signature=${encodeURIComponent(signatureA)}`);
+        await page.waitForLoadState('domcontentloaded');
+        await expect
+          .poll(async () => Boolean(await authToken(page)), {
+            message: 'address+signature should establish a session',
+            timeout: 20000,
+          })
+          .toBe(true);
+        const tokenA = await authToken(page);
+        if (!tokenA) {
+          throw new Error('wallet A session token is missing');
+        }
+        await trackSignedUpWallet(walletA.address, tokenA);
+        await expectParamStripped(page, 'address');
+        await expectParamStripped(page, 'signature');
+
+        await page.goto('/account');
+        await page.waitForLoadState('networkidle');
+
+        const signResB = await fetch(`${apiBase()}/v1/auth/signMessage?address=${encodeURIComponent(walletB.address)}`);
+        expect(signResB.ok, `signMessage status ${signResB.status}`).toBe(true);
+        const { message: messageB } = (await signResB.json()) as { message: string };
+        const signatureB = await new ethers.Wallet(walletB.privateKey).signMessage(messageB);
+
+        await assertAddressHasNoUser(walletB.address);
+        await page.goto(`/?address=${encodeURIComponent(walletB.address)}&signature=${encodeURIComponent(signatureB)}`);
+        await page.waitForLoadState('domcontentloaded');
+        await expect
+          .poll(
+            async () => {
+              const token = await authToken(page);
+              return typeof token === 'string' && token.length > 0 && token !== tokenA ? token : '';
+            },
+            { message: 'second address+signature login should replace the session token', timeout: 20000 },
+          )
+          .not.toBe('');
+        const tokenB = await authToken(page);
+        if (!tokenB) {
+          throw new Error('wallet B session token is missing');
+        }
+        await trackSignedUpWallet(walletB.address, tokenB);
+        await expectParamStripped(page, 'address');
+        await expectParamStripped(page, 'signature');
+        expect(tokenB).not.toBe(tokenA);
+
+        await page.goto('/account');
+        await page.waitForLoadState('networkidle');
+        await expect(page.getByText('Active address', { exact: true })).toBeVisible({ timeout: 20000 });
+        // The harness viewport shows the whole address; random wallets make short tails ambiguous.
+        const addressTrigger = page.locator('#dropDownButton').filter({ hasText: walletB.address });
+        await expect(addressTrigger).toBeVisible({ timeout: 20000 });
+        const shown = (await addressTrigger.innerText()).trim();
+        const shownLower = shown.toLowerCase();
+        expect(shownLower).toMatch(/0x/i);
+        expect(shownLower).toContain(walletB.address.toLowerCase());
+        expect(shownLower).not.toContain(walletA.address.toLowerCase());
+      } finally {
+        await trackUntrackedSignUpUser(walletA.address);
+        await trackUntrackedSignUpUser(walletB.address);
+      }
     });
 
     test('redirect param navigates after session and is stripped', async ({ page }) => {

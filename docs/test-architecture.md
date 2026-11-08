@@ -10,12 +10,12 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 ## The layers this repository owns
 
-| Layer              | Location                        | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                                       |
-| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts run (forks may wait as `action_required`); suite full / related / none                    |
-| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                |
-| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts run (job `mode=none` without `ci:full`); stack only with `ci:full` / main / bare dispatch |
-| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                           | no                                                                                               |
+| Layer              | Location                        | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts run (forks may wait as `action_required`); suite full / related / none                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts run; a same-repository pull request into develop or main brings the stack up when the API checkout key is available and fails when a full stack is requested without it; a fork records mode=none and a green check does not prove a run; PR CI runs only for pull requests into develop and main; another base reaches the scope step only through a manual dispatch: PR CI dispatched with that base_ref records mode=none and exits 0, and a direct dispatch of e2e-stack.yml is a full run with the API checkout key and fails without it. |
+| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                           | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
 payout, ledger booking — is **not** testable from this repository. It belongs to the integration
@@ -54,9 +54,9 @@ Basic Auth.
 
 This layer arrived with #1288 and lives in `e2e-stack/`.
 
-Measured on the head of that pull request, `acb6814a`, in CI: 223 tests, of which 219 passed, 3 were
-skipped and 1 failed, in 9.6 minutes on a single worker. The failure was the route gate doing its job —
-the merge target had gained a route the registry did not claim yet. Re-measure after any change to the
+Measured on `bbb7fe563e580c8df0c86378e40ad00338deee9d`, in CI
+(https://github.com/DFXswiss/app/actions/runs/42364315367): 285 tests, of which 282
+passed, 3 were skipped and none failed, in 12.1 minutes on a single worker. Re-measure after any change to the
 suite; the number of tests is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every
@@ -79,9 +79,17 @@ the spec file a claim names does not exist. When `E2E_FULL_RUN=1` is set, it add
 claimed route the browser never opened. That flag is declared by the run, not measured from it, so it may
 only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
 no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
-whatever the caller's environment holds — and the CI workflow sets it when it brings the stack up (full run).
-Develop PRs without `ci:full` never set it; `ci:full`, PRs into `main`, and a bare `workflow_dispatch`
-(empty `base_ref`) force that full invocation.
+whatever the caller's environment holds — and the Playwright step sets `E2E_FULL_RUN` only when mode=full.
+A same-repository pull request into `develop` or `main` brings the stack up when the API checkout key is
+available and fails when a full stack is requested without it. The `ci:full` label does not make a
+fork pull request run the stack. A fork records `mode=none` and exits 0, and a green check does not prove
+the suite ran. A caller that passed `full=true` without the API checkout key fails. A manual
+`workflow_dispatch` of the full-stack workflow without that key fails. A reusable call (`called=true`)
+that has the API checkout key and does not pass `full=true` fails when the base is `develop`, `main`, or
+empty. Any other base records `mode=none` and exits 0. PR CI runs only for pull requests into `develop`
+and `main`. Another base reaches the scope step only through a manual dispatch; PR CI dispatched
+with that `base_ref` records `mode=none` and exits 0. With the key, a direct dispatch of this workflow is a
+full run for every base, including an empty `base_ref`.
 Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
 there.
 
@@ -360,6 +368,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`/buy and /buy/info: provisional approval …`) sets the date to `NULL`
   after creating the customer, because the factory may leave one behind. A green run does **not** prove
   that a real KYC-30 customer of that wallet reaches the buy screen without a trade approval.
+- **The KycRequired buy spec starts at KYC level 30 with no provisional approval.**
+  `e2e-stack/specs/buy.spec.ts` (`/buy: KycRequired opens the KYC screen`) creates that customer, clears
+  `provisionalApprovalDate` when a stamp is present, and quotes CHF for an asset that is not REALU.
+  `collectionAccountOrThrow` then answers `KycRequired` because the level is below 50. A green run does
+  **not** prove that an AML rule produced that answer. The test writes the starting state (KYC level 30
+  and completed personal data through the factory, `provisionalApprovalDate` cleared by SQL), so a green
+  run does **not** prove that a visitor reaches that state through the product flows.
 - **Full-stack continue-race specs SQL-write `user_data.tradeApprovalDate`.**
   `e2e-stack/specs/kyc-continue-race.spec.ts` sets the date so recommendation is skipped. A green
   run does **not** prove that a customer obtains trade approval through the product path.
@@ -625,16 +640,33 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
 
+## Removed stand-ins
+
+The deleted local Playwright files, other than `e2e/blockchain-transactions.spec.ts`, only opened a route, planted a session or signature, mocked a wallet, or accepted any visible text. They did not run in CI. `e2e/blockchain-transactions.spec.ts` was a real on-chain helper: it confirmed a Sepolia self-transfer and checked a timeout. It was not a website test and it never ran in CI.
+
+Login, logout, buy, sell, swap, refund, and the other screens stay covered by the existing full-stack specs (auth.spec.ts, cross-cutting.spec.ts, buy.spec.ts, sell-swap.spec.ts, transactions.spec.ts, and the screen specs next to them).
+
+Two visitor actions those files claimed and the suite did not perform are now real tests. `KycRequired` opens the KYC screen, and a second address+signature login replaces the first wallet on the account screen.
+
+The document checks from the deleted accessibility spec (title contains DFX, non-empty `html lang`, description longer than 50 characters, `twitter:card`) and the static-file checks from the deleted API integration spec (`/manifest.json` name, `/version.json` `version` and `commit`, `/robots.txt`, `/favicon.ico`) now run in `e2e-stack/specs/smoke.spec.ts` against the frontend the harness serves. The harness nginx answers unknown paths with `index.html` and status 200, so those static checks require the real content type and, for `robots.txt`, the file body. The harness image writes `version.json` before that build. The deleted Google Fonts request check is not part of this suite.
+
+Gasless sell and an on-chain payment stay outside this suite. The existing known gap that no layer verifies a payment end to end still applies. No wallet mock was added.
+
+The 21 screenshots of those six handbook groups (bug-session, signature-login, subpage, swap-btc-to-ln, swap-ln-to-btc, and swap-lightning-url-param) were written only by the removed files, could not be regenerated, and are removed with their metadata entries; the screens stay in the handbook through the maintained baselines of other specs.
+
 ## Known gaps
 
-All four points below concern the full-stack harness.
+All five points below concern the full-stack harness.
 
 - **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*`
   (`e2e-stack/env/api.env`); what that switches off in the API is described in the companion document
   there — every process-gated cron job — so the processing chain never executes;
-  transaction states are inserted with SQL instead. What is verified is the synchronous path:
-  interaction, HTTP, validation, authorisation, persistence, display. (A cron without a `process` field
-  is not covered by that switch and keeps running — see the companion document in `DFXswiss/backend`.)
+  transaction states are inserted with SQL instead. The harness disables every background process
+  including TradeApprovalDate, so the API never answers RecommendationRequired there and the
+  "Enter recommendation" button of the buy quote error is not covered by the harness. What is verified
+  is the synchronous path: interaction, HTTP, validation, authorisation, persistence, display. (A cron
+  without a `process` field is not covered by that switch and keeps running — see the companion document
+  in `DFXswiss/backend`.)
 - **The harness does not exercise the migration chain.** It builds the schema from the entities,
   because one migration requires a seed row that does not exist at migration time on a fresh
   database. Migrations are covered in `DFXswiss/backend` instead.
@@ -645,6 +677,15 @@ All four points below concern the full-stack harness.
   worker with retries disabled (`workers: 1` and `retries: 0` in `e2e-stack/playwright.config.ts`, whose
   comment states the reason): a retry would mask exactly the order-dependent failure this arrangement
   produces. It bounds how far the suite can grow.
+- **A fork pull request does not bring the stack up.** The job has no API checkout key. The `ci:full`
+  label does not change that. The job records `mode=none` and exits 0. A green Full-stack E2E check on a
+  fork does not prove the suite ran. A caller that requested a full stack without the key fails. A manual
+  dispatch of the full-stack workflow without the key fails. A reusable call (`called=true`) that has the
+  key and does not pass `full=true` fails when the base is `develop`, `main`, or empty. Any other base
+  records `mode=none` and exits 0. PR CI runs only for pull requests into `develop` and `main`. Another
+  base reaches the scope step only through a manual dispatch: PR CI dispatched with that `base_ref`
+  records `mode=none` and exits 0, and a direct dispatch of `e2e-stack.yml` is a full run with the API
+  checkout key and fails without it.
 
 ## Target architecture
 

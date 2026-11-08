@@ -50,16 +50,34 @@ interface PaymentInfoPayload {
   asset?: { name?: string };
 }
 
-const PROVISIONAL_ONBOARDING_ERRORS = [
-  'EmailRequired',
-  'RecommendationRequired',
-  'KycRequired',
-  'KycDataRequired',
-  'LimitExceeded',
-] as const;
 const PROVISIONAL_NOTICE =
   'Your account is only provisionally approved. This allows you to make a deposit, ' +
   'but your crypto assets will only be delivered once your onboarding is complete.';
+const KYC_REQUIRED_HINT =
+  'This transaction is only possible with a verified account. Please complete our KYC (Know-Your-Customer) process.';
+
+/** PUT /buy/paymentInfos for amount 100. The caller asserts the one message it prepared. */
+async function openRejectedBuyQuote(page: Page, jwt: string): Promise<{ status: number; message: string }> {
+  await openScreen(page, '/buy', jwt);
+  const rejectedResponsePromise = page.waitForResponse(
+    (response) => {
+      if (response.request().method() !== 'PUT' || !response.url().includes('/buy/paymentInfos')) return false;
+      if (response.url().includes('/confirm') || response.url().includes('/invoice')) return false;
+      return Number(response.request().postDataJSON()?.amount) === 100;
+    },
+    { timeout: 45000 },
+  );
+  await page.goto('/buy?asset-in=CHF&asset-out=ETH&amount-in=100&blockchain=Ethereum');
+  await page.waitForLoadState('networkidle');
+  const rejectedResponse = await rejectedResponsePromise;
+  const body = (await rejectedResponse.json()) as { message?: unknown };
+  if (typeof body.message !== 'string') {
+    throw new Error(
+      `PUT /buy/paymentInfos returned no message string (status ${rejectedResponse.status()}): ${JSON.stringify(body)}`,
+    );
+  }
+  return { status: rejectedResponse.status(), message: body.message };
+}
 
 function normPath(p: string): string {
   return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
@@ -617,16 +635,12 @@ test.describe('Buy flow', () => {
     await page.waitForLoadState('networkidle');
     const rejectedResponse = await rejectedResponsePromise;
     expect(rejectedResponse.status()).toBe(400);
-    // Without the flag the API answers exactly as before: the trade-approval check (RecommendationRequired) or,
-    // for a wallet with automatic trade approval, the KYC-50 gate of the collection account (KycRequired).
+    // TradeApprovalDate is disabled, so this quote has one answer. collectionAccountOrThrow
+    // returns KycRequired: kycLevel 30 is below 50, provisional approval is still absent,
+    // the currency is CHF, and the asset is not REALU.
     const rejectedMessage = ((await rejectedResponse.json()) as { message?: string }).message;
-    const rejectionHints: Record<string, string> = {
-      RecommendationRequired: 'To trade, you need a recommendation from an existing DFX customer.',
-      KycRequired:
-        'This transaction is only possible with a verified account. Please complete our KYC (Know-Your-Customer) process.',
-    };
-    expect(Object.keys(rejectionHints)).toContain(rejectedMessage);
-    await expect(page.getByText(rejectionHints[rejectedMessage!])).toBeVisible();
+    expect(rejectedMessage).toBe('KycRequired');
+    await expect(page.getByText(KYC_REQUIRED_HINT, { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Payment Information' })).toHaveCount(0);
 
     const { jwt: supportJwt } = await loginAs('Support');
@@ -649,7 +663,9 @@ test.describe('Buy flow', () => {
       .toBe(true);
     const buyPaymentInfo = buyCapture.get();
     expect(buyPaymentInfo?.isValid).toBe(false);
-    expect(PROVISIONAL_ONBOARDING_ERRORS).toContain(buyPaymentInfo?.error);
+    // The collection account is display-only. A quote that passes its checks is rewritten to
+    // KycRequired, and this CHF-to-ETH buy at level 30 cannot carry another onboarding error.
+    expect(buyPaymentInfo?.error).toBe('KycRequired');
     expect(buyPaymentInfo?.iban).toBeTruthy();
     const buyIban = dataTableValue(page, 'IBAN');
     await expect(buyIban).toBeVisible();
@@ -669,13 +685,62 @@ test.describe('Buy flow', () => {
       .toBe(true);
     const infoPaymentInfo = infoCapture.get();
     expect(infoPaymentInfo?.isValid).toBe(false);
-    expect(PROVISIONAL_ONBOARDING_ERRORS).toContain(infoPaymentInfo?.error);
+    expect(infoPaymentInfo?.error).toBe('KycRequired');
     expect(infoPaymentInfo?.iban).toBeTruthy();
     const infoIban = dataTableValue(page, 'IBAN');
     await expect(infoIban).toBeVisible();
     expect(stripIban(await infoIban.innerText())).toContain(stripIban(infoPaymentInfo!.iban!).slice(0, 8));
     await expect(page.getByText(PROVISIONAL_NOTICE, { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /Click here once you have issued the transfer/i })).toHaveCount(0);
+  });
+
+  test('/buy: KycRequired opens the KYC screen', async ({ page }) => {
+    test.setTimeout(90000);
+    // collectionAccountOrThrow returns KycRequired for this quote: kycLevel 30 is below 50,
+    // provisional approval is absent, the currency is CHF, and the asset is not REALU. The 400
+    // is not an AML rule. createUser writes kycLevel and does not set provisionalApprovalDate;
+    // clear the column when a stamp is present so that gate stays closed.
+    const user = await createUser({
+      tag: 'buy-quote-kyc-required',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const created = await queryOne<{ provisionalApprovalDate: Date | null }>(
+      `SELECT "provisionalApprovalDate" AS "provisionalApprovalDate" FROM user_data WHERE id = $1`,
+      [user.userDataId],
+    );
+    if (!created) {
+      throw new Error(`KycRequired setup: no user_data ${user.userDataId}`);
+    }
+    if (created.provisionalApprovalDate != null) {
+      await withDb((client) =>
+        client.query(`UPDATE user_data SET "provisionalApprovalDate" = NULL WHERE id = $1`, [user.userDataId]),
+      );
+    }
+    const state = await queryOne<{ kycLevel: number; provisionalApprovalDate: Date | null }>(
+      `SELECT "kycLevel" AS "kycLevel", "provisionalApprovalDate" AS "provisionalApprovalDate"
+       FROM user_data WHERE id = $1`,
+      [user.userDataId],
+    );
+    if (!state) {
+      throw new Error(`KycRequired setup: no user_data ${user.userDataId}`);
+    }
+    expect(state.kycLevel).toBe(30);
+    expect(state.provisionalApprovalDate).toBeNull();
+
+    const quote = await openRejectedBuyQuote(page, user.jwt);
+    expect(quote.status).toBe(400);
+    expect(quote.message).toBe('KycRequired');
+    await expect(page.getByText(KYC_REQUIRED_HINT, { exact: true })).toBeVisible();
+
+    const button = page.getByRole('button', { name: 'Complete KYC', exact: true });
+    await expect(button).toBeVisible();
+    await button.click();
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/kyc');
+    await expect(page.getByText('DFX KYC', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('KYC level', { exact: true })).toBeVisible();
+    await expect(page.getByText('Level 30', { exact: true })).toBeVisible();
   });
 
   test('/buy: confirm after already confirmed shows completion, not error', async ({ page }) => {

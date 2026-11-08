@@ -119,7 +119,7 @@ Specs live under `e2e-stack/specs/`.
 
 Fixtures cover common setup needs such as signature login, email login, and database queries. For the authoritative, up-to-date list of fixtures (names, signatures, import paths), see `e2e-stack/specs/fixtures/` — that directory is the source of truth and may grow as the harness matures.
 
-The harness does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` otherwise requires for API access: the SDK is a React hooks package built around the component lifecycle and cannot run outside a mounted component tree, while this code runs as plain Node.js in the Playwright test process. It builds requests with raw `fetch` instead. That reasoning covers the whole harness, and the harness uses it accordingly: `fetch` is called from 13 places across 8 files — `fixtures/api-client.ts`, `fixtures/auth.ts`, `fixtures/mail.ts`, `global.setup.ts`, `cross-cutting.spec.ts`, `kyc.spec.ts`, `sell-swap.spec.ts` and `smoke.spec.ts`. `fixtures/api-client.ts` is the preferred entry point for authenticated calls, not the only permitted one; the exception to the SDK rule is scoped to `e2e-stack/` and does not extend to application code under `src/`.
+The harness does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` otherwise requires for API access: the SDK is a React hooks package built around the component lifecycle and cannot run outside a mounted component tree, while this code runs as plain Node.js in the Playwright test process. It builds requests with raw `fetch` instead. That reasoning covers the whole harness, and the harness uses it accordingly: `fetch` is called from 17 places across 10 files — `fixtures/api-client.ts`, `fixtures/auth.ts`, `fixtures/mail.ts`, `global.setup.ts`, `cross-cutting.spec.ts`, `kyc-continue-race.spec.ts`, `kyc.spec.ts`, `screen-sync.spec.ts`, `sell-swap.spec.ts` and `smoke.spec.ts`. `fixtures/api-client.ts` is the preferred entry point for authenticated calls, not the only permitted one; the exception to the SDK rule is scoped to `e2e-stack/` and does not extend to application code under `src/`.
 
 The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (override listen port with `E2E_LOOPBACK_PORT`, upstream with `E2E_API_URL`) that relays to the real API service. Under `Environment.LOC` the API builds some URLs (notably KYC-step endpoints) as `http://localhost:3000/...` because it assumes frontend and API share a host; without the forwarder, the browser inside the Playwright container would hit itself and fail with `net::ERR_CONNECTION_REFUSED`.
 
@@ -130,11 +130,22 @@ The suite under `e2e/` is visual-regression testing (screenshot baselines). It d
 This harness checks function, not appearance. Draft pull requests run the
 job after Build and test. GitHub may hold fork runs as `action_required`.
 Ready does not start CI. After a fresh A38 enforce pass, `dfx pr guard`
-approves those waiting initial runs. A develop PR
-without `ci:full` records `mode=none` and does
-not bring the stack up. There is no selected/partial mode: `ci:full`, PRs
-into `main`, and a bare `workflow_dispatch` (empty `base_ref`) force a full
-run. Both suites exist side by side and serve different purposes.
+approves those waiting initial runs. A same-repository pull request into
+`develop` or `main` brings the stack up when the API checkout key is
+available and fails when a full stack is requested without it. A fork pull
+request records `mode=none` and does not bring the stack up. A green check
+on that run does
+not prove the suite ran. The `ci:full` label does not make a fork run the
+stack. There is no selected/partial mode. A caller that requested a full
+stack without the API checkout key fails. A manual `workflow_dispatch` of
+this workflow without that key fails. A reusable call (`called=true`) that
+has the API checkout key and does not pass `full=true` fails when the base
+is `develop`, `main`, or empty. Any other base records `mode=none` and
+exits 0. PR CI runs only for pull requests into `develop` and `main`. Another
+base reaches the scope step only through a manual dispatch; PR CI dispatched
+with that `base_ref` records `mode=none` and exits 0. With the key, a direct
+dispatch of this workflow is a full run for every base, including an empty
+`base_ref`. Both suites exist side by side and serve different purposes.
 
 ## Relationship with the API repository
 

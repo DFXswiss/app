@@ -159,25 +159,9 @@
     "title": "Swap-Prozess",
     "description": "Swap-Flow der Services-App."
   },
-  "swap-btc-to-ln": {
-    "title": "Swap Bitcoin → Lightning",
-    "description": "Manuelle Screenshots: Swap von Bitcoin zu Lightning (geladen und abgeschlossen)."
-  },
-  "swap-ln-to-btc": {
-    "title": "Swap Lightning → Bitcoin",
-    "description": "Manuelle Screenshots: Swap von Lightning zu Bitcoin."
-  },
-  "swap-lightning-url-param": {
-    "title": "Swap Lightning (URL-Parameter)",
-    "description": "Swap-Flow mit Lightning-URL-Parameter."
-  },
   "login-process": {
     "title": "Login-Prozess",
     "description": "Login und Home-Seite nach Authentifizierung."
-  },
-  "signature-login": {
-    "title": "Signatur-Login",
-    "description": "Wallet-Signatur-Login: Home, Buy, Sell, Settings, Transaktionen und Fehlerfall."
   },
   "link-merged-redirect": {
     "title": "Link-Screen: Weiterleitung bei zusammengeführtem Account",
@@ -242,14 +226,6 @@
   "support-message-origin": {
     "title": "Support-Ticket Herkunft",
     "description": "Staff-Thread: Kundennachrichten tragen E-Mail oder In-App. Eine Kundennachricht ohne Herkunft und die Antwort des Supports bleiben ohne Tag."
-  },
-  "subpage": {
-    "title": "Unterseiten",
-    "description": "Buy-, Sell-, Swap- und Transaktions-Unterseiten."
-  },
-  "bug-session": {
-    "title": "Session-Wechsel (Debug)",
-    "description": "Debug-Screenshots zum Session-/Account-Wechsel."
   },
   "spar-place-map": {
     "title": "SPAR-Standorte",

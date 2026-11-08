@@ -16,6 +16,20 @@
 # `src/` or `functions/`. A workflow_dispatch with base_ref follows
 # pull-request scope. Lint, Markdown format check, `build:dev`, and
 # `widget:dev` always run in full.
+#
+# The e2e job is not that Jest scope. It passes called=true. For pull_request
+# it passes full=true only when the head repository is this repository and
+# (the base is main or develop, or the pull request has the ci:full label).
+# A fork pull request gets full=false. e2e-stack.yml then records mode=none
+# and exits 0: a fork never receives E2E_API_CHECKOUT_KEY, and the ci:full
+# label does not make it run the stack. PR CI runs only for pull requests
+# into develop and main. Another base reaches the scope step only through
+# a manual dispatch: PR CI dispatched with that base_ref records mode=none
+# and exits 0, and a direct dispatch of e2e-stack.yml is a full run with
+# the API checkout key and fails without it.
+# A workflow_dispatch of this file passes full=true when base_ref is empty,
+# main, or develop. base_ref=develop now also requests a full stack. Any
+# other base_ref passes full=false and records mode=none.
 
 name: PR CI
 
@@ -262,8 +276,18 @@ jobs:
       - name: Build widget
         run: npm run widget:dev
 
-  # After Build and test so E2E cannot start (and occupy a runner) while unit
-  # tests are still queued. Develop without ci:full is an in-job no-op.
+  # After Build and test so E2E cannot start while unit tests are still
+  # queued. Passes called=true. pull_request: full=true only when
+  # head.repo.full_name == github.repository and (base is main or develop,
+  # or the pull request has ci:full). A fork gets full=false, so
+  # e2e-stack.yml records mode=none and exits 0. PR CI runs only for pull
+  # requests into develop and main. Another base reaches the scope step
+  # only through a manual dispatch: PR CI dispatched with that base_ref
+  # records mode=none and exits 0, and a direct dispatch of e2e-stack.yml
+  # is a full run with the API checkout key and fails without it.
+  # A workflow_dispatch of this file passes full=true when base_ref is
+  # empty, main, or develop. base_ref=develop now also requests a full
+  # stack. Any other base_ref records mode=none.
   e2e:
     name: Full-stack E2E
     needs: [build]
@@ -271,5 +295,6 @@ jobs:
     with:
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
       base_ref: ${{ github.base_ref || inputs.base_ref }}
-      full: ${{ (github.event_name == 'pull_request' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) || (github.event_name != 'pull_request' && (inputs.base_ref == '' || inputs.base_ref == 'main')) }}
+      full: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (github.base_ref == 'main' || github.base_ref == 'develop' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) || (github.event_name != 'pull_request' && (inputs.base_ref == '' || inputs.base_ref == 'main' || inputs.base_ref == 'develop')) }}
+      called: true
     secrets: inherit
