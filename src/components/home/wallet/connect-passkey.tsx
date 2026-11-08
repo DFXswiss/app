@@ -234,11 +234,11 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
         new LoginAutoSigner(keys, walletEnvForHost(window.location.hostname)).sign('evm', address, message),
       );
       if (abandonedRef.current) {
-        if (!isConnect) await logout();
+        await logout();
         return;
       }
       if (!sameSession(getOpenPasskey(), session)) {
-        if (!isConnect) await logout();
+        await logout();
         return;
       }
       if (isConnect) {

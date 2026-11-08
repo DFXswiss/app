@@ -2288,7 +2288,7 @@ describe('ConnectPasskey', () => {
     const next = { ...session, wallet: { ...session.wallet, credentialId: 'other' } };
     act(() => setOpenPasskey(change === 'changed' ? next : undefined));
     await act(async () => finish());
-    expect(mockLogout).toHaveBeenCalledTimes(isConnect ? 0 : 2);
+    expect(mockLogout).toHaveBeenCalledTimes(isConnect ? 1 : 2);
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockOnLogin).not.toHaveBeenCalled();
     expect(mockOnCancel).not.toHaveBeenCalled();
@@ -2299,6 +2299,7 @@ describe('ConnectPasskey', () => {
     [false, false],
     [true, false],
     [false, true],
+    [true, true],
   ])('does not complete an abandoned app opening (connect: %s, reject: %s)', async (isConnect, reject) => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     let finish: () => void = () => undefined;
@@ -2322,7 +2323,7 @@ describe('ConnectPasskey', () => {
     await waitFor(() => expect(mockServiceLogin).toHaveBeenCalledTimes(1));
     view.unmount();
     await act(async () => finish());
-    expect(mockLogout).toHaveBeenCalledTimes(isConnect ? 0 : reject ? 1 : 2);
+    expect(mockLogout).toHaveBeenCalledTimes((isConnect ? 0 : 1) + (reject ? 0 : 1));
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockOnLogin).not.toHaveBeenCalled();
     expect(mockOnCancel).not.toHaveBeenCalled();
