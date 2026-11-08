@@ -3,9 +3,11 @@ import { useSettingsContext } from '../../../contexts/settings.context';
 import PasskeySheet from './passkey-sheet';
 
 export default function PasskeyPaySheet({
+  busy,
   onClose,
   onPasteLink,
 }: {
+  busy?: boolean;
   onClose: () => void;
   onPasteLink: () => void;
 }): JSX.Element {
@@ -39,7 +41,7 @@ export default function PasskeyPaySheet({
     };
   }, [video]);
   return (
-    <PasskeySheet title={translate('screens/home', 'Scan QR code')} onClose={onClose}>
+    <PasskeySheet title={translate('screens/home', 'Scan QR code')} busy={busy} onClose={onClose}>
       <div className="relative aspect-square overflow-hidden rounded-[16px] bg-dfxBlue-800">
         <video ref={setVideo} autoPlay muted playsInline className="h-full w-full object-cover" />
         <div className="pointer-events-none absolute inset-[18%] rounded-[16px] border-4 border-white" />

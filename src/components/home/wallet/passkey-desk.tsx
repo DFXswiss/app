@@ -683,6 +683,7 @@ export default function PasskeyDesk({
       )}
       {sheet === 'pay' && (
         <PasskeyPaySheet
+          busy={busy}
           onClose={requestCloseSheet}
           onPasteLink={() => {
             if (onPasteLink) onPasteLink();

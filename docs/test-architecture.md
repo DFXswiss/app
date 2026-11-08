@@ -728,7 +728,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/wallet-entry.test.tsx` replaces the service names from `App`, `@dfx.swiss/react`,
   `react-i18next`, `@dfx.swiss/react-components`, the connect wrapper, the custody-asset list, and the layout,
   settings, wallet, app-handling, app-params, feature-tree, navigation and resize hooks.
-  It writes an incomplete `{ state: 'locked' }` passkey session into the tab session module via `setOpenPasskey`, and the mocked Connect wrapper clears it on “Use another passkey”; a green run proves neither a real passkey login nor a real session.
+  It writes minimal passkey sessions into the tab session module via `setOpenPasskey` (locked, unlocked, and sessions with only an access token, wallet id and credential id to tell two identities apart), and the mocked Connect wrapper clears them on “Use another passkey”; a green run proves neither a real passkey login nor a real session.
   A green run proves the signed-out `/wallet` path opens the passkey stub, a later sign-in
   closes it, and the other home branches in that file run against those stubs. It does not
   prove a real session, a real SDK, a real passkey ceremony, the published components, or

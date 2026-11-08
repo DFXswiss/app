@@ -985,6 +985,29 @@ describe('ConnectPasskey', () => {
     }
   });
 
+  it('disables closing pay while the automatic Bitcoin link is busy', async () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    let fail: (error: Error) => void = () => undefined;
+    mockLink.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pay' }));
+    expect(screen.getByRole('dialog', { name: 'Scan QR code' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeEnabled();
+    act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, addresses: [] } }));
+    await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
+    await act(async () => fail(new Error('link failed')));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog', { name: 'Scan QR code' })).not.toBeInTheDocument();
+  });
+
   it('does not close receive on Escape while the Bitcoin link is busy', async () => {
     const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
     setOpenPasskey(session);

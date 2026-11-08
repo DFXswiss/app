@@ -11,6 +11,21 @@ describe('Passkey payment camera', () => {
     if (original) Object.defineProperty(navigator, 'mediaDevices', original);
     else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
   });
+  it('disables closing while busy and enables it afterwards', () => {
+    const close = jest.fn();
+    const paste = jest.fn();
+    const { rerender } = render(<PasskeyPaySheet onClose={close} onPasteLink={paste} />);
+    const button = screen.getByRole('button', { name: 'Close' });
+    expect(button).toBeEnabled();
+    rerender(<PasskeyPaySheet busy onClose={close} onPasteLink={paste} />);
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(close).not.toHaveBeenCalled();
+    rerender(<PasskeyPaySheet busy={false} onClose={close} onPasteLink={paste} />);
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
   it('requests the rear camera and stops every track on close', async () => {
     const stop = jest.fn();
     const getUserMedia = jest.fn(async () => ({ getTracks: () => [{ stop }] }));
