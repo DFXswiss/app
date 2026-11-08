@@ -52,7 +52,7 @@ export default function PasskeyWalletCard({
               onClick={(event) => {
                 if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
                   event.preventDefault();
-                  onHome();
+                  if (!busy) onHome();
                 }
               }}
               className="flex min-h-[44px] items-center focus-visible:outline focus-visible:outline-2"

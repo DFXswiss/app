@@ -146,9 +146,20 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   }
 
   async function remember(result: AuthResult, endPreviousSession: boolean): Promise<void> {
-    if (abandonedRef.current) return;
-    if (endPreviousSession && !isConnect) await logout();
-    if (abandonedRef.current) return;
+    if (abandonedRef.current) {
+      result.keys?.wipe();
+      return;
+    }
+    try {
+      if (endPreviousSession && !isConnect) await logout();
+    } catch (caught) {
+      result.keys?.wipe();
+      throw caught;
+    }
+    if (abandonedRef.current) {
+      result.keys?.wipe();
+      return;
+    }
     setOpenPasskey(result);
   }
 

@@ -61,6 +61,32 @@ it('navigates home only on an unmodified left click', () => {
   expect(onHome).toHaveBeenCalledTimes(1);
 });
 
+it('blocks an unmodified home click while busy but preserves modified clicks', () => {
+  const onHome = jest.fn();
+  render(
+    <PasskeyWalletCard
+      currency="CHF"
+      onCurrencyChange={jest.fn()}
+      expanded={false}
+      onExpandedChange={jest.fn()}
+      onSettings={jest.fn()}
+      onHome={onHome}
+      busy
+    />,
+  );
+  const link = screen.getByRole('link', { name: 'DFX home' });
+  const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+  fireEvent(link, click);
+  expect(click.defaultPrevented).toBe(true);
+  expect(onHome).not.toHaveBeenCalled();
+  for (const options of [{ metaKey: true }, { ctrlKey: true }, { button: 1 }]) {
+    const modified = new MouseEvent('click', { bubbles: true, cancelable: true, ...options });
+    fireEvent(link, modified);
+    expect(modified.defaultPrevented).toBe(false);
+  }
+  expect(onHome).not.toHaveBeenCalled();
+});
+
 it('enables key actions only when unlocked or unlockable and disables every action while busy', () => {
   const onAction = jest.fn();
   const view = render(<PasskeyWalletActions unlocked={false} canUnlock={false} onAction={onAction} />);

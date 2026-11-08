@@ -2194,6 +2194,8 @@ describe('ConnectPasskey', () => {
     for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay', 'Settings']) {
       expect(screen.getByRole('button', { name, exact: true })).toBeDisabled();
     }
+    fireEvent.click(screen.getByRole('link', { name: 'DFX home' }));
+    expect(mockNavigate).not.toHaveBeenCalled();
     await act(async () => finish());
     expect(mockNavigate).toHaveBeenCalledWith('/buy');
     expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled();
@@ -3348,8 +3350,9 @@ describe('ConnectPasskey', () => {
     expect(settled).toBe(false);
   });
 
-  it('A login that resolves after unmount does not log out and does not store a session.', async () => {
+  it.each([true, false])('discards a login result after unmount (keys: %s)', async (withKeys) => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const keys = withKeys ? ring(SEED) : undefined;
     const gate: { promise?: Promise<unknown>; resolve?: (value: ReturnType<typeof authResult>) => void } = {};
     mockLogin.mockImplementation(() => {
       gate.promise = new Promise((resolve) => {
@@ -3367,16 +3370,18 @@ describe('ConnectPasskey', () => {
     const resolve = gate.resolve;
     if (resolve === undefined) throw new Error('login gate was not opened');
     await act(async () => {
-      resolve(authResult('unlocked'));
+      resolve(authResult('unlocked', keys));
       await Promise.resolve();
     });
     expect(mockLogout).not.toHaveBeenCalled();
     expect(passkeySession.getOpenPasskey()).toBeUndefined();
+    if (keys) expect(keys.wipe).toHaveBeenCalledTimes(1);
   });
 
-  it('does not store the passkey session when unmounted during logout', async () => {
+  it.each([true, false])('discards a login result when unmounted during logout (keys: %s)', async (withKeys) => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
-    mockLogin.mockResolvedValueOnce(authResult('unlocked'));
+    const keys = withKeys ? ring(SEED) : undefined;
+    mockLogin.mockResolvedValueOnce(authResult('unlocked', keys));
     let finish: () => void = () => undefined;
     mockLogout.mockImplementationOnce(
       () =>
@@ -3390,6 +3395,30 @@ describe('ConnectPasskey', () => {
     unmount();
     await act(async () => finish());
     expect(passkeySession.getOpenPasskey()).toBeUndefined();
+    if (keys) expect(keys.wipe).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([true, false])('discards a login result when logout fails (keys: %s)', async (withKeys) => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const keys = withKeys ? ring(SEED) : undefined;
+    mockLogin.mockResolvedValueOnce(authResult('unlocked', keys));
+    mockLogout.mockRejectedValueOnce(new Error('logout failed'));
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText(GENERIC)).toBeInTheDocument();
+    expect(passkeySession.getOpenPasskey()).toBeUndefined();
+    if (keys) expect(keys.wipe).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the keys of a stored login result', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const keys = ring(SEED);
+    const result = authResult('unlocked', keys);
+    mockLogin.mockResolvedValueOnce(result);
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    await waitFor(() => expect(passkeySession.getOpenPasskey()).toBe(result));
+    expect(keys.wipe).not.toHaveBeenCalled();
   });
 
   it('A login that rejects after unmount does not log out and does not store a session.', async () => {
