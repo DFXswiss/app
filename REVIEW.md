@@ -25,8 +25,11 @@ Reject the pull request when any of these is true:
   manual dispatch of the full-stack workflow without that key fails. A
   reusable call (`called=true`) that has the API checkout key and does not
   pass `full=true` fails when the base is `develop`, `main`, or empty. Any
-  other base records `mode=none` and exits 0, including a same-repository
-  pull request into another base (for example `staging`).
+  other base records `mode=none` and exits 0. PR CI runs only for pull
+  requests into `develop` and `main`. Another base reaches the scope step
+  only through a manual dispatch: PR CI dispatched with that `base_ref`
+  records `mode=none` and exits 0, and a direct dispatch of `e2e-stack.yml`
+  is a full run with the API checkout key and fails without it.
 - The test offered as coverage of the function replaces the screen, the
   visitor's action, the session, the router, the navigation, this service's
   API, or this service's database.

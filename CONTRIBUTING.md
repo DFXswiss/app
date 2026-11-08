@@ -108,8 +108,11 @@ has no API checkout key fails the job. A manual dispatch of the full-stack
 workflow without that key fails the job. A reusable call (`called=true`)
 that has the API checkout key and does not pass `full=true` fails when the
 base is `develop`, `main`, or empty. Any other base records `mode=none` and
-exits 0, including a same-repository pull request into another base (for
-example `staging`). A function
+exits 0. PR CI runs only for pull requests into `develop` and `main`. Another
+base reaches the scope step only through a manual dispatch: PR CI dispatched
+with that `base_ref` records `mode=none` and exits 0, and a direct dispatch
+of `e2e-stack.yml` is a full run with the API checkout key and fails without
+it. A function
 this pull request does not
 touch is not an excuse to add a fake test, and a fake test that already
 exists does not count as the real test of a function this pull request
@@ -227,8 +230,11 @@ suite ran. A caller that requested a full stack and has no API checkout key
 fails the job. A manual dispatch of the full-stack workflow without that key
 fails the job. A reusable call (`called=true`) that has the API checkout key
 and does not pass `full=true` fails when the base is `develop`, `main`, or
-empty. Any other base records `mode=none` and exits 0, including a
-same-repository pull request into another base (for example `staging`).
+empty. Any other base records `mode=none` and exits 0. PR CI runs only for
+pull requests into `develop` and `main`. Another base reaches the scope step
+only through a manual dispatch: PR CI dispatched with that `base_ref` records
+`mode=none` and exits 0, and a direct dispatch of `e2e-stack.yml` is a full
+run with the API checkout key and fails without it.
 
 #### Coverage
 
@@ -365,9 +371,11 @@ label does not make a fork run the stack. A caller that requested a full
 stack without the API checkout key fails. A manual dispatch of the full-stack
 workflow without that key fails. A reusable call (`called=true`) that has the
 API checkout key and does not pass `full=true` fails when the base is
-`develop`, `main`, or empty. Any other base records `mode=none` and exits 0,
-including a same-repository pull request into another base (for example
-`staging`).
+`develop`, `main`, or empty. Any other base records `mode=none` and exits 0.
+PR CI runs only for pull requests into `develop` and `main`. Another base
+reaches the scope step only through a manual dispatch: PR CI dispatched with
+that `base_ref` records `mode=none` and exits 0, and a direct dispatch of
+`e2e-stack.yml` is a full run with the API checkout key and fails without it.
 
 A pull request that adds or changes a website function must add or update the
 real test of that function in this harness, and that test must have run. See
@@ -392,8 +400,12 @@ caller that requested a full stack without the API checkout key fails. A
 manual dispatch of the full-stack workflow without that key fails. A
 reusable call (`called=true`) that has the API checkout key and does not
 pass `full=true` fails when the base is `develop`, `main`, or empty. Any
-other base records `mode=none` and exits 0, including a same-repository pull
-request into another base (for example `staging`). Opening a
+other base records `mode=none` and exits 0. PR CI runs only for pull requests
+into `develop` and `main`. Another base reaches the scope step only through a
+manual dispatch: PR CI dispatched with that `base_ref` records `mode=none`
+and exits 0, and a direct dispatch of `e2e-stack.yml` is a full run with the
+API checkout key and fails without it.
+Opening a
 route satisfies only this route gate. It does not satisfy
 [Real tests](#real-tests). A green check on a run that records `mode=none`
 does not satisfy that rule either.

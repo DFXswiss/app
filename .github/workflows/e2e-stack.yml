@@ -29,9 +29,10 @@
 #   file and does not change that.
 # - called=true with the key and full=true: mode=full.
 # - called=true with the key and full not true: exit 1 when the base is
-#   develop, main, or empty. Any other base records mode=none and exits 0,
-#   including a same-repository pull request into another base (for example
-#   staging).
+#   develop, main, or empty. Any other base records mode=none and exits 0.
+#   PR CI runs only for pull requests into develop and main. Another base
+#   reaches the scope step only through a manual dispatch; PR CI dispatched
+#   with that base_ref records mode=none and exits 0.
 # - Direct workflow_dispatch with the key (called is not true): mode=full
 #   for every base, including an empty base and a named base.
 # pr.yml sets full=true for a same-repository pull request into develop or
@@ -136,8 +137,12 @@ jobs:
           fi
 
           # Reusable call (called=true). develop, main, and an empty base
-          # must request a full run. Any other base, including a
-          # same-repository pull request into staging, records mode=none.
+          # must request a full run. Any other base records mode=none.
+          # PR CI runs only for pull requests into develop and main.
+          # Another base reaches the scope step only through a manual
+          # dispatch: PR CI dispatched with that base_ref records mode=none
+          # and exits 0, and a direct dispatch of e2e-stack.yml is a full
+          # run with the API checkout key and fails without it.
           # Then exit: the rest of this step is for a direct dispatch only.
           if [ "$CALLED" = 'true' ]; then
             if [ "$FULL" = 'true' ]; then
