@@ -15,7 +15,7 @@ const EXPECTED: Record<string, [Errors, Record<string, string>]> = {
     {
       [FIELD]: 'Enthält nicht unterstützte Zeichen. Bitte einfache Buchstaben verwenden, z. B. l statt ł.',
       [CHARSET]:
-        'Dein Name oder deine Adresse enthält Zeichen, die unsere Bankzahlungen nicht unterstützen. Bitte ersetze sie durch einfache Buchstaben (z. B. l statt ł) und versuche es erneut.',
+        'Dein Name oder Deine Adresse enthält Zeichen, die unsere Bankzahlungen nicht unterstützen. Bitte ersetze sie durch einfache Buchstaben (z. B. l statt ł) und versuche es erneut.',
       [BANK]: 'Diese Bank wird von DFX nicht unterstützt. Bitte verwende ein Konto bei einer anderen Bank.',
     },
   ],

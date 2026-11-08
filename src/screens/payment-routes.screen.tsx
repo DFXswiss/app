@@ -250,6 +250,7 @@ export default function PaymentRoutesScreen(): JSX.Element {
 
   const hasRoutes =
     paymentRoutes && Boolean(paymentRoutes?.buy.length || paymentRoutes?.sell.length || paymentRoutes?.swap.length);
+  const bannerError = apiError && apiError !== 'permission denied' ? apiError : error;
 
   const title = updateGlobalConfig
     ? 'Default configuration'
@@ -274,8 +275,8 @@ export default function PaymentRoutesScreen(): JSX.Element {
 
   return (
     <>
-      {(apiError && apiError !== 'permission denied') || error ? (
-        <ErrorHint message={apiError ?? error ?? ''} />
+      {bannerError ? (
+        <ErrorHint message={bannerError} />
       ) : userPaymentLinksConfigLoading || isUserLoading || !isInitialized ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : updateGlobalConfig ? (
@@ -446,7 +447,7 @@ export default function PaymentRoutesScreen(): JSX.Element {
                           ),
                       },
                       {
-                        label: translate('screens/payment', 'Display QR code'),
+                        label: translate('screens/payment', 'Always show QR code'),
                         text: translate('general/actions', userPaymentLinksConfig?.displayQr ? 'Yes' : 'No'),
                       },
                       {
@@ -588,8 +589,6 @@ export default function PaymentRoutesScreen(): JSX.Element {
                                     text: link.recipient.website,
                                     // open absolute URL in new tab
                                     onClick: () => {
-                                      if (!link.recipient?.website) return;
-
                                       const url =
                                         link.recipient?.website?.startsWith('http://') ||
                                         link.recipient?.website?.startsWith('https://')
@@ -671,7 +670,7 @@ export default function PaymentRoutesScreen(): JSX.Element {
                                       ),
                                   },
                                   {
-                                    label: translate('screens/payment', 'Display QR code'),
+                                    label: translate('screens/payment', 'Always show QR code'),
                                     text: translate('general/actions', linkConfig.displayQr ? 'Yes' : 'No'),
                                   },
                                   {
@@ -973,18 +972,18 @@ function PaymentLinkForm({
         });
       }
 
-      let prefilledPaymentConfig = paymentLinks?.find((link) => link.id === paymentLinkId)?.config;
-      prefilledPaymentConfig = { ...userPaymentLinksConfig, ...removeNullFields(prefilledPaymentConfig) };
-      if (prefilledPaymentConfig) {
-        reset({
-          ...getValues(),
-          configStandards: prefilledPaymentConfig.standards,
-          configMinCompletionStatus: prefilledPaymentConfig.minCompletionStatus,
-          configDisplayQr: prefilledPaymentConfig.displayQr,
-          configPaymentTimeout: prefilledPaymentConfig.paymentTimeout,
-          configCancellable: prefilledPaymentConfig.cancellable,
-        });
-      }
+      const prefilledPaymentConfig = {
+        ...userPaymentLinksConfig,
+        ...removeNullFields(paymentLinks?.find((link) => link.id === paymentLinkId)?.config),
+      };
+      reset({
+        ...getValues(),
+        configStandards: prefilledPaymentConfig.standards,
+        configMinCompletionStatus: prefilledPaymentConfig.minCompletionStatus,
+        configDisplayQr: prefilledPaymentConfig.displayQr,
+        configPaymentTimeout: prefilledPaymentConfig.paymentTimeout,
+        configCancellable: prefilledPaymentConfig.cancellable,
+      });
     } else if (configData) {
       const currentValues = getValues();
       const mergedData = { ...currentValues };
@@ -999,12 +998,15 @@ function PaymentLinkForm({
   }, [paymentLinks, allowedCountries, paymentLinkId, step, configData]);
 
   useEffect(() => {
-    const maxIdRoute = paymentRoutes?.sell.reduce(
+    const linkRouteId = paymentLinks?.find((link) => link.id === paymentLinkId)?.routeId;
+    const linkRoute = paymentRoutes?.sell.find((route) => route.id.toString() === linkRouteId?.toString());
+    const minIdRoute = paymentRoutes?.sell.reduce(
       (prev, current) => (prev.id < current.id ? prev : current),
       paymentRoutes.sell[0],
     );
-    if (maxIdRoute) setValue('routeId', routeToRouteIdSelectData(maxIdRoute));
-  }, [paymentRoutes]);
+    const selectedRoute = paymentLinkId ? linkRoute : minIdRoute;
+    if (selectedRoute) setValue('routeId', routeToRouteIdSelectData(selectedRoute));
+  }, [paymentLinkId, paymentLinks, paymentRoutes]);
 
   useEffect(() => {
     const routeId = data.routeId?.id ?? paymentLinks?.find((link) => link.id === paymentLinkId)?.routeId;
@@ -1023,7 +1025,7 @@ function PaymentLinkForm({
       const request: any = {};
 
       if (data.routeId || data.externalId || data.label) {
-        request.routeId = data.routeId ? +data.routeId.id : undefined;
+        request.routeId = +data.routeId.id;
         request.externalId = data.externalId ? data.externalId : undefined;
         request.label = data.label ? data.label : undefined;
       }
@@ -1075,11 +1077,9 @@ function PaymentLinkForm({
       switch (step) {
         case PaymentLinkFormStep.RECIPIENT:
         case PaymentLinkFormStep.CONFIG:
-          if (!paymentLinkId) break;
           await updatePaymentLink(request, paymentLinkId);
           break;
         case PaymentLinkFormStep.PAYMENT:
-          if (!paymentLinkId) break;
           await createPaymentLinkPayment(request.payment, paymentLinkId);
           break;
         default:
@@ -1235,7 +1235,7 @@ function PaymentLinkForm({
                 autocomplete="country"
                 label={translate('screens/kyc', 'Country')}
                 placeholder={translate('general/actions', 'Select') + '...'}
-                items={allowedCountries ?? []}
+                items={allowedCountries}
                 labelFunc={(item) => item.name}
                 filterFunc={(i, s) => !s || [i.name, i.symbol].some((w) => w.toLowerCase().includes(s.toLowerCase()))}
                 matchFunc={(i, s) => i.name.toLowerCase() === s?.toLowerCase()}
@@ -1343,7 +1343,7 @@ function PaymentLinkForm({
               <StyledDropdown
                 rootRef={rootRef}
                 name="configDisplayQr"
-                label={translate('screens/payment', 'Display QR code')}
+                label={translate('screens/payment', 'Always show QR code')}
                 smallLabel
                 full
                 placeholder={translate('general/actions', 'Select...')}
@@ -1367,7 +1367,7 @@ function PaymentLinkForm({
             <StyledVerticalStack center full gap={2}>
               <StyledDataTable alignContent={AlignContent.RIGHT} showBorder minWidth={false}>
                 <StyledDataTableRow label={translate('screens/payment', 'Route ID')}>
-                  <p className="font-semibold">{data.routeId?.id ?? naString}</p>
+                  <p className="font-semibold">{data.routeId.id}</p>
                 </StyledDataTableRow>
                 <StyledDataTableRow label={translate('screens/payment', 'External ID')}>
                   <p className="text-dfxBlue-600">{data.externalId ?? naString}</p>
@@ -1404,31 +1404,23 @@ function PaymentLinkForm({
                   expansionItems={[
                     {
                       label: translate('screens/payment', 'Payment standards'),
-                      text: data.configStandards?.toString() ?? naString,
+                      text: data.configStandards.toString(),
                     },
                     {
                       label: translate('screens/payment', 'Min. completion status'),
-                      text: data.configMinCompletionStatus
-                        ? translate('screens/payment', PaymentQuoteStatusLabels[data.configMinCompletionStatus])
-                        : naString,
+                      text: translate('screens/payment', PaymentQuoteStatusLabels[data.configMinCompletionStatus]),
                     },
                     {
-                      label: translate('screens/payment', 'Display QR code'),
-                      text:
-                        data.configDisplayQr !== undefined
-                          ? translate('general/actions', data.configDisplayQr ? 'Yes' : 'No')
-                          : naString,
+                      label: translate('screens/payment', 'Always show QR code'),
+                      text: translate('general/actions', data.configDisplayQr ? 'Yes' : 'No'),
                     },
                     {
                       label: translate('screens/payment', 'Payment timeout (seconds)'),
-                      text: data.configPaymentTimeout?.toString() ?? naString,
+                      text: data.configPaymentTimeout.toString(),
                     },
                     {
                       label: translate('screens/payment', 'Payment cancellable'),
-                      text:
-                        data.configCancellable !== undefined
-                          ? translate('general/actions', data.configCancellable ? 'Yes' : 'No')
-                          : naString,
+                      text: translate('general/actions', data.configCancellable ? 'Yes' : 'No'),
                     },
                   ]}
                 />
