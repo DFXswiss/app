@@ -2104,7 +2104,7 @@ describe('ConnectPasskey', () => {
 
     renderPasskey();
     fireEvent.click(screen.getByRole('button', { name: action, exact: true }));
-    expect(mockServiceLogin).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockServiceLogin).toHaveBeenCalledTimes(1));
     expect(mockServiceLogin).toHaveBeenCalledWith(WalletType.PASSKEY, SEED, 'Ethereum', expect.any(Function));
     expect(mockNavigate).not.toHaveBeenCalled();
 
@@ -2205,6 +2205,54 @@ describe('ConnectPasskey', () => {
     }
   });
 
+  it('logs out before starting the normal wallet opt-in', async () => {
+    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    let finishLogout: () => void = () => undefined;
+    mockLogout.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishLogout = resolve;
+        }),
+    );
+    renderPasskey();
+    fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
+    expect(mockLogout).toHaveBeenCalledTimes(1);
+    expect(mockServiceLogin).not.toHaveBeenCalled();
+    await act(async () => finishLogout());
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/buy'));
+    expect(mockServiceLogin).toHaveBeenCalledTimes(1);
+    expect(mockLogout.mock.invocationCallOrder[0]).toBeLessThan(mockServiceLogin.mock.invocationCallOrder[0]);
+  });
+
+  it.each(['unmounted', 'changed', 'cleared'] as const)(
+    'does not start the wallet opt-in if the desk is %s during the preceding logout',
+    async (change) => {
+      const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+      setOpenPasskey(session);
+      let finishLogout: () => void = () => undefined;
+      mockLogout.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishLogout = resolve;
+          }),
+      );
+      const view = renderPasskey();
+      fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
+      expect(mockLogout).toHaveBeenCalledTimes(1);
+      if (change === 'unmounted') view.unmount();
+      else {
+        const next = { ...session, wallet: { ...session.wallet, credentialId: 'other' } };
+        act(() => setOpenPasskey(change === 'changed' ? next : undefined));
+      }
+      await act(async () => finishLogout());
+      expect(mockServiceLogin).not.toHaveBeenCalled();
+      expect(mockLogout).toHaveBeenCalledTimes(1);
+      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(mockOnLogin).not.toHaveBeenCalled();
+      expect(mockOnCancel).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     [false, 'changed'],
     [false, 'cleared'],
@@ -2231,11 +2279,12 @@ describe('ConnectPasskey', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
-    expect(mockServiceLogin).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockServiceLogin).toHaveBeenCalledTimes(1));
+    expect(mockLogout).toHaveBeenCalledTimes(isConnect ? 0 : 1);
     const next = { ...session, wallet: { ...session.wallet, credentialId: 'other' } };
     act(() => setOpenPasskey(change === 'changed' ? next : undefined));
     await act(async () => finish());
-    expect(mockLogout).toHaveBeenCalledTimes(1);
+    expect(mockLogout).toHaveBeenCalledTimes(isConnect ? 0 : 2);
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockOnLogin).not.toHaveBeenCalled();
     expect(mockOnCancel).not.toHaveBeenCalled();
@@ -2266,11 +2315,10 @@ describe('ConnectPasskey', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
-    expect(mockServiceLogin).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockServiceLogin).toHaveBeenCalledTimes(1));
     view.unmount();
     await act(async () => finish());
-    if (reject) expect(mockLogout).not.toHaveBeenCalled();
-    else expect(mockLogout).toHaveBeenCalledTimes(1);
+    expect(mockLogout).toHaveBeenCalledTimes(isConnect ? 0 : reject ? 1 : 2);
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockOnLogin).not.toHaveBeenCalled();
     expect(mockOnCancel).not.toHaveBeenCalled();
@@ -2291,7 +2339,7 @@ describe('ConnectPasskey', () => {
       buy.click();
       buy.click();
     });
-    expect(mockServiceLogin).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockServiceLogin).toHaveBeenCalledTimes(1));
     await act(async () => finish());
   });
 
@@ -2306,6 +2354,7 @@ describe('ConnectPasskey', () => {
     );
     renderPasskey();
     fireEvent.click(screen.getByRole('button', { name: 'Buy', exact: true }));
+    await waitFor(() => expect(mockServiceLogin).toHaveBeenCalledTimes(1));
     for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay', 'Settings']) {
       expect(screen.getByRole('button', { name, exact: true })).toBeDisabled();
     }
@@ -2987,6 +3036,7 @@ describe('ConnectPasskey', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
     fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
+    await waitFor(() => expect(mockServiceLogin).toHaveBeenCalledTimes(1));
     await act(async () => {
       releaseSession();
     });

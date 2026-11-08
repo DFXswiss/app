@@ -226,15 +226,19 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     setOpening(true);
     setError(undefined);
     try {
+      if (!isConnect) {
+        await logout();
+        if (abandonedRef.current || !sameSession(getOpenPasskey(), session)) return;
+      }
       await login(WalletType.PASSKEY, keys.evm(0).address, Blockchain.ETHEREUM, async (address, message) =>
         new LoginAutoSigner(keys, walletEnvForHost(window.location.hostname)).sign('evm', address, message),
       );
       if (abandonedRef.current) {
-        await logout();
+        if (!isConnect) await logout();
         return;
       }
       if (!sameSession(getOpenPasskey(), session)) {
-        await logout();
+        if (!isConnect) await logout();
         return;
       }
       if (isConnect) {
