@@ -2435,6 +2435,20 @@ describe('ConnectPasskey', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('keeps a Bitcoin link error in Receive after a successful address derivation', async () => {
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    mockLink.mockRejectedValueOnce(new Error('link failed'));
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, addresses: [] } }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('link failed');
+    fireEvent.click(screen.getByRole('button', { name: 'EVM', exact: true }));
+    expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent(SEED);
+    expect(screen.getByRole('alert')).toHaveTextContent('link failed');
+  });
+
   it('shows an automatic Bitcoin link failure as a toast while the send dialog is open', async () => {
     const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
     setOpenPasskey(session);

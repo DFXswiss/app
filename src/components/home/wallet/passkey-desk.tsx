@@ -114,7 +114,9 @@ export default function PasskeyDesk({
   const [operationBusy, setBusy] = useState(false);
   const busy = operationBusy || opening;
   const [note, setNoteValue] = useState<string>();
-  const [noteKind, setNoteKind] = useState<'message' | 'refresh' | 'status' | 'diagnostics' | 'link'>('message');
+  const [noteKind, setNoteKind] = useState<'message' | 'refresh' | 'status' | 'diagnostics' | 'link' | 'receive'>(
+    'message',
+  );
   const [words, setWords] = useState<string[]>();
   const [checks, setChecks] = useState<{ family: string; address: string; matches: boolean }[]>();
   const busyRef = useRef(false);
@@ -125,6 +127,7 @@ export default function PasskeyDesk({
   const wordsGeneration = useRef(0);
   const wordsKeys = useRef<KeyRing>();
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+  const noteKindRef = useRef(noteKind);
 
   function clearToastTimer(): void {
     if (toastTimer.current !== undefined) {
@@ -149,8 +152,9 @@ export default function PasskeyDesk({
 
   function setNote(
     message?: string,
-    kind: 'message' | 'refresh' | 'status' | 'diagnostics' | 'link' = 'message',
+    kind: 'message' | 'refresh' | 'status' | 'diagnostics' | 'link' | 'receive' = 'message',
   ): void {
+    noteKindRef.current = kind;
     setNoteValue(message);
     setNoteKind(kind);
   }
@@ -662,7 +666,14 @@ export default function PasskeyDesk({
       {sheet === 'receive' && (
         <PasskeySheet title={t('Receive')} busy={busy} onClose={requestCloseSheet}>
           {note && <p role="alert">{t(note)}</p>}
-          <PasskeyReceivePanel unlocked={unlocked} readReceive={readReceive} onReceiveError={setNote} />
+          <PasskeyReceivePanel
+            unlocked={unlocked}
+            readReceive={readReceive}
+            onReceiveError={(message) => {
+              if (message !== undefined) setNote(message, 'receive');
+              else if (noteKindRef.current === 'receive') setNote(undefined);
+            }}
+          />
         </PasskeySheet>
       )}
       {sheet === 'send' && (

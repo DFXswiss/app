@@ -9,7 +9,7 @@ interface PasskeySettingsSheetProps {
   credentialId: string;
   busy: boolean;
   note?: string;
-  noteKind?: 'message' | 'refresh' | 'status' | 'diagnostics' | 'link';
+  noteKind?: 'message' | 'refresh' | 'status' | 'diagnostics' | 'link' | 'receive';
   checks?: { family: string; address: string; matches: boolean }[];
   evmIndex: string;
   validEvmIndex: boolean;

@@ -145,13 +145,13 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     }, 1200);
   }
 
-  async function remember(result: AuthResult, endPreviousSession: boolean): Promise<void> {
+  async function remember(result: AuthResult): Promise<void> {
     if (abandonedRef.current) {
       result.keys?.wipe();
       return;
     }
     try {
-      if (endPreviousSession && !isConnect) await logout();
+      if (!isConnect) await logout();
     } catch (caught) {
       result.keys?.wipe();
       throw caught;
@@ -254,14 +254,14 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   function startLogin(): void {
     void run('login', async () => {
       const result = await createWalletClient().login();
-      await remember(result, true);
+      await remember(result);
     });
   }
 
   function startAuthenticate(): void {
     void run('authenticate', async () => {
       const result = await createWalletClient().login();
-      await remember(result, true);
+      await remember(result);
     });
   }
 
@@ -270,7 +270,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     if (!isMail(address)) return;
     void run('register', async () => {
       const result = await createWalletClient().register({ mail: address });
-      await remember(result, true);
+      await remember(result);
     });
   }
 
