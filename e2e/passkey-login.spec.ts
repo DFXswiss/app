@@ -1089,14 +1089,27 @@ test.describe('Passkey wallet design', () => {
 
 test('wallet shows Bitcoin reconnect after an auto-link failure', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.install();
+  await page.clock.resume();
   await openDesk(page, 'unlocked', true);
-  await page.route('**/v1/auth/passkey/link', fulfillNotOk);
+  let releaseLink = (): void => undefined;
+  const linkGate = new Promise<void>((resolve) => {
+    releaseLink = resolve;
+  });
+  await page.route('**/v1/auth/passkey/link', async (route) => {
+    await linkGate;
+    await fulfillNotOk(route);
+  });
   await registerThroughGuidance(page);
   await page.getByRole('button', { name: 'Show wallet' }).first().click();
   const bitcoinRow = page.locator('li', { has: page.getByText('Not connected yet', { exact: true }) });
   await bitcoinRow.scrollIntoViewIfNeeded();
   await expect(bitcoinRow.getByText('Not connected yet')).toBeInViewport();
   await expect(bitcoinRow.getByRole('button', { name: 'Connect again' })).toBeInViewport();
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 10000);
+  releaseLink();
+  await expect(page.getByRole('status')).toHaveText('Link body is invalid.');
+  await expect(page.getByRole('status')).toBeVisible();
   await expect(page).toHaveScreenshot('passkey-wallet-bitcoin-offline.png');
 });
 

@@ -603,7 +603,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   Telegram. The iPhone in-app shot sets an iPhone user agent that also contains Telegram, so that
   image includes the iPhone sentence. The old-system shot sets a user agent that reports iOS 16.0.
   The desk shots and every shot that completes a ceremony install a fixed in-page authenticator and fulfil the passkey
-  routes with one wallet. Register omits a Bitcoin row so the auto-link posts the derived
+  routes with one wallet. The recovery-word and receive shots show values derived from the fixed test PRF bytes in
+  `e2e/passkey-desk-authenticator.ts`; a green run does not prove a real authenticator's PRF output or a real
+  wallet's addresses. Register omits a Bitcoin row so the auto-link posts the derived
   address; the wallet list then contains that posted Bitcoin address, the placeholder EVM and Spark
   rows, and a differing Bitcoin row. The backupSeen response is a fixture with a fixed date; a green run does not prove the API sets that date.
   The wallet fixtures here and in `e2e/wallet-entry.spec.ts` set `backupRequired` themselves (`true`, and `false`
@@ -622,7 +624,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   The denied-camera shot replaces `getUserMedia` with a rejection; a green run does not prove
   that a real browser denies camera permission or displays the same device-specific error.
   The Bitcoin reconnect shot fulfils the link request with an error; a green run does not prove
-  that the real service returns that error or that a real retry links a Bitcoin address.
+  that the real service returns that error or that a real retry links a Bitcoin address. That shot also
+  installs Playwright's clock, holds the link answer until the page is in place, and pauses the clock before
+  releasing it, so the error toast is still open for the picture; a green run does not prove how long a real
+  browser shows the toast.
 - **The passkey ceremony full-stack case drives the real frontend, API and database.**
   In `e2e-stack/specs/auth.spec.ts`, a run whose companion API ref is staging fails when
   `POST /v1/auth/passkey/register/begin` answers 404. Any other companion ref still skips on 404,
