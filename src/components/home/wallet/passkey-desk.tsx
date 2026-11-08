@@ -270,6 +270,7 @@ export default function PasskeyDesk({
       }
       if (revoked.id !== session.wallet.id) {
         if (isCurrent() && sameSession(getOpenPasskey(), session)) {
+          setRevokeAcknowledged(false);
           setNote('You confirmed with a different passkey. That passkey is now blocked; this wallet is still active.');
         }
         return;

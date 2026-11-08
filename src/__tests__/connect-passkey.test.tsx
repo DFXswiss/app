@@ -1130,6 +1130,8 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
     fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
     expect(await screen.findByRole('alert')).toHaveTextContent('The passkey was not blocked. Please try again.');
+    expect(screen.getByLabelText('I understand that this cannot be undone.')).toBeChecked();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Block', exact: true })).toBeEnabled());
     expect(screen.queryByText(/That passkey is now blocked/)).not.toBeInTheDocument();
     expect(passkeySession.getOpenPasskey()).toBe(session);
     expect(keys.wipe).not.toHaveBeenCalled();
@@ -1173,6 +1175,8 @@ describe('ConnectPasskey', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'You confirmed with a different passkey. That passkey is now blocked; this wallet is still active.',
     );
+    expect(screen.getByLabelText('I understand that this cannot be undone.')).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Block', exact: true })).toBeDisabled();
     expect(passkeySession.getOpenPasskey()).toBe(session);
     expect(keys.wipe).not.toHaveBeenCalled();
     expect(mockOnSwitch).not.toHaveBeenCalled();
