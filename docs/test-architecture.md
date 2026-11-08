@@ -686,10 +686,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   The late-platform-report and late-camera-rejection tests spy on React state setters; a green run does not prove those updates are suppressed without that instrumentation.
   Tests also stub `QrBasic`,
   `getUserMedia` and navigation; a green run does not prove the real QR
-  renderer, camera or router. The same applies to the new wallet unit tests: `passkey-pay-sheet.test.tsx` stubs `getUserMedia`
-  with a fake stream, and
-  `passkey-wallet-history.test.tsx` replaces `IntersectionObserver`; a green run does not prove a
-  real camera, QR code or scroll observer. The same file replaces `navigator.userAgent`,
+  renderer, camera or router. The same file replaces `navigator.userAgent`,
   `navigator.clipboard`, and `document.execCommand`. The same file also replaces `react-qr-code`, `BarcodeDetector`, `navigator.mediaDevices.getUserMedia`, `window.requestAnimationFrame`, `window.cancelAnimationFrame`, and the `srcObject` setter and `play` of `HTMLMediaElement.prototype`. Spies on `getOpenPasskey` supply stale, locked or missing tab sessions; a green run does not prove real session-store behaviour under concurrent changes. The in-app test writes the page address with
   `history.replaceState`, because assigning `location.href` in this jsdom drops the fragment.
   A green run proves the idle card, the
@@ -704,6 +701,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   mainnet login address, or that a Bitcoin row already in
   the list came from the API. WebAuthn stays a stub. A green run does not prove a real camera, a
   real BarcodeDetector, or a real QR image.
+- **The pay-sheet unit test replaces the camera.**
+  `src/__tests__/passkey-pay-sheet.test.tsx` stubs `getUserMedia` with a fake stream; a green run does not prove a real camera or a real QR code.
+- **The history unit test replaces the scroll observer.**
+  `src/__tests__/passkey-wallet-history.test.tsx` replaces `IntersectionObserver`; a green run does not prove a real scroll observer.
 - **The wallet-client unit test replaces the wallet package and DFX API client.**
   A green run proves forwarding to the stubs, not a real wallet ceremony or API call.
 - **The settings-context unit test replaces SDK hooks, app-handling context, browser-lang, application parameters, storage, and i18n.**
