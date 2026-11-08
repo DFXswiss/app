@@ -88,16 +88,19 @@ async function assertAddressHasNoUser(address: string): Promise<void> {
  * autoTradeApproval stamps tradeApprovalDate, and an ip_log. IpCountryGuard inserts ip_log
  * (nullable userId and userDataId) before the user exists; updateUserIpLogs then sets both
  * foreign keys. doSignUp does not insert a kyc_step. cleanupCreatedData deletes in reverse
- * registration order, so parents are registered first and ip_log last. Those rows are
- * registered before the JWT-claim expectations, so a failed claim still cleans them up.
+ * registration order and does not delete parents of a tracked row, so user_data is registered
+ * first and ip_log last. Those rows are registered before the JWT-claim expectations, so a
+ * failed claim still cleans them up. An address already tracked is not registered again.
  */
 const trackedSignUpAddresses = new Set<string>();
 
-async function trackSignedUpWallet(address: string, token: string): Promise<void> {
+async function registerSignUpRows(address: string): Promise<{ id: number; userDataId: number }> {
   const row = await waitForRow<{ id: number; userDataId: number }>(
     `SELECT id, "userDataId" AS "userDataId" FROM "user" WHERE address = $1`,
     [address],
   );
+  if (trackedSignUpAddresses.has(address)) return row;
+
   const logs = await queryRows<{ id: number }>(`SELECT id FROM kyc_log WHERE "userDataId" = $1 ORDER BY id`, [
     row.userDataId,
   ]);
@@ -108,6 +111,11 @@ async function trackSignedUpWallet(address: string, token: string): Promise<void
   trackRow('user', row.id);
   trackedSignUpAddresses.add(address);
   for (const ipLog of ipLogs) trackRow('ip_log', ipLog.id);
+  return row;
+}
+
+async function trackSignedUpWallet(address: string, token: string): Promise<void> {
+  const row = await registerSignUpRows(address);
 
   const payload = decodeJwtPayload(token);
   expect(payload.address, 'JWT address claim').toBe(address);
@@ -118,14 +126,14 @@ async function trackSignedUpWallet(address: string, token: string): Promise<void
 
 /**
  * A failure between the browser sign-in and the token read can insert "user"
- * before trackSignedUpWallet runs. Register that row when it is not tracked yet.
+ * before trackSignedUpWallet runs. Register the same rows, without JWT expects,
+ * when that address has a user row and is not tracked yet.
  */
 async function trackUntrackedSignUpUser(address: string): Promise<void> {
   if (trackedSignUpAddresses.has(address)) return;
   const row = await queryOne<{ id: number }>(`SELECT id FROM "user" WHERE address = $1`, [address]);
   if (!row) return;
-  trackRow('user', row.id);
-  trackedSignUpAddresses.add(address);
+  await registerSignUpRows(address);
 }
 
 /** Build a JWT-shaped token (unsigned / dummy signature). Frontend only decodes; API verifies. */
