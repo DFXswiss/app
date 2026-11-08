@@ -294,12 +294,13 @@ export default function PasskeyDesk({
 
   useEffect(() => {
     if (bitcoinLinkStarted.current) return;
+    if (busy || busyRef.current) return;
     if (!unlocked) return;
     if (sessionWallet === undefined) return;
     if (addresses.some((address) => address.family === 'Bitcoin')) return;
     bitcoinLinkStarted.current = true;
     void onLink('bitcoin', 0, false);
-  }, [unlocked, sessionWallet, addresses, onLink]);
+  }, [busy, unlocked, sessionWallet, addresses, onLink]);
 
   if (!open?.wallet) return <StyledVerticalStack gap={2} center />;
 

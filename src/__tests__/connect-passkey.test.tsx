@@ -2279,6 +2279,55 @@ describe('ConnectPasskey', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/buy'));
   });
 
+  it('links Bitcoin once after an unlock without a Bitcoin address finishes', async () => {
+    const keys = ring(SEED);
+    setOpenPasskey(authResult('locked', undefined, false) as unknown as OpenPasskey);
+    let finishUnlock: (value: unknown) => void = () => undefined;
+    mockUnlock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishUnlock = resolve;
+        }),
+    );
+    mockLink.mockRejectedValueOnce(new Error('link failed'));
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+    expect(mockUnlock).toHaveBeenCalledTimes(1);
+    expect(mockLink).not.toHaveBeenCalled();
+    await act(async () => finishUnlock({ state: 'unlocked', keys }));
+    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0));
+    expect(await screen.findByRole('status')).toHaveTextContent('link failed');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled());
+    await act(async () => undefined);
+    expect(mockLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for another action before trying the automatic Bitcoin link once', async () => {
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    let finishDiagnostics: () => void = () => undefined;
+    mockDiagnostics.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDiagnostics = resolve;
+        }),
+    );
+    mockLink.mockRejectedValueOnce(new Error('link failed'));
+    render(<PasskeyDesk onOpenApp={mockOnLogin} onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
+    expect(mockDiagnostics).toHaveBeenCalledTimes(1);
+    act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, addresses: [] } }));
+    expect(mockLink).not.toHaveBeenCalled();
+    await act(async () => finishDiagnostics());
+    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0));
+    expect(await screen.findByRole('alert')).toHaveTextContent('link failed');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Record a diagnostic' })).toBeEnabled());
+    await act(async () => undefined);
+    expect(mockLink).toHaveBeenCalledTimes(1);
+  });
+
   it('reports the Bitcoin link and translated refresh error in a toast', async () => {
     const keys = ring(SEED);
     mockTranslate.mockImplementation((namespace, text) =>
