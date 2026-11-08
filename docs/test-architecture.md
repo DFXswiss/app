@@ -695,9 +695,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   list without Bitcoin links once, and that revocation uses the passkey. It does not
   prove a real ceremony, that Close cancels WebAuthn or logs out, a real in-app browser, a real
   iPhone, a real operating-system version, a real clipboard, a real system copy, that assigning
-  `location.href` keeps the fragment in a real browser, a real `DfxApiClient`, the
+  `location.href` keeps the fragment in a real browser, the real `createWalletClient` or the real `PasskeyAuth`, the
   published components, that the server stored the
-  mainnet login address, that `auth.link` is the real client, or that a Bitcoin row already in
+  mainnet login address, or that a Bitcoin row already in
   the list came from the API. WebAuthn stays a stub. A green run does not prove a real camera, a
   real BarcodeDetector, or a real QR image.
 - **The wallet-client unit test replaces the wallet package and DFX API client.**
