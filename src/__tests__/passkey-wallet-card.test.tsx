@@ -17,9 +17,10 @@ it('renders balance, currency controls and wallet toggles', () => {
   const props = { currency: 'CHF' as const, onCurrencyChange, expanded: false, onExpandedChange, onSettings, onHome };
   const view = render(<PasskeyWalletCard {...props} />);
   expect(screen.getByLabelText('Loading balance')).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Currency' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'CHF' })).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Total balance' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Total balance Loading balance' }));
   fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
   fireEvent.click(screen.getByRole('button', { name: 'EUR' }));
   expect(onSettings).toHaveBeenCalledTimes(1);
@@ -29,6 +30,7 @@ it('renders balance, currency controls and wallet toggles', () => {
   view.rerender(<PasskeyWalletCard {...props} currency="EUR" expanded balance={{ chf: 1234.5, eur: 99.25 }} />);
   expect(screen.getByText('99')).toBeInTheDocument();
   expect(screen.getByText('.25')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Total balance.*99.*\.25/ })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'EUR' })).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(screen.getByRole('button', { name: 'Hide wallet' }));
   expect(onExpandedChange).toHaveBeenLastCalledWith(false);

@@ -140,7 +140,7 @@ export default function PasskeyWalletCard({
         </div>
         <div className="mt-4 flex items-center justify-between gap-2">
           <span className="text-sm">{t('Total balance')}</span>
-          <div className="flex rounded-lg bg-white/10 p-1" aria-label={t('Currency')}>
+          <div role="group" className="flex rounded-lg bg-white/10 p-1" aria-label={t('Currency')}>
             {(['CHF', 'EUR'] as const).map((symbol) => (
               <button
                 key={symbol}
@@ -158,8 +158,8 @@ export default function PasskeyWalletCard({
         <button
           className="my-2 block min-h-[56px] max-w-full text-left focus-visible:outline focus-visible:outline-2"
           onClick={() => onExpandedChange(!expanded)}
-          aria-label={t('Total balance')}
         >
+          <span className="sr-only">{t('Total balance')} </span>
           {formatted === undefined ? (
             <span aria-label={t('Loading balance')} className="block h-12 w-48 animate-pulse rounded bg-white/20" />
           ) : (

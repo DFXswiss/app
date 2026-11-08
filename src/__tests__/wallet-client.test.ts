@@ -9,16 +9,22 @@ const mockWallets = jest.fn();
 const mockBackup = jest.fn();
 const mockStatus = jest.fn();
 const mockDiagnostics = jest.fn();
+const mockApiCreated = jest.fn((_options: unknown, _instance: unknown) => undefined);
+const mockCacheCreated = jest.fn((_storage: unknown, _key: unknown, _rpId: unknown, _instance: unknown) => undefined);
+const mockAuthCreated = jest.fn((_options: unknown) => undefined);
 
 jest.mock('@dfx.swiss/wallet', () => ({
   RP_IDS: { loc: 'localhost', prd: 'app.dfx.swiss' },
-  CredentialCache: function CredentialCache() {
-    return {};
+  CredentialCache: function CredentialCache(storage: unknown, key: unknown, rpId: unknown) {
+    const cache = {};
+    mockCacheCreated(storage, key, rpId, cache);
+    return cache;
   },
   PasskeyCeremonies: function PasskeyCeremonies() {
     return {};
   },
-  PasskeyAuth: function PasskeyAuth() {
+  PasskeyAuth: function PasskeyAuth(options: unknown) {
+    mockAuthCreated(options);
     return {
       login: mockLogin,
       register: mockRegister,
@@ -32,8 +38,8 @@ jest.mock('@dfx.swiss/wallet', () => ({
 }));
 
 jest.mock('@dfx.swiss/core', () => ({
-  DfxApiClient: function DfxApiClient() {
-    return {
+  DfxApiClient: function DfxApiClient(options: unknown) {
+    const api = {
       passkey: {
         wallets: mockWallets,
         backupSeen: mockBackup,
@@ -41,15 +47,29 @@ jest.mock('@dfx.swiss/core', () => ({
         diagnostics: mockDiagnostics,
       },
     };
+    mockApiCreated(options, api);
+    return api;
   },
 }));
 
 import { createWalletClient } from '../components/home/wallet/wallet-client';
 import type { KeyRing } from '@dfx.swiss/wallet';
+import { RP_IDS } from '@dfx.swiss/wallet';
 import type { PasskeyWallet } from '@dfx.swiss/core';
+import { Api } from '../config/api';
+import { walletEnvForHost } from '../components/home/wallet/passkey-host';
 
 it('forwards each wallet operation and its arguments to the existing adapters', async () => {
   const client = createWalletClient();
+  const env = walletEnvForHost(window.location.hostname);
+  const api = mockApiCreated.mock.calls[0][1];
+  const cache = mockCacheCreated.mock.calls[0][3];
+  const authOptions = mockAuthCreated.mock.calls[0][0] as { api: unknown; cache: unknown; env: string };
+  expect(mockApiCreated).toHaveBeenCalledWith({ apiUrl: `${Api.url.replace(/\/$/, '')}/${Api.version}` }, api);
+  expect(mockCacheCreated).toHaveBeenCalledWith(undefined, 'dfx.wallet.credentials.v1', RP_IDS[env], cache);
+  expect(mockAuthCreated).toHaveBeenCalledWith(expect.objectContaining({ api, cache, env }));
+  expect(authOptions.api).toBe(api);
+  expect(authOptions.cache).toBe(cache);
   const keys = {} as KeyRing;
   const wallet = {} as PasskeyWallet;
   const bytes = new Uint8Array([1]);
