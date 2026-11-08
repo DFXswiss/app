@@ -249,16 +249,25 @@ describe('/wallet passkey entry', () => {
     setOpenPasskey(undefined);
   });
 
-  it('keeps a closed wallet closed until the passkey session changes', () => {
+  it('reopens a closed wallet for a different passkey identity or a new session', () => {
     mockSessionState.isLoggedIn = true;
-    const session = { state: 'locked' } as OpenPasskey;
+    const session = {
+      state: 'locked',
+      accessToken: 'first-token',
+      wallet: { id: 1, credentialId: 'first-credential' },
+    } as unknown as OpenPasskey;
+    const other = {
+      state: 'locked',
+      accessToken: 'second-token',
+      wallet: { id: 2, credentialId: 'second-credential' },
+    } as unknown as OpenPasskey;
     setOpenPasskey(session);
     const view = renderAt('/wallet');
     fireEvent.click(screen.getByText('cancel-connect'));
     mockUserState.hasAddress = true;
     view.rerender(<Harness path="/wallet" />);
     expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
-    act(() => setOpenPasskey({ ...session }));
+    act(() => setOpenPasskey(other));
     expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
     fireEvent.click(screen.getByText('cancel-connect'));
     act(() => setOpenPasskey(undefined));

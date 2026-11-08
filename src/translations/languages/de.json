@@ -613,6 +613,7 @@
     "You will sign in again": "Danach meldest du dich neu an",
     "Danger zone": "Gefahrenzone",
     "Block passkey": "Passkey sperren",
+    "The passkey was not blocked. Please try again.": "Der Passkey wurde nicht gesperrt. Bitte versuche es erneut.",
     "This passkey will no longer open the wallet. This cannot be undone.": "Dieser Passkey öffnet die Wallet danach nicht mehr. Das lässt sich nicht rückgängig machen.",
     "You have not backed up your recovery words. Without them you will lose access to your funds.": "Du hast deine Wiederherstellungswörter noch nicht gesichert. Ohne sie kommst du danach nicht mehr an dein Guthaben.",
     "Back up first": "Zuerst sichern",

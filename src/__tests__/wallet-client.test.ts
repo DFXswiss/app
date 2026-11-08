@@ -54,17 +54,41 @@ it('forwards each wallet operation and its arguments to the existing adapters', 
   const wallet = {} as PasskeyWallet;
   const bytes = new Uint8Array([1]);
   const diagnostic = { stage: 'Authentication', outcome: 'Success' } as const;
-  await client.login();
-  await client.register({ mail: 'wallet@example.com' });
-  await client.unlock();
-  await client.link('evm', 'wallet-token', keys, 2);
-  await client.revoke('Compromised');
-  await client.exportMnemonic(bytes);
-  client.verifyServerAddresses(wallet, keys);
-  await client.wallets('wallet-token');
-  await client.backupSeen(7, 'wallet-token');
-  await client.credentialStatus(['credential']);
-  await client.diagnostics(diagnostic);
+  const results = {
+    login: { value: 'login' },
+    register: { value: 'register' },
+    unlock: { value: 'unlock' },
+    link: { value: 'link' },
+    revoke: { value: 'revoke' },
+    exportMnemonic: { value: 'export' },
+    verify: { value: 'verify' },
+    wallets: { value: 'wallets' },
+    backup: { value: 'backup' },
+    status: { value: 'status' },
+    diagnostics: { value: 'diagnostics' },
+  };
+  mockLogin.mockResolvedValueOnce(results.login);
+  mockRegister.mockResolvedValueOnce(results.register);
+  mockUnlock.mockResolvedValueOnce(results.unlock);
+  mockLink.mockResolvedValueOnce(results.link);
+  mockRevoke.mockResolvedValueOnce(results.revoke);
+  mockExport.mockResolvedValueOnce(results.exportMnemonic);
+  mockVerify.mockReturnValueOnce(results.verify);
+  mockWallets.mockResolvedValueOnce(results.wallets);
+  mockBackup.mockResolvedValueOnce(results.backup);
+  mockStatus.mockResolvedValueOnce(results.status);
+  mockDiagnostics.mockResolvedValueOnce(results.diagnostics);
+  expect(await client.login()).toBe(results.login);
+  expect(await client.register({ mail: 'wallet@example.com' })).toBe(results.register);
+  expect(await client.unlock()).toBe(results.unlock);
+  expect(await client.link('evm', 'wallet-token', keys, 2)).toBe(results.link);
+  expect(await client.revoke('Compromised')).toBe(results.revoke);
+  expect(await client.exportMnemonic(bytes)).toBe(results.exportMnemonic);
+  expect(client.verifyServerAddresses(wallet, keys)).toBe(results.verify);
+  expect(await client.wallets('wallet-token')).toBe(results.wallets);
+  expect(await client.backupSeen(7, 'wallet-token')).toBe(results.backup);
+  expect(await client.credentialStatus(['credential'])).toBe(results.status);
+  expect(await client.diagnostics(diagnostic)).toBe(results.diagnostics);
   expect(mockLogin).toHaveBeenCalledWith();
   expect(mockRegister).toHaveBeenCalledWith({ mail: 'wallet@example.com' });
   expect(mockUnlock).toHaveBeenCalledWith();

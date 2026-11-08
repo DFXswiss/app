@@ -21,6 +21,41 @@ jest.mock('../contexts/settings.context', () => ({
 }));
 
 describe('Passkey wallet dialogs', () => {
+  it('scrolls a new or changed revocation note into view', () => {
+    const original = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
+    const scrollIntoView = jest.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView });
+    const props = {
+      backupNeeded: true,
+      canBackUp: true,
+      acknowledged: false,
+      busy: false,
+      reason: 'Lost' as const,
+      onBackup: jest.fn(),
+      onReason: jest.fn(),
+      onAcknowledged: jest.fn(),
+      onRevoke: jest.fn(),
+      onClose: jest.fn(),
+    };
+    try {
+      const view = render(<PasskeyRevokeSheet {...props} />);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      view.rerender(<PasskeyRevokeSheet {...props} note="first" />);
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' });
+      expect(screen.getByRole('alert')).toHaveClass('scroll-mt-[68px]');
+      view.rerender(<PasskeyRevokeSheet {...props} note="first" />);
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      view.rerender(<PasskeyRevokeSheet {...props} note="second" />);
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+      view.rerender(<PasskeyRevokeSheet {...props} />);
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    } finally {
+      if (original) Object.defineProperty(Element.prototype, 'scrollIntoView', original);
+      else Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    }
+  });
+
   it('shows recovery words, requires confirmation and forwards actions', () => {
     const onDone = jest.fn();
     const onAcknowledged = jest.fn();

@@ -262,6 +262,12 @@ export default function PasskeyDesk({
   async function onRevokeWithPasskey(reason: 'Lost' | 'Compromised'): Promise<void> {
     await run(async (client, session, isCurrent) => {
       const revoked = await client.revoke(reason);
+      if (revoked.status === 'Active') {
+        if (isCurrent() && sameSession(getOpenPasskey(), session)) {
+          setNote('The passkey was not blocked. Please try again.');
+        }
+        return;
+      }
       if (revoked.id !== session.wallet.id) {
         if (isCurrent() && sameSession(getOpenPasskey(), session)) {
           setNote('You confirmed with a different passkey. That passkey is now blocked; this wallet is still active.');

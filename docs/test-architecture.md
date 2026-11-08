@@ -578,6 +578,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/layout-config-hook.test.tsx` uses `mockSetConfig`; a green run does not prove that the real provider updates its context.
 - **The passkey sheet unit test replaces the active element in one case.**
   `src/__tests__/passkey-sheet.test.tsx` stubs `document.activeElement`; a green run does not prove browser focus behaviour for that case.
+- **The passkey wallet dialog unit test replaces scrolling.**
+  `src/__tests__/passkey-wallet-dialogs.test.tsx` stubs `scrollIntoView`; a green run does not prove that a real browser scrolls the note clear of the sticky title.
 - **The passkey wallet unit tests replace the settings context.**
   Their `translate` returns the key; a green run does not prove real translation.
   `changeAppLanguage` and `changeLanguage` are mocked; a green run does not prove real language changes or that the account stays untouched.
@@ -608,6 +610,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   wallet's addresses. Register omits a Bitcoin row so the auto-link posts the derived
   address; the wallet list then contains that posted Bitcoin address, the placeholder EVM and Spark
   rows, and a differing Bitcoin row. The backupSeen response is a fixture with a fixed date; a green run does not prove the API sets that date.
+  The unsuccessful-revocation shot returns an Active wallet fixture; a green run does not prove the API returns that status after a revocation attempt.
   The wallet fixtures here and in `e2e/wallet-entry.spec.ts` set `backupRequired` themselves (`true`, and `false`
   after backupSeen); a green run does not prove the API reports it for a passkey that is not synced.
   The compromised and other-tab shots set the tab session because

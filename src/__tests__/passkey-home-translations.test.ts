@@ -98,6 +98,7 @@ const addedHomeKeys = [
   'You will sign in again',
   'Danger zone',
   'Block passkey',
+  'The passkey was not blocked. Please try again.',
   'This passkey will no longer open the wallet. This cannot be undone.',
   'You have not backed up your recovery words. Without them you will lose access to your funds.',
   'Back up first',

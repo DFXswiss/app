@@ -1,6 +1,9 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { DESK_CREDENTIAL_BYTES, deskBase64Url, installDeskAuthenticator } from './passkey-desk-authenticator';
 
+// EVM index 0 derived from the fixed DESK_PRF_BYTES by the wallet package.
+const DESK_DERIVED_EVM = '0xA6EC3c72017965c5fAeEdaF020895ef1aDD7Ad72';
+
 type HistoryWindow = {
   __dfxHandbookPasskeyHistory?: {
     items: {
@@ -262,7 +265,9 @@ async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<
       return fulfillJson(route, [{ credentialId: deskBase64Url(DESK_CREDENTIAL_BYTES), status: 'Active' }]);
     }
     if (method === 'POST' && path.endsWith('/revoke/begin')) return fulfillJson(route, DESK_CHALLENGE);
-    if (method === 'POST' && path.endsWith('/revoke/finish')) return fulfillJson(route, listedWallet());
+    if (method === 'POST' && path.endsWith('/revoke/finish')) {
+      return fulfillJson(route, { ...listedWallet(), status: 'Lost' });
+    }
     return fulfillJson(route, []);
   });
 
@@ -486,6 +491,7 @@ test.describe('Passkey login', () => {
     await page.getByRole('button', { name: 'EVM', exact: true }).click();
     const address = page.getByTestId('passkey-receive-address');
     await expect(address).toHaveText(/^0x[0-9a-fA-F]{40}$/);
+    await expect(address).toHaveText(DESK_DERIVED_EVM);
     await expect(address).not.toHaveText(DESK_EVM.address);
     await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
     const qr = page.locator('[data-testid=passkey-receive-qr]');
@@ -670,6 +676,29 @@ test.describe('Passkey login', () => {
     await expect(page.getByText('Log in with your device')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
     await expect(page).toHaveScreenshot('passkey-login-revoked.png', { fullPage: true });
+  });
+
+  test('shows the unsuccessful revocation message when the wallet remains active', async ({ page }) => {
+    await registerUnlockedDesk(page);
+    await page.route('**/v1/auth/passkey/revoke/finish', (route) =>
+      fulfillJson(route, { ...deskWallet('', [DESK_EVM, DESK_SPARK]), status: 'Active' }),
+    );
+    await openRevoke(page);
+    await page.getByLabel('I understand that this cannot be undone.').check();
+    await page.getByRole('button', { name: 'Block', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Block passkey' });
+    const alert = dialog.getByRole('alert');
+    await expect(alert).toHaveText('The passkey was not blocked. Please try again.');
+    await expect(alert).toBeInViewport();
+    const titleBar = dialog.getByRole('heading', { name: 'Block passkey' }).locator('..');
+    await expect
+      .poll(async () => {
+        const alertBox = await alert.boundingBox();
+        const titleBox = await titleBar.boundingBox();
+        return alertBox && titleBox ? alertBox.y - (titleBox.y + titleBox.height) : -1;
+      })
+      .toBeGreaterThanOrEqual(0);
+    await expect(page).toHaveScreenshot('passkey-desk-revoke-active.png', { fullPage: true });
   });
 
   test('shows and hides recovery words from the fixed authenticator output', async ({ page }) => {
@@ -1079,6 +1108,7 @@ test.describe('Passkey wallet design', () => {
     await openWallet(page);
     await page.getByRole('button', { name: 'Receive', exact: true }).click();
     await page.getByRole('button', { name: 'EVM', exact: true }).click();
+    await expect(page.getByTestId('passkey-receive-address')).toHaveText(DESK_DERIVED_EVM);
     await expect(page.getByTestId('passkey-receive-address')).not.toHaveText(DESK_EVM.address);
     await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
     await page.getByRole('button', { name: 'Pay', exact: true }).click();

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import PasskeySheet from './passkey-sheet';
 
@@ -18,13 +19,17 @@ interface PasskeyRevokeSheetProps {
 
 export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.Element {
   const { translate } = useSettingsContext();
+  const noteRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    noteRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [props.note]);
   const t = (key: string) => translate('screens/home', key);
   const button = 'min-h-[52px] rounded-md px-4 text-base font-semibold focus-visible:outline focus-visible:outline-2';
 
   return (
     <PasskeySheet title={t('Block passkey')} onClose={props.onClose} busy={props.busy} returnFocus={props.returnFocus}>
       {props.note && (
-        <div role="alert" className="mb-3 rounded-[16px] bg-[#EEF2F8] p-4 text-sm">
+        <div ref={noteRef} role="alert" className="mb-3 scroll-mt-[68px] rounded-[16px] bg-[#EEF2F8] p-4 text-sm">
           {t(props.note)}
         </div>
       )}

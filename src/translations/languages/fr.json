@@ -616,6 +616,7 @@
     "Record a diagnostic": "Enregistrer un diagnostic",
     "Danger zone": "Zone de danger",
     "Block passkey": "Bloquer la clé d’accès",
+    "The passkey was not blocked. Please try again.": "La clé d’accès n’a pas été bloquée. Réessaie.",
     "This passkey will no longer open the wallet. This cannot be undone.": "Cette clé ne pourra plus ouvrir le wallet. Cette action est irréversible.",
     "You have not backed up your recovery words. Without them you will lose access to your funds.": "Tu n’as pas sauvegardé tes mots de récupération. Sans eux, tu perdras l’accès à tes fonds.",
     "Back up first": "Sauvegarder d’abord",
