@@ -90,19 +90,22 @@ declaration.** Anything its parser cannot resolve is a hard failure rather than 
 
 ## Reality declaration — hard requirement
 
-Full definition, including the categories that count as a fake and the mandatory fields per entry, is in
-`DFXswiss/backend` under `docs/test-architecture.md` — that document owns the taxonomy, and its exact extent
-is not verifiable from this repository. The short form that binds every pull request here:
+A fake test of a website function is forbidden. A declaration does not make it
+acceptable. `CONTRIBUTING.md` under Real tests defines the real test and the
+fake test. This section does not relax that rule.
 
-Whenever you introduce, remove or change a fake — a faked external provider, a disabled cron job, a
-schema built without the migration chain, state written directly with SQL, a placeholder value that
-looks real, a suppressed side effect, or a seed correction that bends reality — the declaration
-changes in the same pull request, and each entry says in one plain sentence what a green run does
-**not** prove. A pull request that adds a fake without its declaration is incomplete regardless of
-whether CI is green.
+Where the harness replaces something that is not the website function — an
+external provider, a cron job, or the migration chain — or writes a starting
+row, a placeholder, or a suppressed side effect, the declaration changes in
+the same pull request. Each entry says in one plain sentence what a green run
+does **not** prove. That sentence is a limit. It is not coverage, and it does
+not excuse a missing real test. Write that limit before adding the
+replacement. Reversed, it becomes documentation written from memory, with
+omissions.
 
-Write the declaration entry **before** building the fake. Reversed, it becomes documentation written
-from memory, with omissions.
+The taxonomy of those harness limits, and the mandatory fields of an entry,
+live in `DFXswiss/backend` under `docs/test-architecture.md`. That document
+owns the taxonomy. Its exact extent is not verifiable from this repository.
 
 ## Reality declaration — entries
 
@@ -505,21 +508,36 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   Country is CH on the fixture because the page draws a pin only when country is CH.
   The map does not list shop names. Any other place URL, including `/map/filters`, is answered
   with HTTP 500. It also fulfils `**/v1/**`, `**/v2/**` and `**/paymentLink/**` so `/pl?merchant=SPAR`
-  renders without a live DFX API. Map tiles are the live OpenFreeMap Liberty style, not a fixture.
+  renders without a live DFX API; the merchant info call gets a SPAR merchant with no payment
+  methods. Map tiles are the live OpenFreeMap Liberty style, not a fixture.
   A green run proves those fixtures render on the whole payment page, with no country or shop
   control and no shop-name list: a map of the Swiss pins, an open shop, an empty list, the load
   error, and the loading state before the places arrive. It does not prove that the
   place API still returns this set, that those rows are stored with country CH, or that the
   DFX payment-link API returns the stubbed merchant.
+- **The merchant page pictures answer the merchant info call themselves.**
+  `e2e/merchant-page.spec.ts` fulfils `GET /v1/paymentLink/merchant?route=shop-route` with a
+  synthetic merchant (recipient and three payment methods) or with a `404`,
+  `GET /v1/paymentLink/walletApp` with four synthetic wallets whose icons are inline SVGs, every
+  other `**/paymentLink/**` call with an empty list, and `**/v1/**` and `**/v2/**` so the page
+  renders without a live DFX API. A green run proves that the whole merchant page renders that
+  merchant info with its wallet groups, that a selected wallet shows only the payment methods it
+  supports, both when chosen in the grid and when opened directly with `wallet-id` while the
+  wallet list answers late, that the error text appears, and that the page requests no
+  `/paymentLink/payment`. It does not prove that the API returns this merchant info or this wallet list, or answers an
+  unknown route with this `404`.
 - **The payment-link stack spec answers the place API itself for the SPAR merchant.**
   `e2e-stack/specs/payment-links.spec.ts` fulfils that same SPAR-Switzerland place URL with one
   synthetic SPAR shop, and answers every other place URL with HTTP 500, while the rest of that
   spec talks to the local API. It also fulfils `https://tiles.openfreemap.org/**` with an empty
   map style, because this harness never reaches that host and an open style request keeps the
-  network from going idle. A green run proves the locations block appears for `merchant=SPAR`,
+  network from going idle. It also answers `GET /v1/paymentLink/merchant?route=SPAR` with a SPAR
+  merchant that has no payment methods, because the harness seeds no SPAR route. A green run
+  proves the locations block appears for `merchant=SPAR`,
   the request is `shopName=SPAR` and `country=CH`, and the page shows neither a country control,
   a shop control, the load error, nor the empty sentence. It does not prove that the place API
-  returns that shop, that OpenFreeMap serves tiles, or that a real map draws the pin.
+  returns that shop, that the API answers the merchant info for a SPAR route, that OpenFreeMap
+  serves tiles, or that a real map draws the pin.
 - **The SPAR place-map unit test replaces fetch and MapLibre.**
   `src/__tests__/spar-place-map.test.tsx` stubs `global.fetch` for the place API and replaces
   `maplibre-gl` with a fake map that records markers. A green run proves the component asks only
@@ -532,10 +550,19 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   catalog with `useAssetContext`, the payment-link context and the wallet hook with in-memory
   objects, wallet deeplinks with `mockGetDeeplinkByWalletId`, and `SparPlaceMap` with an empty
   marker. Styled controls, the QR code and `window.open` are fakes too. A green run proves those
-  objects render the quote rows, the payment methods, the wallet block and the SPAR locations
-  block. It does not prove that the DFX payment-link API returns those payloads, that a wallet
-  deeplink opens, that the asset catalog matches production, or that the SPAR map draws the
-  place list.
+  objects render the quote rows, the payment methods, the wallet block, the SPAR locations
+  block and the merchant page from merchant info. It does not prove that the DFX payment-link API
+  returns those payloads, that a wallet deeplink opens, that the asset catalog matches production,
+  or that the SPAR map draws the place list.
+- **The payment-link context unit test replaces the SDK, the network and the wallet.**
+  `src/__tests__/payment-link.context.test.tsx` replaces `getPaymentMerchantInfo` and
+  `assignPaymentLink` with mocks, answers `fetchJson` and `fetch` from in-memory routes, and fakes
+  the session store, polling, the countdown, navigation, the LNURL and EVM helpers and MetaMask. A
+  green run proves how the provider reacts to those answers: the merchant page reads merchant info
+  and creates no payment, invoice and lightning links load and poll, identifiers and MetaMask
+  payments are requested as built. It does not prove that the API returns merchant info for a
+  route or answers `404` and `400` as assumed, that the payment endpoints return those payloads, or
+  that a real MetaMask signs and sends the transaction.
 - **The rejected address switch visual spec answers the user and the switch itself.**
   `e2e/connect-address-switch.spec.ts` authenticates with a synthetic unsigned JWT without an address, fulfils
   `GET /v2/user` with one synthetic address (and with none in the custody case) and the bootstrap GETs,
