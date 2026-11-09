@@ -4,6 +4,15 @@ import type { AuthResult } from '@dfx.swiss/wallet';
 // Keys and the account token disappear when the tab closes.
 export type OpenPasskey = AuthResult;
 
+export function sameSession(a: OpenPasskey | undefined, b: OpenPasskey): boolean {
+  return Boolean(
+    a?.wallet &&
+    a.wallet.id === b.wallet.id &&
+    a.wallet.credentialId === b.wallet.credentialId &&
+    a.accessToken === b.accessToken,
+  );
+}
+
 declare global {
   interface Window {
     __dfxSetOpenPasskey?: (next: OpenPasskey | undefined) => void;

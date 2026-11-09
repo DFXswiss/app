@@ -523,20 +523,13 @@ test.describe('Auth area e2e', () => {
       await trackPasskeyUser();
       expect(stored.status).toBe('Active');
 
-      await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
-      await expect(page.getByText('Passkey wallet', { exact: true })).toBeVisible();
-
-      // The address also appears in "Linked Bitcoin <address>.", so the row is this li.
+      await expect(page.getByRole('button', { name: 'Show wallet' }).first()).toBeVisible({ timeout: 30000 });
+      await page.getByRole('button', { name: 'Show wallet' }).first().click();
       const path = "m/84'/0'/0'/0/0";
-      const bitcoinRow = page.locator('li', { hasText: new RegExp(`Bitcoin bc1q[a-z0-9]+ ${path}`) });
+      const bitcoinRow = page.locator('li', { has: page.getByText('Bitcoin', { exact: true }) });
       await expect(bitcoinRow).toHaveCount(1, { timeout: 30000 });
-      const rendered = (await bitcoinRow.innerText()).trim().replace(/\s+/g, ' ');
-      const matched = new RegExp(`^Bitcoin (bc1q[a-z0-9]+) ${path}$`).exec(rendered);
-      if (matched === null) {
-        throw new Error(`Bitcoin list row is not family, address and path: ${JSON.stringify(rendered)}`);
-      }
-      const address = matched[1];
-      await expect(page.getByText(`Linked Bitcoin ${address}.`, { exact: true })).toBeVisible({ timeout: 30000 });
+      const address = await bitcoinRow.locator('[title]').getAttribute('title');
+      if (address === null || !/^bc1q[a-z0-9]+$/.test(address)) throw new Error('Missing Bitcoin login address');
 
       const bitcoinAddressSql = `SELECT u.address AS address, a.family AS family, a.path AS path
         FROM passkey_address a
@@ -559,26 +552,53 @@ test.describe('Auth area e2e', () => {
       ]);
       expect(rows.length).toBe(1);
 
-      await page.getByRole('button', { name: 'Receive' }).click();
-      await page.getByRole('button', { name: 'EVM', exact: true }).click();
-      await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
-      await page.getByRole('button', { name: 'Send' }).click();
-      await expect(page.getByText('Sending is not active yet.', { exact: true })).toBeVisible();
-      await expect(page.getByLabel('Destination')).toBeVisible();
+      await page.getByRole('button', { name: 'Receive', exact: true }).click();
+      const receive = page.getByRole('dialog', { name: 'Receive' });
+      await receive.getByRole('button', { name: 'EVM', exact: true }).click();
+      await expect(receive.getByRole('button', { name: 'Copy address' })).toBeVisible();
+      await receive.getByRole('button', { name: 'Close' }).click();
+      await page.getByRole('button', { name: 'Send', exact: true }).click();
+      const send = page.getByRole('dialog', { name: 'Send' });
+      await expect(send.getByText('Sending is not active yet.', { exact: true })).toBeVisible();
+      await expect(send.getByLabel('Destination')).toBeVisible();
+      await send.getByRole('button', { name: 'Close' }).click();
 
-      await page.getByRole('button', { name: 'Credential status' }).click();
+      await page.getByRole('button', { name: 'Settings' }).click();
+      await page.getByRole('button', { name: 'Check passkey status' }).click();
       await expect(page.getByText(/: Active/)).toBeVisible({ timeout: 20000 });
-      await page.getByRole('button', { name: 'Refresh wallets' }).click();
+      await page.getByRole('button', { name: 'Reload data' }).click();
       await expect(page.getByText('Wallets on this account: 1.', { exact: true })).toBeVisible({ timeout: 20000 });
-      await expect(bitcoinRow).toHaveCount(1);
-      await expect(bitcoinRow).toHaveText(`Bitcoin ${address} ${path}`);
-
-      await page.getByRole('button', { name: 'Start another ceremony' }).click();
+      await page.getByRole('button', { name: 'Close' }).first().click();
+      await expect(bitcoinRow.locator('[title]')).toHaveAttribute('title', address);
+      await page.getByRole('button', { name: 'Settings' }).click();
+      await page.getByRole('button', { name: 'Use another passkey' }).click();
       await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+      const authentication = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          new URL(response.url()).pathname === '/v1/auth/passkey/authenticate/finish',
+        { timeout: 30000 },
+      );
       await page.getByRole('button', { name: 'Log in' }).click();
-      await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible({ timeout: 30000 });
-      await expect(bitcoinRow).toHaveCount(1);
-      await expect(bitcoinRow).toHaveText(`Bitcoin ${address} ${path}`);
+      const authenticationResponse = await authentication;
+      expect(authenticationResponse.ok()).toBe(true);
+      const { accessToken: ceremonyToken } = (await authenticationResponse.json()) as { accessToken?: string };
+      if (!ceremonyToken) throw new Error('Missing passkey ceremony token');
+      await expect(page.getByRole('button', { name: 'Show wallet' }).first()).toBeVisible({ timeout: 30000 });
+      await page.getByRole('button', { name: 'Show wallet' }).first().click();
+      await expect(bitcoinRow.locator('[title]')).toHaveAttribute('title', address);
+
+      const evmRow = page.locator('li', { has: page.getByText('Ethereum & EVM', { exact: true }) });
+      await expect(evmRow).toHaveCount(1, { timeout: 30000 });
+      await page.getByRole('button', { name: 'Receive', exact: true }).click();
+      await receive.getByRole('button', { name: 'EVM', exact: true }).click();
+      const receiveAddress = receive.getByTestId('passkey-receive-address');
+      await expect(receiveAddress).toHaveText(/^0x[0-9a-fA-F]{40}$/, { timeout: 30000 });
+      const evmAddress = await receiveAddress.textContent();
+      if (evmAddress === null || !/^0x[0-9a-fA-F]{40}$/.test(evmAddress)) throw new Error('Missing EVM address');
+      const serverEvmAddress = await evmRow.locator('[title]').getAttribute('title');
+      expect(serverEvmAddress?.toLowerCase()).toBe(evmAddress.toLowerCase());
+      await receive.getByRole('button', { name: 'Close' }).click();
     } finally {
       await trackPasskeyUser();
     }
