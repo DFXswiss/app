@@ -13,6 +13,8 @@ const mockHttpCreated = jest.fn((_options: unknown, _instance: unknown) => undef
 const mockPasskeyCreated = jest.fn((_http: unknown, _passkey: unknown) => undefined);
 const mockCacheCreated = jest.fn((_storage: unknown, _key: unknown, _rpId: unknown, _instance: unknown) => undefined);
 const mockAuthCreated = jest.fn((_options: unknown) => undefined);
+const mockCeremoniesCreated = jest.fn((_env: unknown) => undefined);
+const mockWalletEnvForHost = jest.fn((_hostname: unknown) => 'loc');
 
 jest.mock('@dfx.swiss/wallet', () => ({
   RP_IDS: { loc: 'localhost', prd: 'app.dfx.swiss' },
@@ -21,7 +23,8 @@ jest.mock('@dfx.swiss/wallet', () => ({
     mockCacheCreated(storage, key, rpId, cache);
     return cache;
   },
-  PasskeyCeremonies: function PasskeyCeremonies() {
+  PasskeyCeremonies: function PasskeyCeremonies(env: unknown) {
+    mockCeremoniesCreated(env);
     return {};
   },
   PasskeyAuth: function PasskeyAuth(options: unknown) {
@@ -57,6 +60,10 @@ jest.mock('@dfx.swiss/core', () => ({
   DfxApiClient: function DfxApiClient() {
     throw new Error('DfxApiClient must not be constructed');
   },
+}));
+
+jest.mock('../components/home/wallet/passkey-host', () => ({
+  walletEnvForHost: (hostname: unknown) => mockWalletEnvForHost(hostname),
 }));
 
 import { createWalletClient } from '../components/home/wallet/wallet-client';
@@ -105,6 +112,9 @@ describe('createWalletClient', () => {
     mockPasskeyCreated.mockClear();
     mockCacheCreated.mockClear();
     mockAuthCreated.mockClear();
+    mockCeremoniesCreated.mockClear();
+    mockWalletEnvForHost.mockReset();
+    mockWalletEnvForHost.mockReturnValue('loc');
     apiConfig.url = originalApiUrl;
     setHostname('localhost');
   });
@@ -167,22 +177,32 @@ describe('createWalletClient', () => {
     expect(options.api.passkey).toBe(passkeyInstance());
   });
 
-  it('passes the localhost relying party and env to the credential cache and PasskeyAuth', () => {
+  it('calls walletEnvForHost once with the hostname and forwards loc to auth, ceremonies and the rp id', () => {
     setHostname('localhost');
+    mockWalletEnvForHost.mockReturnValue('loc');
     createWalletClient();
     const cache = mockCacheCreated.mock.calls[0][3];
 
+    expect(mockWalletEnvForHost).toHaveBeenCalledTimes(1);
+    expect(mockWalletEnvForHost).toHaveBeenCalledWith('localhost');
+    expect(mockCeremoniesCreated).toHaveBeenCalledTimes(1);
+    expect(mockCeremoniesCreated).toHaveBeenCalledWith('loc');
     expect(mockCacheCreated).toHaveBeenCalledTimes(1);
     expect(mockCacheCreated).toHaveBeenCalledWith(undefined, 'dfx.wallet.credentials.v1', RP_IDS.loc, cache);
     expect(authOptions().cache).toBe(cache);
     expect(authOptions().env).toBe('loc');
   });
 
-  it('passes the production relying party and env to the credential cache and PasskeyAuth', () => {
+  it('calls walletEnvForHost once with the hostname and forwards prd to auth, ceremonies and the rp id', () => {
     setHostname('app.dfx.swiss');
+    mockWalletEnvForHost.mockReturnValue('prd');
     createWalletClient();
     const cache = mockCacheCreated.mock.calls[0][3];
 
+    expect(mockWalletEnvForHost).toHaveBeenCalledTimes(1);
+    expect(mockWalletEnvForHost).toHaveBeenCalledWith('app.dfx.swiss');
+    expect(mockCeremoniesCreated).toHaveBeenCalledTimes(1);
+    expect(mockCeremoniesCreated).toHaveBeenCalledWith('prd');
     expect(mockCacheCreated).toHaveBeenCalledTimes(1);
     expect(mockCacheCreated).toHaveBeenCalledWith(undefined, 'dfx.wallet.credentials.v1', RP_IDS.prd, cache);
     expect(authOptions().cache).toBe(cache);
