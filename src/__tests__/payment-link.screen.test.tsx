@@ -60,6 +60,7 @@ function paymentHasQuote(request: unknown): boolean {
 interface MockPaymentLinkContext {
   error: string | undefined;
   merchant: string | undefined;
+  merchantInfo: Record<string, unknown> | undefined;
   payRequest: Record<string, unknown> | undefined;
   timer: { minutes: number; seconds: number };
   paymentLinkApiUrl: { current: string };
@@ -448,6 +449,31 @@ function terminalPayRequest(overrides: Record<string, unknown> = {}): Record<str
   };
 }
 
+function merchantInfo(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    displayName: 'Shop',
+    mode: PaymentLinkMode.MULTIPLE,
+    recipient: {
+      name: 'Shop AG',
+      address: { street: 'Main', houseNumber: '1', zip: '8000', city: 'Zurich', country: 'CH' },
+      website: 'shop.example.com',
+    },
+    transferAmounts: [
+      { method: 'Lightning', assets: [{ asset: 'BTC' }] },
+      { method: 'Ethereum', assets: [{ asset: 'ZCHF' }, { asset: 'USDT' }] },
+      { method: 'Polygon', assets: [{ asset: 'ZCHF' }] },
+    ],
+    ...overrides,
+  };
+}
+
+function showMerchantPage(info: Record<string, unknown> = merchantInfo()): void {
+  mockPaymentLinkContext.merchant = 'shop-route';
+  mockPaymentLinkContext.isMerchantMode = true;
+  mockPaymentLinkContext.payRequest = undefined;
+  mockPaymentLinkContext.merchantInfo = info;
+}
+
 function wallet(overrides: Partial<WalletLike> = {}): WalletLike {
   return {
     id: 1,
@@ -462,6 +488,7 @@ function wallet(overrides: Partial<WalletLike> = {}): WalletLike {
 function resetPaymentLinkContext(): void {
   mockPaymentLinkContext.error = undefined;
   mockPaymentLinkContext.merchant = undefined;
+  mockPaymentLinkContext.merchantInfo = undefined;
   mockPaymentLinkContext.payRequest = quotedPayRequest();
   mockPaymentLinkContext.timer = { minutes: 1, seconds: 30 };
   mockPaymentLinkContext.paymentLinkApiUrl = { current: API_URL };
@@ -679,6 +706,102 @@ describe('PaymentLinkScreen', () => {
 
       expect(screen.getByText('Migros')).toBeInTheDocument();
       expect(screen.queryByTestId('spar-locations')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('merchant page', () => {
+    it('shows a spinner until the merchant info has loaded', () => {
+      showMerchantPage();
+      mockPaymentLinkContext.merchantInfo = undefined;
+
+      renderScreen();
+
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    });
+
+    it('shows the context error instead of the page when the merchant info fails', () => {
+      showMerchantPage();
+      mockPaymentLinkContext.merchantInfo = undefined;
+      mockPaymentLinkContext.error = 'Payment route not found';
+
+      renderScreen();
+
+      expect(screen.getByText('Payment route not found')).toBeInTheDocument();
+      expect(screen.queryByTestId('expand-Payment Methods')).not.toBeInTheDocument();
+    });
+
+    it('shows the display name, recipient, payment methods and wallets from the merchant info', () => {
+      showMerchantPage();
+
+      renderScreen();
+
+      expect(screen.getByText('Shop')).toBeInTheDocument();
+      expect(screen.getByTestId('expand-Recipient')).toHaveTextContent('Shop AG');
+      expect(screen.getByTestId('expand-item-Country')).toHaveTextContent('CH');
+      expect(screen.getByTestId('expand-Payment Methods')).toBeInTheDocument();
+      expect(screen.getByText('Frankenwallet')).toBeInTheDocument();
+      expect(screen.queryByTestId('expand-Expiry date')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('expand-External ID')).not.toBeInTheDocument();
+    });
+
+    it('shows no payment details block for merchant info without a recipient, as before', () => {
+      showMerchantPage(merchantInfo({ recipient: undefined }));
+
+      renderScreen();
+
+      expect(screen.queryByText('Payment details')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('expand-Payment Methods')).not.toBeInTheDocument();
+      expect(screen.getByText('Frankenwallet')).toBeInTheDocument();
+    });
+
+    it('opens the recipient website with an https prefix', () => {
+      showMerchantPage();
+
+      renderScreen();
+      fireEvent.click(screen.getByTestId('expand-item-Website'));
+
+      expect(mockOpen).toHaveBeenCalledWith('https://shop.example.com', '_blank');
+    });
+
+    it('falls back to the merchant route when the display name is missing', () => {
+      showMerchantPage(merchantInfo({ displayName: undefined }));
+
+      renderScreen();
+
+      expect(screen.getByText('shop-route')).toBeInTheDocument();
+    });
+
+    it('filters the merchant payment methods by the selected wallet', async () => {
+      showMerchantPage();
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7, supportedMethods: ['Polygon'] })];
+      mockSearchParams = new URLSearchParams('wallet-id=7');
+
+      renderScreen();
+
+      expect(await screen.findByText('Frankenwallet')).toBeInTheDocument();
+      const methods = screen.getAllByTestId('collapsible').find((node) => {
+        const text = node.textContent;
+        return Boolean(text && text.includes('Payment Methods') && !text.includes('Payment details'));
+      });
+      expect(methods).toHaveTextContent('ZCHF');
+      expect(methods).not.toHaveTextContent('BTC');
+      expect(methods).not.toHaveTextContent('USDT');
+    });
+
+    it('scrolls to the SPAR locations once the merchant info is shown', () => {
+      jest.useFakeTimers();
+      showMerchantPage();
+      mockPaymentLinkContext.merchant = 'SPAR';
+      mockPaymentLinkContext.showMap = true;
+
+      renderScreen();
+      act(() => {
+        jest.advanceTimersByTime(100);
+      });
+
+      expect(screen.getByTestId('spar-locations')).toBeInTheDocument();
+      expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth' });
+      jest.useRealTimers();
     });
   });
 
@@ -952,8 +1075,7 @@ describe('PaymentLinkScreen', () => {
     });
 
     it('hides the external id row in merchant mode', () => {
-      mockPaymentLinkContext.isMerchantMode = true;
-      mockPaymentLinkContext.payRequest = quotedPayRequest();
+      showMerchantPage();
 
       renderScreen();
 
@@ -1257,16 +1379,19 @@ describe('PaymentLinkScreen', () => {
       expect(screen.queryByText('Lightning')).not.toBeInTheDocument();
     });
 
-    it('hides amounts in merchant mode', () => {
-      mockPaymentLinkContext.isMerchantMode = true;
-      mockPaymentLinkContext.merchant = 'Shop';
-      mockPaymentLinkContext.payRequest = quotedPayRequest({ transferAmounts: sharedAmounts });
+    it('lists the merchant assets with their methods and no amounts', () => {
+      showMerchantPage();
 
       renderScreen();
 
-      expect(screen.getByText('USDC')).toBeInTheDocument();
-      expect(screen.queryByText('10')).not.toBeInTheDocument();
-      expect(screen.queryByText('1.5')).not.toBeInTheDocument();
+      const methods = screen.getByTestId('expand-Payment Methods');
+      expect(within(methods).getByText('BTC')).toBeInTheDocument();
+      expect(within(methods).getByText('Lightning')).toBeInTheDocument();
+      expect(within(methods).getByText('ZCHF')).toBeInTheDocument();
+      expect(within(methods).getByText('Ethereum, Polygon')).toBeInTheDocument();
+      expect(within(methods).getByText('USDT')).toBeInTheDocument();
+      expect(within(methods).getByText('Ethereum')).toBeInTheDocument();
+      expect(within(methods).queryByText(/\d/)).not.toBeInTheDocument();
     });
 
     it('renders nothing for an empty asset map', () => {
@@ -1299,14 +1424,9 @@ describe('PaymentLinkScreen', () => {
     });
 
     it('shows an empty payment-methods row when the key is missing in merchant mode', () => {
-      const request = terminalPayRequest({
-        mode: PaymentLinkMode.SINGLE,
-        recipient: { name: 'Bob' },
-      });
-      delete request.transferAmounts;
-      mockPaymentLinkContext.payRequest = request;
-      mockPaymentLinkContext.isMerchantMode = true;
-      mockPaymentLinkContext.paymentStatus = PaymentLinkPaymentStatus.PENDING;
+      const info = merchantInfo({ recipient: { name: 'Bob' } });
+      delete info.transferAmounts;
+      showMerchantPage(info);
 
       renderScreen();
 
@@ -1316,14 +1436,9 @@ describe('PaymentLinkScreen', () => {
     });
 
     it('shows an empty payment-methods row in the wallet branch when the key is missing in merchant mode', async () => {
-      const request = terminalPayRequest({
-        mode: PaymentLinkMode.SINGLE,
-        recipient: undefined,
-      });
-      delete request.transferAmounts;
-      mockPaymentLinkContext.payRequest = request;
-      mockPaymentLinkContext.isMerchantMode = true;
-      mockPaymentLinkContext.paymentStatus = PaymentLinkPaymentStatus.PENDING;
+      const info = merchantInfo({ recipient: undefined });
+      delete info.transferAmounts;
+      showMerchantPage(info);
       mockWalletsHook.recommendedWallets = [wallet({ id: 7 })];
       mockSearchParams = new URLSearchParams('wallet-id=7');
 
@@ -1567,6 +1682,13 @@ describe('PaymentLinkScreen', () => {
       await waitFor(() => {
         expect(mockSetSearchParams).toHaveBeenCalled();
       });
+      // the deeplink resolves after the wallet is selected
+      await waitFor(() => {
+        expect(mockGetDeeplinkByWalletId).toHaveBeenCalledWith(7);
+      });
+      await waitFor(() => {
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      });
     }
 
     it('clears the selected wallet on the back button', async () => {
@@ -1788,6 +1910,165 @@ describe('PaymentLinkScreen', () => {
       expect(screen.getByTestId('dfx-icon-back')).toBeInTheDocument();
       expect(mockSetSearchParams).toHaveBeenCalled();
       const nextParams = mockSetSearchParams.mock.calls[0][0] as URLSearchParams;
+      expect(nextParams.has('wallet-id')).toBe(false);
+    });
+
+    it('waits for the wallet list before reading wallet-id', async () => {
+      mockWalletsHook.isLoading = true;
+      mockWalletsHook.recommendedWallets = [];
+      mockGetDeeplinkByWalletId.mockResolvedValue(undefined);
+      mockSearchParams = new URLSearchParams('wallet-id=7');
+
+      const view = renderScreen();
+
+      expect(mockGetDeeplinkByWalletId).not.toHaveBeenCalled();
+      expect(mockSetSearchParams).not.toHaveBeenCalled();
+
+      mockWalletsHook.isLoading = false;
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7, name: 'LateWallet' })];
+      view.rerender(<PaymentLinkScreen />);
+
+      await waitFor(() => {
+        expect(mockSetSearchParams).toHaveBeenCalled();
+      });
+      expect(mockGetDeeplinkByWalletId).toHaveBeenCalledWith(7);
+      expect(screen.getByTestId('dfx-icon-back')).toBeInTheDocument();
+    });
+
+    it('opens the wallet from wallet-id on the merchant page once the wallet list has loaded', async () => {
+      showMerchantPage();
+      mockWalletsHook.isLoading = true;
+      mockWalletsHook.recommendedWallets = [];
+      mockGetDeeplinkByWalletId.mockResolvedValue(undefined);
+      mockSearchParams = new URLSearchParams('merchant=shop-route&wallet-id=7');
+
+      const view = renderScreen();
+      expect(mockGetDeeplinkByWalletId).not.toHaveBeenCalled();
+
+      mockWalletsHook.isLoading = false;
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7, name: 'MerchantWallet' })];
+      view.rerender(<PaymentLinkScreen />);
+
+      await waitFor(() => {
+        expect(mockSetSearchParams).toHaveBeenCalled();
+      });
+      expect(mockGetDeeplinkByWalletId).toHaveBeenCalledWith(7);
+      expect(screen.getByTestId('dfx-icon-back')).toBeInTheDocument();
+      expect(screen.queryByText('RECOMMENDED APPS')).not.toBeInTheDocument();
+      const nextParams = mockSetSearchParams.mock.calls[0][0] as URLSearchParams;
+      expect(nextParams.get('merchant')).toBe('shop-route');
+      expect(nextParams.has('wallet-id')).toBe(false);
+    });
+
+    it('waits for the payment before reading wallet-id', async () => {
+      mockPaymentLinkContext.payRequest = undefined;
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7 })];
+      mockSearchParams = new URLSearchParams('wallet-id=7');
+
+      const view = renderScreen();
+
+      expect(mockSetSearchParams).not.toHaveBeenCalled();
+      expect(mockGetDeeplinkByWalletId).not.toHaveBeenCalled();
+
+      mockPaymentLinkContext.payRequest = quotedPayRequest();
+      view.rerender(<PaymentLinkScreen />);
+
+      await waitFor(() => {
+        expect(mockGetDeeplinkByWalletId).toHaveBeenCalledWith(7);
+      });
+      expect(mockSetSearchParams).toHaveBeenCalled();
+    });
+
+    it('resolves the deeplink again when the payment identifier arrives after the wallet was opened', async () => {
+      mockPaymentLinkContext.paymentIdentifier = undefined;
+      mockGetDeeplinkByWalletId.mockResolvedValueOnce(undefined).mockResolvedValueOnce('late://pay');
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7, hasActionDeepLink: true, deepLink: undefined })];
+      mockSearchParams = new URLSearchParams('wallet-id=7');
+
+      const view = renderScreen();
+      await waitFor(() => {
+        expect(mockGetDeeplinkByWalletId).toHaveBeenCalledTimes(1);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.queryByRole('button', { name: 'Pay in app' })).not.toBeInTheDocument();
+
+      mockPaymentLinkContext.paymentIdentifier = 'lnurl1late';
+      view.rerender(<PaymentLinkScreen />);
+
+      const pay = await screen.findByRole('button', { name: 'Pay in app' });
+      expect(mockGetDeeplinkByWalletId).toHaveBeenCalledTimes(2);
+      fireEvent.click(pay);
+      expect(mockOpen).toHaveBeenCalledWith('late://pay', '_blank');
+    });
+
+    it('drops a deeplink that resolves after the wallet was closed', async () => {
+      let resolveDeeplink: (value: string) => void = () => undefined;
+      mockGetDeeplinkByWalletId.mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveDeeplink = resolve;
+        }),
+      );
+      mockPaymentLinkContext.paymentIdentifier = 'lnurl1abc';
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7, active: true })];
+      mockSearchParams = new URLSearchParams('wallet-id=7');
+
+      renderScreen();
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('dfx-icon-back').closest('button') as HTMLButtonElement);
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+
+      await act(async () => {
+        resolveDeeplink('wallet://pay');
+        await Promise.resolve();
+      });
+      expect(screen.queryByTestId('dfx-icon-back')).not.toBeInTheDocument();
+      expect(screen.getByText('RECOMMENDED APPS')).toBeInTheDocument();
+    });
+
+    it('closes the wallet chosen for one merchant when the URL opens another merchant', async () => {
+      showMerchantPage();
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7 })];
+      mockSearchParams = new URLSearchParams('merchant=shop-route&wallet-id=7');
+
+      const view = renderScreen();
+      await waitFor(() => {
+        expect(screen.getByTestId('dfx-icon-back')).toBeInTheDocument();
+      });
+
+      mockPaymentLinkContext.merchant = 'other-route';
+      mockPaymentLinkContext.merchantInfo = merchantInfo({ displayName: 'Other Shop' });
+      view.rerender(<PaymentLinkScreen />);
+
+      expect(screen.queryByTestId('dfx-icon-back')).not.toBeInTheDocument();
+      expect(screen.getByText('RECOMMENDED APPS')).toBeInTheDocument();
+    });
+
+    it('reads a wallet-id that comes with another merchant only after the provider has switched to it', async () => {
+      showMerchantPage();
+      mockWalletsHook.recommendedWallets = [wallet({ id: 7 })];
+      mockSearchParams = new URLSearchParams('merchant=shop-route');
+      const view = renderScreen();
+
+      mockSearchParams = new URLSearchParams('merchant=other-route&wallet-id=7');
+      view.rerender(<PaymentLinkScreen />);
+      expect(mockSetSearchParams).not.toHaveBeenCalled();
+
+      mockPaymentLinkContext.merchant = 'other-route';
+      mockPaymentLinkContext.merchantInfo = undefined;
+      view.rerender(<PaymentLinkScreen />);
+      expect(mockSetSearchParams).not.toHaveBeenCalled();
+
+      mockPaymentLinkContext.merchantInfo = merchantInfo({ displayName: 'Other Shop' });
+      view.rerender(<PaymentLinkScreen />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('dfx-icon-back')).toBeInTheDocument();
+      });
+      const nextParams = mockSetSearchParams.mock.calls[0][0] as URLSearchParams;
+      expect(nextParams.get('merchant')).toBe('other-route');
       expect(nextParams.has('wallet-id')).toBe(false);
     });
 
