@@ -1,5 +1,7 @@
 import {
-  DfxApiClient,
+  DfxHttpClient,
+  PasskeyApi,
+  type DfxApiClient,
   type PasskeyAddress,
   type PasskeyCredentialStatusResult,
   type PasskeyDiagnosticParams,
@@ -43,9 +45,12 @@ export interface WalletClient {
 // DFXswiss/wallet-api will connect here; until then calls use the DFX API passkey routes.
 export function createWalletClient(): WalletClient {
   const env = walletEnvForHost(window.location.hostname);
-  const api = new DfxApiClient({ apiUrl: `${Api.url.replace(/\/$/, '')}/${Api.version}` });
+  const http = new DfxHttpClient({ apiUrl: `${Api.url.replace(/\/$/, '')}/${Api.version}` });
+  const passkey = new PasskeyApi(http);
   const cache = new CredentialCache(undefined, 'dfx.wallet.credentials.v1', RP_IDS[env]);
-  const auth = new PasskeyAuth({ api, ceremonies: new PasskeyCeremonies(env), env, cache });
+  const api: Pick<DfxApiClient, 'passkey'> = { passkey };
+  // PasskeyAuth reads only api.passkey. Its type in this package version still requires a full DfxApiClient.
+  const auth = new PasskeyAuth({ api: api as DfxApiClient, ceremonies: new PasskeyCeremonies(env), env, cache });
   return {
     login: (...args) => auth.login(...args),
     register: (...args) => auth.register(...args),
@@ -54,9 +59,9 @@ export function createWalletClient(): WalletClient {
     revoke: (...args) => auth.revoke(...args),
     exportMnemonic: (...args) => auth.exportMnemonic(...args),
     verifyServerAddresses: (...args) => auth.verifyServerAddresses(...args),
-    wallets: (...args) => api.passkey.wallets(...args),
-    backupSeen: (...args) => api.passkey.backupSeen(...args),
-    credentialStatus: (...args) => api.passkey.credentialStatus(...args),
-    diagnostics: (...args) => api.passkey.diagnostics(...args),
+    wallets: (...args) => passkey.wallets(...args),
+    backupSeen: (...args) => passkey.backupSeen(...args),
+    credentialStatus: (...args) => passkey.credentialStatus(...args),
+    diagnostics: (...args) => passkey.diagnostics(...args),
   };
 }

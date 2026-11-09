@@ -724,8 +724,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/passkey-pay-sheet.test.tsx` stubs `getUserMedia` with a fake stream; a green run does not prove a real camera or a real QR code.
 - **The history unit test replaces the scroll observer.**
   `src/__tests__/passkey-wallet-history.test.tsx` replaces `IntersectionObserver`; a green run does not prove a real scroll observer.
-- **The wallet-client unit test replaces the wallet package and DFX API client.**
-  A green run proves forwarding to the stubs, not a real wallet ceremony or API call.
+- **The wallet-client unit test replaces the wallet package and the core HTTP client.**
+  `src/__tests__/wallet-client.test.ts` replaces `PasskeyAuth`, `CredentialCache` and `PasskeyCeremonies` from
+  `@dfx.swiss/wallet` and `DfxHttpClient` and `PasskeyApi` from `@dfx.swiss/core`, and its `DfxApiClient` stub throws when
+  constructed. A green run proves that the client is built without `DfxApiClient` and without a customer token and
+  forwards to the stubs, not a real wallet ceremony or API call.
 - **The settings-context unit test replaces SDK hooks, app-handling context, browser-lang, application parameters, storage, and i18n.**
   A green run does not prove real account updates, app handling, browser language detection, persistent storage, or language loading.
 - **The wallet entry unit test replaces the session, the page tree, and the connect form.**
