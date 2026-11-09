@@ -7,14 +7,6 @@ interface PasskeyWalletNotesProps {
   onUnlock: () => void;
 }
 
-export function walletStateDescription(state: WalletState): string {
-  return state === 'seed-mismatch'
-    ? 'This passkey belongs to a different wallet. Sign in with the right passkey.'
-    : state === 'compromised'
-      ? 'This passkey was blocked as compromised and no longer opens the wallet.'
-      : 'The wallet is already open in another tab. Close it and reload this page.';
-}
-
 export default function PasskeyWalletNotes({ state, busy, onUnlock }: PasskeyWalletNotesProps): JSX.Element {
   const { translate } = useSettingsContext();
   const t = (key: string) => translate('screens/home', key);

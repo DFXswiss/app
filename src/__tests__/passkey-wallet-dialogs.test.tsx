@@ -88,6 +88,10 @@ describe('Passkey wallet dialogs', () => {
     };
     const view = render(<PasskeyRevokeSheet {...props} />);
     expect(screen.getByText('You confirm one last time with this passkey.')).toBeInTheDocument();
+    expect(screen.getByText('Device gone, deleted or no longer accessible')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Someone else may have access. Move your funds to a safe address with “Send” first.'),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText('Confirm with')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Block', exact: true })).toBeDisabled();
     fireEvent.click(screen.getByLabelText('Passkey compromised'));

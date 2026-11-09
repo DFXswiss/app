@@ -52,13 +52,11 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
               <b className="block text-base font-semibold">
                 {t(item === 'Lost' ? 'Passkey lost' : 'Passkey compromised')}
               </b>
-              <span className="mt-0.5 block text-sm leading-5 text-dfxGray-800">
-                {t(
-                  item === 'Lost'
-                    ? 'Device gone, deleted or no longer accessible'
-                    : 'Someone else may have access. Move your funds to a safe address with “Send” first.',
-                )}
-              </span>
+              {item === 'Lost' && (
+                <span className="mt-0.5 block text-sm leading-5 text-dfxGray-800">
+                  {t('Device gone, deleted or no longer accessible')}
+                </span>
+              )}
             </span>
           </label>
         ))}

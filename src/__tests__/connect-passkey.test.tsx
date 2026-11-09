@@ -1270,6 +1270,19 @@ describe('ConnectPasskey', () => {
     );
   });
 
+  it('does not show the unlock-failed sentence when unlock returns unlocked without keys', async () => {
+    const message = 'This passkey did not unlock the wallet. Please try again with the passkey of this wallet.';
+    setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
+    mockUnlock.mockResolvedValueOnce({ state: 'unlocked' });
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+    await waitFor(() => expect(passkeySession.getOpenPasskey()?.state).toBe('unlocked'));
+    expect(passkeySession.getOpenPasskey()?.keys).toBeUndefined();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(mockTranslate).not.toHaveBeenCalledWith('screens/home', message);
+  });
+
   it('does not open send when an unlock finishes after another unlocked session replaces it', async () => {
     const session = authResult('locked') as unknown as OpenPasskey;
     setOpenPasskey(session);
@@ -1346,32 +1359,36 @@ describe('ConnectPasskey', () => {
     expect(mockUnlock).toHaveBeenCalledTimes(2);
   });
 
-  it('shows the wrong-passkey explanation in the settings dialog when recovery unlock fails', async () => {
+  it('shows the existing unlock-failed sentence in the settings dialog when recovery unlock returns a different seed', async () => {
+    const message = 'This passkey did not unlock the wallet. Please try again with the passkey of this wallet.';
     setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
     mockUnlock.mockResolvedValueOnce({ state: 'unlocked', keys: ring(OTHER) });
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('This passkey belongs to a different wallet. Sign in with the right passkey.');
+    expect(alert).toHaveTextContent(message);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(screen.getByRole('dialog', { name: 'Settings' })).toContainElement(alert);
     expect(mockExport).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['compromised', 'This passkey was blocked as compromised and no longer opens the wallet.'],
-    ['open-elsewhere', 'The wallet is already open in another tab. Close it and reload this page.'],
-  ] as const)('shows the %s explanation in settings when recovery unlock fails', async (state, message) => {
-    setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
-    mockUnlock.mockResolvedValueOnce({ state });
-    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(message);
-    expect(screen.getByRole('dialog', { name: 'Settings' })).toContainElement(alert);
-    expect(mockExport).not.toHaveBeenCalled();
-  });
+  it.each(['compromised', 'open-elsewhere'] as const)(
+    'shows the existing unlock-failed sentence in settings when recovery unlock returns %s',
+    async (state) => {
+      const message = 'This passkey did not unlock the wallet. Please try again with the passkey of this wallet.';
+      setOpenPasskey(authResult('locked') as unknown as OpenPasskey);
+      mockUnlock.mockResolvedValueOnce({ state });
+      render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(message);
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
+      expect(screen.getByRole('dialog', { name: 'Settings' })).toContainElement(alert);
+      expect(mockExport).not.toHaveBeenCalled();
+    },
+  );
 
   it('keeps the unlock error in settings when recovery authentication is cancelled', async () => {
     setOpenPasskey(authResult('locked') as unknown as OpenPasskey);

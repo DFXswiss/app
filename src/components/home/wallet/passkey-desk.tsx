@@ -9,7 +9,7 @@ import { getOpenPasskey, sameSession, setOpenPasskey, subscribeOpenPasskey, type
 import { PasskeyReceivePanel, PasskeySendPanel, type ReceiveFamily } from './passkey-transfer';
 import PasskeyWalletCard, { formatWalletAmount } from './passkey-wallet-card';
 import PasskeyWalletActions, { WalletAction } from './passkey-wallet-actions';
-import PasskeyWalletNotes, { walletStateDescription } from './passkey-wallet-notes';
+import PasskeyWalletNotes from './passkey-wallet-notes';
 import PasskeyWordsSheet from './passkey-words-sheet';
 import PasskeyRevokeSheet from './passkey-revoke-sheet';
 import PasskeySettingsSheet from './passkey-settings-sheet';
@@ -373,17 +373,21 @@ export default function PasskeyDesk({
         address = undefined;
       }
       const expected = latest.wallet?.seedCheckAddress;
+      const reportFailedUnlock = (state: OpenPasskey['state']): void => {
+        if (state !== 'unlocked' && isCurrent()) {
+          showMessage('This passkey did not unlock the wallet. Please try again with the passkey of this wallet.');
+        }
+      };
       if (unlockedSession.state !== 'unlocked' || !keys) {
         keys?.wipe();
         setOpenPasskey({ ...latest, state: unlockedSession.state, keys: undefined });
-        if (unlockedSession.state === 'locked' && isCurrent()) {
-          showMessage('This passkey did not unlock the wallet. Please try again with the passkey of this wallet.');
-        }
+        reportFailedUnlock(unlockedSession.state);
         return;
       }
       if (expected && !sameSeed(address, expected)) {
         keys.wipe();
         setOpenPasskey({ ...latest, state: 'seed-mismatch', keys: undefined });
+        reportFailedUnlock('seed-mismatch');
         return;
       }
       setOpenPasskey({ ...latest, state: 'unlocked', keys });
@@ -396,13 +400,7 @@ export default function PasskeyDesk({
   }
   async function showWords(): Promise<void> {
     if (busyRef.current) return;
-    if (!unlocked && !(walletState === 'locked' && (await unlock()))) {
-      const state = getOpenPasskey()?.state;
-      if (sheetRef.current && (state === 'seed-mismatch' || state === 'compromised' || state === 'open-elsewhere')) {
-        setNote(walletStateDescription(state));
-      }
-      return;
-    }
+    if (!unlocked && !(walletState === 'locked' && (await unlock()))) return;
     await run(async (client, session) => {
       if (!canUseKeys(session)) return;
       const generation = ++wordsGeneration.current;
