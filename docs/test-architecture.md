@@ -135,6 +135,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   (`compliance-user-15`) intercepts `GET /v2/kyc/file/:uid?access=View` and answers HTTP 500 with a
   fixed message. A green run proves that the loaded dossier keeps rendering the file error in its
   preview area, not that the API rejects a real KYC-file request or returns that message.
+- **The transaction-search test writes the customer's verified name itself.**
+  `e2e-stack/specs/compliance.spec.ts` (`/compliance search by transaction id …`) sets
+  `user_data.verifiedName` by SQL before the search, because no identification runs in the stack. A green
+  run proves that the search lists the stored name next to the transaction, not that an identification
+  sets it.
 - **The non-Frick buy screens inject a currency list.** `e2e/buy-process.spec.ts` and
   `e2e/buy-info.spec.ts` fulfil `**/v1/fiat` with CHF, EUR, and one buyable row outside the
   Bank Frick set, and they fulfil the quote in that currency. The product does not offer that
