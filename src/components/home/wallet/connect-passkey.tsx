@@ -142,19 +142,20 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       result.keys?.wipe();
       return;
     }
-    try {
-      if (!isConnect) await logout();
-    } catch (caught) {
-      result.keys?.wipe();
-      throw caught;
-    }
-    if (abandonedRef.current) {
-      result.keys?.wipe();
-      return;
-    }
     if (result.state !== 'unlocked' || !result.keys) {
       result.keys?.wipe();
       setSheetError(PASSKEY_DID_NOT_UNLOCK);
+      return;
+    }
+    const keys = result.keys;
+    try {
+      if (!isConnect) await logout();
+    } catch (caught) {
+      keys.wipe();
+      throw caught;
+    }
+    if (abandonedRef.current) {
+      keys.wipe();
       return;
     }
     setOpenPasskey(result);

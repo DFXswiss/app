@@ -305,6 +305,8 @@ describe('createWalletClient', () => {
     const differentLength = new Uint8Array([9]);
     const differentBytes = new Uint8Array(pinned);
     differentBytes[0] ^= 0xff;
+    const differentLastByte = new Uint8Array(pinned);
+    differentLastByte[pinned.length - 1] ^= 0xff;
     mockRevokeBegin.mockResolvedValue({
       rpId: 'localhost',
       challenge: 'Y2hhbGxlbmdl',
@@ -312,12 +314,17 @@ describe('createWalletClient', () => {
     });
     mockAssert.mockResolvedValueOnce({ credentialId: differentLength, assertion: { id: 'other' } });
     mockAssert.mockResolvedValueOnce({ credentialId: differentBytes, assertion: { id: 'other' } });
+    mockAssert.mockResolvedValueOnce({ credentialId: differentLastByte, assertion: { id: 'other' } });
 
     await expect(client.revoke('Lost', 'cred')).rejects.toMatchObject({
       code: 'credential-mismatch',
       message: 'The authenticator returned a different passkey',
     });
     await expect(client.revoke('Compromised', 'cred')).rejects.toMatchObject({
+      code: 'credential-mismatch',
+      message: 'The authenticator returned a different passkey',
+    });
+    await expect(client.revoke('Lost', 'cred')).rejects.toMatchObject({
       code: 'credential-mismatch',
       message: 'The authenticator returned a different passkey',
     });
