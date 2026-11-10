@@ -1,3 +1,4 @@
+import type { KeyRing } from '@dfx.swiss/wallet';
 import { useEffect, useRef, useState } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { useClipboard } from '../../../hooks/clipboard.hook';
@@ -5,6 +6,12 @@ import { QrBasic } from '../../payment/qr-code';
 import { passkeyMessage } from './passkey-host';
 
 export type ReceiveFamily = 'evm' | 'bitcoin' | 'spark';
+
+export function receiveAddress(keys: KeyRing, family: ReceiveFamily): string {
+  if (family === 'evm') return keys.evm(0).address;
+  if (family === 'spark') return keys.sparkIdentity().address;
+  return keys.bitcoinAddress(0, 1).address;
+}
 
 interface DetectedBarcode {
   rawValue: string;
@@ -86,7 +93,10 @@ export function PasskeyReceivePanel({
             'border border-dfxGray-400 bg-white px-5 py-5'
           }
         >
-          <p data-testid="passkey-receive-address" className="select-all break-all text-dfxBlue-800">
+          <p
+            data-testid="passkey-receive-address"
+            className="select-all break-all text-dfxBlue-800 [font-feature-settings:'calt'_0]"
+          >
             {address}
           </p>
           <button

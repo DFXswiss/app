@@ -1,6 +1,7 @@
 import { PropsWithChildren, useRef } from 'react';
 import { LayoutConfigProvider } from '../contexts/layout-config.context';
 import { LayoutContextProvider } from '../contexts/layout.context';
+import { PasskeyDfxSession } from './home/wallet/passkey-dfx-session';
 import { Layout } from './layout';
 
 export function LayoutWrapper({ children }: PropsWithChildren): JSX.Element {
@@ -11,6 +12,7 @@ export function LayoutWrapper({ children }: PropsWithChildren): JSX.Element {
   return (
     <LayoutContextProvider modalRootRef={modalRootRef} scrollRef={scrollRef} rootRef={rootRef}>
       <LayoutConfigProvider>
+        <PasskeyDfxSession />
         <Layout>{children}</Layout>
       </LayoutConfigProvider>
     </LayoutContextProvider>

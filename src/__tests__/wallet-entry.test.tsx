@@ -14,7 +14,9 @@ let mockResizeCallback: ((element: { offsetHeight: number }) => void) | undefine
 let mockLayoutOptions: { title?: string; backButton?: boolean; onBack?: () => void } | undefined;
 
 const mockSessionState = { isLoggedIn: false, isInitialized: true };
-const mockAuthState: { session?: { address?: string; blockchains: string[] } } = { session: undefined };
+const mockAuthState: { session?: { account?: number; address?: string; blockchains: string[] } } = {
+  session: undefined,
+};
 const mockUserState: { user?: { id: number }; isUserLoading: boolean; hasAddress: boolean } = {
   user: undefined,
   isUserLoading: false,

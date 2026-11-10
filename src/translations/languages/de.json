@@ -557,6 +557,7 @@
     "Copied": "Kopiert",
     "This passkey cannot hold a wallet on this device.": "Dieser Passkey kann auf diesem Gerät keine Wallet speichern.",
     "This operating system cannot sign in with a passkey.": "Mit diesem Betriebssystem ist keine Anmeldung per Passkey möglich.",
+    "This operating system ({{version}}) cannot sign in with a passkey.": "Mit diesem Betriebssystem ({{version}}) ist keine Anmeldung per Passkey möglich.",
     "Log in": "Anmelden",
     "The passkey wallet was revoked.": "Die Passkey-Wallet wurde gesperrt.",
     "Try again": "Erneut versuchen",

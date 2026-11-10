@@ -1,11 +1,33 @@
 import {
   getOpenPasskey,
+  getOpenPasskeyAccount,
   installHandbookSessionHook,
   sameSession,
   setOpenPasskey,
   subscribeOpenPasskey,
   type OpenPasskey,
 } from '../components/home/wallet/passkey-session';
+
+it('stores the DFX account with the session and keeps it when the session is updated without one', () => {
+  setOpenPasskey(undefined);
+  const next = { state: 'unlocked' } as OpenPasskey;
+  setOpenPasskey(next, 4);
+  expect(getOpenPasskey()).toBe(next);
+  expect(getOpenPasskeyAccount()).toBe(4);
+
+  const updated = { ...next, accessToken: 'renewed' };
+  setOpenPasskey(updated);
+  expect(getOpenPasskey()).toBe(updated);
+  expect(getOpenPasskeyAccount()).toBe(4);
+
+  setOpenPasskey(updated, undefined);
+  expect(getOpenPasskey()).toBe(updated);
+  expect(getOpenPasskeyAccount()).toBeUndefined();
+
+  setOpenPasskey(undefined, 4);
+  expect(getOpenPasskey()).toBeUndefined();
+  expect(getOpenPasskeyAccount()).toBeUndefined();
+});
 
 it('compares wallet, credential and token when identifying a session', () => {
   const session = { accessToken: 'token', wallet: { id: 7, credentialId: 'credential' } } as unknown as OpenPasskey;
@@ -32,9 +54,11 @@ describe('installHandbookSessionHook', () => {
   });
 
   it('returns without throwing when the target is missing', () => {
-    const other = {} as Window;
+    const target = {} as Window;
+    installHandbookSessionHook(target, 'test');
+    expect(target.__dfxSetOpenPasskey).toBe(setOpenPasskey);
     expect(() => installHandbookSessionHook(undefined, 'test')).not.toThrow();
-    expect('__dfxSetOpenPasskey' in other).toBe(false);
+    expect(target.__dfxSetOpenPasskey).toBe(setOpenPasskey);
   });
 
   it('skips the assignment when the build target is production', () => {

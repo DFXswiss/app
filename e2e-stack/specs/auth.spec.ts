@@ -529,33 +529,33 @@ test.describe('Auth area e2e', () => {
       const bitcoinRow = page.locator('li', { has: page.getByText('Bitcoin', { exact: true }) });
       await expect(bitcoinRow).toHaveCount(1, { timeout: 30000 });
       const address = await bitcoinRow.locator('[title]').getAttribute('title');
-      if (address === null || !/^bc1q[a-z0-9]+$/.test(address)) throw new Error('Missing Bitcoin login address');
+      if (address === null || !/^tb1q/.test(address)) throw new Error('Missing Bitcoin receive address');
 
       const bitcoinAddressSql = `SELECT u.address AS address, a.family AS family, a.path AS path
         FROM passkey_address a
         JOIN "user" u ON u.id = a."userId"
         JOIN passkey_credential c ON c.id = a."credentialId"
         JOIN user_data d ON d.id = c."userDataId"
-        WHERE d.mail = $1 AND a.family = 'Bitcoin' AND a.path = $2 AND u.address = $3`;
+        WHERE d.mail = $1 AND a.family = 'Bitcoin' AND a.path = $2`;
       const row = await waitForRow<{ address: string; family: string; path: string }>(
         bitcoinAddressSql,
-        [mail, path, address],
+        [mail, path],
         30000,
       );
-      expect(row.address).toBe(address);
       expect(row.family).toBe('Bitcoin');
       expect(row.path).toBe(path);
-      const rows = await queryRows<{ address: string; family: string; path: string }>(bitcoinAddressSql, [
-        mail,
-        path,
-        address,
-      ]);
+      expect(row.address).toMatch(/^bc1q/);
+      expect(address).not.toBe(row.address);
+      const rows = await queryRows<{ address: string; family: string; path: string }>(bitcoinAddressSql, [mail, path]);
       expect(rows.length).toBe(1);
+      await expect(page.locator(`[title="${row.address}"]`)).toHaveCount(0);
 
       await page.getByRole('button', { name: 'Receive', exact: true }).click();
       const receive = page.getByRole('dialog', { name: 'Receive' });
-      await receive.getByRole('button', { name: 'EVM', exact: true }).click();
-      await expect(receive.getByRole('button', { name: 'Copy address' })).toBeVisible();
+      await receive.getByRole('button', { name: 'Bitcoin', exact: true }).click();
+      const shownReceive = receive.getByTestId('passkey-receive-address');
+      await expect(shownReceive).toHaveText(address);
+      await expect(shownReceive).not.toHaveText(row.address);
       await receive.getByRole('button', { name: 'Close' }).click();
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       const send = page.getByRole('dialog', { name: 'Send' });
@@ -587,6 +587,7 @@ test.describe('Auth area e2e', () => {
       await expect(page.getByRole('button', { name: 'Show wallet' }).first()).toBeVisible({ timeout: 30000 });
       await page.getByRole('button', { name: 'Show wallet' }).first().click();
       await expect(bitcoinRow.locator('[title]')).toHaveAttribute('title', address);
+      await expect(page.locator(`[title="${row.address}"]`)).toHaveCount(0);
 
       const evmRow = page.locator('li', { has: page.getByText('Ethereum & EVM', { exact: true }) });
       await expect(evmRow).toHaveCount(1, { timeout: 30000 });
@@ -596,8 +597,8 @@ test.describe('Auth area e2e', () => {
       await expect(receiveAddress).toHaveText(/^0x[0-9a-fA-F]{40}$/, { timeout: 30000 });
       const evmAddress = await receiveAddress.textContent();
       if (evmAddress === null || !/^0x[0-9a-fA-F]{40}$/.test(evmAddress)) throw new Error('Missing EVM address');
-      const serverEvmAddress = await evmRow.locator('[title]').getAttribute('title');
-      expect(serverEvmAddress?.toLowerCase()).toBe(evmAddress.toLowerCase());
+      const listEvmAddress = await evmRow.locator('[title]').getAttribute('title');
+      expect(listEvmAddress?.toLowerCase()).toBe(evmAddress.toLowerCase());
       await receive.getByRole('button', { name: 'Close' }).click();
     } finally {
       await trackPasskeyUser();

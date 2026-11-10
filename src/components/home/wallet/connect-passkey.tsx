@@ -1,4 +1,4 @@
-import { useSessionContext } from '@dfx.swiss/react';
+import { useAuthContext } from '@dfx.swiss/react';
 import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { checkPasskeyPlatform, openInSystemBrowser, type AuthResult, type PlatformReport } from '@dfx.swiss/wallet';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -93,10 +93,10 @@ async function copyPageUrl(): Promise<boolean> {
 // merged passkey routes can be tried. /wallet opens this screen without a flag. The tile on /login
 // stays behind ?feature=Passkey.
 export default function ConnectPasskey(props: ConnectProps): JSX.Element {
-  const { isConnect, onCancel }: ConnectProps = props;
+  const { onCancel }: ConnectProps = props;
   const { translate } = useSettingsContext();
   const { navigate } = useNavigation();
-  const { logout } = useSessionContext();
+  const { session } = useAuthContext();
   const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
   const [report, setReport] = useState<PlatformReport | undefined>();
   const [mail, setMail] = useState('');
@@ -147,18 +147,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       setSheetError(PASSKEY_DID_NOT_UNLOCK);
       return;
     }
-    const keys = result.keys;
-    try {
-      if (!isConnect) await logout();
-    } catch (caught) {
-      keys.wipe();
-      throw caught;
-    }
-    if (abandonedRef.current) {
-      keys.wipe();
-      return;
-    }
-    setOpenPasskey(result);
+    setOpenPasskey(result, session?.account);
   }
 
   function applyCeremonyError(nextEntry: CeremonyEntry, caught: unknown): void {
@@ -324,10 +313,15 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   }
 
   if (platform === 'os-old') {
+    const osHint = passkeyOsTooOld(os);
     return (
       <StyledVerticalStack gap={2} center>
         <p role="status" className="text-center text-dfxGray-700">
-          {translate('screens/home', passkeyOsTooOld(os))}
+          {translate(
+            'screens/home',
+            osHint.key,
+            osHint.version === undefined ? undefined : { version: osHint.version },
+          )}
         </p>
         {closeButton()}
       </StyledVerticalStack>

@@ -48,10 +48,10 @@ export function passkeyPlatformBlock(report: PlatformReport | undefined): string
   return PASSKEY_PLATFORM_BLOCK;
 }
 
-export function passkeyOsTooOld(os: string | undefined): string {
+export function passkeyOsTooOld(os: string | undefined): { key: string; version?: string } {
   const trimmed = (os ?? '').trim();
-  if (trimmed === '') return 'This operating system cannot sign in with a passkey.';
-  return 'This operating system (' + trimmed + ') cannot sign in with a passkey.';
+  if (trimmed === '') return { key: 'This operating system cannot sign in with a passkey.' };
+  return { key: 'This operating system ({{version}}) cannot sign in with a passkey.', version: trimmed };
 }
 
 export function passkeyDismissed(error: unknown): boolean {

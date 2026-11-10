@@ -1,10 +1,15 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import type { AuthResult } from '@dfx.swiss/wallet';
 
-type PasskeyWindow = { __dfxSetOpenPasskey?: (next: AuthResult | undefined) => void };
+type PasskeyWindow = {
+  __dfxSetOpenPasskey?: (next: AuthResult | undefined, account?: number) => void;
+};
 
 // A value jwt-decode cannot read is removed on boot. The expiry is in the future. The signature is not checked.
-const ACCOUNT_TOKEN = 'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDAsImJsb2NrY2hhaW5zIjpbXX0.x';
+// The payload account claim is HANDBOOK_ACCOUNT. The session guard keeps the signed-in passkey only when the hook passes it.
+const HANDBOOK_ACCOUNT = 7;
+const ACCOUNT_TOKEN =
+  'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDAsImJsb2NrY2hhaW5zIjpbXSwiYWNjb3VudCI6N30.x';
 
 const VISUAL_USER = {
   mail: 'user@example.com',
@@ -221,24 +226,27 @@ test.describe('/wallet passkey entry', () => {
     await expect(page.locator('img[src*="/kaufen_"]')).toBeVisible();
     await expect(page.locator('img[alt="logo"]')).toBeVisible();
     await page.waitForFunction(() => typeof (window as unknown as PasskeyWindow).__dfxSetOpenPasskey === 'function');
-    await page.evaluate(() => {
-      (window as unknown as PasskeyWindow).__dfxSetOpenPasskey?.({
-        state: 'unlocked',
-        accessToken: 'handbook-passkey-token',
-        wallet: {
-          id: 7,
-          credentialId: 'handbook-credential',
-          status: 'Active',
-          created: '2026-11-04',
-          derivationVersion: 'V1',
-          seedCheckAddress: '',
-          backupEligible: false,
-          backedUp: false,
-          backupRequired: true,
-          addresses: [],
-        },
-      } as AuthResult);
-    });
+    await page.evaluate((account: number) => {
+      (window as unknown as PasskeyWindow).__dfxSetOpenPasskey?.(
+        {
+          state: 'unlocked',
+          accessToken: 'handbook-passkey-token',
+          wallet: {
+            id: 7,
+            credentialId: 'handbook-credential',
+            status: 'Active',
+            created: '2026-11-04',
+            derivationVersion: 'V1',
+            seedCheckAddress: '',
+            backupEligible: false,
+            backedUp: false,
+            backupRequired: true,
+            addresses: [],
+          },
+        } as AuthResult,
+        account,
+      );
+    }, HANDBOOK_ACCOUNT);
     const settings = page.getByRole('button', { name: 'Settings' });
     await expect(settings).toBeVisible();
     await expect(page.getByText('Wallet locked', { exact: true })).toHaveCount(0);

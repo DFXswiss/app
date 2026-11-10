@@ -216,7 +216,11 @@ function postedLinkAddress(raw: string | null): { address: string; family: strin
   return { address, family, path };
 }
 
-async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<void> {
+async function installDeskRoutes(
+  page: Page,
+  seedCheckAddress: string,
+  linkedBitcoin?: { address?: string },
+): Promise<void> {
   const linkedAddresses: Record<string, unknown>[] = [];
 
   function listedWallet(): Record<string, unknown> {
@@ -246,6 +250,7 @@ async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<
     if (method === 'POST' && path.endsWith('/link')) {
       const posted = postedLinkAddress(request.postData());
       if (posted === undefined) return fulfillNotOk(route);
+      if (posted.address.startsWith('bc1') && linkedBitcoin) linkedBitcoin.address = posted.address;
       const address = { ...posted, status: 'Active', blockchains: [] };
       const key = `${posted.family}:${posted.path}:${posted.address}`;
       const alreadyLinked = linkedAddresses.some(
@@ -292,31 +297,50 @@ async function installRegisterErrorRoutes(page: Page): Promise<void> {
   });
 }
 
-async function openDesk(page: Page, mode: 'unlocked' | 'locked', dismissFirstGet = false): Promise<void> {
+async function openDesk(
+  page: Page,
+  mode: 'unlocked' | 'locked',
+  dismissFirstGet = false,
+  linkedBitcoin?: { address?: string },
+): Promise<void> {
   await installDeskAuthenticator(page, mode !== 'locked', dismissFirstGet);
   await installLoginRoutes(page);
-  await installDeskRoutes(page, '');
+  await installDeskRoutes(page, '', linkedBitcoin);
   await page.goto('/login?feature=Passkey&lang=en');
   await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible();
   await page.locator('img[src$="login-passkey.jpg"]').click();
   await waitForPlatform(page);
 }
 
-async function waitForLinkedBitcoin(page: Page): Promise<string> {
-  await page.getByRole('button', { name: 'Show wallet' }).click();
-  const address = page.locator('li [title^="bc1q"]').first();
-  await expect(address).toBeVisible();
-  const value = await address.getAttribute('title');
-  if (!value) throw new Error('Missing Bitcoin address');
-  await page.getByRole('button', { name: 'Hide wallet' }).click();
-  return value;
+async function expectDerivedReceiveRows(page: Page): Promise<void> {
+  await expect(page.locator(`li [title="${DESK_DERIVED_EVM}"]`)).toHaveCount(1);
+  await expect(page.locator(`li [title="${DESK_DERIVED_BITCOIN_RECEIVE}"]`)).toHaveCount(1);
+  const spark = page.locator('li [title^="spark1"]');
+  await expect(spark).toHaveCount(1);
+  const sparkTitle = await spark.getAttribute('title');
+  expect(sparkTitle).toMatch(/^spark1[023456789acdefghjklmnpqrstuvwxyz]{62}$/);
+  expect(sparkTitle).not.toBe(DESK_SPARK.address);
+  await expect(page.locator('li [title^="bc1q"]')).toHaveCount(0);
+  await expect(page.locator(`li [title="${DESK_EVM.address}"]`)).toHaveCount(0);
 }
 
 async function registerUnlockedDesk(page: Page): Promise<string> {
-  await openDesk(page, 'unlocked', true);
+  const linkedBitcoin: { address?: string } = {};
+  await openDesk(page, 'unlocked', true, linkedBitcoin);
+  const listed = page.waitForResponse(async (response) => {
+    const posted = linkedBitcoin.address;
+    if (!posted) return false;
+    const url = new URL(response.url());
+    if (response.request().method() !== 'GET' || url.pathname !== '/v1/passkey/wallets') return false;
+    const text = await response.text();
+    return text.includes(posted);
+  });
   await registerThroughGuidance(page);
   await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
-  return waitForLinkedBitcoin(page);
+  await listed;
+  const posted = linkedBitcoin.address;
+  if (!posted || !posted.startsWith('bc1')) throw new Error('Missing Bitcoin login address');
+  return posted;
 }
 
 async function openSettings(page: Page): Promise<void> {
@@ -887,6 +911,8 @@ test.describe('Passkey wallet design', () => {
     await expect(page).toHaveScreenshot('passkey-wallet-start.png');
     await page.getByRole('button', { name: 'Show wallet' }).first().click();
     await expect(page.getByText('Addresses', { exact: true })).toBeVisible();
+    await expect(page.getByText('Not connected yet')).toHaveCount(0);
+    await expectDerivedReceiveRows(page);
     await expect(page).toHaveScreenshot('passkey-wallet-expanded.png');
     await page.getByRole('button', { name: 'Settings' }).click();
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
@@ -1027,10 +1053,14 @@ test('wallet shows Bitcoin reconnect after an auto-link failure', async ({ page 
   });
   await registerThroughGuidance(page);
   await page.getByRole('button', { name: 'Show wallet' }).first().click();
-  const bitcoinRow = page.locator('li', { has: page.getByText('Not connected yet', { exact: true }) });
+  const bitcoinRow = page.locator('li', { has: page.getByText('Bitcoin', { exact: true }) });
+  await expect(bitcoinRow).toHaveCount(1);
   await bitcoinRow.scrollIntoViewIfNeeded();
+  await expect(bitcoinRow.locator(`[title="${DESK_DERIVED_BITCOIN_RECEIVE}"]`)).toHaveCount(1);
   await expect(bitcoinRow.getByText('Not connected yet')).toBeInViewport();
   await expect(bitcoinRow.getByRole('button', { name: 'Connect again' })).toBeInViewport();
+  await expect(bitcoinRow.getByRole('button', { name: 'Copy address Bitcoin' })).toBeEnabled();
+  await expectDerivedReceiveRows(page);
   await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 10000);
   releaseLink();
   await expect(page.getByRole('status')).toHaveText('Link body is invalid.');

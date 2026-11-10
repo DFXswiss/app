@@ -557,6 +557,7 @@
     "Copied": "Copié",
     "This passkey cannot hold a wallet on this device.": "Cette clé d’accès ne peut pas contenir de wallet sur cet appareil.",
     "This operating system cannot sign in with a passkey.": "Ce système d’exploitation ne permet pas de se connecter avec une clé d’accès.",
+    "This operating system ({{version}}) cannot sign in with a passkey.": "Ce système d’exploitation ({{version}}) ne permet pas de se connecter avec une clé d’accès.",
     "Log in": "Se connecter",
     "The passkey wallet was revoked.": "Le wallet de la clé d’accès a été bloqué.",
     "Cancel": "Annuler",

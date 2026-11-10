@@ -40,6 +40,7 @@ const addedHomeKeys = [
   'Copied',
   'This passkey cannot hold a wallet on this device.',
   'This operating system cannot sign in with a passkey.',
+  'This operating system ({{version}}) cannot sign in with a passkey.',
   'Log in',
   'The passkey wallet was revoked.',
   'Try again',
