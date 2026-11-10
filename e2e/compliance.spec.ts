@@ -110,6 +110,7 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
     });
 
     test('shows a transaction found by its id', async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 1000 });
       await page.goto(`/compliance?session=${token}&search=${TEST_TRANSACTION_ID}`);
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(2000);
