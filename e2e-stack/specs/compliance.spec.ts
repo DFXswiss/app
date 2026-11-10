@@ -177,6 +177,62 @@ test.describe('Compliance area (overview)', () => {
     await expect(customerRow.getByRole('cell', { name: '30', exact: true })).toBeVisible();
   });
 
+  test('/compliance search by transaction id lists the transaction and opens its customer', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-search-tx',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    await queryRows(`UPDATE user_data SET "verifiedName" = $1 WHERE id = $2`, [
+      'E2E Verified Name',
+      customer.userDataId,
+    ]);
+    const tx = await createTransaction({
+      state: 'completed_buy',
+      tag: 'cmp-search-tx',
+      userId: customer.userId,
+      userDataId: customer.userDataId,
+      jwt: customer.jwt,
+      amount: 1234,
+      inputAsset: 'CHF',
+    });
+    expect(tx.transactionId).toBeTruthy();
+
+    await openScreen(page, '/compliance', jwt);
+
+    await page.getByRole('textbox').first().fill(String(tx.transactionId));
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+
+    await expect(page.getByText('Matching Entries', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Transactions', { exact: true })).toBeVisible();
+
+    const customersTable = page.getByText('Customers', { exact: true }).locator('xpath=following::table[1]');
+    const customerRow = customersTable
+      .getByRole('row')
+      .filter({ hasText: String(customer.userDataId) })
+      .first();
+    await expect(customerRow).toBeVisible();
+
+    const transactionsTable = page.getByText('Transactions', { exact: true }).locator('xpath=following::table[1]');
+    const transactionRow = transactionsTable
+      .getByRole('row')
+      .filter({ has: page.getByRole('cell', { name: String(tx.transactionId), exact: true }) })
+      .first();
+    await expect(transactionRow).toBeVisible();
+    await expect(transactionRow.getByText(String(tx.transactionId), { exact: true })).toBeVisible();
+    await expect(transactionRow.getByText(String(customer.userDataId), { exact: true })).toBeVisible();
+    await expect(transactionRow.getByText('E2E Verified Name', { exact: true })).toBeVisible();
+
+    await transactionRow.getByRole('button', { name: 'Customer', exact: true }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/compliance/user/${customer.userDataId}(\\?|$)`));
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+  });
+
   // -------------------------------------------------------------------------
   // /compliance/transactions
   // -------------------------------------------------------------------------

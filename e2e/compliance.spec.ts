@@ -20,6 +20,9 @@ import { createTestCredentials } from './test-wallet';
 const TEST_USER_DATA_ID = '1005';
 const TEST_SWITCH_USER_DATA_ID = '1006';
 const TEST_SEARCH_QUERY = 'max';
+// Requires a local transaction with this id whose userData differs from the user data with the same id,
+// so the screenshot shows both the customer hits and the transaction hit. Seed one before regenerating.
+const TEST_TRANSACTION_ID = '42';
 // Requires a local BuyCrypto on this transaction uid, owned by TEST_USER_DATA_ID, with status
 // Stopped, amlCheck Pass and not completed — that combination is what renders the resume button
 // (see canResume in transactions-tab.tsx). The standard test data has no stopped transaction, so
@@ -92,13 +95,33 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await page.waitForTimeout(2000);
 
       // Wait for search results or "No entries found" message
+      await page
+        .waitForSelector('text=Matching Entries, text=No entries found', {
+          timeout: 10000,
+        })
+        .catch(() => {
+          // One of these should appear
+        });
+
+      await expect(page).toHaveScreenshot('compliance-02-search-results.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows a transaction found by its id', async ({ page }) => {
+      await page.goto(`/compliance?session=${token}&search=${TEST_TRANSACTION_ID}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
       await page.waitForSelector('text=Matching Entries, text=No entries found', {
         timeout: 10000,
       }).catch(() => {
         // One of these should appear
       });
 
-      await expect(page).toHaveScreenshot('compliance-02-search-results.png', {
+      await expect(page.getByText('Transactions', { exact: true })).toBeVisible({ timeout: 10000 });
+      await expect(page).toHaveScreenshot('compliance-03-search-transaction.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });

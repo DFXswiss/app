@@ -143,6 +143,20 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import type { BankTxSearchResult, ComplianceSearchResult, UserSearchResult } from 'src/hooks/compliance.hook';
 import ComplianceScreen from 'src/screens/compliance.screen';
 
+interface TransactionSearchResult {
+  id: number;
+  uid: string;
+  type?: string;
+  sourceType: string;
+  userDataId?: number;
+  verifiedName?: string;
+  amountInChf?: number;
+  amlCheck?: string;
+  created: string;
+}
+
+type SearchResult = ComplianceSearchResult & { transactions?: TransactionSearchResult[] };
+
 function user(partial: Partial<UserSearchResult> = {}): UserSearchResult {
   return { id: 2897, kycStatus: 'Completed', accountType: 'Personal', ...partial } as UserSearchResult;
 }
@@ -151,8 +165,18 @@ function bankTx(partial: Partial<BankTxSearchResult> = {}): BankTxSearchResult {
   return { id: 55, accountServiceRef: 'REF-1', amount: 100, currency: 'CHF', type: 'Credit', ...partial };
 }
 
-function result(partial: Partial<ComplianceSearchResult> = {}): ComplianceSearchResult {
-  return { type: 'Name', userDatas: [], bankTx: [], ...partial } as ComplianceSearchResult;
+function transaction(partial: Partial<TransactionSearchResult> = {}): TransactionSearchResult {
+  return {
+    id: 1234,
+    uid: 'tx-uid-1234',
+    sourceType: 'BuyCrypto',
+    created: '2026-01-02T03:04:05.000Z',
+    ...partial,
+  };
+}
+
+function result(partial: Partial<Omit<SearchResult, 'type'>> & { type?: string } = {}): SearchResult {
+  return { type: 'Name', userDatas: [], bankTx: [], ...partial } as unknown as SearchResult;
 }
 
 function rowOf(text: string): HTMLElement {
@@ -297,6 +321,87 @@ describe('ComplianceScreen', () => {
     expect(mockNavigate).toHaveBeenCalledWith('compliance/bank-tx/55');
   });
 
+  it('lists a transaction found by TransactionId and opens its customer', async () => {
+    mockSearch.mockResolvedValue(
+      result({
+        type: 'TransactionId',
+        userDatas: [user({ id: 42, name: 'Customer Name' })],
+        transactions: [
+          transaction({
+            id: 9001,
+            uid: 'transaction-uid',
+            userDataId: 42,
+            verifiedName: 'Jan Verified',
+            amountInChf: 1234,
+            amlCheck: 'Pass',
+          }),
+          transaction({ id: 9003, uid: 'typed-uid', type: 'BuyFiat' }),
+        ],
+      }),
+    );
+    await renderScreen();
+    await submitSearch('9001');
+
+    await waitFor(() => expect(screen.getByText('Transactions')).toBeInTheDocument());
+    expect(screen.getByText('(found by TransactionId)')).toBeInTheDocument();
+
+    expect(screen.getByText('UserData ID')).toBeInTheDocument();
+    expect(screen.getByText('Verified name')).toBeInTheDocument();
+    expect(screen.queryByText('UID')).not.toBeInTheDocument();
+
+    const txRow = rowOf('9001');
+    expect(within(txRow).getByText('9001')).toBeInTheDocument();
+    expect(within(txRow).getByText('42')).toBeInTheDocument();
+    expect(within(txRow).getByText('Jan Verified')).toBeInTheDocument();
+    expect(within(txRow).getByText('BuyCrypto')).toBeInTheDocument();
+    expect(within(txRow).getByText('1234')).toBeInTheDocument();
+    expect(within(txRow).getByText('Pass')).toBeInTheDocument();
+
+    const typedRow = rowOf('9003');
+    expect(within(typedRow).getByText('BuyFiat')).toBeInTheDocument();
+    expect(within(typedRow).getAllByText('-')).toHaveLength(4);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Customer' }));
+    expect(mockNavigate).toHaveBeenCalledWith('compliance/user/42');
+  });
+
+  it('does not show a customer button for a transaction without a userDataId', async () => {
+    mockSearch.mockResolvedValue(
+      result({
+        type: 'TransactionId',
+        transactions: [transaction({ id: 9002, uid: 'orphan-uid' })],
+      }),
+    );
+    await renderScreen();
+    await submitSearch('9002');
+
+    await waitFor(() => expect(screen.getByText('Transactions')).toBeInTheDocument());
+    const orphanRow = rowOf('9002');
+    expect(within(orphanRow).getAllByText('-')).toHaveLength(4);
+    expect(screen.queryByRole('button', { name: 'Customer' })).not.toBeInTheDocument();
+  });
+
+  it('shows customers and no transaction section when an older backend omits transactions', async () => {
+    mockSearch.mockResolvedValue(result({ type: 'Name', userDatas: [user({ id: 7, name: 'Anna' })] }));
+    await renderScreen();
+    await submitSearch('Anna');
+
+    await waitFor(() => expect(screen.getByText('Anna')).toBeInTheDocument());
+    expect(screen.getByText('Customers')).toBeInTheDocument();
+    expect(screen.queryByText('Transactions')).not.toBeInTheDocument();
+  });
+
+  it('shows no transaction section for an empty transaction list', async () => {
+    mockSearch.mockResolvedValue(
+      result({ type: 'Name', userDatas: [user({ id: 7, name: 'Anna' })], transactions: [] }),
+    );
+    await renderScreen();
+    await submitSearch('Anna');
+
+    await waitFor(() => expect(screen.getByText('Anna')).toBeInTheDocument());
+    expect(screen.queryByText('Transactions')).not.toBeInTheDocument();
+  });
+
   it('reports an empty result and a failed search', async () => {
     await renderScreen();
     await submitSearch('nobody');
@@ -320,8 +425,8 @@ describe('ComplianceScreen', () => {
 
   it('does not apply a stale search response after a later search', async () => {
     mockLocation.search = '?search=first';
-    const first = createDeferred<ComplianceSearchResult>();
-    const second = createDeferred<ComplianceSearchResult>();
+    const first = createDeferred<SearchResult>();
+    const second = createDeferred<SearchResult>();
     mockSearch.mockImplementation((key: string) => (key === 'first' ? first.promise : second.promise));
 
     const { rerender } = render(<ComplianceScreen />);
