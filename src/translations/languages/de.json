@@ -679,7 +679,8 @@
     "Confirm swap": "Swap bestätigen",
     "Send the selected amount to the address below. This address can be used multiple times, it is always the same for swaps from {{sourceChain}} to {{asset}} on {{targetChain}}.": "Sende den ausgewählten Betrag an die unten stehende Adresse. Diese Adresse kann mehrfach verwendet werden, sie ist immer die gleiche für Swaps von {{sourceChain}} zu {{asset}} auf {{targetChain}}.",
     "As soon as the transaction arrives in our wallet, we will transfer your asset to your wallet.": "Sobald die Transaktion in unserem Wallet eingegangen ist, werden wir Dein Asset auf Deine Wallet übertragen.",
-    "The output amount is computed as the input amount minus the DFX fee and the network fee over the base rate. That is, {{output}} {{outputSymbol}} = ({{input}} {{inputSymbol}} - {{dfxFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}) ÷ {{baseRate}}.": "Der Ausgabebetrag wird als Eingabebetrag abzüglich der DFX-Gebühr und der Netzwerkgebühr über dem Basiskurs berechnet. Das heißt, {{output}} {{outputSymbol}} = ({{input}} {{inputSymbol}} - {{dfxFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}) ÷ {{baseRate}}."
+    "The output amount is computed as the input amount minus the DFX fee and the network fee over the base rate. That is, {{output}} {{outputSymbol}} = ({{input}} {{inputSymbol}} - {{dfxFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}) ÷ {{baseRate}}.": "Der Ausgabebetrag wird als Eingabebetrag abzüglich der DFX-Gebühr und der Netzwerkgebühr über dem Basiskurs berechnet. Das heißt, {{output}} {{outputSymbol}} = ({{input}} {{inputSymbol}} - {{dfxFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}) ÷ {{baseRate}}.",
+    "Blockchain": "Blockchain"
   },
   "screens/payment": {
     "Payment Information": "Zahlungsinformation",

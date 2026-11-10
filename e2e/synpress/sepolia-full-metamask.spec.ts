@@ -1594,7 +1594,10 @@ test.describe('Full MetaMask Sepolia USDT Sell', () => {
       // Assert 1: Verify we reached the Sell page with Payment Information
       const hasPaymentInfo = finalContent?.includes('Payment Information');
       const hasDepositAddress = finalContent?.includes('0x9858EfFD232B4033E47d90003D41EC34EcaEda94') || finalContent?.includes('Address');
-      const hasIBAN = finalContent?.includes('CH93 0076 2011 6238 5295 7');
+      const testIban = process.env.TEST_IBAN?.replace(/\s/g, '')
+        .replace(/(.{4})/g, '$1 ')
+        .trim();
+      const hasIBAN = !!testIban && !!finalContent?.includes(testIban);
       const hasExchangeRate = finalContent?.includes('EUR/USDT');
       const hasSepoliaTestnet = finalContent?.includes('Sepolia Testnet');
 

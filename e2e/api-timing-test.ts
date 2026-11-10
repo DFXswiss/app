@@ -17,6 +17,7 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const API_URL = process.env.REACT_APP_API_URL!;
 const TEST_SEED = process.env.TEST_SEED!;
+const TEST_IBAN = process.env.TEST_IBAN;
 
 async function main() {
   console.log('=== API Timing Test ===\n');
@@ -24,6 +25,11 @@ async function main() {
 
   if (!TEST_SEED) {
     console.error('ERROR: TEST_SEED not in .env');
+    process.exit(1);
+  }
+
+  if (!TEST_IBAN?.trim()) {
+    console.error('ERROR: TEST_IBAN not in .env');
     process.exit(1);
   }
 
@@ -54,7 +60,7 @@ async function main() {
   const startWithout = Date.now();
 
   const request = {
-    iban: 'CH93 0076 2011 6238 5295 7',
+    iban: TEST_IBAN,
     asset: { id: 407 }, // Sepolia USDT
     amount: 0.01,
     currency: { id: 2 }, // EUR

@@ -11,7 +11,7 @@
  * Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
  */
 
-import type { Page, Response } from '@playwright/test';
+import type { Page, Request, Response } from '@playwright/test';
 import { expect, gotoWithSession, normPath, openScreen, test, waitForRow } from './fixtures';
 import {
   cleanupCreatedData,
@@ -286,6 +286,60 @@ async function setupSwapFullUiFlow(
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
 
   return { user, paymentInfos };
+}
+
+function requireRuntimeAsset(
+  assets: AssetDto[],
+  identity: { name: string; blockchain: string; uniqueName: string },
+): AssetDto {
+  const matches = assets.filter((asset) => {
+    if (asset.name !== identity.name || asset.blockchain !== identity.blockchain) return false;
+    return asset.uniqueName == null || asset.uniqueName === identity.uniqueName;
+  });
+  if (matches.length !== 1) {
+    throw new Error(`expected exactly one ${identity.uniqueName} from GET /v1/asset, found ${matches.length}`);
+  }
+  return matches[0];
+}
+
+function paymentBody(request: Request): Record<string, unknown> | undefined {
+  const raw = request.postData();
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function sameRuntimeAsset(value: unknown, asset: AssetDto): boolean {
+  if (typeof value === 'number') return value === asset.id;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  const nameAgrees = row.name == null || row.name === asset.name;
+  const chainAgrees = row.blockchain == null || row.blockchain === asset.blockchain;
+  if (typeof row.id === 'number' && row.id === asset.id && nameAgrees && chainAgrees) return true;
+  if (row.name !== asset.name || row.blockchain !== asset.blockchain) return false;
+  return row.uniqueName == null || row.uniqueName === asset.uniqueName;
+}
+
+function spendAmountInput(page: Page) {
+  // StyledInput puts the form name on the controller, not on the DOM input.
+  return page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
+}
+
+async function receivingWalletText(page: Page): Promise<string> {
+  const button = page.getByRole('button', { name: 'Blockchain' });
+  await expect(button).toContainText(/0x[a-fA-F0-9]{40}/);
+  return (await button.innerText()).replace(/\s+/g, ' ').trim();
+}
+
+function addressIn(text: string): string {
+  const match = text.match(/0x[a-fA-F0-9]{40}/);
+  if (!match) throw new Error(`receiving wallet text has no address: ${text}`);
+  return match[0];
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -720,10 +774,15 @@ test.describe('Sell + Swap e2e', () => {
     // in a text <input>, and only the OPEN list's items are <button>s (see StyledSearchDropdown).
     const sourceInput = page.locator('input[name="sourceAsset"]');
     await expect(sourceInput).toBeVisible({ timeout: 15000 });
+    await expect(sourceInput).not.toHaveValue(/^\s*$/);
     const sourceSelected = (await sourceInput.inputValue()).trim();
-    if (sourceSelected) {
-      expect(sellable.has(sourceSelected), `swap source asset "${sourceSelected}" must be sellable`).toBe(true);
-    }
+    expect(sellable.has(sourceSelected), `swap source asset "${sourceSelected}" must be sellable`).toBe(true);
+
+    const targetInput = page.locator('input[name="targetAsset"]');
+    await expect(targetInput).toBeVisible({ timeout: 15000 });
+    await expect(targetInput).not.toHaveValue(/^\s*$/);
+    const initialTarget = (await targetInput.inputValue()).trim();
+    expect(buyable.has(initialTarget), `swap target asset "${initialTarget}" must be buyable`).toBe(true);
 
     await sourceInput.click();
     await page.waitForTimeout(400);
@@ -745,12 +804,20 @@ test.describe('Sell + Swap e2e', () => {
     await page.getByText('You spend', { exact: true }).click();
     await page.waitForTimeout(200);
 
-    const targetInput = page.locator('input[name="targetAsset"]');
+    const networkButton = page.getByRole('button', { name: 'Blockchain' });
+    await expect(networkButton).toBeVisible({ timeout: 15000 });
+    await networkButton.click();
+    const ethereum = page.getByRole('button', { name: /^Ethereum\b/ });
+    await expect(ethereum, 'Ethereum must be offered as a receive network').toHaveCount(1);
+    await ethereum.scrollIntoViewIfNeeded();
+    await expect(ethereum).toBeVisible();
+    await ethereum.click();
+    await expect(networkButton).toContainText('Ethereum');
+
     await expect(targetInput).toBeVisible({ timeout: 15000 });
+    await expect(targetInput).not.toHaveValue(/^\s*$/);
     const targetSelected = (await targetInput.inputValue()).trim();
-    if (targetSelected) {
-      expect(buyable.has(targetSelected), `swap target asset "${targetSelected}" must be buyable`).toBe(true);
-    }
+    expect(buyable.has(targetSelected), `swap target asset "${targetSelected}" must be buyable`).toBe(true);
 
     await targetInput.click();
     await page.waitForTimeout(400);
@@ -887,6 +954,231 @@ test.describe('Sell + Swap e2e', () => {
         { timeout: 8000, message: 'cleared swap spend amount must stay empty' },
       )
       .toEqual({ value: '', paymentVisible: false });
+  });
+
+  test('/swap switches the receive chain from Ethereum to Polygon and requests ETH to Polygon USDC', async ({
+    page,
+  }) => {
+    // Proof scope: already-enabled Ethereum/ETH to Polygon/USDC, resolved from GET /v1/asset by
+    // name, chain and uniqueName. The spend field is cleared before Ethereum USDT is chosen.
+    // A distinct spend of 0.2 is then typed. The initial exact paymentInfos response is matched
+    // by Ethereum ETH, Ethereum USDT, the receiver and exactPrice, not by amount. That request
+    // must use 0.2 and omit targetAmount, and You-get must show its estimate before the spend
+    // is captured. The receive chain then changes from Ethereum to Polygon. The next
+    // unintercepted paymentInfos call for that new pair is matched by source
+    // and target only. Its exactPrice request is checked to reuse the captured spend and to
+    // omit the previous output. The spend field is read after that exact response is visible.
+    // It does not enable DSC or DGC and does not prove a Denario price or a transfer.
+    // The response is not rewritten. No completion click.
+    test.setTimeout(90000);
+    const user = await createUser({
+      walletIndex: nextWalletIndex(),
+      tag: 'swap-receive-network',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const assets = await fetchAssets();
+    const eth = requireRuntimeAsset(assets, { name: 'ETH', blockchain: 'Ethereum', uniqueName: 'Ethereum/ETH' });
+    const usdc = requireRuntimeAsset(assets, { name: 'USDC', blockchain: 'Polygon', uniqueName: 'Polygon/USDC' });
+    const usdt = requireRuntimeAsset(assets, { name: 'USDT', blockchain: 'Ethereum', uniqueName: 'Ethereum/USDT' });
+    expect(eth.sellable, 'runtime Ethereum/ETH must be sellable').toBe(true);
+    expect(eth.comingSoon, 'runtime Ethereum/ETH must not be coming soon').not.toBe(true);
+    expect(usdc.buyable, 'runtime Polygon/USDC must be buyable').toBe(true);
+    expect(usdc.sellable, 'runtime Polygon/USDC must be sellable').toBe(true);
+    expect(usdc.comingSoon, 'runtime Polygon/USDC must not be coming soon').not.toBe(true);
+    expect(usdt.buyable, 'runtime Ethereum/USDT must be buyable').toBe(true);
+    expect(usdt.comingSoon, 'runtime Ethereum/USDT must not be coming soon').not.toBe(true);
+
+    await openScreen(page, '/swap', user.jwt);
+    const opened = new URL(page.url());
+    expect(opened.searchParams.get('asset-in')).toBeNull();
+    expect(opened.searchParams.get('asset-out')).toBeNull();
+    expect(opened.searchParams.get('blockchain')).toBeNull();
+
+    const sourceInput = page.locator('input[name="sourceAsset"]');
+    await expect(sourceInput).toBeVisible({ timeout: 15000 });
+    await sourceInput.click();
+    const ethOption = page.getByRole('button', { name: /^ETH(\s|$)/ }).filter({ hasText: 'Ethereum' });
+    await expect
+      .poll(async () => ethOption.count(), {
+        timeout: 15000,
+        message: 'native ETH on Ethereum must be the only matching source option',
+      })
+      .toBe(1);
+    await ethOption.click();
+    await expect(sourceInput).toHaveValue('ETH');
+
+    const networkButton = page.getByRole('button', { name: 'Blockchain' });
+    await expect(networkButton).toBeVisible({ timeout: 15000 });
+    await expect(networkButton, 'the initial receive chain must be Ethereum').toContainText('Ethereum');
+
+    const walletBefore = await receivingWalletText(page);
+    expect(addressIn(walletBefore).toLowerCase()).toBe(user.address.toLowerCase());
+
+    const spend = spendAmountInput(page);
+    await expect
+      .poll(async () => spend.inputValue(), {
+        timeout: 10000,
+        message: 'Ethereum ETH must initialize a spend amount so paymentInfos has an amount',
+      })
+      .not.toBe('');
+
+    const quoteOutput = page
+      .locator('h2', { hasText: /You get/ })
+      .locator('..')
+      .locator('input[type="number"]')
+      .first();
+    await spend.click();
+    await spend.fill('');
+    await spend.blur();
+    await expect
+      .poll(async () => spend.inputValue(), {
+        timeout: 8000,
+        message: 'the spend field must be empty before Ethereum USDT is chosen',
+      })
+      .toBe('');
+
+    const initialTarget = page.locator('input[name="targetAsset"]');
+    await expect(initialTarget).toBeVisible({ timeout: 15000 });
+    await initialTarget.click();
+    const usdtOption = page.getByRole('button', { name: /^USDT(\s|$)/ });
+    await expect
+      .poll(async () => usdtOption.count(), {
+        timeout: 15000,
+        message: 'Ethereum USDT must be the only matching target option',
+      })
+      .toBe(1);
+    await usdtOption.click();
+    await expect(initialTarget).toHaveValue('USDT');
+    await expect(networkButton).toContainText('Ethereum');
+    await expect(spend).toHaveValue('');
+
+    const initialExact = page.waitForResponse(
+      (response) => {
+        const request = response.request();
+        if (request.method() !== 'PUT' || !response.url().includes('/swap/paymentInfos')) return false;
+        const body = paymentBody(request);
+        if (!body || body.exactPrice !== true) return false;
+        const source = body.sourceAsset ?? body.source;
+        const target = body.targetAsset ?? body.target;
+        const receiver = body.receiverAddress ?? body.receiver;
+        return (
+          sameRuntimeAsset(source, eth) &&
+          sameRuntimeAsset(target, usdt) &&
+          typeof receiver === 'string' &&
+          receiver.toLowerCase() === user.address.toLowerCase()
+        );
+      },
+      { timeout: 30000 },
+    );
+    await spend.click();
+    await spend.fill('0.2');
+    await spend.blur();
+
+    const initialResponse = await initialExact;
+    expect(initialResponse.ok(), 'the initial Ethereum USDT exact paymentInfos response must succeed').toBe(
+      true,
+    );
+    const initialBody = paymentBody(initialResponse.request());
+    expect(initialBody, 'initial exact paymentInfos body must be JSON').toBeTruthy();
+    expect(sameRuntimeAsset(initialBody?.sourceAsset ?? initialBody?.source, eth)).toBe(true);
+    expect(sameRuntimeAsset(initialBody?.targetAsset ?? initialBody?.target, usdt)).toBe(true);
+    const initialReceiver = initialBody?.receiverAddress ?? initialBody?.receiver;
+    expect(typeof initialReceiver === 'string' ? initialReceiver.toLowerCase() : '').toBe(
+      user.address.toLowerCase(),
+    );
+    expect(initialBody?.exactPrice).toBe(true);
+    expect(initialBody?.amount).toBe(0.2);
+    expect(initialBody?.targetAmount).toBeUndefined();
+    const initialResult = (await initialResponse.json()) as { estimatedAmount?: unknown };
+    const initialEstimate =
+      typeof initialResult?.estimatedAmount === 'number' || typeof initialResult?.estimatedAmount === 'string'
+        ? String(initialResult.estimatedAmount)
+        : '';
+    expect(initialEstimate, 'the initial exact paymentInfos response must include an estimated amount').not.toBe(
+      '',
+    );
+    await expect
+      .poll(async () => (await quoteOutput.inputValue()).trim(), {
+        timeout: 15000,
+        message: 'the exact Ethereum USDT result must be visible before the spend amount is captured',
+      })
+      .toBe(initialEstimate);
+    await expect(initialTarget).toHaveValue('USDT');
+    await expect(sourceInput).toHaveValue('ETH');
+    const capturedSpend = await spend.inputValue();
+    expect(capturedSpend.trim(), 'the completed quote must leave a spend amount in the form').not.toBe('');
+
+    const exactPayment = page.waitForResponse(
+      (response) => {
+        const request = response.request();
+        if (request.method() !== 'PUT' || !response.url().includes('/swap/paymentInfos')) return false;
+        const body = paymentBody(request);
+        if (!body || body.exactPrice !== true) return false;
+        const source = body.sourceAsset ?? body.source;
+        const target = body.targetAsset ?? body.target;
+        const receiver = body.receiverAddress ?? body.receiver;
+        return (
+          sameRuntimeAsset(source, eth) &&
+          sameRuntimeAsset(target, usdc) &&
+          typeof receiver === 'string' &&
+          receiver.toLowerCase() === user.address.toLowerCase()
+        );
+      },
+      { timeout: 30000 },
+    );
+
+    await networkButton.click();
+    const polygon = page.getByRole('button', { name: /^Polygon\b/ });
+    await expect(polygon, 'Polygon must be offered as a receive network').toHaveCount(1);
+    await polygon.scrollIntoViewIfNeeded();
+    await expect(polygon).toBeVisible();
+    await polygon.click();
+    await expect(networkButton).toContainText('Polygon');
+    await expect(sourceInput).toHaveValue('ETH');
+
+    const walletAfterNetwork = await receivingWalletText(page);
+    expect(addressIn(walletAfterNetwork).toLowerCase()).toBe(user.address.toLowerCase());
+    expect(addressIn(walletAfterNetwork).toLowerCase()).toBe(addressIn(walletBefore).toLowerCase());
+
+    const targetInput = page.locator('input[name="targetAsset"]');
+    await expect(targetInput).toBeVisible();
+    await targetInput.click();
+    const usdcOption = page.getByRole('button', { name: /^USDC(\s|$)/ });
+    await expect
+      .poll(async () => usdcOption.count(), {
+        timeout: 10000,
+        message: 'Polygon USDC must be the only matching target option',
+      })
+      .toBe(1);
+    await usdcOption.click();
+    await expect(targetInput).toHaveValue('USDC');
+    await expect(networkButton).toContainText('Polygon');
+
+    const response = await exactPayment;
+    const body = paymentBody(response.request());
+    expect(body, 'exact paymentInfos body must be JSON').toBeTruthy();
+    expect(sameRuntimeAsset(body?.sourceAsset, eth)).toBe(true);
+    expect(sameRuntimeAsset(body?.targetAsset ?? body?.target, usdc)).toBe(true);
+    const receiver = body?.receiverAddress ?? body?.receiver;
+    expect(typeof receiver === 'string' ? receiver.toLowerCase() : '').toBe(user.address.toLowerCase());
+    expect(body?.exactPrice).toBe(true);
+    expect(body?.amount).toBe(Number(capturedSpend));
+    expect(body?.targetAmount).toBeUndefined();
+    const result = (await response.json()) as { estimatedAmount?: unknown };
+    const estimatedText =
+      typeof result?.estimatedAmount === 'number' || typeof result?.estimatedAmount === 'string'
+        ? String(result.estimatedAmount)
+        : '';
+    expect(estimatedText, 'the exact paymentInfos response must include an estimated amount').not.toBe('');
+    await expect
+      .poll(async () => (await quoteOutput.inputValue()).trim(), {
+        timeout: 15000,
+        message: 'the exact ETH to Polygon USDC result must be visible before the spend amount is checked',
+      })
+      .toBe(estimatedText);
+    await expect(spend).toHaveValue(capturedSpend);
   });
 
   // Sanity: incomplete personal data is redirected off /sell by the API/UI (Ident data incomplete).

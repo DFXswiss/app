@@ -781,7 +781,9 @@ test.describe('Sepolia USDT Sell E2E Flow', () => {
     if (!ibanSelected) {
       const ibanInput = appPage.locator('input[placeholder*="IBAN"], input[name*="iban"]').first();
       if (await ibanInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await ibanInput.fill('CH9300762011623852957'); // Test IBAN
+        const testIban = process.env.TEST_IBAN;
+        if (!testIban?.trim()) throw new Error('TEST_IBAN is required');
+        await ibanInput.fill(testIban); // Test IBAN from environment
         console.log('Entered test IBAN');
         ibanSelected = true;
       }
