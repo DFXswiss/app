@@ -716,7 +716,7 @@ test.describe('Passkey login', () => {
     await expect(page).toHaveScreenshot('passkey-desk-recovery-hidden.png', { fullPage: true });
   });
 
-  test('Anmeldung fehlgeschlagen', async ({ page }) => {
+  test('shows the failed sign-in', async ({ page }) => {
     await openDesk(page, 'locked');
     await page.getByRole('button', { name: 'Log in' }).click();
     const sentence = page.getByText(

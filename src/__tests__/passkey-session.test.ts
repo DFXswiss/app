@@ -31,7 +31,8 @@ it('stores the DFX account with the session and keeps it when the session is upd
 
 it('compares wallet, credential and token when identifying a session', () => {
   const session = { accessToken: 'token', wallet: { id: 7, credentialId: 'credential' } } as unknown as OpenPasskey;
-  expect(sameSession(session, session)).toBe(true);
+  const equal = { accessToken: 'token', wallet: { id: 7, credentialId: 'credential' } } as unknown as OpenPasskey;
+  expect(sameSession(equal, session)).toBe(true);
   expect(sameSession(undefined, session)).toBe(false);
   expect(sameSession({ ...session, wallet: undefined } as unknown as OpenPasskey, session)).toBe(false);
   expect(sameSession({ ...session, wallet: { ...session.wallet, id: 8 } }, session)).toBe(false);

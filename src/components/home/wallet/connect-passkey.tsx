@@ -37,7 +37,7 @@ import {
   PASSKEY_UNKNOWN_HEADING,
   walletEnvForHost,
 } from './passkey-host';
-import { getOpenPasskey, setOpenPasskey, subscribeOpenPasskey } from './passkey-session';
+import { dfxPasskeyAccount, getOpenPasskey, setOpenPasskey, subscribeOpenPasskey } from './passkey-session';
 import { createWalletClient } from './wallet-client';
 
 export { passkeyPlatformBlock, walletEnvForHost };
@@ -96,7 +96,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const { onCancel }: ConnectProps = props;
   const { translate } = useSettingsContext();
   const { navigate } = useNavigation();
-  const { session } = useAuthContext();
+  const { session, isLoggedIn } = useAuthContext();
   const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
   const [report, setReport] = useState<PlatformReport | undefined>();
   const [mail, setMail] = useState('');
@@ -147,7 +147,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       setSheetError(PASSKEY_DID_NOT_UNLOCK);
       return;
     }
-    setOpenPasskey(result, session?.account);
+    setOpenPasskey(result, dfxPasskeyAccount(isLoggedIn, session));
   }
 
   function applyCeremonyError(nextEntry: CeremonyEntry, caught: unknown): void {

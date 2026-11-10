@@ -1,6 +1,12 @@
 import { useAuthContext, useSessionContext } from '@dfx.swiss/react';
 import { useEffect, useSyncExternalStore } from 'react';
-import { getOpenPasskey, getOpenPasskeyAccount, setOpenPasskey, subscribeOpenPasskey } from './passkey-session';
+import {
+  dfxPasskeyAccount,
+  getOpenPasskey,
+  getOpenPasskeyAccount,
+  setOpenPasskey,
+  subscribeOpenPasskey,
+} from './passkey-session';
 
 // Mounted for every route. Logout, another account, or a login after the passkey was opened
 // with no account wipes the tab keys. The same account with a new token does not.
@@ -12,11 +18,9 @@ export function PasskeyDfxSession(): null {
   useEffect(() => {
     if (!isInitialized) return;
     if (!open) return;
-    let account: number | undefined;
-    if (isLoggedIn) {
-      if (session == null || typeof session.account !== 'number') return;
-      account = session.account;
-    }
+    const account = dfxPasskeyAccount(isLoggedIn, session);
+    // Logged in, but the account id is not a number yet. Wait instead of treating that as logout.
+    if (isLoggedIn && account === undefined) return;
     if (account === getOpenPasskeyAccount()) return;
     open.keys?.wipe();
     setOpenPasskey(undefined);

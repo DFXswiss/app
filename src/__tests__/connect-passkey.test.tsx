@@ -3,7 +3,7 @@ jest.mock('@dfx.swiss/react/dist/definitions/auth', () => ({
 }));
 
 const mockLogout = jest.fn(() => Promise.resolve());
-const mockAuthState: { session?: { account?: number } } = {};
+const mockAuthState: { session?: { account?: number }; isLoggedIn: boolean } = { isLoggedIn: false };
 let mockCurrency: { name: string } | undefined;
 let mockLocale = 'en-US';
 const mockChangeCurrency = jest.fn();
@@ -281,6 +281,7 @@ describe('ConnectPasskey', () => {
   beforeEach(() => {
     setOpenPasskey(undefined);
     mockAuthState.session = undefined;
+    mockAuthState.isLoggedIn = false;
     localStorage.removeItem('dfx.wallet.currency');
     mockBuildLoginRing = () => {
       throw new Error('unexpected login ring');
@@ -886,20 +887,37 @@ describe('ConnectPasskey', () => {
   });
 
   it('ignores passkey status after the desk unmounts', async () => {
-    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
-    let finish: (value: unknown) => void = () => undefined;
-    mockCredentialStatus.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
-    view.unmount();
-    await act(async () => finish([{ credentialId: 'cred', status: 'Active' }]));
-    expect(screen.queryByText('cred: Active')).not.toBeInTheDocument();
+    const react = jest.requireActual<typeof import('react')>('react');
+    const originalUseState = react.useState;
+    const staleWrite = jest.fn();
+    const spy = jest.spyOn(react, 'useState').mockImplementation(((initial: unknown) => {
+      const [value, setValue] = originalUseState<unknown>(initial);
+      return [
+        value,
+        (next: unknown) => {
+          if (next === 'cred: Active' || next === 'status') staleWrite(next);
+          setValue(next);
+        },
+      ];
+    }) as typeof react.useState);
+    try {
+      setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+      let finish: (value: unknown) => void = () => undefined;
+      mockCredentialStatus.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
+      view.unmount();
+      await act(async () => finish([{ credentialId: 'cred', status: 'Active' }]));
+      expect(staleWrite).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it.each(['success', 'error'] as const)('discards a diagnostic %s after the desk unmounts', async (outcome) => {
@@ -1908,28 +1926,45 @@ describe('ConnectPasskey', () => {
   });
 
   it('does not report a link success after the desk unmounts during refresh', async () => {
-    const session = authResult('unlocked', ring(SEED), false) as unknown as OpenPasskey;
-    setOpenPasskey(session);
-    mockLink
-      .mockRejectedValueOnce(new Error('automatic link failed'))
-      .mockResolvedValueOnce({ address: { family: 'Bitcoin', address: 'bc1qlogin' } });
-    let finish: (wallets: unknown[]) => void = () => undefined;
-    mockWallets.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
-    fireEvent.click(await screen.findByRole('status'));
-    fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Connect again' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: 'Connect again' }));
-    await waitFor(() => expect(mockWallets).toHaveBeenCalledTimes(1));
-    view.unmount();
-    await act(async () => finish([session.wallet]));
-    expect(mockTranslate).not.toHaveBeenCalledWith('screens/home', 'Linked Bitcoin bc1qlogin.');
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    const react = jest.requireActual<typeof import('react')>('react');
+    const originalUseState = react.useState;
+    const staleWrite = jest.fn();
+    const spy = jest.spyOn(react, 'useState').mockImplementation(((initial: unknown) => {
+      const [value, setValue] = originalUseState<unknown>(initial);
+      return [
+        value,
+        (next: unknown) => {
+          if (next === 'Linked Bitcoin bc1qlogin.') staleWrite(next);
+          setValue(next);
+        },
+      ];
+    }) as typeof react.useState);
+    try {
+      const session = authResult('unlocked', ring(SEED), false) as unknown as OpenPasskey;
+      setOpenPasskey(session);
+      mockLink
+        .mockRejectedValueOnce(new Error('automatic link failed'))
+        .mockResolvedValueOnce({ address: { family: 'Bitcoin', address: 'bc1qlogin' } });
+      let finish: (wallets: unknown[]) => void = () => undefined;
+      mockWallets.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(await screen.findByRole('status'));
+      fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Connect again' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: 'Connect again' }));
+      await waitFor(() => expect(mockWallets).toHaveBeenCalledTimes(1));
+      view.unmount();
+      await act(async () => finish([session.wallet]));
+      expect(staleWrite).not.toHaveBeenCalled();
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('opens recovery words from settings and clears them after closing', async () => {
@@ -2927,6 +2962,7 @@ describe('ConnectPasskey', () => {
   });
 
   it('stores the current DFX account with the passkey session', async () => {
+    mockAuthState.isLoggedIn = true;
     mockAuthState.session = { account: 7 };
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
     const result = authResult('unlocked', ring(SEED));
@@ -2935,6 +2971,18 @@ describe('ConnectPasskey', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
     await waitFor(() => expect(passkeySession.getOpenPasskey()).toBe(result));
     expect(passkeySession.getOpenPasskeyAccount()).toBe(7);
+  });
+
+  it('stores no DFX account when the login token is expired', async () => {
+    mockAuthState.isLoggedIn = false;
+    mockAuthState.session = { account: 7 };
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const result = authResult('unlocked', ring(SEED));
+    mockLogin.mockResolvedValueOnce(result);
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    await waitFor(() => expect(passkeySession.getOpenPasskey()).toBe(result));
+    expect(passkeySession.getOpenPasskeyAccount()).toBeUndefined();
   });
 
   it.each(['locked', 'seed-mismatch'] as const)(

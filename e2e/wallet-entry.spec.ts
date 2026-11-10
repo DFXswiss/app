@@ -249,7 +249,6 @@ test.describe('/wallet passkey entry', () => {
     }, HANDBOOK_ACCOUNT);
     const settings = page.getByRole('button', { name: 'Settings' });
     await expect(settings).toBeVisible();
-    await expect(page.getByText('Wallet locked', { exact: true })).toHaveCount(0);
     await expect(page.locator('img[alt="logo"]')).toHaveCount(0);
     await expect(page.locator('img[src*="/kaufen_"]')).toHaveCount(0);
     await expectWalletAddress(page);

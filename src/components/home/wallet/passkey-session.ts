@@ -13,6 +13,17 @@ export function sameSession(a: OpenPasskey | undefined, b: OpenPasskey): boolean
   );
 }
 
+// Account id bound to an open passkey. An expired token still carries session.account,
+// but isLoggedIn is false. Storing that number looks like another account and the guard wipes the keys.
+export function dfxPasskeyAccount(
+  isLoggedIn: boolean,
+  session: { account?: unknown } | null | undefined,
+): number | undefined {
+  const account = session?.account;
+  if (isLoggedIn && typeof account === 'number') return account;
+  return undefined;
+}
+
 declare global {
   interface Window {
     __dfxSetOpenPasskey?: (next: OpenPasskey | undefined, ...accountArg: [] | [number | undefined]) => void;

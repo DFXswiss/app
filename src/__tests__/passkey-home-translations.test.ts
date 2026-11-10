@@ -142,7 +142,7 @@ function checkAddedTranslations(language: string, messages: Record<string, strin
   }
 }
 
-it('translates every home key added since staging in all supported languages', () => {
+it('translates each addedHomeKeys entry in German, French and Italian', () => {
   for (const [language, messages] of [
     ['de', de['screens/home']],
     ['fr', fr['screens/home']],

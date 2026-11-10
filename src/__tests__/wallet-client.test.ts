@@ -278,8 +278,13 @@ describe('createWalletClient', () => {
 
     expect(ceremonies.assert).toBe(mockAssert);
     expect(await client.revoke('Lost', 'cred')).toBe(lost);
+    expect(mockCacheUpdate).toHaveBeenCalledTimes(1);
+    expect(mockCacheUpdate).toHaveBeenLastCalledWith(credentialIdText(pinned), { state: 'revoked' });
     expect(await client.revoke('Compromised', 'cred')).toBe(compromised);
+    expect(mockCacheUpdate).toHaveBeenCalledTimes(2);
+    expect(mockCacheUpdate).toHaveBeenLastCalledWith(credentialIdText(pinned), { state: 'revoked' });
     expect(await client.revoke('Lost', 'cred')).toBe(active);
+    expect(mockCacheUpdate).toHaveBeenCalledTimes(2);
     expect(mockCeremoniesCreated).toHaveBeenCalledTimes(1);
     expect(mockAssert).toHaveBeenCalledWith({
       challenge: credentialBytes('Y2hhbGxlbmdl'),
@@ -295,8 +300,6 @@ describe('createWalletClient', () => {
       credential: { id: 'assertion-body' },
       reason: 'Compromised',
     });
-    expect(mockCacheUpdate).toHaveBeenCalledTimes(2);
-    expect(mockCacheUpdate).toHaveBeenCalledWith(credentialIdText(pinned), { state: 'revoked' });
   });
 
   it('rejects a revoke assertion for a different credential and does not finish it', async () => {

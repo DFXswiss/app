@@ -16,6 +16,7 @@ import { render, screen } from '@testing-library/react';
 import { LayoutWrapper } from '../components/layout-wrapper';
 import { PasskeyDfxSession } from '../components/home/wallet/passkey-dfx-session';
 import {
+  dfxPasskeyAccount,
   getOpenPasskey,
   getOpenPasskeyAccount,
   setOpenPasskey,
@@ -143,6 +144,18 @@ describe('PasskeyDfxSession', () => {
     mockAuthState.session = {};
     view.rerender(<PasskeyDfxSession />);
 
+    expect(wipe).not.toHaveBeenCalled();
+    expect(getOpenPasskey()).toBe(open);
+  });
+
+  it('keeps the wallet open when the DFX token is expired but the account id remains', () => {
+    const wipe = jest.fn();
+    const open = { state: 'unlocked', keys: { wipe } } as unknown as OpenPasskey;
+    mockSessionState.isLoggedIn = false;
+    mockAuthState.session = { account: 7 };
+    setOpenPasskey(open, dfxPasskeyAccount(mockSessionState.isLoggedIn, mockAuthState.session));
+    render(<PasskeyDfxSession />);
+    expect(getOpenPasskeyAccount()).toBeUndefined();
     expect(wipe).not.toHaveBeenCalled();
     expect(getOpenPasskey()).toBe(open);
   });

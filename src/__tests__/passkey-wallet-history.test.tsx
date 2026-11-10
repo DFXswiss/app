@@ -87,6 +87,9 @@ describe('Passkey wallet history', () => {
       );
       const history: PasskeyHistory = { items, hasMore: true, loadMore };
       const { rerender } = render(<PasskeyWalletHistory history={history} />);
+      for (let index = 0; index < 5; index += 1) {
+        expect(screen.getByText(`Transaction ${index}`)).toBeInTheDocument();
+      }
       expect(screen.queryByText('Transaction 5')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Show more' })).toHaveClass('w-full', 'min-h-[48px]');
       fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
@@ -107,11 +110,11 @@ describe('Passkey wallet history', () => {
   });
 
   it('reports a failed load and allows retrying', async () => {
-    let callback: IntersectionObserverCallback | undefined;
+    const callbacks: IntersectionObserverCallback[] = [];
     const original = global.IntersectionObserver;
     global.IntersectionObserver = class {
       constructor(next: IntersectionObserverCallback) {
-        callback = next;
+        callbacks.push(next);
       }
       observe = jest.fn();
       disconnect = jest.fn();
@@ -125,13 +128,19 @@ describe('Passkey wallet history', () => {
       const loadMore = jest.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(undefined);
       render(<PasskeyWalletHistory history={{ items, hasMore: true, loadMore }} />);
       fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-      act(() => callback?.([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver));
+      const first = callbacks[0];
+      expect(first).toBeDefined();
+      act(() => first?.([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver));
       expect(loadMore).not.toHaveBeenCalled();
-      act(() => callback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+      act(() => first?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
       expect(await screen.findByText('Could not load transactions.')).toBeInTheDocument();
+      const beforeRetry = callbacks.length;
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
       await waitFor(() => expect(screen.queryByText('Could not load transactions.')).not.toBeInTheDocument());
-      act(() => callback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+      expect(callbacks.length).toBeGreaterThan(beforeRetry);
+      const retry = callbacks[callbacks.length - 1];
+      expect(retry).not.toBe(first);
+      act(() => retry?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
       await waitFor(() => expect(loadMore).toHaveBeenCalledTimes(2));
     } finally {
       global.IntersectionObserver = original;
@@ -154,7 +163,7 @@ describe('Passkey wallet history', () => {
         'M12 7v5l3 2M12 3a9 9 0 110 18 9 9 0 010-18z',
       );
       fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-      expect(screen.getByText('Transaction 0')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument();
     } finally {
       global.IntersectionObserver = original;
     }

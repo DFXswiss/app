@@ -405,8 +405,9 @@ test.describe('Cross-cutting', () => {
       expect(hits.length, 'route handler must intercept at least one transaction GET').toBeGreaterThan(0);
 
       await expect(page.locator('body')).not.toBeEmpty();
-      // ErrorHint: generic line + raw message — verify injected body surfaces in UI.
+      // ErrorHint shows the generic red line and the ApiException message under it.
       await expect(page.locator('.text-dfxRed-100').first()).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('E2E injected 500', { exact: true })).toBeVisible({ timeout: 15000 });
       expect(pageErrors, `uncaught pageerror on 500: ${pageErrors.join('; ')}`).toEqual([]);
     });
 
@@ -436,6 +437,7 @@ test.describe('Cross-cutting', () => {
 
       await expect(page.locator('body')).not.toBeEmpty();
       await expect(page.locator('.text-dfxRed-100').first()).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('E2E injected 400', { exact: true })).toBeVisible({ timeout: 15000 });
       expect(pageErrors, `uncaught pageerror on 400: ${pageErrors.join('; ')}`).toEqual([]);
     });
 
@@ -465,6 +467,7 @@ test.describe('Cross-cutting', () => {
 
       await expect(page.locator('body')).not.toBeEmpty();
       await expect(page.locator('.text-dfxRed-100').first()).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('E2E injected 403', { exact: true })).toBeVisible({ timeout: 15000 });
       expect(pageErrors, `uncaught pageerror on 403: ${pageErrors.join('; ')}`).toEqual([]);
     });
 
@@ -554,6 +557,7 @@ test.describe('Cross-cutting', () => {
       // Clean logged-out (or clearly not-authenticated) state.
       await page.waitForTimeout(1000);
       const token = await authToken(page);
+      expect(token, 'after 401 the authentication token must be removed').toBeFalsy();
       const path = normPath(new URL(page.url()).pathname);
       const loginBtn = await page
         .getByRole('button', { name: 'Login' })
@@ -564,9 +568,8 @@ test.describe('Cross-cutting', () => {
         .first()
         .isVisible()
         .catch(() => false);
-      const loggedOutUi =
-        !token || path === '/login' || path === '/' || path.startsWith('/login') || loginBtn || loginText;
-      expect(loggedOutUi, `after 401 expected logged-out UI; token=${token} path=${path}`).toBe(true);
+      const loggedOutUi = path === '/login' || path === '/' || path.startsWith('/login') || loginBtn || loginText;
+      expect(loggedOutUi, `after 401 expected logged-out UI; path=${path}`).toBe(true);
     });
   });
 
