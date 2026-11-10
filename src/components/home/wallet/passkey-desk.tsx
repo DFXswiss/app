@@ -4,12 +4,12 @@ import { KeyRing } from '@dfx.swiss/wallet';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { passkeyMessage } from './passkey-host';
+import { credentialBytes } from './passkey-bytes';
 import { createWalletClient, type WalletClient } from './wallet-client';
 import { getOpenPasskey, sameSession, setOpenPasskey, subscribeOpenPasskey, type OpenPasskey } from './passkey-session';
 import { PasskeyReceivePanel, PasskeySendPanel, type ReceiveFamily } from './passkey-transfer';
 import PasskeyWalletCard, { formatWalletAmount } from './passkey-wallet-card';
 import PasskeyWalletActions, { WalletAction } from './passkey-wallet-actions';
-import PasskeyWalletNotes from './passkey-wallet-notes';
 import PasskeyWordsSheet from './passkey-words-sheet';
 import PasskeyRevokeSheet from './passkey-revoke-sheet';
 import PasskeySettingsSheet from './passkey-settings-sheet';
@@ -28,7 +28,7 @@ export interface PasskeyDeskProps {
 }
 
 function canUseKeys(open: OpenPasskey): open is OpenPasskey & { keys: KeyRing } {
-  return open.state === 'unlocked' && open.keys !== undefined;
+  return open.keys !== undefined;
 }
 
 function releaseNothing(): void {
@@ -44,32 +44,10 @@ function bitcoinLoginRing(keys: KeyRing): { ring: KeyRing; release: () => void }
 
 function readReceive(family: ReceiveFamily): string {
   const session = getOpenPasskey();
-  if (!session || !canUseKeys(session)) throw new Error('locked');
+  if (!session?.keys) throw new Error('locked');
   if (family === 'evm') return session.keys.evm(0).address;
   if (family === 'spark') return session.keys.sparkIdentity().address;
-  const login = bitcoinLoginRing(session.keys);
-  try {
-    return login.ring.bitcoinAddress(0, 0).address;
-  } finally {
-    login.release();
-  }
-}
-
-const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
-
-// Same rule as the wallet package: only a 20-byte hex address can be the seed check.
-function sameSeed(derived: string | undefined, expected: string): boolean {
-  if (!derived || !EVM_ADDRESS.test(derived) || !EVM_ADDRESS.test(expected)) return false;
-  return derived.toLowerCase() === expected.toLowerCase();
-}
-
-function credentialBytes(id: string): Uint8Array {
-  const padded = id.replace(/-/g, '+').replace(/_/g, '/');
-  const text = padded + '='.repeat((4 - (padded.length % 4)) % 4);
-  const binary = atob(text);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
+  return session.keys.bitcoinAddress(0, 1).address;
 }
 
 // Keys stay in tab memory; existing account operations are exposed by the wallet interface.
@@ -159,7 +137,7 @@ export default function PasskeyDesk({
     const unsubscribe = subscribeOpenPasskey(() => {
       if (!wordsKeys.current) return;
       const current = getOpenPasskey();
-      if (!current || !canUseKeys(current) || current.keys !== wordsKeys.current) {
+      if (!current || current.keys !== wordsKeys.current) {
         wordsGeneration.current += 1;
         wordsKeys.current = undefined;
         setWords(undefined);
@@ -266,17 +244,10 @@ export default function PasskeyDesk({
 
   async function onRevokeWithPasskey(reason: 'Lost' | 'Compromised'): Promise<void> {
     await run(async (client, session, isCurrent) => {
-      const revoked = await client.revoke(reason);
+      const revoked = await client.revoke(reason, session.wallet.credentialId);
       if (revoked.status === 'Active') {
         if (isCurrent() && sameSession(getOpenPasskey(), session)) {
           setNote('The passkey was not blocked. Please try again.');
-        }
-        return;
-      }
-      if (revoked.id !== session.wallet.id) {
-        if (isCurrent() && sameSession(getOpenPasskey(), session)) {
-          setRevokeAcknowledged(false);
-          setNote('You confirmed with a different passkey. That passkey is now blocked; this wallet is still active.');
         }
         return;
       }
@@ -309,8 +280,6 @@ export default function PasskeyDesk({
   }, [busy, unlocked, sessionWallet, addresses, onLink]);
 
   if (!open?.wallet) return <StyledVerticalStack gap={2} center />;
-
-  const walletState = open.state;
 
   const t = (key: string) => translate('screens/home', key);
   const button =
@@ -356,51 +325,10 @@ export default function PasskeyDesk({
     getOpenPasskey()?.keys?.wipe();
     setOpenPasskey(undefined);
   };
-  async function unlock(): Promise<boolean> {
-    const original = getOpenPasskey();
-    await run(async (client, session, isCurrent) => {
-      const unlockedSession = await client.unlock();
-      const latest = liveSession(session);
-      if (!latest) {
-        unlockedSession.keys?.wipe();
-        return;
-      }
-      const keys = unlockedSession.keys;
-      let address: string | undefined;
-      try {
-        address = keys?.evm(0).address;
-      } catch {
-        address = undefined;
-      }
-      const expected = latest.wallet?.seedCheckAddress;
-      const reportFailedUnlock = (state: OpenPasskey['state']): void => {
-        if (state !== 'unlocked' && isCurrent()) {
-          showMessage('This passkey did not unlock the wallet. Please try again with the passkey of this wallet.');
-        }
-      };
-      if (unlockedSession.state !== 'unlocked' || !keys) {
-        keys?.wipe();
-        setOpenPasskey({ ...latest, state: unlockedSession.state, keys: undefined });
-        reportFailedUnlock(unlockedSession.state);
-        return;
-      }
-      if (expected && !sameSeed(address, expected)) {
-        keys.wipe();
-        setOpenPasskey({ ...latest, state: 'seed-mismatch', keys: undefined });
-        reportFailedUnlock('seed-mismatch');
-        return;
-      }
-      setOpenPasskey({ ...latest, state: 'unlocked', keys });
-    });
-    const current = getOpenPasskey();
-    return Boolean(original && current && sameSession(current, original) && canUseKeys(current));
-  }
-  async function withKeys(action: () => void): Promise<void> {
-    if (unlocked || (walletState === 'locked' && (await unlock()))) action();
-  }
   async function showWords(): Promise<void> {
     if (busyRef.current) return;
-    if (!unlocked && !(walletState === 'locked' && (await unlock()))) return;
+    const openNow = getOpenPasskey();
+    if (!openNow || !canUseKeys(openNow)) return;
     await run(async (client, session) => {
       if (!canUseKeys(session)) return;
       const generation = ++wordsGeneration.current;
@@ -420,10 +348,10 @@ export default function PasskeyDesk({
   }
   function onAction(action: WalletAction): void {
     if (action === 'Buy' || action === 'Sell' || action === 'Swap' || action === 'Pay') return;
-    void withKeys(() => {
-      if (action === 'Send') openSheet('send');
-      else openSheet('receive');
-    });
+    const openNow = getOpenPasskey();
+    if (!openNow || !canUseKeys(openNow)) return;
+    if (action === 'Send') openSheet('send');
+    else openSheet('receive');
   }
   const bitcoin = addresses.some((address) => address.family === 'Bitcoin');
   const addressLabel = (family: string) =>
@@ -448,8 +376,7 @@ export default function PasskeyDesk({
         onExpandedChange={setExpanded}
         onSettings={() => openSheet('settings')}
       />
-      <PasskeyWalletNotes state={walletState} busy={busy} onUnlock={() => void unlock()} />
-      <PasskeyWalletActions unlocked={unlocked} canUnlock={walletState === 'locked'} busy={busy} onAction={onAction} />
+      <PasskeyWalletActions busy={busy} onAction={onAction} />
       {expanded && (
         <section id="passkey-wallet-details" className="mt-6">
           <h2 className="mb-2 text-xl font-bold">{t('Your wallet')}</h2>
@@ -501,7 +428,7 @@ export default function PasskeyDesk({
                   </div>
                   <button
                     className={`${button} border border-dfxGray-500`}
-                    disabled={busy || !unlocked}
+                    disabled={busy}
                     onClick={() => void onLink(0, true)}
                   >
                     {t('Connect again')}
@@ -524,8 +451,6 @@ export default function PasskeyDesk({
       )}
       {sheet === 'settings' && (
         <PasskeySettingsSheet
-          unlocked={unlocked}
-          canUnlock={walletState === 'locked'}
           credentialId={open.wallet.credentialId}
           busy={busy}
           note={note}
@@ -619,7 +544,6 @@ export default function PasskeyDesk({
         <PasskeySheet title={t('Receive')} busy={busy} onClose={requestCloseSheet}>
           {note && <p role="alert">{t(note)}</p>}
           <PasskeyReceivePanel
-            unlocked={unlocked}
             readReceive={readReceive}
             onReceiveError={(message) => {
               if (message !== undefined) setNote(message, 'receive');

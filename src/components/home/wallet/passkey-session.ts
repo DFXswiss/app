@@ -38,8 +38,7 @@ export function subscribeOpenPasskey(listener: () => void): () => void {
   };
 }
 
-// The published wallet package never returns WalletState compromised or open-elsewhere, so handbook
-// shots set the tab session.
+// The wallet-entry handbook shot sets an unlocked session through this hook.
 export function installHandbookSessionHook(target: Window | undefined, env: string | undefined): void {
   if (env === 'production' || target === undefined) return;
   // NODE_ENV is inlined. A production bundle drops the assignment and the property name.

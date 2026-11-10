@@ -45,6 +45,9 @@ export { passkeyPlatformBlock, walletEnvForHost };
 type SheetView = 'idle' | 'choice' | 'email' | 'unknown' | 'error';
 type CeremonyEntry = 'login' | 'authenticate' | 'register';
 
+const PASSKEY_DID_NOT_UNLOCK =
+  'This passkey did not unlock the wallet. Please try again with the passkey of this wallet.';
+
 declare global {
   interface Window {
     __dfxHandbookPasskeyHistory?: PasskeyHistory;
@@ -149,9 +152,9 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       result.keys?.wipe();
       return;
     }
-    if (result.state !== 'unlocked') {
+    if (result.state !== 'unlocked' || !result.keys) {
       result.keys?.wipe();
-      setOpenPasskey({ ...result, keys: undefined });
+      setSheetError(PASSKEY_DID_NOT_UNLOCK);
       return;
     }
     setOpenPasskey(result);
@@ -426,6 +429,11 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
 
   return (
     <StyledVerticalStack gap={2} center>
+      {sheetError ? (
+        <p role="alert" className="text-center text-dfxRed-150">
+          {translate('screens/home', sheetError)}
+        </p>
+      ) : null}
       <p className="text-center text-dfxBlue-800">{translate('screens/home', PASSKEY_LOGIN_HEADING)}</p>
       {notice ? <p className="text-dfxGray-700">{translate('screens/home', notice)}</p> : null}
       <StyledButton

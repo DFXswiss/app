@@ -125,8 +125,6 @@ describe('Passkey wallet dialogs', () => {
     const onCancel = jest.fn(),
       onClose = jest.fn();
     const props = {
-      unlocked: true,
-      canUnlock: false,
       credentialId: 'credential',
       busy: false,
       onWords,
@@ -165,21 +163,20 @@ describe('Passkey wallet dialogs', () => {
     view.rerender(
       <PasskeySettingsSheet
         {...props}
-        unlocked={false}
         credentialId=""
         note="failure"
         checks={[{ family: 'Evm', address: 'a', matches: false }]}
       />,
     );
-    expect(screen.getByText('Locked')).toBeInTheDocument();
-    expect(screen.getByText('Unlock to view')).toBeInTheDocument();
+    expect(screen.getByText('Unlocked')).toBeInTheDocument();
+    expect(screen.queryByText('Unlock to view')).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('failure');
     expect(screen.getByText('0 / 1 addresses match')).toHaveClass('text-dfxRed-150');
     expect(screen.getByRole('button', { name: 'Check passkey status' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Check addresses/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Recovery words/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Check addresses/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Recovery words/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
-    expect(onWords).toHaveBeenCalledTimes(1);
+    expect(onWords).toHaveBeenCalledTimes(2);
 
     view.rerender(<PasskeySettingsSheet {...props} checks={[]} />);
     expect(screen.getByText('0 / 0 addresses match')).not.toHaveClass('text-dfxGreen-300');
@@ -205,11 +202,6 @@ describe('Passkey wallet dialogs', () => {
     } finally {
       mockTranslateAddresses = false;
     }
-
-    view.rerender(<PasskeySettingsSheet {...props} unlocked={false} canUnlock />);
-    expect(screen.getByRole('button', { name: /Recovery words/ })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
-    expect(onWords).toHaveBeenCalledTimes(2);
 
     view.rerender(<PasskeySettingsSheet {...props} noteKind="refresh" note="Konten: 1" />);
     expect(screen.getByRole('button', { name: 'Reload data' })).toHaveTextContent('Konten: 1');

@@ -89,29 +89,17 @@ it('blocks an unmodified home click while busy but preserves modified clicks', (
   expect(onHome).not.toHaveBeenCalled();
 });
 
-it('enables key actions only when unlocked or unlockable and disables every action while busy', () => {
+it('enables key actions and disables every action while busy', () => {
   const onAction = jest.fn();
-  const view = render(<PasskeyWalletActions unlocked={false} canUnlock={false} onAction={onAction} />);
+  const view = render(<PasskeyWalletActions onAction={onAction} />);
   for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay']) {
     const action = screen.getByRole('button', { name });
-    expect(action).toBeDisabled();
-    expect(action.querySelector('svg rect')).toBeInTheDocument();
+    expect(action).toBeEnabled();
+    expect(action.querySelector('svg rect')).not.toBeInTheDocument();
     fireEvent.click(action);
-    expect(onAction).not.toHaveBeenCalledWith(name);
-  }
-  view.rerender(<PasskeyWalletActions unlocked={false} canUnlock onAction={onAction} />);
-  for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay']) {
-    expect(screen.getByRole('button', { name })).toBeEnabled();
-    expect(screen.getByRole('button', { name }).querySelector('svg rect')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name }));
     expect(onAction).toHaveBeenCalledWith(name);
   }
-  view.rerender(<PasskeyWalletActions unlocked canUnlock={false} onAction={onAction} />);
-  for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay']) {
-    expect(screen.getByRole('button', { name })).toBeEnabled();
-    expect(screen.getByRole('button', { name }).querySelector('svg rect')).not.toBeInTheDocument();
-  }
-  view.rerender(<PasskeyWalletActions unlocked canUnlock={false} busy onAction={onAction} />);
+  view.rerender(<PasskeyWalletActions busy onAction={onAction} />);
   for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay']) {
     expect(screen.getByRole('button', { name })).toBeDisabled();
   }

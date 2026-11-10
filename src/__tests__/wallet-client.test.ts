@@ -1,13 +1,15 @@
 const mockLogin = jest.fn();
 const mockRegister = jest.fn();
-const mockUnlock = jest.fn();
 const mockLink = jest.fn();
-const mockRevoke = jest.fn();
 const mockExport = jest.fn();
 const mockVerify = jest.fn();
 const mockWallets = jest.fn();
 const mockStatus = jest.fn();
 const mockDiagnostics = jest.fn();
+const mockAssert = jest.fn();
+const mockRevokeBegin = jest.fn();
+const mockRevokeFinish = jest.fn();
+const mockCacheUpdate = jest.fn();
 const mockHttpCreated = jest.fn((_options: unknown, _instance: unknown) => undefined);
 const mockPasskeyCreated = jest.fn((_http: unknown, _passkey: unknown) => undefined);
 const mockCacheCreated = jest.fn((_storage: unknown, _key: unknown, _rpId: unknown, _instance: unknown) => undefined);
@@ -17,23 +19,29 @@ const mockWalletEnvForHost = jest.fn((_hostname: unknown) => 'loc');
 
 jest.mock('@dfx.swiss/wallet', () => ({
   RP_IDS: { loc: 'localhost', prd: 'app.dfx.swiss' },
+  WalletError: class WalletError extends Error {
+    code: string;
+    constructor(code: string, message?: string) {
+      super(message);
+      this.code = code;
+      this.name = 'WalletError';
+    }
+  },
   CredentialCache: function CredentialCache(storage: unknown, key: unknown, rpId: unknown) {
-    const cache = {};
+    const cache = { update: mockCacheUpdate };
     mockCacheCreated(storage, key, rpId, cache);
     return cache;
   },
   PasskeyCeremonies: function PasskeyCeremonies(env: unknown) {
     mockCeremoniesCreated(env);
-    return {};
+    return { assert: mockAssert };
   },
   PasskeyAuth: function PasskeyAuth(options: unknown) {
     mockAuthCreated(options);
     return {
       login: mockLogin,
       register: mockRegister,
-      unlock: mockUnlock,
       link: mockLink,
-      revoke: mockRevoke,
       exportMnemonic: mockExport,
       verifyServerAddresses: mockVerify,
     };
@@ -51,6 +59,8 @@ jest.mock('@dfx.swiss/core', () => ({
       wallets: mockWallets,
       credentialStatus: mockStatus,
       diagnostics: mockDiagnostics,
+      revokeBegin: mockRevokeBegin,
+      revokeFinish: mockRevokeFinish,
     };
     mockPasskeyCreated(http, passkey);
     return passkey;
@@ -64,6 +74,7 @@ jest.mock('../components/home/wallet/passkey-host', () => ({
   walletEnvForHost: (hostname: unknown) => mockWalletEnvForHost(hostname),
 }));
 
+import { credentialBytes, credentialIdText } from '../components/home/wallet/passkey-bytes';
 import { createWalletClient } from '../components/home/wallet/wallet-client';
 import type { KeyRing } from '@dfx.swiss/wallet';
 import { RP_IDS } from '@dfx.swiss/wallet';
@@ -97,14 +108,16 @@ describe('createWalletClient', () => {
   beforeEach(() => {
     mockLogin.mockClear();
     mockRegister.mockClear();
-    mockUnlock.mockClear();
     mockLink.mockClear();
-    mockRevoke.mockClear();
     mockExport.mockClear();
     mockVerify.mockClear();
     mockWallets.mockClear();
     mockStatus.mockClear();
     mockDiagnostics.mockClear();
+    mockAssert.mockClear();
+    mockRevokeBegin.mockClear();
+    mockRevokeFinish.mockClear();
+    mockCacheUpdate.mockClear();
     mockHttpCreated.mockClear();
     mockPasskeyCreated.mockClear();
     mockCacheCreated.mockClear();
@@ -230,16 +243,6 @@ describe('createWalletClient', () => {
     expect(mockRegister).toHaveBeenCalledWith(second);
   });
 
-  it('returns the PasskeyAuth unlock result and calls unlock with no arguments', async () => {
-    const client = createWalletClient();
-    const result = { tag: 'unlock' };
-    mockUnlock.mockResolvedValueOnce(result);
-
-    expect(await client.unlock()).toBe(result);
-    expect(mockUnlock).toHaveBeenCalledTimes(1);
-    expect(mockUnlock).toHaveBeenCalledWith();
-  });
-
   it('returns each PasskeyAuth link result for the two argument lists', async () => {
     const client = createWalletClient();
     const firstKeys = { id: 'keys' } as KeyRing;
@@ -256,18 +259,91 @@ describe('createWalletClient', () => {
     expect(mockLink).toHaveBeenCalledWith('evm', 'other-token', secondKeys);
   });
 
-  it('returns each PasskeyAuth revoke result for Lost and for Compromised', async () => {
+  it('pins the stored credential id when revoking and updates the cache only if the wallet is not Active', async () => {
     const client = createWalletClient();
-    const lost = { tag: 'revoke-lost' };
-    const compromised = { tag: 'revoke-compromised' };
-    mockRevoke.mockResolvedValueOnce(lost);
-    mockRevoke.mockResolvedValueOnce(compromised);
+    const pinned = credentialBytes('cred');
+    const ceremonies = (authOptions() as { ceremonies: { assert: jest.Mock } }).ceremonies;
+    const lost = { id: 7, status: 'Lost' };
+    const compromised = { id: 7, status: 'Compromised' };
+    const active = { id: 7, status: 'Active' };
+    mockRevokeBegin.mockResolvedValue({
+      rpId: 'localhost',
+      challenge: 'Y2hhbGxlbmdl',
+      challengeId: 'challenge-1',
+    });
+    mockAssert.mockResolvedValue({ credentialId: pinned, assertion: { id: 'assertion-body' } });
+    mockRevokeFinish.mockResolvedValueOnce(lost);
+    mockRevokeFinish.mockResolvedValueOnce(compromised);
+    mockRevokeFinish.mockResolvedValueOnce(active);
 
-    expect(await client.revoke('Lost')).toBe(lost);
-    expect(await client.revoke('Compromised')).toBe(compromised);
-    expect(mockRevoke).toHaveBeenCalledTimes(2);
-    expect(mockRevoke).toHaveBeenCalledWith('Lost');
-    expect(mockRevoke).toHaveBeenCalledWith('Compromised');
+    expect(ceremonies.assert).toBe(mockAssert);
+    expect(await client.revoke('Lost', 'cred')).toBe(lost);
+    expect(await client.revoke('Compromised', 'cred')).toBe(compromised);
+    expect(await client.revoke('Lost', 'cred')).toBe(active);
+    expect(mockCeremoniesCreated).toHaveBeenCalledTimes(1);
+    expect(mockAssert).toHaveBeenCalledWith({
+      challenge: credentialBytes('Y2hhbGxlbmdl'),
+      credentialId: pinned,
+    });
+    expect(mockRevokeFinish).toHaveBeenNthCalledWith(1, {
+      challengeId: 'challenge-1',
+      credential: { id: 'assertion-body' },
+      reason: 'Lost',
+    });
+    expect(mockRevokeFinish).toHaveBeenNthCalledWith(2, {
+      challengeId: 'challenge-1',
+      credential: { id: 'assertion-body' },
+      reason: 'Compromised',
+    });
+    expect(mockCacheUpdate).toHaveBeenCalledTimes(2);
+    expect(mockCacheUpdate).toHaveBeenCalledWith(credentialIdText(pinned), { state: 'revoked' });
+  });
+
+  it('rejects a revoke assertion for a different credential and does not finish it', async () => {
+    const client = createWalletClient();
+    const pinned = credentialBytes('cred');
+    const differentLength = new Uint8Array([9]);
+    const differentBytes = new Uint8Array(pinned);
+    differentBytes[0] ^= 0xff;
+    mockRevokeBegin.mockResolvedValue({
+      rpId: 'localhost',
+      challenge: 'Y2hhbGxlbmdl',
+      challengeId: 'challenge-1',
+    });
+    mockAssert.mockResolvedValueOnce({ credentialId: differentLength, assertion: { id: 'other' } });
+    mockAssert.mockResolvedValueOnce({ credentialId: differentBytes, assertion: { id: 'other' } });
+
+    await expect(client.revoke('Lost', 'cred')).rejects.toMatchObject({
+      code: 'credential-mismatch',
+      message: 'The authenticator returned a different passkey',
+    });
+    await expect(client.revoke('Compromised', 'cred')).rejects.toMatchObject({
+      code: 'credential-mismatch',
+      message: 'The authenticator returned a different passkey',
+    });
+    expect(mockAssert).toHaveBeenCalledWith({
+      challenge: credentialBytes('Y2hhbGxlbmdl'),
+      credentialId: pinned,
+    });
+    expect(mockRevokeFinish).not.toHaveBeenCalled();
+    expect(mockCacheUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a revoke challenge for the wrong relying party before asserting', async () => {
+    const client = createWalletClient();
+    mockRevokeBegin.mockResolvedValueOnce({
+      rpId: 'evil.example',
+      challenge: 'Y2hhbGxlbmdl',
+      challengeId: 'challenge-1',
+    });
+
+    await expect(client.revoke('Lost', 'cred')).rejects.toMatchObject({
+      code: 'wrong-origin',
+      message: 'The server expects RP ID evil.example, this wallet uses localhost',
+    });
+    expect(mockAssert).not.toHaveBeenCalled();
+    expect(mockRevokeFinish).not.toHaveBeenCalled();
+    expect(mockCacheUpdate).not.toHaveBeenCalled();
   });
 
   it('returns each PasskeyAuth exportMnemonic result for the two credential ids', async () => {

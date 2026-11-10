@@ -20,11 +20,9 @@ const PASTE_UNAVAILABLE = 'Paste is not available in this browser.';
 const SCAN_UNAVAILABLE = 'QR scanning is not available in this browser.';
 
 export function PasskeyReceivePanel({
-  unlocked,
   readReceive,
   onReceiveError,
 }: {
-  unlocked: boolean;
   readReceive: (family: ReceiveFamily) => string;
   onReceiveError: (message?: string) => void;
 }): JSX.Element {
@@ -38,7 +36,7 @@ export function PasskeyReceivePanel({
   onReceiveErrorRef.current = onReceiveError;
 
   useEffect(() => {
-    if (family === undefined || !unlocked) {
+    if (family === undefined) {
       setAddress(undefined);
       return;
     }
@@ -49,7 +47,7 @@ export function PasskeyReceivePanel({
       setAddress(undefined);
       onReceiveErrorRef.current(passkeyMessage(caught));
     }
-  }, [family, unlocked]);
+  }, [family]);
 
   const families: ReceiveFamily[] = ['evm', 'bitcoin', 'spark'];
   const familyLabel: Record<ReceiveFamily, string> = {
@@ -81,10 +79,7 @@ export function PasskeyReceivePanel({
           </button>
         ))}
       </div>
-      {family !== undefined && !unlocked ? (
-        <p className="pt-4 text-dfxBlue-800">{translate('screens/home', 'Unlock the wallet to show this address.')}</p>
-      ) : null}
-      {family !== undefined && unlocked && address !== undefined ? (
+      {family !== undefined && address !== undefined ? (
         <div
           className={
             'mt-4 flex w-full flex-col items-center gap-4 rounded-[16px] ' +

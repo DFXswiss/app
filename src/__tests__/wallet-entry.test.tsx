@@ -241,7 +241,7 @@ describe('/wallet passkey entry', () => {
 
   it('keeps an open passkey visible with a DFX session', () => {
     mockSessionState.isLoggedIn = true;
-    setOpenPasskey({ state: 'locked' } as OpenPasskey);
+    setOpenPasskey({ state: 'unlocked' } as OpenPasskey);
     const view = renderAt('/wallet');
     expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
     expect(mockLayoutOptions).toMatchObject({ noHeader: true });
@@ -252,12 +252,12 @@ describe('/wallet passkey entry', () => {
   it('reopens a closed wallet for a different passkey identity or a new session', () => {
     mockSessionState.isLoggedIn = true;
     const session = {
-      state: 'locked',
+      state: 'unlocked',
       accessToken: 'first-token',
       wallet: { id: 1, credentialId: 'first-credential' },
     } as unknown as OpenPasskey;
     const other = {
-      state: 'locked',
+      state: 'unlocked',
       accessToken: 'second-token',
       wallet: { id: 2, credentialId: 'second-credential' },
     } as unknown as OpenPasskey;

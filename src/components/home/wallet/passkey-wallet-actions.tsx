@@ -3,8 +3,6 @@ import { useSettingsContext } from '../../../contexts/settings.context';
 export type WalletAction = 'Buy' | 'Sell' | 'Swap' | 'Send' | 'Receive' | 'Pay';
 
 interface PasskeyWalletActionsProps {
-  unlocked: boolean;
-  canUnlock: boolean;
   busy?: boolean;
   onAction: (action: WalletAction) => void;
 }
@@ -19,12 +17,7 @@ const icons: Record<WalletAction, string> = {
   Pay: 'M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3M7 12h10',
 };
 
-export default function PasskeyWalletActions({
-  unlocked,
-  canUnlock,
-  busy,
-  onAction,
-}: PasskeyWalletActionsProps): JSX.Element {
+export default function PasskeyWalletActions({ busy, onAction }: PasskeyWalletActionsProps): JSX.Element {
   const { translate } = useSettingsContext();
 
   return (
@@ -32,7 +25,7 @@ export default function PasskeyWalletActions({
       {actions.map((action) => (
         <button
           key={action}
-          disabled={busy || (!unlocked && !canUnlock)}
+          disabled={busy}
           className="flex min-h-[80px] flex-col items-center gap-2 rounded font-semibold focus-visible:outline focus-visible:outline-2"
           onClick={() => onAction(action)}
         >
@@ -54,23 +47,6 @@ export default function PasskeyWalletActions({
             >
               <path d={icons[action]} />
             </svg>
-            {!unlocked && (
-              <span className="absolute -right-1 -top-1 grid h-[22px] w-[22px] place-items-center rounded-full border border-dfxGray-500 bg-white text-dfxBlue-800">
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-3 w-3"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <rect x="6" y="11" width="12" height="9" rx="2" />
-                  <path d="M9 11V8a3 3 0 016 0v3" />
-                </svg>
-              </span>
-            )}
           </span>
           <span className="text-sm">{translate('screens/home', action)}</span>
         </button>

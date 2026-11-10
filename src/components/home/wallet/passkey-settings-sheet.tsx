@@ -2,8 +2,6 @@ import { useSettingsContext } from '../../../contexts/settings.context';
 import PasskeySheet from './passkey-sheet';
 
 interface PasskeySettingsSheetProps {
-  unlocked: boolean;
-  canUnlock: boolean;
   credentialId: string;
   busy: boolean;
   note?: string;
@@ -94,10 +92,8 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
         <Icon path={icons.key} />
         <div>
           <b className="block text-base font-semibold">{t('Passkey on this device')}</b>
-          <span
-            className={`mt-1 inline-block rounded-[6px] px-2 py-0.5 text-xs font-semibold ${props.unlocked ? 'bg-[#E9F6EE] text-dfxGreen-300' : 'border border-dfxGray-500 bg-white text-dfxGray-800'}`}
-          >
-            {t(props.unlocked ? 'Unlocked' : 'Locked')}
+          <span className="mt-1 inline-block rounded-[6px] bg-[#E9F6EE] px-2 py-0.5 text-xs font-semibold text-dfxGreen-300">
+            {t('Unlocked')}
           </span>
         </div>
       </div>
@@ -108,15 +104,12 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
       )}
       <h3 className={group}>{t('Security')}</h3>
       <div className={card}>
-        <button className={row} disabled={props.busy || (!props.unlocked && !props.canUnlock)} onClick={props.onWords}>
+        <button className={row} disabled={props.busy} onClick={props.onWords}>
           <Icon path={icons.words} />
-          <span className={text}>
-            {t('Recovery words')}
-            {!props.unlocked && <small className={sub}>{t('Unlock to view')}</small>}
-          </span>
+          <span className={text}>{t('Recovery words')}</span>
           <Chevron />
         </button>
-        <button className={row} disabled={props.busy || !props.unlocked} onClick={props.onVerify}>
+        <button className={row} disabled={props.busy} onClick={props.onVerify}>
           <Icon path={icons.verify} />
           <span className={text}>
             {t('Check addresses')}

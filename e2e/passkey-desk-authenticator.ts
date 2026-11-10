@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 /** Fixed credential id bytes. The mocked wallet row must use the same base64url id. */
 export const DESK_CREDENTIAL_BYTES = Array.from({ length: 32 }, (_, index) => index + 3);
 
-/** Fixed 32-byte PRF output. Registration, unlock and the recovery words all derive from it. */
+/** Fixed 32-byte PRF output. Registration, login and the recovery words derive from it. */
 export const DESK_PRF_BYTES = Array.from({ length: 32 }, (_, index) => (index * 7 + 3) & 255);
 
 export function deskBase64Url(bytes: number[]): string {
@@ -60,8 +60,7 @@ export async function installDeskAuthenticator(
           type: 'public-key',
           authenticatorAttachment: 'platform',
           response,
-          getClientExtensionResults: () =>
-            includePrf ? { prf: { results: { first: new Uint8Array(prf) } } } : {},
+          getClientExtensionResults: () => (includePrf ? { prf: { results: { first: new Uint8Array(prf) } } } : {}),
         } as unknown as PublicKeyCredential;
       }
 

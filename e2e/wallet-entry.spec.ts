@@ -223,7 +223,7 @@ test.describe('/wallet passkey entry', () => {
     await page.waitForFunction(() => typeof (window as unknown as PasskeyWindow).__dfxSetOpenPasskey === 'function');
     await page.evaluate(() => {
       (window as unknown as PasskeyWindow).__dfxSetOpenPasskey?.({
-        state: 'locked',
+        state: 'unlocked',
         accessToken: 'handbook-passkey-token',
         wallet: {
           id: 7,
@@ -241,7 +241,7 @@ test.describe('/wallet passkey entry', () => {
     });
     const settings = page.getByRole('button', { name: 'Settings' });
     await expect(settings).toBeVisible();
-    await expect(page.getByText('Wallet locked', { exact: true })).toBeVisible();
+    await expect(page.getByText('Wallet locked', { exact: true })).toHaveCount(0);
     await expect(page.locator('img[alt="logo"]')).toHaveCount(0);
     await expect(page.locator('img[src*="/kaufen_"]')).toHaveCount(0);
     await expectWalletAddress(page);
