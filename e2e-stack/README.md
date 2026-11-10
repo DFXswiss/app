@@ -130,11 +130,12 @@ The suite under `e2e/` is visual-regression testing (screenshot baselines). It d
 This harness checks function, not appearance. Draft pull requests run the
 job after Build and test. GitHub may hold fork runs as `action_required`.
 Ready does not start CI. After a fresh A38 enforce pass, `dfx pr guard`
-approves those waiting initial runs. A develop PR
-without `ci:full` records `mode=none` and does
-not bring the stack up. There is no selected/partial mode: `ci:full`, PRs
-into `main`, and a bare `workflow_dispatch` (empty `base_ref`) force a full
-run. Both suites exist side by side and serve different purposes.
+approves those waiting initial runs. A same-repository pull request into
+`develop` brings the stack up. A fork pull request records `mode=none` and
+does not bring the stack up. There is no selected/partial mode. A pull
+request into `main`, the `ci:full` label, and a bare `workflow_dispatch`
+(empty `base_ref`) also force a full run. Both suites exist side by side
+and serve different purposes.
 
 ## Relationship with the API repository
 

@@ -12,10 +12,15 @@
 # request has merged, that workflow bootstraps the harness from this pull request's head
 # instead, which means neither side is blocked on the other and either merge order works.
 #
-# A develop PR without the ci:full label does not bring up the stack (mode=none
-# inside the job). That is what keeps a standard develop PR under 10 minutes.
-# PRs into main, a bare workflow_dispatch, and the ci:full label run the full
-# suite. PR CI passes the boolean `full` (derived from base branch and labels);
+# A same-repository pull request into develop brings the stack up. The caller
+# passes full=true. If that caller forgets while the API checkout key is
+# present, this job fails instead of recording mode=none. If the caller
+# requested a full stack and the key is missing, the job fails as well. A
+# green no-op is not a run. Fork pull requests do not receive
+# E2E_API_CHECKOUT_KEY, so they still record mode=none and exit 0. Pull
+# requests into main, a bare workflow_dispatch, and the ci:full label also
+# run the full suite.
+# PR CI passes the boolean `full` (derived from base branch and labels);
 # the workflow_call path only reads that input. Fork pull requests also take
 # mode=none: they do not receive repository secrets, so E2E_API_CHECKOUT_KEY is
 # empty and Checkout API would fail as "repository not found". The probe is the
@@ -40,7 +45,7 @@ on:
         required: false
         type: string
       full:
-        description: Bring up the stack (main / ci:full / bare dispatch)
+        description: Bring up the stack (same-repo develop / main / ci:full / bare dispatch)
         required: false
         type: boolean
         default: false
@@ -79,7 +84,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      # Event-only: no checkout. Develop PRs without ci:full stop here.
+      # Event-only: no checkout. A missing API checkout key stops here
+      # (a fork pull request). Develop with that key does not stop here.
       # Modes are only full and none; there is no selected/partial spec
       # mapping in this repository.
       - name: Determine e2e scope
@@ -95,6 +101,10 @@ jobs:
           # Fork PRs never receive repository secrets. Probe the secret, not
           # github.head_ref (that name is fork-spoofable).
           if [ "$HAS_API_KEY" != 'true' ]; then
+            if [ "$FULL" = 'true' ]; then
+              echo "::error::The caller requested a full stack, but E2E_API_CHECKOUT_KEY is not available. mode=none is not a run."
+              exit 1
+            fi
             echo 'No run: E2E_API_CHECKOUT_KEY is not available (typical of a fork pull request).'
             echo "mode=none" >> "$GITHUB_OUTPUT"
             exit 0
@@ -105,8 +115,11 @@ jobs:
             if [ "$FULL" = 'true' ]; then
               echo 'Full run: caller requested a full stack.'
               echo "mode=full" >> "$GITHUB_OUTPUT"
+            elif [ "${BASE:-}" = 'develop' ]; then
+              echo "::error::A pull request into develop must run the full stack. mode=none is not a run."
+              exit 1
             else
-              echo 'E2E skipped: add the ci:full label to run the stack.'
+              echo 'E2E skipped: this caller did not request a full stack.'
               echo "mode=none" >> "$GITHUB_OUTPUT"
             fi
             exit 0
@@ -126,23 +139,12 @@ jobs:
             exit 0
           fi
 
-          # Exact `.name == "ci:full"` via jq: GitHub's `contains()` on label arrays is
-          # not case-sensitive. jq exit 1 (no match) must not be conflated with >=2
-          # (failure) - a failed jq must fail the step, not silently shrink the gate.
-          rc=0
-          jq -e 'any(.pull_request.labels[]?; .name == "ci:full")' "$GITHUB_EVENT_PATH" >/dev/null || rc=$?
-          if (( rc >= 2 )); then
-            echo "::error::jq failed while checking for the ci:full label (exit $rc)."
-            exit 1
-          fi
-          if (( rc == 0 )); then
-            echo 'Full run: the PR has the ci:full label.'
-            echo "mode=full" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo 'E2E skipped: add the ci:full label to run the stack.'
-          echo "mode=none" >> "$GITHUB_OUTPUT"
+          # The API key is present and the base is develop. A same-repository
+          # develop pull request, and a manual dispatch that names develop,
+          # always bring the stack up. mode=none here would be a green run
+          # that did not test.
+          echo 'Full run: develop brings the stack up.'
+          echo "mode=full" >> "$GITHUB_OUTPUT"
 
       - name: Checkout services
         if: steps.scope.outputs.mode != 'none'
@@ -276,7 +278,7 @@ jobs:
           set -euo pipefail
           case "$MODE" in
             none)
-              echo 'E2E skipped: add the ci:full label to run the stack (or target main / dispatch).'
+              echo 'E2E skipped: this run recorded mode=none, so the stack did not start. A green result does not prove the suite ran.'
               exit 0
               ;;
             full)
