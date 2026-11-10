@@ -406,6 +406,18 @@ describe('PaymentLinkProvider', () => {
       expect(fetchJsonUrls()[0]).toBe('https://api.example.com/v1/lnurlp/pl_1?timeout=0');
     });
 
+    it('rejects a lightning LNURL that resolves to a foreign origin without fetching', async () => {
+      mockSearchParams = new URLSearchParams('lightning=LNURL1');
+      mockLnurlDecode.mockReturnValue('https://evil.example.org/v1/lnurlp/pl_1');
+
+      const context = renderProvider();
+
+      await waitFor(() => expect(context.current().error).toBe('Invalid payment link'));
+      expect(mockLnurlDecode).toHaveBeenCalledWith('LNURL1');
+      expect(mockFetchJson).not.toHaveBeenCalled();
+      expect(mockNavigate).not.toHaveBeenCalledWith('/', { replace: true });
+    });
+
     it.each([['routeId=1&externalId=e&amount=5'], ['route=1&e=e&a=5'], ['r=1&message=m&amount=5'], ['r=1&m=m&a=5']])(
       'builds the invoice URL from %s and clears the parameters',
       async (query) => {

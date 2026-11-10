@@ -326,7 +326,11 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   function extractUrlParams(params?: AppParams): AppParams {
     return params
       ? {
-          session: getParameter(query, 'session'),
+          // Widget / library mode: the session token must NOT be taken from the host page URL
+          // (window.location.search). A hostile embedder could otherwise put ?session=<token> in its
+          // own address bar and hijack the embedded app's session. The session may only arrive through
+          // the controlled widget parameters (props.params, spread via extractWidgetParams below).
+          // redirect/type stay host-URL driven so the configured embedding flow keeps working.
           redirect: getParameter(query, 'redirect'),
           type: getParameter(query, 'type'),
           ...extractWidgetParams(params),

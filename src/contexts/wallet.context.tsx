@@ -221,6 +221,11 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
     }
   }, [isParamsInitialized, appParams]);
 
+  // SECURITY NOTE (operator decision 2026-11-10): silent login via URL parameters — a ?session JWT,
+  // or an ?address + ?signature pair, establishes an authenticated session straight from the link,
+  // with no further user interaction. This is a deliberately accepted convenience feature (deep links,
+  // widget/partner handoff), but it is potentially critical: anyone able to craft or replay such a
+  // link can drive the session. Flagged for a later hardening review; no behaviour change here.
   async function handleParamSession(): Promise<boolean> {
     const lastCreds = lastAppliedCredentials.current;
 
