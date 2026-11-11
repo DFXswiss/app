@@ -47,6 +47,10 @@
     "title": "Bitcoin verkaufen",
     "description": "Sell-Flow für Bitcoin."
   },
+  "sell-address-check": {
+    "title": "Verkauf: Hinweis zur Wallet-Adresse",
+    "description": "Sell-Seite mit und ohne Banner, wenn Einzahlungen von der verbundenen Wallet voraussichtlich zurückgesendet werden."
+  },
   "sell-lightning": {
     "title": "Lightning verkaufen",
     "description": "Sell-Flow für Lightning Network."

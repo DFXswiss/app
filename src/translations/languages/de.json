@@ -679,7 +679,8 @@
     "e.g. Deutsche Bank": "z.B. Deutsche Bank",
     "As soon as the transaction arrives in our wallet, we will transfer your money to your bank account.": "Sobald die Transaktion in unserem Wallet eingegangen ist, werden wir Dein Guthaben auf Dein Bankkonto überweisen.",
     "The output amount is computed as the input amount times the base rate minus the DFX fee, bank fee and the network fee. That is, {{output}} {{inputSymbol}} = {{input}} {{outputSymbol}} × {{baseRate}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}.": "Der Ausgabebetrag wird als Eingabebetrag multipliziert mit dem Basiskurs abzüglich der DFX-Gebühr, Bankgebühr und Netzwerkgebühr berechnet. Das heißt, {{output}} {{inputSymbol}} = {{input}} {{outputSymbol}} × {{baseRate}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}.",
-    "Output amount = Input amount × Base rate - DFX fee - Network fee.": "Ausgabebetrag = Eingabebetrag × Basiskurs - DFX-Gebühr - Netzwerkgebühr."
+    "Output amount = Input amount × Base rate - DFX fee - Network fee.": "Ausgabebetrag = Eingabebetrag × Basiskurs - DFX-Gebühr - Netzwerkgebühr.",
+    "Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.": "Achtung: Laut unserer Blockchain-Analyse werden Kryptowährungen, die von dieser Wallet-Adresse gesendet werden, voraussichtlich nicht verarbeitet, sondern an Dich zurückgesendet."
   },
   "screens/swap": {
     "Confirm swap": "Swap bestätigen",
