@@ -23,6 +23,9 @@ const TEST_SEARCH_QUERY = 'max';
 // Requires a local transaction with this id whose userData differs from the user data with the same id,
 // so the screenshot shows both the customer hits and the transaction hit. Seed one before regenerating.
 const TEST_TRANSACTION_ID = '42';
+// Requires a local transaction with this id that has no userData, and no user data with the same id,
+// so the screenshot shows the transaction as the only hit, without a customer. Seed one before regenerating.
+const TEST_TRANSACTION_WITHOUT_CUSTOMER_ID = '300';
 // Requires a local BuyCrypto on this transaction uid, owned by TEST_USER_DATA_ID, with status
 // Stopped, amlCheck Pass and not completed — that combination is what renders the resume button
 // (see canResume in transactions-tab.tsx). The standard test data has no stopped transaction, so
@@ -123,6 +126,20 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
 
       await expect(page.getByText('Transactions', { exact: true })).toBeVisible({ timeout: 10000 });
       await expect(page).toHaveScreenshot('compliance-03-search-transaction.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows a transaction found by its id that has no customer', async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 1000 });
+      await page.goto(`/compliance?session=${token}&search=${TEST_TRANSACTION_WITHOUT_CUSTOMER_ID}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await expect(page.getByText('Transactions', { exact: true })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('button', { name: 'Customer' })).toHaveCount(0);
+      await expect(page).toHaveScreenshot('compliance-04-search-transaction-without-customer.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });
