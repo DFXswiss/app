@@ -9,8 +9,8 @@
  * Passing `bank-account` used to recreate accounts in a loop; that regression is pinned by the
  * dedicated test at the end of this file (select the existing account, do not POST again).
  * Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
- * /sell also proves the parallel wallet address check: the real API answers Unknown here
- * (Scorechain is disabled by DISABLED_PROCESSES=*), and the form stays usable without a banner.
+ * /sell also proves both parallel wallet address-check outcomes through the API's Scorechain loc mock:
+ * Ok keeps the form usable without a banner, while LikelyReturn shows the return banner.
  */
 
 import type { Page, Response } from '@playwright/test';
@@ -45,6 +45,9 @@ function nextWalletIndex(): number {
   __sellSwap_WALLET_SEQ += 1;
   return 8000000 + __sellSwap_WALLET_SEQ;
 }
+
+// Keep this in sync with the dedicated sanction-list address in e2e-stack/env/api.env.
+const SANCTION_LIST_WALLET_INDEX = 7700001;
 
 /**
  * The shared e2e stack seeds a large but finite pool of EVM deposit addresses (global.setup.ts,
@@ -360,7 +363,7 @@ test.describe('Sell + Swap e2e', () => {
     await expect(page.locator('input[inputmode="decimal"]').first()).toBeVisible();
   });
 
-  test('/sell checks the connected wallet in parallel and shows no banner when the API answers Unknown', async ({
+  test('/sell checks the connected wallet in parallel and shows no banner when the API answers Ok', async ({
     page,
   }) => {
     test.setTimeout(120000);
@@ -414,7 +417,7 @@ test.describe('Sell + Swap e2e', () => {
     const requestUrl = new URL(response.url());
     expect(requestUrl.searchParams.get('blockchain'), 'the hint checks the chain of the selected asset').toBeTruthy();
     expect(response.status()).toBe(200);
-    expect(await response.json()).toEqual({ result: 'Unknown' });
+    expect(await response.json()).toEqual({ result: 'Ok' });
 
     // The form is unaffected: it renders and accepts input while and after the check runs.
     await expect(page.getByText('You spend', { exact: true })).toBeVisible();
@@ -429,9 +432,83 @@ test.describe('Sell + Swap e2e', () => {
       ),
     ).toHaveCount(0);
 
-    // Scorechain is disabled in this stack: the check never reserves quota or calls the provider.
-    const rows = await queryRows(`SELECT id FROM scorechain_screening WHERE "objectId" = $1`, [user.address]);
-    expect(rows).toEqual([]);
+    // The precheck screened the address through the Scorechain loc mock.
+    const rows = await queryRows(`SELECT context, severity FROM scorechain_screening WHERE "objectId" = $1`, [
+      user.address,
+    ]);
+    expect(rows).toEqual([{ context: 'Precheck', severity: 'NO_RISK' }]);
+  });
+
+  test('/sell shows the return banner when the connected wallet has a sanction-list hit', async ({ page }) => {
+    test.setTimeout(120000);
+
+    const user = await createUser({
+      walletIndex: SANCTION_LIST_WALLET_INDEX,
+      tag: 'sell-address-check-sanction',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    expect(user.wallet.address.toLowerCase()).toBe('0xcb43872a1cfa064dd61cc7e7507023837a1984f2');
+
+    const checkResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' && new URL(response.url()).pathname === '/v1/sell/address-check',
+      { timeout: 60000 },
+    );
+
+    await page.goto('/sell?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).not.toBe('/sell');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(user.wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(user.wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/sell');
+
+    const response = await checkResponse;
+    const requestUrl = new URL(response.url());
+    expect(requestUrl.searchParams.get('blockchain'), 'the hint checks the chain of the selected asset').toBeTruthy();
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toEqual({ result: 'LikelyReturn' });
+
+    await expect(
+      page.getByText(
+        'Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByTestId('sell-address-check-banner')).toBeVisible();
+
+    await expect(page.getByText('You spend', { exact: true })).toBeVisible();
+    const amount = page.locator('input[inputmode="decimal"]').first();
+    await expect(amount).toBeEnabled();
+    await amount.fill('0.1');
+    await expect(amount).toHaveValue('0.1');
+
+    const rows = await queryRows(`SELECT context FROM scorechain_screening WHERE "objectId" = $1`, [user.address]);
+    expect(rows).toEqual([{ context: 'Precheck' }]);
   });
 
   test('/sell bank account: invalid IBAN rejected; valid IBAN creates bank_data via UI', async ({ page }) => {

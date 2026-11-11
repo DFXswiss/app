@@ -648,12 +648,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   enums, the order hook, the debounce hook and the payment-info component. A green run proves the
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
-- **The sell address check never reaches Scorechain in the full-stack harness.** The stack runs the
-  API with `DISABLED_PROCESSES=*`, so `GET /v1/sell/address-check` always answers `Unknown` and
-  `e2e-stack/specs/sell-swap.spec.ts` proves that the sell page sends the check in parallel, stays
-  usable and shows no banner for that answer. A green run does not prove that the API answers
-  `LikelyReturn` for a flagged address, that the banner appears for that answer in this harness,
-  or that the API stays within its 15-second bound.
+- **The full-stack harness answers Scorechain through the API's loc mock.** `e2e-stack/env/api.env`
+  enables only the Scorechain process (`DISABLED_PROCESSES=*,!Scorechain`) and maps the address of
+  `testWallet(7700001)` to the mock form `SanctionList` in `SCORECHAIN_LOC_MOCK`; every other address
+  gets `NoRisk`. `e2e-stack/specs/sell-swap.spec.ts` proves that the sell page shows no banner for
+  `Ok` and the banner for `LikelyReturn`, through the real API and database. A green run does not
+  prove what the real Scorechain returns for an address, or that the API stays within its 15-second
+  bound against the real provider.
 - **The sell address check visuals answer the API themselves.** `e2e/sell-address-check.spec.ts` uses a synthetic
   unsigned JWT and fulfils the sell bootstrap calls and `GET /v1/sell/address-check` with `LikelyReturn` and
   `Ok`. It also answers `PUT /v1/sell/paymentInfos` (and `PUT /v1/sell/quote`) with a synthetic quote so the
