@@ -223,9 +223,10 @@ test.describe('Compliance area (overview)', () => {
       .filter({ has: page.getByRole('cell', { name: String(tx.transactionId), exact: true }) })
       .first();
     await expect(transactionRow).toBeVisible();
-    await expect(transactionRow.getByText(String(tx.transactionId), { exact: true })).toBeVisible();
-    await expect(transactionRow.getByText(String(customer.userDataId), { exact: true })).toBeVisible();
-    await expect(transactionRow.getByText('E2E Verified Name', { exact: true })).toBeVisible();
+    const transactionCells = transactionRow.getByRole('cell');
+    await expect(transactionCells.nth(0)).toHaveText(String(tx.transactionId));
+    await expect(transactionCells.nth(1)).toHaveText(String(customer.userDataId));
+    await expect(transactionCells.nth(2)).toHaveText('E2E Verified Name');
 
     await transactionRow.getByRole('button', { name: 'Customer', exact: true }).click();
 
