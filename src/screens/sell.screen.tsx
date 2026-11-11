@@ -49,6 +49,7 @@ import { SellCompletion } from '../components/payment/sell-completion';
 import { QuoteErrorHint } from '../components/quote-error-hint';
 import { QuoteRequestError, SESSION_EXPIRED_ERROR } from '../components/quote-request-error';
 import { SanctionHint } from '../components/sanction-hint';
+import { SellAddressCheckHint } from '../components/sell-address-check-hint';
 import { CloseType, useAppHandlingContext } from '../contexts/app-handling.context';
 import { AssetBalance } from '../contexts/balance.context';
 import { useSettingsContext } from '../contexts/settings.context';
@@ -652,6 +653,7 @@ export default function SellScreen(): JSX.Element {
         >
           {availableAssets && sellableCurrencies && bankAccounts && (
             <StyledVerticalStack gap={8} full center className="relative">
+              <SellAddressCheckHint blockchain={selectedAsset?.blockchain} />
               <StyledVerticalStack gap={2} full>
                 <h2 className="text-dfxGray-700">{translate('screens/buy', 'You spend')}</h2>
                 <StyledHorizontalStack gap={1}>

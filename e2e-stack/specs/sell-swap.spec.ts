@@ -9,10 +9,12 @@
  * Passing `bank-account` used to recreate accounts in a loop; that regression is pinned by the
  * dedicated test at the end of this file (select the existing account, do not POST again).
  * Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
+ * /sell also proves the parallel wallet address check: the real API answers Unknown here
+ * (Scorechain is disabled by DISABLED_PROCESSES=*), and the form stays usable without a banner.
  */
 
 import type { Page, Response } from '@playwright/test';
-import { expect, gotoWithSession, normPath, openScreen, test, waitForRow } from './fixtures';
+import { expect, gotoWithSession, normPath, openScreen, queryRows, test, waitForRow } from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -355,6 +357,49 @@ test.describe('Sell + Swap e2e', () => {
     await expect(page.getByText('Add or select your IBAN', { exact: true })).toBeVisible();
     // Amount field is a number input (StyledInput type=number → inputMode=decimal).
     await expect(page.locator('input[inputmode="decimal"]').first()).toBeVisible();
+  });
+
+  test('/sell checks the connected wallet in parallel and shows no banner when the API answers Unknown', async ({
+    page,
+  }) => {
+    const user = await createUser({
+      walletIndex: nextWalletIndex(),
+      tag: 'sell-address-check',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    const checkResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' && new URL(response.url()).pathname === '/v1/sell/address-check',
+      { timeout: 30000 },
+    );
+
+    await openScreen(page, '/sell', user.jwt);
+
+    const response = await checkResponse;
+    const requestUrl = new URL(response.url());
+    expect(requestUrl.searchParams.get('blockchain'), 'the hint checks the chain of the selected asset').toBeTruthy();
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toEqual({ result: 'Unknown' });
+
+    // The form is unaffected: it renders and accepts input while and after the check runs.
+    await expect(page.getByText('You spend', { exact: true })).toBeVisible();
+    const amount = page.locator('input[inputmode="decimal"]').first();
+    await expect(amount).toBeEnabled();
+    await amount.fill('0.1');
+    await expect(amount).toHaveValue('0.1');
+
+    await expect(
+      page.getByText(
+        'Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.',
+      ),
+    ).toHaveCount(0);
+
+    // Scorechain is disabled in this stack: the check never reserves quota or calls the provider.
+    const rows = await queryRows(`SELECT id FROM scorechain_screening WHERE "objectId" = $1`, [user.address]);
+    expect(rows).toEqual([]);
   });
 
   test('/sell bank account: invalid IBAN rejected; valid IBAN creates bank_data via UI', async ({ page }) => {

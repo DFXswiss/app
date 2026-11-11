@@ -648,6 +648,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   enums, the order hook, the debounce hook and the payment-info component. A green run proves the
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
+- **The sell address check never reaches Scorechain in the full-stack harness.** The stack runs the
+  API with `DISABLED_PROCESSES=*`, so `GET /v1/sell/address-check` always answers `Unknown` and
+  `e2e-stack/specs/sell-swap.spec.ts` proves that the sell page sends the check in parallel, stays
+  usable and shows no banner for that answer. A green run does not prove that the API answers
+  `LikelyReturn` for a flagged address, that the banner appears for that answer in this harness,
+  or that the API stays within its 15-second bound.
 
 ## Known gaps
 
