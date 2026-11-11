@@ -50,6 +50,7 @@ describe('SellAddressCheckHint', () => {
     const hint = await screen.findByTestId('info-text');
     expect(hint).toHaveTextContent(BANNER);
     expect(hint).toHaveAttribute('data-icon-color', 'Red');
+    expect(screen.getByTestId('sell-address-check-banner')).toBeInTheDocument();
     expect(mockCheckAddress).toHaveBeenCalledTimes(1);
     expect(mockCheckAddress).toHaveBeenCalledWith(Blockchain.ETHEREUM);
   });
@@ -61,6 +62,7 @@ describe('SellAddressCheckHint', () => {
 
     await waitFor(() => expect(mockCheckAddress).toHaveBeenCalledTimes(1));
     expect(screen.queryByTestId('info-text')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sell-address-check-banner')).toBeNull();
   });
 
   it('shows no banner when the address check returns Unknown', async () => {

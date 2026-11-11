@@ -654,6 +654,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   usable and shows no banner for that answer. A green run does not prove that the API answers
   `LikelyReturn` for a flagged address, that the banner appears for that answer in this harness,
   or that the API stays within its 15-second bound.
+- **The sell address check visuals answer the API themselves.** `e2e/sell-address-check.spec.ts` uses a synthetic
+  unsigned JWT and fulfils the sell bootstrap calls and `GET /v1/sell/address-check` with `LikelyReturn` and
+  `Ok`. It also answers `PUT /v1/sell/paymentInfos` (and `PUT /v1/sell/quote`) with a synthetic quote so the
+  sell form shows its normal exchange rate and payment information. A green run proves how the sell page renders
+  the banner and its absence for those answers. It does not prove production auth, that the API answers
+  `LikelyReturn` for a real address, or that the API returns that quote.
 
 ## Known gaps
 

@@ -35,12 +35,14 @@ export function SellAddressCheckHint({ blockchain }: SellAddressCheckHintProps):
   }, [address, blockchain, canCheck, checkAddress]);
 
   return likelyReturn ? (
-    <StyledInfoText iconColor={IconColor.RED}>
-      {translate(
-        'screens/sell',
-        'Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.',
-      )}
-    </StyledInfoText>
+    <div className="w-full rounded-lg border-2 border-dfxRed-100 p-3" data-testid="sell-address-check-banner">
+      <StyledInfoText iconColor={IconColor.RED}>
+        {translate(
+          'screens/sell',
+          'Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.',
+        )}
+      </StyledInfoText>
+    </div>
   ) : (
     <></>
   );
