@@ -10,11 +10,16 @@ departs from and the reason. An undeclared deviation is not a discussion point
 A declared deviation is the reviewer's call: they may accept it or refuse it at
 their own discretion. Declaring one is not the same as being granted one.
 
+The only exception is
+[Complete test coverage is mandatory](#complete-test-coverage-is-mandatory):
+no deviation from it can be declared or granted.
+
 ## Complete test coverage is mandatory
 
 This rule is binding for every pull request and every contributor at DFX. It
 takes precedence over any softer wording elsewhere in this repository's
-documentation.
+documentation. It is excluded from the deviation process above: no reviewer can
+grant an exception to it.
 
 ### Every function is fully covered
 
