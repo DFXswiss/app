@@ -607,7 +607,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **`e2e/passkey-login.spec.ts`: in-app and operating-system reports.**
   The in-app, iPhone in-app and old-system shots set user agents for Telegram, iPhone and iOS 16.0; a green run does not prove a real in-app browser, iPhone or running iOS 16.0.
 - **`e2e/passkey-login.spec.ts`: fixed authenticator and wallet routes.**
-  The desk and ceremony shots use a fixed in-page authenticator and one wallet fixture; recovery words and receive addresses derive from the fixed PRF bytes in `e2e/passkey-desk-authenticator.ts`. That authenticator's `credentials.get` ignores `allowCredentials`. A green run does not prove a real WebAuthn signature, authenticator PRF output or wallet address, and it does not prove that the browser offers only the stored credential when locking. That offer is proven by `src/__tests__/wallet-client.test.ts`.
+  The desk and ceremony shots use a fixed in-page authenticator and one wallet fixture; recovery words and receive addresses derive from the fixed PRF bytes in `e2e/passkey-desk-authenticator.ts`. That authenticator's `credentials.get` ignores `allowCredentials`. A green run does not prove a real WebAuthn signature, authenticator PRF output or wallet address, and it does not prove that the browser offers only the stored credential when locking. `src/__tests__/wallet-client.test.ts` proves only that the wallet client passes the stored credential id to the ceremony; no test proves that the real ceremony sets `allowCredentials` or what a real browser offers.
 - **`e2e/passkey-login.spec.ts`: address fixtures.**
   Register omits Bitcoin, the auto-link adds the derived login address, and Check addresses compares those server rows. The expanded list shows the session receive addresses (EVM index 0, Bitcoin receive index 1, Spark identity), not the server rows. The stored server rows are only placeholders, and a green run does not prove that the server stores them that way.
 - **`e2e/passkey-login.spec.ts`: successful revocation fixture.**
@@ -677,8 +677,6 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   Balance and app-handling contexts and `src/contexts/wallet.context` are replaced; a green run does not prove those contexts.
 - **`src/__tests__/connect-passkey.test.tsx`: browser-language substitute.**
   `browser-lang` is replaced; a green run does not prove browser-language detection.
-- **`src/__tests__/connect-passkey.test.tsx`: JWT decoder substitute.**
-  `jwt-decode` is replaced; a green run does not prove real JWT decoding.
 - **`src/__tests__/connect-passkey.test.tsx`: wallet client and login substitutes.**
   The wallet client is replaced; a green run does not prove a real ceremony or calls to the real `createWalletClient` or `PasskeyAuth`.
 - **`src/__tests__/connect-passkey.test.tsx`: storage failure spies.**
@@ -708,7 +706,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **`src/__tests__/connect-passkey.test.tsx`: in-app URL substitute.**
   The in-app test uses `history.replaceState` because jsdom drops the fragment when assigning `location.href`; a green run does not prove that assignment preserves the fragment in a browser.
 - **`src/__tests__/connect-passkey.test.tsx`: stubbed ceremony and desk.**
-  WebAuthn remains stubbed while tests exercise the idle, choice, email, unknown and error cards, Close during a hanging login, one Bitcoin link and passkey revocation; a green run does not prove Close cancels WebAuthn or logs out, the server stored the mainnet login address, or an existing Bitcoin row came from the API.
+  WebAuthn remains stubbed while tests exercise the idle, choice, email, unknown and error cards, Close during a hanging login, one Bitcoin link and passkey revocation; a green run does not prove Close cancels WebAuthn, the server stored the mainnet login address, or an existing Bitcoin row came from the API.
 - **`src/__tests__/connect-passkey.test.tsx`: DFX account substitute.**
   `useAuthContext` returns an in-memory session. A green run proves a stored login keeps
   `session.account` on the tab session and keeps no account when that session is missing. It does not
