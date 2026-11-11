@@ -5,6 +5,11 @@ request. An undeclared deviation is rejected. A declared deviation is the
 reviewer's to grant or refuse, in writing on the pull request. Declaring one
 is not the same as being granted one.
 
+No deviation from
+[Complete test coverage is mandatory](CONTRIBUTING.md#complete-test-coverage-is-mandatory)
+can be declared or granted. Reject a pull request that leaves a function it adds
+or changes without complete tests.
+
 ## Website functions
 
 Every function of the website is covered by a real test, as defined under
