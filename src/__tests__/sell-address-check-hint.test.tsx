@@ -138,8 +138,7 @@ describe('SellAddressCheckHint', () => {
   it('hides the banner when switching to a blockchain whose address check returns Ok', async () => {
     mockCheckAddress.mockImplementation((blockchain: Blockchain) =>
       Promise.resolve({
-        result:
-          blockchain === Blockchain.ETHEREUM ? SellAddressCheckResult.LIKELY_RETURN : SellAddressCheckResult.OK,
+        result: blockchain === Blockchain.ETHEREUM ? SellAddressCheckResult.LIKELY_RETURN : SellAddressCheckResult.OK,
       }),
     );
 
