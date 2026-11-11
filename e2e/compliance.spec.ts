@@ -98,13 +98,11 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await page.waitForTimeout(2000);
 
       // Wait for search results or "No entries found" message
-      await page
-        .waitForSelector('text=Matching Entries, text=No entries found', {
-          timeout: 10000,
-        })
-        .catch(() => {
-          // One of these should appear
-        });
+      await page.waitForSelector('text=Matching Entries, text=No entries found', {
+        timeout: 10000,
+      }).catch(() => {
+        // One of these should appear
+      });
 
       await expect(page).toHaveScreenshot('compliance-02-search-results.png', {
         fullPage: true,
