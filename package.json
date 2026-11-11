@@ -36,7 +36,7 @@
     "apexcharts": "^4.7.0",
     "bech32": "^2.0.0",
     "bitbox-api": "^0.2.1",
-    "bitcoinjs-lib": "^7.0.0",
+    "bitcoinjs-lib": "^7.0.5",
     "bitcoinjs-message": "^2.2.0",
     "browser-lang": "^0.2.1",
     "buffer": "^6.0.3",
