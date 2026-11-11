@@ -18,8 +18,8 @@ no deviation from it can be declared or granted.
 
 This rule is binding for every pull request and every contributor at DFX. It
 takes precedence over any softer wording elsewhere in this repository's
-documentation. It is excluded from the deviation process above: no reviewer can
-grant an exception to it.
+documentation. It is excluded from the deviation process above: no deviation
+from this rule can be declared or granted.
 
 ### Every function is fully covered
 
