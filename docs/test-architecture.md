@@ -654,6 +654,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   gets `NoRisk`. The mock answers after `SCORECHAIN_LOC_MOCK_DELAY_MS` (5 s), and the tests prove the
   form is usable before that answer arrives. `e2e-stack/specs/sell-swap.spec.ts` proves that the sell
   page shows no banner for `Ok` and the banner for `LikelyReturn`, through the real API and database.
+  A third test opens the sell page on Gnosis, which Scorechain does not cover, and proves the `Unknown`
+  answer shows no banner.
   A green run does not prove what the real Scorechain returns for an address, or that the API stays
   within its 15-second bound against the real provider.
 - **The sell address check visuals answer the API themselves.** `e2e/sell-address-check.spec.ts` uses a synthetic
