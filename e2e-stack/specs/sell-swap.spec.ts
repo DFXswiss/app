@@ -14,6 +14,7 @@
  */
 
 import type { Page, Response } from '@playwright/test';
+import { ethers } from 'ethers';
 import { expect, gotoWithSession, normPath, openScreen, queryRows, test, waitForRow } from './fixtures';
 import {
   cleanupCreatedData,
@@ -362,6 +363,8 @@ test.describe('Sell + Swap e2e', () => {
   test('/sell checks the connected wallet in parallel and shows no banner when the API answers Unknown', async ({
     page,
   }) => {
+    test.setTimeout(120000);
+
     const user = await createUser({
       walletIndex: nextWalletIndex(),
       tag: 'sell-address-check',
@@ -373,10 +376,39 @@ test.describe('Sell + Swap e2e', () => {
     const checkResponse = page.waitForResponse(
       (response) =>
         response.request().method() === 'GET' && new URL(response.url()).pathname === '/v1/sell/address-check',
-      { timeout: 30000 },
+      { timeout: 60000 },
     );
 
-    await openScreen(page, '/sell', user.jwt);
+    await page.goto('/sell?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).not.toBe('/sell');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(user.wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(user.wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/sell');
 
     const response = await checkResponse;
     const requestUrl = new URL(response.url());
