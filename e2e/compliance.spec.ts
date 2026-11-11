@@ -118,11 +118,13 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(2000);
 
-      await page.waitForSelector('text=Matching Entries, text=No entries found', {
-        timeout: 10000,
-      }).catch(() => {
-        // One of these should appear
-      });
+      await page
+        .waitForSelector('text=Matching Entries, text=No entries found', {
+          timeout: 10000,
+        })
+        .catch(() => {
+          // One of these should appear
+        });
 
       await expect(page.getByText('Transactions', { exact: true })).toBeVisible({ timeout: 10000 });
       await expect(page).toHaveScreenshot('compliance-03-search-transaction.png', {
