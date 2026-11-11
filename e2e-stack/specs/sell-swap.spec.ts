@@ -15,7 +15,7 @@
 
 import type { Page, Response } from '@playwright/test';
 import { ethers } from 'ethers';
-import { expect, gotoWithSession, normPath, openScreen, queryRows, test, waitForRow } from './fixtures';
+import { expect, gotoWithSession, normPath, openScreen, queryRows, test, waitForRow, withDb } from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -48,6 +48,25 @@ function nextWalletIndex(): number {
 
 // Keep this in sync with the dedicated sanction-list address in e2e-stack/env/api.env.
 const SANCTION_LIST_WALLET_INDEX = 7700001;
+
+/**
+ * The API serialises every precheck behind one non-waiting Postgres advisory lock and answers
+ * `Unknown` immediately when the lock is taken. The provider mock answers after five seconds, so a
+ * precheck started by an earlier screen is still in flight when the next screen asks. This probe
+ * takes the lock only for the instant of the probe and always unlocks: a free lock means no precheck
+ * is running, and the next request gets the real provider answer instead of the busy fallback.
+ */
+async function precheckLockIsFree(): Promise<boolean> {
+  return withDb(async (client) => {
+    const { rows } = await client.query<{ locked: boolean }>(
+      `SELECT pg_try_advisory_lock(hashtext('scorechain-precheck')::bigint) AS locked`,
+    );
+    if (rows[0]?.locked) {
+      await client.query(`SELECT pg_advisory_unlock(hashtext('scorechain-precheck')::bigint)`);
+    }
+    return rows[0]?.locked === true;
+  });
+}
 
 /**
  * The shared e2e stack seeds a large but finite pool of EVM deposit addresses (global.setup.ts,
@@ -393,6 +412,16 @@ test.describe('Sell + Swap e2e', () => {
       { timeout: 30000 },
     );
 
+    // Hold the answer until the form assertions below have run. The mock API answers within
+    // milliseconds, so without a gate the check can be finished before the test types — and then the
+    // pending state the test is about would be a race instead of a property of the page.
+    let releaseAddressCheck: () => void = () => undefined;
+    const addressCheckGate = new Promise<void>((resolve) => (releaseAddressCheck = resolve));
+    await page.route('**/v1/sell/address-check**', async (route) => {
+      await addressCheckGate;
+      await route.continue();
+    });
+
     await page.goto('/sell?blockchain=Ethereum');
     await page.waitForLoadState('networkidle');
 
@@ -432,6 +461,13 @@ test.describe('Sell + Swap e2e', () => {
     await amount.fill('0.1');
     await expect(amount).toHaveValue('0.1');
     expect(checkAnswered, 'the form must be usable while the address check is still pending').toBe(false);
+    await expect
+      .poll(precheckLockIsFree, {
+        timeout: 30000,
+        message: 'another precheck must finish before the held address check is released',
+      })
+      .toBe(true);
+    releaseAddressCheck();
 
     const response = await checkResponse;
     const requestUrl = new URL(response.url());
@@ -483,6 +519,16 @@ test.describe('Sell + Swap e2e', () => {
       { timeout: 30000 },
     );
 
+    // Hold the answer until the form assertions below have run. The mock API answers within
+    // milliseconds, so without a gate the check can be finished before the test types — and then the
+    // pending state the test is about would be a race instead of a property of the page.
+    let releaseAddressCheck: () => void = () => undefined;
+    const addressCheckGate = new Promise<void>((resolve) => (releaseAddressCheck = resolve));
+    await page.route('**/v1/sell/address-check**', async (route) => {
+      await addressCheckGate;
+      await route.continue();
+    });
+
     await page.goto('/sell?blockchain=Ethereum');
     await page.waitForLoadState('networkidle');
 
@@ -521,6 +567,13 @@ test.describe('Sell + Swap e2e', () => {
     await amount.fill('0.1');
     await expect(amount).toHaveValue('0.1');
     expect(checkAnswered, 'the form must be usable while the address check is still pending').toBe(false);
+    await expect
+      .poll(precheckLockIsFree, {
+        timeout: 30000,
+        message: 'another precheck must finish before the held address check is released',
+      })
+      .toBe(true);
+    releaseAddressCheck();
 
     const response = await checkResponse;
     const requestUrl = new URL(response.url());
