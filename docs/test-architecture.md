@@ -636,13 +636,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   card, the rejected first login without an existing credential, then `Open a new account`, the
   email and Continue, then the unlocked desk and the later login, the credential row is `Active`,
   and credential status plus the wallet list come from the API. It also proves that
-  `passkey_address` together with `"user".address` stores the Bitcoin login address once
-  for the registered mail at path `m/84'/0'/0'/0/0`, that a different address at that path
-  does not pass, that the titled Bitcoin row on the expanded list is a testnet receive
+  `passkey_address` together with `"user".address` stores one mainnet `bc1q` address
+  for the registered mail at path `m/84'/0'/0'/0/0`, that the titled Bitcoin row on the expanded list is a testnet receive
   address (`tb1q`) and is not that login address, that the list does not show the login
   address, that Receive Bitcoin shows the same receive address, and that after Reload data
   in Settings and after `Use another passkey` plus a second login the titled Bitcoin row is
-  still that receive address. It also proves that the EVM address in the Receive dialog
+  still that receive address. It does not prove that the stored `bc1q` address equals an
+  independently derived login address, because the page no longer shows the login address to
+  compare with. It also proves that the EVM address in the Receive dialog
   matches the derived list row. It does not prove that the list row is the server login
   address, or that a hardware authenticator derived the receive address.
   It does not prove a production sign-in, a real hardware-authenticator PRF, or a transaction or purchase.
