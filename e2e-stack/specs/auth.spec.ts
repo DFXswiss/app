@@ -549,6 +549,7 @@ test.describe('Auth area e2e', () => {
       const rows = await queryRows<{ address: string; family: string; path: string }>(bitcoinAddressSql, [mail, path]);
       expect(rows.length).toBe(1);
       await expect(page.locator(`[title="${row.address}"]`)).toHaveCount(0);
+      expect(await page.locator('body').innerText()).not.toContain(row.address);
 
       await page.getByRole('button', { name: 'Receive', exact: true }).click();
       const receive = page.getByRole('dialog', { name: 'Receive' });
@@ -582,17 +583,16 @@ test.describe('Auth area e2e', () => {
       await page.getByRole('button', { name: 'Log in' }).click();
       const authenticationResponse = await authentication;
       expect(authenticationResponse.ok()).toBe(true);
-      const { accessToken: ceremonyToken } = (await authenticationResponse.json()) as { accessToken?: string };
-      if (!ceremonyToken) throw new Error('Missing passkey ceremony token');
       await expect(page.getByRole('button', { name: 'Show wallet' }).first()).toBeVisible({ timeout: 30000 });
       await page.getByRole('button', { name: 'Show wallet' }).first().click();
       await expect(bitcoinRow.locator('[title]')).toHaveAttribute('title', address);
       await expect(page.locator(`[title="${row.address}"]`)).toHaveCount(0);
+      expect(await page.locator('body').innerText()).not.toContain(row.address);
 
       const evmRow = page.locator('li', { has: page.getByText('Ethereum & EVM', { exact: true }) });
       await expect(evmRow).toHaveCount(1, { timeout: 30000 });
       await page.getByRole('button', { name: 'Receive', exact: true }).click();
-      await receive.getByRole('button', { name: 'EVM', exact: true }).click();
+      await receive.getByRole('button', { name: 'Ethereum & EVM', exact: true }).click();
       const receiveAddress = receive.getByTestId('passkey-receive-address');
       await expect(receiveAddress).toHaveText(/^0x[0-9a-fA-F]{40}$/, { timeout: 30000 });
       const evmAddress = await receiveAddress.textContent();

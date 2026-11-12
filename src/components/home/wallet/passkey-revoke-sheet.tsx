@@ -26,12 +26,14 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
   return (
     <PasskeySheet title={t('Block passkey')} onClose={props.onClose} busy={props.busy} returnFocus={props.returnFocus}>
       {props.note && (
-        <div ref={noteRef} role="alert" className="mb-3 scroll-mt-[68px] rounded-[16px] bg-[#EEF2F8] p-4 text-sm">
+        <div ref={noteRef} role="alert" className="mb-3 scroll-mt-[68px] text-sm text-dfxRed-150">
           {t(props.note)}
         </div>
       )}
       <p className="text-sm leading-5 text-dfxGray-800">
-        {t('This passkey will no longer open the wallet. This cannot be undone.')}
+        {t(
+          'DFX will no longer accept this passkey, and this page can no longer open the wallet with it. Your funds stay on your addresses. Export your recovery phrase or move your funds before you block.',
+        )}
       </p>
       <fieldset className="mt-5">
         <legend className="text-sm font-semibold text-dfxGray-800">{t('What happened?')}</legend>
@@ -52,11 +54,13 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
               <b className="block text-base font-semibold">
                 {t(item === 'Lost' ? 'Passkey lost' : 'Passkey compromised')}
               </b>
-              {item === 'Lost' && (
-                <span className="mt-0.5 block text-sm leading-5 text-dfxGray-800">
-                  {t('Device gone, deleted or no longer accessible')}
-                </span>
-              )}
+              <span className="mt-0.5 block text-sm leading-5 text-dfxGray-800">
+                {t(
+                  item === 'Lost'
+                    ? 'Device gone, deleted or no longer accessible'
+                    : 'Someone else may have access to the passkey or the recovery phrase',
+                )}
+              </span>
             </span>
           </label>
         ))}
@@ -69,7 +73,7 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
           checked={props.acknowledged}
           onChange={(event) => props.onAcknowledged(event.target.checked)}
         />
-        {t('I understand that this cannot be undone.')}
+        {t('I understand that this page can no longer open the wallet with this passkey.')}
       </label>
       <div className="mt-5 grid grid-cols-[1fr_1.4fr] gap-2">
         <button className={`${button} border border-dfxGray-600`} disabled={props.busy} onClick={props.onClose}>

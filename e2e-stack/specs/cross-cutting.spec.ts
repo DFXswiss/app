@@ -568,7 +568,7 @@ test.describe('Cross-cutting', () => {
         .first()
         .isVisible()
         .catch(() => false);
-      const loggedOutUi = path === '/login' || path === '/' || path.startsWith('/login') || loginBtn || loginText;
+      const loggedOutUi = path === '/login' || path.startsWith('/login') || loginBtn || loginText;
       expect(loggedOutUi, `after 401 expected logged-out UI; path=${path}`).toBe(true);
     });
   });

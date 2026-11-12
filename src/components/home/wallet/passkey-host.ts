@@ -24,6 +24,14 @@ export const PASSKEY_OPEN_BROWSER = 'Open in browser';
 export const PASSKEY_COPY_LINK = 'Copy link';
 export const PASSKEY_LINK_COPIED = 'Copied';
 export const PASSKEY_PRF_UNSUPPORTED = 'This passkey cannot hold a wallet on this device.';
+export const PASSKEY_SEED_MISMATCH =
+  'This device derived a different wallet from this passkey. Use the device that created the passkey, sign in from it by QR code, or update the operating system.';
+export const PASSKEY_BLOCKED = 'This passkey is blocked.';
+export const PASSKEY_REVOKED_NOTICE = 'The passkey was blocked.';
+export const PASSKEY_SESSION_CHANGED = 'The wallet was closed because the DFX session changed.';
+export const PASSKEY_CREDENTIAL_MISMATCH = 'The device offered a different passkey. Nothing was changed.';
+export const PASSKEY_COPY_UNAVAILABLE = 'Copying is not available in this browser.';
+export const PASSKEY_BITCOIN_CONNECTED = 'Bitcoin connected.';
 
 export type PasskeyPlatformView = 'pending' | 'in-app' | 'os-old' | 'blocked' | 'ready';
 
@@ -66,9 +74,7 @@ export function passkeyUnknownCredential(error: unknown): boolean {
   const message = typeof record.message === 'string' ? record.message.toLowerCase() : '';
   const code = typeof record.code === 'string' ? record.code.toLowerCase() : '';
   return (
-    message.includes('unknown credential') ||
-    code.includes('unknown credential') ||
-    record.code === 'UnknownCredential'
+    message.includes('unknown credential') || code.includes('unknown credential') || record.code === 'UnknownCredential'
   );
 }
 
@@ -91,7 +97,18 @@ export function passkeyPlatformView(report: PlatformReport | undefined): Passkey
   return 'ready';
 }
 
-export function passkeyMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim() !== '') return error.message;
+export function passkeyCloseNotice(reason: 'revoked' | 'blocked' | 'session-changed' | undefined): string | undefined {
+  if (reason === 'revoked') return PASSKEY_REVOKED_NOTICE;
+  if (reason === 'blocked') return PASSKEY_BLOCKED;
+  if (reason === 'session-changed') return PASSKEY_SESSION_CHANGED;
+  return undefined;
+}
+
+// A dismissed prompt has no sentence. Every other failure becomes one of the translated sentences.
+export function passkeyWalletError(error: unknown): string | undefined {
+  if (passkeyDismissed(error)) return undefined;
+  const record = errorRecord(error);
+  if (record?.code === 'credential-mismatch') return PASSKEY_CREDENTIAL_MISMATCH;
+  if (record?.code === 'prf-unavailable') return PASSKEY_PRF_UNSUPPORTED;
   return PASSKEY_GENERIC_ERROR;
 }

@@ -5,6 +5,7 @@ import {
   getOpenPasskey,
   getOpenPasskeyAccount,
   setOpenPasskey,
+  setPasskeyCloseReason,
   subscribeOpenPasskey,
 } from './passkey-session';
 
@@ -23,6 +24,7 @@ export function PasskeyDfxSession(): null {
     if (isLoggedIn && account === undefined) return;
     if (account === getOpenPasskeyAccount()) return;
     open.keys?.wipe();
+    setPasskeyCloseReason('session-changed');
     setOpenPasskey(undefined);
   }, [isInitialized, isLoggedIn, session, open]);
 

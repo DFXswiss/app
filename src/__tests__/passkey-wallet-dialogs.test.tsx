@@ -46,28 +46,33 @@ describe('Passkey wallet dialogs', () => {
     }
   });
 
-  it('shows recovery words, requires confirmation and forwards actions', () => {
+  it('shows the recovery phrase and derivation paths, and forwards actions', () => {
     const onDone = jest.fn();
-    const onAcknowledged = jest.fn();
     const onClose = jest.fn();
-    const props = { words: ['one', 'two'], acknowledged: false, busy: false, onAcknowledged, onDone, onClose };
+    const paths = { evm: "m/44'/60'/0'/0/0", bitcoin: "m/84'/0'/0'", spark: "m/8797555'/1'/0'" };
+    const props = { words: ['one', 'two'], busy: false, paths, onDone, onClose };
     const view = render(<PasskeyWordsSheet {...props} />);
+    expect(screen.getByRole('heading', { name: 'Export recovery phrase' })).toBeInTheDocument();
     expect(screen.getByTestId('passkey-recovery-words')).toHaveTextContent('one');
-    expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled();
-    fireEvent.click(screen.getByLabelText('I have written the words down on paper.'));
-    expect(onAcknowledged).toHaveBeenCalledWith(true);
-    view.rerender(<PasskeyWordsSheet {...props} acknowledged note="export failed" />);
+    expect(screen.getByText('Derivation version v1')).toBeInTheDocument();
+    expect(screen.getByText("m/44'/60'/0'/0/0")).toBeInTheDocument();
+    expect(screen.getByText("m/84'/0'/0'")).toBeInTheDocument();
+    expect(screen.getByText("m/8797555'/1'/0'")).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled();
+    view.rerender(<PasskeyWordsSheet {...props} note="export failed" />);
     expect(screen.getByRole('alert')).toHaveTextContent('export failed');
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(onDone).toHaveBeenCalledTimes(1);
-    view.rerender(<PasskeyWordsSheet {...props} words={undefined} acknowledged />);
+    view.rerender(<PasskeyWordsSheet {...props} words={undefined} />);
+    expect(screen.queryByText('Derivation version v1')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled();
-    view.rerender(<PasskeyWordsSheet {...props} acknowledged busy />);
+    view.rerender(<PasskeyWordsSheet {...props} busy />);
     expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).not.toHaveBeenCalled();
-    view.rerender(<PasskeyWordsSheet {...props} acknowledged />);
+    view.rerender(<PasskeyWordsSheet {...props} />);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -89,6 +94,7 @@ describe('Passkey wallet dialogs', () => {
     const view = render(<PasskeyRevokeSheet {...props} />);
     expect(screen.getByText('You confirm one last time with this passkey.')).toBeInTheDocument();
     expect(screen.getByText('Device gone, deleted or no longer accessible')).toBeInTheDocument();
+    expect(screen.getByText('Someone else may have access to the passkey or the recovery phrase')).toBeInTheDocument();
     expect(
       screen.queryByText('Someone else may have access. Move your funds to a safe address with “Send” first.'),
     ).not.toBeInTheDocument();
@@ -96,7 +102,9 @@ describe('Passkey wallet dialogs', () => {
     expect(screen.getByRole('button', { name: 'Block', exact: true })).toBeDisabled();
     fireEvent.click(screen.getByLabelText('Passkey compromised'));
     expect(screen.queryByText('New login')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
+    fireEvent.click(
+      screen.getByLabelText('I understand that this page can no longer open the wallet with this passkey.'),
+    );
     expect(onReason).toHaveBeenCalledWith('Compromised');
     expect(onAcknowledged).toHaveBeenCalledWith(true);
     view.rerender(<PasskeyRevokeSheet {...props} acknowledged />);
@@ -104,6 +112,7 @@ describe('Passkey wallet dialogs', () => {
     expect(onRevoke).toHaveBeenCalledTimes(1);
     view.rerender(<PasskeyRevokeSheet {...props} acknowledged busy note="failure" />);
     expect(screen.getByRole('alert')).toHaveTextContent('failure');
+    expect(screen.getByRole('alert')).toHaveClass('text-dfxRed-150');
     expect(screen.getByRole('button', { name: 'Block', exact: true })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
@@ -145,8 +154,8 @@ describe('Passkey wallet dialogs', () => {
       screen.queryByText('Only on this device. If it is lost, you need your recovery words.'),
     ).not.toBeInTheDocument();
     expect(screen.getByText('Checks that DFX shows your own addresses')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Recovery words/ })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
+    expect(screen.getByRole('button', { name: 'Export recovery phrase' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Export recovery phrase' }));
     fireEvent.click(screen.getByRole('button', { name: /Check addresses/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Reload data' }));
     fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
@@ -156,7 +165,7 @@ describe('Passkey wallet dialogs', () => {
     [onWords, onVerify, onRefresh, onStatus, onDiagnostics, onAnotherPasskey, onRevoke].forEach((fn) =>
       expect(fn).toHaveBeenCalledTimes(1),
     );
-    fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to DFX' }));
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
 
@@ -174,8 +183,8 @@ describe('Passkey wallet dialogs', () => {
     expect(screen.getByText('0 / 1 addresses match')).toHaveClass('text-dfxRed-150');
     expect(screen.getByRole('button', { name: 'Check passkey status' })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Check addresses/ })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /Recovery words/ })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: /Recovery words/ }));
+    expect(screen.getByRole('button', { name: 'Export recovery phrase' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Export recovery phrase' }));
     expect(onWords).toHaveBeenCalledTimes(2);
 
     view.rerender(<PasskeySettingsSheet {...props} checks={[]} />);
@@ -208,15 +217,26 @@ describe('Passkey wallet dialogs', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     view.rerender(<PasskeySettingsSheet {...props} noteKind="status" note="credential: Aktiv" />);
     expect(screen.getByRole('button', { name: 'Check passkey status' })).toHaveTextContent('credential: Aktiv');
+    expect(screen.getByText('credential: Aktiv')).toHaveClass('text-dfxRed-150');
+    expect(screen.getByText('credential: Aktiv')).not.toHaveClass('text-dfxGreen-300');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    view.rerender(<PasskeySettingsSheet {...props} noteKind="status" note="credential: Active" statusOk />);
+    expect(screen.getByText('credential: Active')).toHaveClass('text-dfxGreen-300');
+    expect(screen.getByText('credential: Active')).not.toHaveClass('text-dfxRed-150');
+    view.rerender(
+      <PasskeySettingsSheet {...props} noteKind="status" note="credential: Compromised" statusOk={false} />,
+    );
+    expect(screen.getByText('credential: Compromised')).toHaveClass('text-dfxRed-150');
+    expect(screen.getByText('credential: Compromised')).not.toHaveClass('text-dfxGreen-300');
     view.rerender(<PasskeySettingsSheet {...props} noteKind="diagnostics" note="ignored" />);
     expect(screen.getByRole('button', { name: 'Record a diagnostic' })).toHaveTextContent('Diagnostic recorded.');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     view.rerender(<PasskeySettingsSheet {...props} busy />);
-    expect(screen.getByRole('button', { name: /Recovery words/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Export recovery phrase' })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Check addresses/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
-    screen.getAllByRole('button', { name: 'Close' }).forEach((button) => expect(button).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Back to DFX' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
   });
 });

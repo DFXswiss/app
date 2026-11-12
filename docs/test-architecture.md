@@ -580,14 +580,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/passkey-sheet.test.tsx` stubs `document.activeElement`; a green run does not prove browser focus behaviour for that case.
 - **The passkey wallet dialog unit test replaces scrolling.**
   `src/__tests__/passkey-wallet-dialogs.test.tsx` stubs `scrollIntoView`; a green run does not prove that a real browser scrolls the note clear of the sticky title.
-- **The passkey wallet unit tests replace the settings context.**
-  Their `translate` returns the key; a green run does not prove real translation.
-- **The late recovery-word test spies on React state.**
-  `src/__tests__/connect-passkey.test.tsx` replaces `useState` with a spy; a green run does not prove recovery-word state behaviour without that instrumentation.
-- **The late diagnostic test spies on React state.**
-  Its `useState` spy observes updates after unmount; a green run does not prove that behaviour without the spy.
-- **The late QR detection test spies on React state.**
-  Its `useState` spy observes updates after closing the send dialog; a green run does not prove that behaviour without the spy.
+- **The passkey wallet dialog unit test prefixes three address families.**
+  In `src/__tests__/passkey-wallet-dialogs.test.tsx`, `translate` returns the key, except `Bitcoin`, `Lightning (Spark)` and `Ethereum & EVM`, which it prefixes with `translated ` while one assertion is running. A green run does not prove a real translation of those three names or of any other sentence.
+- **The history unit test replaces the settings context.**
+  `src/__tests__/passkey-wallet-history.test.tsx` stubs `useSettingsContext` so `translate` returns the key. A green run does not prove a real translation.
+- **`src/__tests__/connect-passkey.test.tsx` spies on React state.**
+  These tests replace `useState` with a spy: `ignores passkey status after the desk unmounts`, `discards a diagnostic success after the desk unmounts`, `discards a diagnostic error after the desk unmounts`, `never writes recovery words after the keys disappear into React state`, `does not report a link success after the desk unmounts during refresh`, `ignores a platform report that arrives after the tile unmounts`, `ignores a late QR detection after the send dialog closes`, `ignores a camera rejection after the send dialog closes`, `does not record a Bitcoin failure after the desk unmounts`, and `does not finish a silent Bitcoin link after the desk unmounts`. A green run does not prove that behaviour without the spy.
+- **`src/__tests__/connect-passkey.test.tsx` replaces `window.PublicKeyCredential`.**
+  `sends prf, os and client capabilities from the platform report` installs an object whose `getClientCapabilities` resolves, `passes prf false and omits os and capabilities when the method is missing` sets an empty object, and `omits prf and capabilities when the report is unknown and no credential exists` deletes the property. A green run does not prove a real browser report.
 - **`e2e/passkey-login.spec.ts`: geolocation and bootstrap fixtures.**
   `e2e/passkey-login.spec.ts` answers geolocation with `CH`, bootstrap GETs with fixtures and every `/v2/**` call with 401; a green run does not prove the real geolocation, API payloads or DFX session.
 - **`e2e/passkey-login.spec.ts`: public wallet background.**
@@ -609,26 +609,40 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **`e2e/passkey-login.spec.ts`: fixed authenticator and wallet routes.**
   The desk and ceremony shots use a fixed in-page authenticator and one wallet fixture; recovery words and receive addresses derive from the fixed PRF bytes in `e2e/passkey-desk-authenticator.ts`. That authenticator's `credentials.get` ignores `allowCredentials`. A green run does not prove a real WebAuthn signature, authenticator PRF output or wallet address, and it does not prove that the browser offers only the stored credential when locking. `src/__tests__/wallet-client.test.ts` proves only that the wallet client passes the stored credential id to the ceremony; no test proves that the real ceremony sets `allowCredentials` or what a real browser offers.
 - **`e2e/passkey-login.spec.ts`: address fixtures.**
-  Register omits Bitcoin, the auto-link adds the derived login address, and Check addresses compares those server rows. The expanded list shows the session receive addresses (EVM index 0, Bitcoin receive index 1, Spark identity), not the server rows. The stored server rows are only placeholders, and a green run does not prove that the server stores them that way.
+  Register omits Bitcoin. The auto-link adds the derived mainnet login address (`bc1`), not the testnet receive address (`tb1q`). One shot reads the EVM and Spark paths from the words dialog and answers the wallets GET with those rows plus Bitcoin at `m/84'/0'/0'/0/0`, and the screen shows `3 / 3 addresses match`. The other shot keeps the placeholder rows and shows `1 / 4 addresses match`, with Differs on `bc1qdeskdi…kdiffers`. The expanded list shows the session receive addresses (EVM index 0, Bitcoin receive index 1, Spark identity), not the server rows. A green run does not prove that the server stores those rows.
 - **`e2e/passkey-login.spec.ts`: successful revocation fixture.**
   The successful-revocation scenes answer `revoke/finish` with the wallet fixture and status `Lost`; a green run does not prove the API returns that status after a successful revocation.
 - **`e2e/passkey-login.spec.ts`: unsuccessful revocation fixture.**
   The unsuccessful-revocation shot returns an `Active` wallet fixture; a green run does not prove the API returns that status after a revocation attempt.
-- **`e2e/passkey-login.spec.ts`: failed login.**
-  The failed-login shot uses a fixed authenticator without PRF output, so login returns a result that does not open the wallet. The idle card shows the existing sentence and stores no session. A green run does not prove a real authenticator without PRF output or that the server rejected the ceremony.
+- **`e2e/passkey-login.spec.ts`: login without PRF.**
+  The shot `passkey-login-no-prf` uses a fixed authenticator without PRF output, so login stays on the idle card. The card shows `This passkey cannot hold a wallet on this device.`, Log in stays visible, and Try again is absent. A green run does not prove the tab session is empty: the session lives only in memory and the handbook hook only sets it. It does not prove a real authenticator without PRF output or that the server rejected the ceremony.
+- **`e2e/passkey-login.spec.ts`: seed mismatch and a refused passkey.**
+  `passkey-login-seed-mismatch` answers `authenticate/finish` with a wallet whose seed-check address is not the derived EVM address, and the idle card shows the seed-mismatch sentence. `passkey-login-blocked` answers that finish with HTTP 403, and the error card shows `This passkey is blocked.` and Try again. A green run does not prove the server stored another seed or refuses that passkey.
+- **`e2e/passkey-login.spec.ts`: DFX session change.**
+  `passkey-login-session-changed` keeps every `/v2/**` call on 401 and then calls `__dfxSetOpenPasskey` with an unlocked session and account 7. The card shows `The wallet was closed because the DFX session changed.` A green run does not prove a real DFX session change, and the sentence does not prove the in-memory close reason.
 - **`e2e/passkey-login.spec.ts`: send-panel substitutes.**
-  The three send baselines for unavailable paste, unavailable scanning and the open camera replace the clipboard, camera and BarcodeDetector; a green run does not prove a real camera or QR image.
-- **`e2e/passkey-login.spec.ts`: Bitcoin link error.**
-  The reconnect shot fulfils the link request with an error; a green run does not prove the real service returns it or a real retry links Bitcoin.
+  The paste shot forces `readText` to reject `Error('denied')`. The copied-address shot replaces `navigator.clipboard.writeText` with a function that resolves. The scan shot makes `getUserMedia` reject `denied`. The camera shot replaces `BarcodeDetector` and returns `canvas.captureStream()` from a 640×160 canvas filled `#123456` with an inner `#abcdef` rectangle. A green run does not prove a real clipboard write, a real camera or a real QR image.
+- **`e2e/passkey-login.spec.ts`: Bitcoin link fixtures.**
+  The offline shot holds `POST /v1/auth/passkey/link` and then answers HTTP 400 with body `Link body is invalid.`. While the request is held, `Not connected to DFX yet` and Connect again are absent; after the answer they are visible and no status toast appears. The connected shot fails the first link the same way and lets Connect again succeed, and the following wallets GET includes the posted Bitcoin address so the row stays connected and the toast reads `Bitcoin connected.`. A green run does not prove the service returns that body, that a real retry links Bitcoin, or that the server kept the address.
 - **`e2e/passkey-login.spec.ts`: paused clock.**
-  The reconnect shot holds the link response and pauses Playwright's clock before releasing it; a green run does not prove how long a real browser shows the toast.
+  The `Address copied` and `Bitcoin connected.` shots install Playwright's clock and pause it after the toast is visible. A green run does not prove how long a real browser shows the toast.
+- **`e2e/passkey-login.spec.ts`: credential status fixture.**
+  `installDeskRoutes` answers credential status with `Active`. `passkey-desk-credential-blocked` answers the same call with `Compromised`, and the status line has `text-dfxRed-150` and not `text-dfxGreen-300`. A green run does not prove the API reports that status. `POST /v1/passkey/diagnostics` returns `{}`, and the screen shows `Diagnostic recorded.`. A green run does not prove the API stored a diagnostic.
+- **`e2e/passkey-login.spec.ts`: history load fixtures.**
+  `passkey-wallet-history-loading` sets `__dfxHandbookPasskeyHistory` with `hasMore` and a `loadMore` that never settles, so the screen shows three pulsing loading bars with the accessible name `Loading more transactions`. `passkey-wallet-history-error` makes `loadMore` reject, so the screen shows `Could not load transactions.` and Try again. A green run does not prove a real transaction list or a real scroll observer.
+- **`e2e/passkey-login.spec.ts` and `e2e/wallet-entry.spec.ts`: viewport expansion.**
+  `shoot` sets overflow to visible, grows the viewport to the document scroll height (capped at 5000) and asserts the named controls sit inside that viewport. A green run does not prove the picture at the unmodified 1280×720 crop.
+- **`e2e/passkey-desk-authenticator.ts`: forced user activation and optional PRF.**
+  The init script sets `navigator.userActivation` so `isActive` and `hasBeenActive` are true. When the authenticator is started without PRF, `getClientExtensionResults` returns `{}`. A green run does not prove a real user activation or a real authenticator without PRF.
 - **`e2e/passkey-login.spec.ts`: fixture coverage.**
-  The shots render the idle, preparing, choice, email, unknown, in-app, iPhone in-app, old-system, blocked, error and PRF cards and the desk against fixtures; a green run does not prove a real API.
+  The shots render the idle, preparing, choice, email, unknown, in-app, iPhone in-app, old-system, browser-without-passkeys, refused-passkey, error and PRF cards and the desk against fixtures; a green run does not prove a real API.
 - **The passkey ceremony full-stack case drives the real frontend, API and database.**
-  In `e2e-stack/specs/auth.spec.ts`, a run whose companion API ref is staging fails when
-  `POST /v1/auth/passkey/register/begin` answers 404. Any other companion ref still skips on 404,
-  because that image has no passkey controller. Any other status runs the
-  ceremony. The test copies the default wallet row to the passkey wallet name, because
+  In `e2e-stack/specs/auth.spec.ts`, `passkeyRegistrationRoute` posts
+  `POST /v1/auth/passkey/register/begin` to `E2E_API_URL` (default `http://api:3000`).
+  HTTP 404 returns `absent`; any other status returns `present`. Unless
+  `E2E_REQUIRE_PASSKEY` is `1`, the test skips when the route is `absent`.
+  When that variable is `1`, a 404 fails `expect(route).toBe('present')`.
+  Any other status runs the ceremony. The test copies the default wallet row to the passkey wallet name, because
   synchronize does not run the wallet migration, installs a Chromium virtual authenticator, and
   adds PRF output only when that authenticator omits it. The page opens at `http://localhost:3001`
   through a forwarder to the frontend, because the relying party is `localhost` and the stack
@@ -638,10 +652,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and credential status plus the wallet list come from the API. It also proves that
   `passkey_address` together with `"user".address` stores one mainnet `bc1q` address
   for the registered mail at path `m/84'/0'/0'/0/0`, that the titled Bitcoin row on the expanded list is a testnet receive
-  address (`tb1q`) and is not that login address, that the list does not show the login
-  address, that Receive Bitcoin shows the same receive address, and that after Reload data
-  in Settings and after `Use another passkey` plus a second login the titled Bitcoin row is
-  still that receive address. It does not prove that the stored `bc1q` address equals an
+  address (`tb1q`) and is not that login address, that neither the `title` attribute nor the
+  visible page text contains the login address, that Receive Bitcoin shows the same receive
+  address, and that after Reload data in Settings and after `Use another passkey` plus a
+  second login the titled Bitcoin row is still that receive address and the visible page text
+  still does not contain the login address. It does not prove that the stored `bc1q` address equals an
   independently derived login address, because the page no longer shows the login address to
   compare with. It also proves that the EVM address in the Receive dialog
   matches the derived list row. It does not prove that the list row is the server login
@@ -689,7 +704,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **`src/__tests__/connect-passkey.test.tsx`: injected history.**
   Unit tests set `window.__dfxHandbookPasskeyHistory`; a green run does not prove real transaction history exists.
 - **`src/__tests__/connect-passkey.test.tsx`: late-result state spies.**
-  Late-platform-report and late-camera-rejection tests spy on React state setters; a green run does not prove suppression without that instrumentation.
+  The `useState` spies named above include the link-success spy, which watches for `Bitcoin connected.` after unmount during refresh. A green run does not prove suppression without that instrumentation.
 - **`src/__tests__/connect-passkey.test.tsx`: QR substitutes.**
   The tests stub `QrBasic` and `react-qr-code`; a green run does not prove a real QR renderer or image.
 - **`src/__tests__/connect-passkey.test.tsx`: camera and video substitutes.**
@@ -700,10 +715,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   The tests replace `navigator.userAgent`; a green run does not prove a real in-app browser, iPhone or operating-system version.
 - **`src/__tests__/connect-passkey.test.tsx`: clipboard substitutes.**
   The tests replace `navigator.clipboard` and `document.execCommand`; a green run does not prove a real clipboard or system copy.
-- **`src/__tests__/clipboard.hook.test.ts`: clipboard substitutes.**
-  The test replaces `navigator.clipboard` and `copy-to-clipboard`. A green run does not prove a real clipboard.
+- **`src/__tests__/clipboard.hook.test.ts`: clipboard substitutes and fake timers.**
+  The test replaces `navigator.clipboard` and `copy-to-clipboard`. `beforeEach` calls `jest.useFakeTimers()` and `afterEach` restores real timers. A green run does not prove a real clipboard or when a real browser timer fires.
+- **`src/__tests__/connect-passkey.test.tsx`: Bitcoin link timer.**
+  The silent-link tests use Jest fake timers and race the link against `BITCOIN_LINK_TIMEOUT_MS` (15000). A green run does not prove a real 15 second wait.
 - **`src/__tests__/connect-passkey.test.tsx`: tab-session spies.**
-  Spies on `getOpenPasskey` supply stale, keyless or missing sessions; a green run does not prove session-store behaviour under concurrent changes.
+  Spies on `getOpenPasskey` supply stale, keyless or missing sessions. `keeps the session-changed sentence when the desk closes and does not take the reason again` spies on `takePasskeyCloseReason`. A green run does not prove session-store behaviour under concurrent changes, and it does not prove that a later desk close leaves the close reason untouched without that spy.
 - **`src/__tests__/connect-passkey.test.tsx`: in-app URL substitute.**
   The in-app test uses `history.replaceState` because jsdom drops the fragment when assigning `location.href`; a green run does not prove that assignment preserves the fragment in a browser.
 - **`src/__tests__/connect-passkey.test.tsx`: stubbed ceremony and desk.**
@@ -713,17 +730,21 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `session.account` on the tab session and keeps no account when that session is missing. It does not
   prove a real DFX login.
 - **The history unit test replaces the scroll observer.**
-  `src/__tests__/passkey-wallet-history.test.tsx` replaces `IntersectionObserver`; a green run does not prove a real scroll observer.
+  `src/__tests__/passkey-wallet-history.test.tsx` replaces `IntersectionObserver`; a green run does not prove a real scroll observer. Its settings-context stub is declared above.
+- **`src/__tests__/layout.test.tsx`: replaced shell modules.**
+  The file replaces `App` routes, `useNavigation`, `useAppParams`, `isWebComponent`, `isNode`, `InfoBannerComponent`, and `Navigation` (`forwardRef`). A green run does not prove those modules.
+- **`e2e-stack/specs/cross-cutting.spec.ts`: injected transaction errors.**
+  The API-error tests fulfil transaction fetches with HTTP 500, 400 and 403 and with the injected message, and one test answers later API calls with 401. The 401 case requires a Login control or a path of `/login`; a path of `/` alone does not pass. A green run does not prove the API returns those statuses or that a real session ends that way.
 - **The wallet-client unit test replaces the wallet package and the core HTTP client.**
   `src/__tests__/wallet-client.test.ts` replaces `PasskeyAuth`, `CredentialCache` and `PasskeyCeremonies` from
   `@dfx.swiss/wallet` and `DfxHttpClient` and `PasskeyApi` from `@dfx.swiss/core`, and its `DfxApiClient` stub throws when
   constructed. It also replaces `walletEnvForHost` from `passkey-host`, so the real wallet package is never loaded, and
-  feeds it fixed environments. A green run proves that the client is built without `DfxApiClient` and without a
+  feeds it fixed environments. The wallet mock exports `RP_IDS` and a `WalletError` class. Tests replace `window.location` through `setHostname` and set `Api.url` to `https://api.example.test` with and without a trailing slash. A green run proves that the client is built without `DfxApiClient` and without a
   customer token, that it passes the returned environment on to `PasskeyAuth`, `PasskeyCeremonies` and the relying
   party of the credential cache, that revoke calls assert with the pinned credential id, that a different assertion
   credential id does not call `revokeFinish`, that a wrong relying-party id throws before assert, and that the cache
   is set to revoked only when the wallet status is not `Active`. It does not prove the host-to-environment mapping
-  (tested in `src/__tests__/connect-passkey.test.tsx`), a real wallet ceremony, or an API call.
+  (tested in `src/__tests__/connect-passkey.test.tsx`), a real wallet ceremony, an API call, the real `window.location`, or the configured API URL.
 - **The wallet entry unit test replaces the session, the page tree, and the connect form.**
   `src/__tests__/wallet-entry.test.tsx` replaces the service names from `App`, `@dfx.swiss/react`,
   `react-i18next`, `@dfx.swiss/react-components`, the connect wrapper, the custody-asset list, and the layout,

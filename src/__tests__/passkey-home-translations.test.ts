@@ -10,16 +10,14 @@ it('keeps the home translation keys aligned across German, French and Italian', 
 });
 
 const addedHomeKeys = [
-  'EVM',
   'Bitcoin',
-  'Spark',
   'Destination',
   'Paste',
   'Scan',
   'Amount',
   'Sending is not active yet.',
   'Paste is not available in this browser.',
-  'Clipboard is not available.',
+  'Copying is not available in this browser.',
   'QR scanning is not available in this browser.',
   'This browser has no passkey support',
   'Log in with your device',
@@ -42,7 +40,9 @@ const addedHomeKeys = [
   'This operating system cannot sign in with a passkey.',
   'This operating system ({{version}}) cannot sign in with a passkey.',
   'Log in',
-  'The passkey wallet was revoked.',
+  'The passkey was blocked.',
+  'This passkey is blocked.',
+  'The wallet was closed because the DFX session changed.',
   'Try again',
   'Wallet',
   'Settings',
@@ -64,12 +64,13 @@ const addedHomeKeys = [
   'That is all your transactions.',
   'Loading more transactions',
   'No transactions yet.',
-  'This passkey did not unlock the wallet. Please try again with the passkey of this wallet.',
+  'This device derived a different wallet from this passkey. Use the device that created the passkey, sign in from it by QR code, or update the operating system.',
+  'The device offered a different passkey. Nothing was changed.',
   'Use another passkey',
   'Passkey on this device',
   'Unlocked',
   'Security',
-  'Recovery words',
+  'Export recovery phrase',
   'Check addresses',
   'Checks that DFX shows your own addresses',
   'Help',
@@ -80,28 +81,30 @@ const addedHomeKeys = [
   'Danger zone',
   'Block passkey',
   'The passkey was not blocked. Please try again.',
-  'This passkey will no longer open the wallet. This cannot be undone.',
+  'DFX will no longer accept this passkey, and this page can no longer open the wallet with it. Your funds stay on your addresses. Export your recovery phrase or move your funds before you block.',
   'What happened?',
   'Passkey lost',
   'You confirm one last time with this passkey.',
   'Device gone, deleted or no longer accessible',
   'Passkey compromised',
-  'I understand that this cannot be undone.',
+  'Someone else may have access to the passkey or the recovery phrase',
+  'I understand that this page can no longer open the wallet with this passkey.',
   'Cancel',
   'Block',
-  'Write the 12 words on paper in this order. Anyone who knows them can access your funds. DFX will never ask for them.',
-  'I have written the words down on paper.',
+  'These 12 words restore the native wallet; they do not contain the Safe key. Anyone who knows them can access your funds. DFX will never ask for them.',
+  'Derivation version v1',
   'Done',
   'Address copied',
   'DFX home',
   'Currency',
   'Close',
+  'Back to DFX',
   'Actions',
-  'Not connected yet',
+  'Not connected to DFX yet',
   'Connect again',
+  'Bitcoin connected.',
   'Diagnostic recorded.',
   'Wallets on this account: {{count}}.',
-  'Linked {{family}} {{address}}.',
   '{{credentialId}}: {{status}}',
   'Active',
   'Lost',
@@ -119,18 +122,9 @@ const addedHomeKeys = [
 ];
 
 const unchangedTranslations: Record<string, string[]> = {
-  de: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'Lightning (Spark)', 'Ethereum & EVM', '{{credentialId}}: {{status}}'],
-  fr: [
-    'EVM',
-    'Bitcoin',
-    'Spark',
-    'Wallet',
-    'Actions',
-    'Lightning (Spark)',
-    'Ethereum & EVM',
-    '{{credentialId}}: {{status}}',
-  ],
-  it: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'Lightning (Spark)', 'Ethereum & EVM', '{{credentialId}}: {{status}}'],
+  de: ['Bitcoin', 'Wallet', 'Lightning (Spark)', 'Ethereum & EVM', '{{credentialId}}: {{status}}'],
+  fr: ['Bitcoin', 'Wallet', 'Actions', 'Lightning (Spark)', 'Ethereum & EVM', '{{credentialId}}: {{status}}'],
+  it: ['Bitcoin', 'Wallet', 'Lightning (Spark)', 'Ethereum & EVM', '{{credentialId}}: {{status}}'],
 };
 
 function checkAddedTranslations(language: string, messages: Record<string, string>): void {
@@ -162,10 +156,10 @@ it('keeps the existing generic error translated', () => {
 
 it('rejects missing and empty translations of added home keys', () => {
   const missing: Record<string, string> = { ...de['screens/home'] };
-  delete missing['EVM'];
+  delete missing['Back to DFX'];
   expect(() => checkAddedTranslations('de', missing)).toThrow();
-  const empty = { ...de['screens/home'], EVM: '' };
+  const empty = { ...de['screens/home'], 'Back to DFX': '' };
   expect(() => checkAddedTranslations('de', empty)).toThrow();
-  const whitespace = { ...de['screens/home'], EVM: ' ' };
+  const whitespace = { ...de['screens/home'], 'Back to DFX': ' ' };
   expect(() => checkAddedTranslations('de', whitespace)).toThrow();
 });

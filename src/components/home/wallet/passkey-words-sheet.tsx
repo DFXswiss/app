@@ -1,13 +1,18 @@
 import { useSettingsContext } from '../../../contexts/settings.context';
 import PasskeySheet from './passkey-sheet';
 
+export interface RecoveryPaths {
+  evm: string;
+  bitcoin: string;
+  spark: string;
+}
+
 interface PasskeyWordsSheetProps {
   words?: string[];
   note?: string;
-  acknowledged: boolean;
+  paths: RecoveryPaths;
   busy: boolean;
   returnFocus?: HTMLElement | null;
-  onAcknowledged: (acknowledged: boolean) => void;
   onDone: () => void;
   onClose: () => void;
 }
@@ -15,21 +20,25 @@ interface PasskeyWordsSheetProps {
 export default function PasskeyWordsSheet({
   words,
   note,
-  acknowledged,
+  paths,
   busy,
   returnFocus,
-  onAcknowledged,
   onDone,
   onClose,
 }: PasskeyWordsSheetProps): JSX.Element {
   const { translate } = useSettingsContext();
   const t = (key: string) => translate('screens/home', key);
+  const rows: { label: string; path: string }[] = [
+    { label: t('Ethereum & EVM'), path: paths.evm },
+    { label: t('Bitcoin'), path: paths.bitcoin },
+    { label: t('Lightning (Spark)'), path: paths.spark },
+  ];
 
   return (
-    <PasskeySheet title={t('Recovery words')} onClose={onClose} busy={busy} returnFocus={returnFocus}>
+    <PasskeySheet title={t('Export recovery phrase')} onClose={onClose} busy={busy} returnFocus={returnFocus}>
       <p className="my-3 text-sm leading-5 text-dfxGray-800">
         {t(
-          'Write the 12 words on paper in this order. Anyone who knows them can access your funds. DFX will never ask for them.',
+          'These 12 words restore the native wallet; they do not contain the Safe key. Anyone who knows them can access your funds. DFX will never ask for them.',
         )}
       </p>
       {note && (
@@ -38,23 +47,29 @@ export default function PasskeyWordsSheet({
         </p>
       )}
       {words && (
-        <ol data-testid="passkey-recovery-words" className="my-4 grid grid-cols-2 gap-2">
-          {words.map((word, index) => (
-            <li
-              key={index}
-              className="flex items-baseline gap-2 rounded-md bg-dfxGray-300 px-3 py-2.5 font-mono text-[15px]"
-            >
-              <span className="min-w-[16px] text-right font-sans text-xs text-dfxGray-800">{index + 1}</span> {word}
-            </li>
-          ))}
-        </ol>
+        <>
+          <ol data-testid="passkey-recovery-words" className="my-4 grid grid-cols-2 gap-2">
+            {words.map((word, index) => (
+              <li
+                key={index}
+                className="flex items-baseline gap-2 rounded-md bg-dfxGray-300 px-3 py-2.5 font-mono text-[15px]"
+              >
+                <span className="min-w-[16px] text-right font-sans text-xs text-dfxGray-800">{index + 1}</span> {word}
+              </li>
+            ))}
+          </ol>
+          <p className="text-sm font-semibold">{t('Derivation version v1')}</p>
+          <ul className="mt-2 text-sm">
+            {rows.map((row) => (
+              <li key={row.label}>
+                {row.label} <span className="font-mono">{row.path}</span>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
-      <label className="flex min-h-[44px] items-center gap-3">
-        <input type="checkbox" checked={acknowledged} onChange={(event) => onAcknowledged(event.target.checked)} />
-        {t('I have written the words down on paper.')}
-      </label>
       <button
-        disabled={!acknowledged || !words || busy}
+        disabled={!words || busy}
         className="mt-4 min-h-[44px] w-full rounded-lg bg-dfxBlue-800 px-4 font-semibold text-white disabled:bg-dfxGray-400 disabled:text-dfxGray-800 focus-visible:outline focus-visible:outline-2"
         onClick={onDone}
       >

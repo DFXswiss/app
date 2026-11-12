@@ -1,6 +1,12 @@
 import { useAuthContext } from '@dfx.swiss/react';
 import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
-import { checkPasskeyPlatform, openInSystemBrowser, type AuthResult, type PlatformReport } from '@dfx.swiss/wallet';
+import {
+  checkPasskeyPlatform,
+  openInSystemBrowser,
+  WalletError,
+  type AuthResult,
+  type PlatformReport,
+} from '@dfx.swiss/wallet';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { ConnectProps } from '../connect-shared';
@@ -14,6 +20,7 @@ import {
   passkeyPlatformView,
   passkeyPrfUnsupported,
   passkeyShowIosHint,
+  passkeyCloseNotice,
   passkeyUnknownCredential,
   PASSKEY_CHOICE_HEADING,
   PASSKEY_COPY_LINK,
@@ -22,6 +29,7 @@ import {
   PASSKEY_EMAIL_CONTINUE,
   PASSKEY_EMAIL_HEADING,
   PASSKEY_EXISTING,
+  PASSKEY_BLOCKED,
   PASSKEY_GENERIC_ERROR,
   PASSKEY_IN_APP_BODY,
   PASSKEY_IN_APP_HEADING,
@@ -33,20 +41,25 @@ import {
   PASSKEY_PREPARING,
   PASSKEY_PRF_UNSUPPORTED,
   PASSKEY_RETRY,
+  PASSKEY_SEED_MISMATCH,
   PASSKEY_UNKNOWN_BODY,
   PASSKEY_UNKNOWN_HEADING,
   walletEnvForHost,
 } from './passkey-host';
-import { dfxPasskeyAccount, getOpenPasskey, setOpenPasskey, subscribeOpenPasskey } from './passkey-session';
+import {
+  dfxPasskeyAccount,
+  getOpenPasskey,
+  readPasskeyCloseReason,
+  setOpenPasskey,
+  subscribeOpenPasskey,
+  takePasskeyCloseReason,
+} from './passkey-session';
 import { createWalletClient } from './wallet-client';
 
 export { passkeyPlatformBlock, walletEnvForHost };
 
 type SheetView = 'idle' | 'choice' | 'email' | 'unknown' | 'error';
 type CeremonyEntry = 'login' | 'authenticate' | 'register';
-
-const PASSKEY_DID_NOT_UNLOCK =
-  'This passkey did not unlock the wallet. Please try again with the passkey of this wallet.';
 
 declare global {
   interface Window {
@@ -110,6 +123,13 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const unknownOfferedRef = useRef(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout>>();
   const abandonedRef = useRef(false);
+  const pendingClose = open ? undefined : passkeyCloseNotice(readPasskeyCloseReason());
+  if (!open && pendingClose !== undefined && notice !== pendingClose) setNotice(pendingClose);
+
+  useEffect(() => {
+    if (open || notice === undefined) return;
+    if (passkeyCloseNotice(readPasskeyCloseReason()) === notice) takePasskeyCloseReason();
+  }, [open, notice]);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,7 +164,9 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     }
     if (result.state !== 'unlocked' || !result.keys) {
       result.keys?.wipe();
-      setSheetError(PASSKEY_DID_NOT_UNLOCK);
+      if (result.state === 'seed-mismatch') setSheetError(PASSKEY_SEED_MISMATCH);
+      else if (result.state === 'locked' || !result.keys) setSheetError(PASSKEY_PRF_UNSUPPORTED);
+      else setSheetError(PASSKEY_GENERIC_ERROR);
       return;
     }
     setOpenPasskey(result, dfxPasskeyAccount(isLoggedIn, session));
@@ -170,6 +192,11 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     }
     if (passkeyPrfUnsupported(caught)) {
       setSheetError(PASSKEY_PRF_UNSUPPORTED);
+      setView('error');
+      return;
+    }
+    if (caught instanceof WalletError && caught.code === 'passkey-refused') {
+      setSheetError(PASSKEY_BLOCKED);
       setView('error');
       return;
     }
@@ -275,7 +302,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
           onHome={() => navigate('/')}
           history={process.env.NODE_ENV === 'production' ? undefined : window.__dfxHandbookPasskeyHistory}
           onCancel={onCancel}
-          onRevoked={() => setNotice('The passkey wallet was revoked.')}
+          onRevoked={() => undefined}
         />
       </StyledVerticalStack>
     );
@@ -407,7 +434,8 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   }
 
   if (view === 'error') {
-    const message = sheetError === PASSKEY_PRF_UNSUPPORTED ? PASSKEY_PRF_UNSUPPORTED : PASSKEY_GENERIC_ERROR;
+    const message =
+      sheetError === PASSKEY_PRF_UNSUPPORTED || sheetError === PASSKEY_BLOCKED ? sheetError : PASSKEY_GENERIC_ERROR;
     return (
       <StyledVerticalStack gap={2} center>
         <p role="alert" className="text-center text-dfxRed-150">

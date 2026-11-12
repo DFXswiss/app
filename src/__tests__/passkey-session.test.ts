@@ -2,9 +2,12 @@ import {
   getOpenPasskey,
   getOpenPasskeyAccount,
   installHandbookSessionHook,
+  readPasskeyCloseReason,
   sameSession,
   setOpenPasskey,
+  setPasskeyCloseReason,
   subscribeOpenPasskey,
+  takePasskeyCloseReason,
   type OpenPasskey,
 } from '../components/home/wallet/passkey-session';
 
@@ -90,4 +93,25 @@ describe('installHandbookSessionHook', () => {
     expect(getOpenPasskey()).toBeUndefined();
     expect(seen).toEqual([next]);
   });
+});
+
+it('keeps a close reason until it is taken, and clears it when a session opens', () => {
+  setOpenPasskey(undefined);
+  takePasskeyCloseReason();
+  setPasskeyCloseReason('blocked');
+  expect(readPasskeyCloseReason()).toBe('blocked');
+  setOpenPasskey(undefined);
+  expect(readPasskeyCloseReason()).toBe('blocked');
+  expect(takePasskeyCloseReason()).toBe('blocked');
+  expect(takePasskeyCloseReason()).toBeUndefined();
+  expect(readPasskeyCloseReason()).toBeUndefined();
+
+  setPasskeyCloseReason('revoked');
+  setOpenPasskey({ state: 'unlocked' } as OpenPasskey);
+  expect(readPasskeyCloseReason()).toBeUndefined();
+
+  setPasskeyCloseReason('session-changed');
+  setOpenPasskey({ state: 'unlocked' } as OpenPasskey, 3);
+  expect(readPasskeyCloseReason()).toBeUndefined();
+  expect(getOpenPasskeyAccount()).toBe(3);
 });
