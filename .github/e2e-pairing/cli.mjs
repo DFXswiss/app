@@ -279,9 +279,9 @@ async function newestPairStatus(client, { appPr, appSha, backendPr, backendSha, 
     }
     return (
       parsed.app_pr === Number(appPr) &&
-      parsed.app_sha7 === appSha.slice(0, 7) &&
+      parsed.app_sha === appSha &&
       parsed.backend_pr === Number(backendPr) &&
-      parsed.backend_sha7 === backendSha.slice(0, 7)
+      parsed.backend_sha === backendSha
     );
   };
   const heads = new Map([
@@ -377,11 +377,11 @@ async function cancelSupersededRuns(client, result, env) {
     } catch {
       continue;
     }
-    const changedSha7 = backendPush ? running.backend_sha7 : running.app_sha7;
+    const changedSha = backendPush ? running.backend_sha : running.app_sha;
     if (running.app_pr !== Number(result.app_pr) || running.backend_pr !== Number(result.backend_pr)) {
       continue;
     }
-    if (changedSha7 !== before.slice(0, 7)) {
+    if (changedSha !== before) {
       continue;
     }
     runIds.add(running.run_id);
@@ -658,7 +658,7 @@ async function postOnOpenSides(client, result, { state, description, targetUrl }
       description: truncateStatusDescription(description),
       targetUrl,
     });
-    posted.push(`${side.repo}#${side.pr}@${side.sha.slice(0, 7)}`);
+    posted.push(`${side.repo}#${side.pr}@${side.sha}`);
   }
   return posted;
 }
@@ -702,10 +702,7 @@ export async function finalizeResolution(client, result, env, deps, { rerun = tr
   const outputs = outputValues(result);
   deps.writeOutputs(outputs, env);
   deps.log(
-    `Pair ${outputs.valid === 'true' ? 'resolved' : 'invalid'}: app#${outputs.app_pr}@${outputs.app_sha.slice(
-      0,
-      7,
-    )} backend#${outputs.backend_pr}@${outputs.backend_sha.slice(0, 7)} (${outputs.reason || 'valid'})`,
+    `Pair ${outputs.valid === 'true' ? 'resolved' : 'invalid'}: app#${outputs.app_pr}@${outputs.app_sha} backend#${outputs.backend_pr}@${outputs.backend_sha} (${outputs.reason || 'valid'})`,
   );
   return 0;
 }

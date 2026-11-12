@@ -447,10 +447,15 @@ backend heads has only `contents: read` and no App credential. The backend
 read-only deploy key is used in exactly one fetch step, with an explicit
 per-command `GIT_SSH_COMMAND`, and is removed before any pull-request-controlled
 file runs. Before the shared run, the App posts `pending` on every open head
-with a description naming both exact heads and the run. A result is a commit status
-`Full-stack E2E (paired)` posted by that App on every open head of the pair.
+with a description naming both full heads and the run:
+`pair app#<A>@<app head> backend#<B>@<backend head> running <run id>`. Each
+`<app head>` and `<backend head>` must be exactly 40 lowercase hex characters;
+a short prefix is not an attestation. A result is the same description with
+`run` instead of `running`, posted as a commit status `Full-stack E2E (paired)`
+on every open head of the pair. The whole description stays below GitHub's
+140-character limit.
 The local `Full-stack E2E` job accepts only the newest App status for the exact
-current heads: a valid `success`, or a `pending` running marker whose run is
+current full heads: a valid `success`, or a `pending` running marker whose run is
 still `in_progress` or `queued`. It never falls back to an older success and
 never matches by wildcard. The result is therefore one run of both exact
 heads, not two independent stacks.

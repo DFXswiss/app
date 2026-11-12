@@ -115,12 +115,16 @@ App token, checks out both exact heads, verifies each unmerged head against
 `refs/pull/<n>/head`, and uses the backend deploy key in only the single fetch
 step that removes it before any pull-request-controlled file executes. Before
 the shared run, the App posts `pending` on every open head with a description
-naming both exact heads and the run. It posts `Full-stack E2E (paired)` on
-every open head of the pair. The local required job reads the newest App
-status for the exact current heads and accepts a valid `success`, or a
-`pending` running marker whose run is still active. It never falls back to an
-older success and never matches by wildcard, so it verifies one shared run
-rather than starting a second stack.
+naming both full heads and the run:
+`pair app#<A>@<app head> backend#<B>@<backend head> running <run id>`. Each
+head must be exactly 40 lowercase hex characters, so a 7-character prefix never
+matches. The attestation replaces `running` with `run`; the full description
+stays under GitHub's 140-character limit. It posts
+`Full-stack E2E (paired)` on every open head of the pair. The local required
+job reads the newest App status for the exact current full heads and accepts a
+valid `success`, or a `pending` running marker whose run is still active. It
+never falls back to an older success and never matches by wildcard, so it
+verifies one shared run rather than starting a second stack.
 
 A push to either side posts `pending`, reruns the local required jobs, and
 invalidates the old result. Review comments do not cancel a running shared run.

@@ -12,7 +12,6 @@ import {
   companionsPointAtEachOther,
   effectivePullHead,
   isCompanionActive,
-  isSha7,
   pairKey,
   parseCompanion,
   parsePairDescription,
@@ -142,17 +141,42 @@ test('companionsPointAtEachOther requires exact mutuality', () => {
 test('pair and running descriptions round-trip the exact pair', () => {
   const args = { appPr: 12, appSha: APP_SHA, backendPr: 34, backendSha: OTHER_SHA, runId: 9012 };
   const description = buildPairDescription(args);
-  assert.equal(description, 'pair app#12@aaaaaaa backend#34@bbbbbbb run 9012');
+  assert.equal(description, `pair app#12@${APP_SHA} backend#34@${OTHER_SHA} run 9012`);
   assert.deepEqual(parsePairDescription(description), {
     app_pr: 12,
-    app_sha7: 'aaaaaaa',
+    app_sha: APP_SHA,
     backend_pr: 34,
-    backend_sha7: 'bbbbbbb',
+    backend_sha: OTHER_SHA,
     run_id: 9012,
   });
   const running = buildRunningDescription(args);
-  assert.equal(running, 'pair app#12@aaaaaaa backend#34@bbbbbbb running 9012');
+  assert.equal(running, `pair app#12@${APP_SHA} backend#34@${OTHER_SHA} running 9012`);
   assert.deepEqual(parseRunningDescription(running), parsePairDescription(description));
+});
+
+test('descriptions carry full heads and stay below the status limit', () => {
+  const args = { appPr: 99999, appSha: APP_SHA, backendPr: 99999, backendSha: OTHER_SHA, runId: 12345678901 };
+  const description = buildPairDescription(args);
+  const running = buildRunningDescription(args);
+  assert.equal(description, `pair app#99999@${APP_SHA} backend#99999@${OTHER_SHA} run 12345678901`);
+  assert.equal(running, `pair app#99999@${APP_SHA} backend#99999@${OTHER_SHA} running 12345678901`);
+  assert.ok(description.length < 140);
+  assert.ok(running.length < 140);
+});
+
+test('descriptions reject any head that is not exactly 40 lowercase hex', () => {
+  const valid = { appPr: 12, appSha: APP_SHA, backendPr: 34, backendSha: OTHER_SHA, runId: 3 };
+  const legacy = 'pair app#12@aaaaaaa backend#34@bbbbbbb run 3';
+  const short = `pair app#12@${APP_SHA.slice(0, 39)} backend#34@${OTHER_SHA} run 3`;
+  const upper = `pair app#12@${APP_SHA.toUpperCase()} backend#34@${OTHER_SHA} run 3`;
+  const long = `pair app#12@${APP_SHA}a backend#34@${OTHER_SHA} run 3`;
+  for (const description of [legacy, short, upper, long]) {
+    assert.throws(() => parsePairDescription(description), PairingError, description);
+    assert.throws(() => parseRunningDescription(description.replace(' run ', ' running ')), PairingError, description);
+  }
+  assert.throws(() => buildPairDescription({ ...valid, appSha: APP_SHA.slice(0, 7) }), PairingError);
+  assert.throws(() => buildPairDescription({ ...valid, backendSha: OTHER_SHA.slice(0, 7) }), PairingError);
+  assert.throws(() => buildPairDescription({ ...valid, appSha: APP_SHA.toUpperCase() }), PairingError);
 });
 
 test('pair and running description builders reject malformed input', () => {
@@ -164,10 +188,10 @@ test('pair and running description builders reject malformed input', () => {
   assert.throws(() => buildPairDescription({ ...valid, backendSha: 1 }), PairingError);
   assert.throws(() => buildPairDescription({ ...valid, appSha: 'bad' }), PairingError);
   assert.throws(() => buildPairDescription({ ...valid, backendSha: 'bad' }), PairingError);
-  assert.throws(() => parsePairDescription('pair app#1@aaaaaaa backend#1@bbbbbbb'), PairingError);
+  assert.throws(() => parsePairDescription(`pair app#1@${APP_SHA.slice(0, 7)} backend#1@${OTHER_SHA.slice(0, 7)}`), PairingError);
   assert.throws(() => parsePairDescription(null), PairingError);
   assert.throws(() => parsePairDescription('anything'), PairingError);
-  assert.throws(() => parseRunningDescription('pair app#1@aaaaaaa backend#1@bbbbbbb'), PairingError);
+  assert.throws(() => parseRunningDescription(`pair app#1@${APP_SHA.slice(0, 7)} backend#1@${OTHER_SHA.slice(0, 7)}`), PairingError);
   assert.throws(() => parseRunningDescription(undefined), PairingError);
   assert.throws(() => buildRunningDescription({ ...valid, runId: 'bad' }), PairingError);
 });
@@ -191,7 +215,8 @@ test('samePair compares heads, numbers, merge state and mutuality', () => {
   assert.equal(samePair(pair, { ...pair, backlash: true }), true);
   assert.equal(samePair(pair, { ...pair, backend_merged: false }), false);
   assert.equal(samePair(pair, { ...pair, mutual: false }), false);
-  assert.equal(samePair({ ...pair, app_sha: APP_SHA.toUpperCase() }, pair), true);
+  assert.equal(samePair({ ...pair, app_sha: APP_SHA.toUpperCase() }, pair), false);
+  assert.equal(samePair({ ...pair, app_sha: `${APP_SHA.slice(0, 39)}b` }, pair), false);
   assert.equal(samePair({ ...pair, app_sha: 3 }, pair), false);
   assert.equal(samePair({ ...pair, backend_sha: 3 }, pair), false);
   assert.equal(samePair(null, pair), false);
@@ -257,9 +282,16 @@ test('verifyAttestationStatus requires success and the exact app pair', () => {
   assert.equal(verifyAttestationStatus(base, expected).ok, true);
   assert.match(verifyAttestationStatus({ ...base, state: 'failure' }, expected).reason, /failure/);
   assert.match(verifyAttestationStatus({ ...base, state: undefined }, expected).reason, /unknown/);
-  assert.match(verifyAttestationStatus({ ...base, description: 'pair app#13@aaaaaaa backend#34@bbbbbbb run 99' }, expected).reason, /different app/);
+  assert.match(
+    verifyAttestationStatus({ ...base, description: `pair app#13@${APP_SHA} backend#34@${OTHER_SHA} run 99` }, expected).reason,
+    /different app/,
+  );
   assert.match(verifyAttestationStatus(base, { ...expected, appSha: OTHER_SHA }).reason, /different app head/);
-  assert.match(verifyAttestationStatus({ ...base, description: 'pair app#12@aaaaaaa backend#35@bbbbbbb run 99' }, expected).reason, /different backend/);
+  assert.match(
+    verifyAttestationStatus({ ...base, description: `pair app#12@${APP_SHA} backend#35@${OTHER_SHA} run 99` }, expected).reason,
+    /different backend/,
+  );
+  assert.match(verifyAttestationStatus({ ...base, description: `pair app#12@${APP_SHA.slice(0, 7)} backend#34@${OTHER_SHA} run 99` }, expected).reason, /description/);
   assert.match(verifyAttestationStatus({ ...base, target_url: '' }, expected).reason, /target URL/);
   assert.match(verifyAttestationStatus({ ...base, target_url: 1 }, expected).reason, /target URL/);
   assert.match(verifyAttestationStatus(base, { ...expected, appSha: 'bad' }).reason, /head/);
@@ -274,12 +306,9 @@ test('verifyPairAttestation also requires the exact backend head', () => {
   assert.match(verifyPairAttestation(status(), { ...expected, backendSha: 'bad' }).reason, /backend head/);
   assert.match(verifyPairAttestation(status(), { ...expected, backendSha: null }).reason, /backend head/);
   assert.match(verifyPairAttestation(status(), { ...expected, backendSha: THIRD_SHA }).reason, /different backend head/);
+  const samePrefix = `${APP_SHA.slice(0, 7)}${'d'.repeat(33)}`;
+  assert.match(verifyPairAttestation(status(), { ...expected, appSha: samePrefix }).reason, /different app head/);
+  const backendSamePrefix = `${OTHER_SHA.slice(0, 7)}${'e'.repeat(33)}`;
+  assert.match(verifyPairAttestation(status(), { ...expected, backendSha: backendSamePrefix }).reason, /different backend head/);
   assert.match(verifyPairAttestation(null, expected).reason, /no status/);
-});
-
-test('isSha7 is strict', () => {
-  assert.equal(isSha7('abcdef0'), true);
-  assert.equal(isSha7('ABCDEF0'), false);
-  assert.equal(isSha7('abcdef'), false);
-  assert.equal(isSha7(null), false);
 });

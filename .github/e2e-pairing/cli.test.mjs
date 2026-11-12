@@ -69,15 +69,15 @@ function run(status) {
 }
 
 function pairDescription(runId = 77) {
-  return `pair app#12@aaaaaaa backend#34@bbbbbbb run ${runId}`;
+  return `pair app#12@${APP_SHA} backend#34@${BACKEND_SHA} run ${runId}`;
 }
 
 function runningDescription(runId = 77) {
-  return `pair app#12@aaaaaaa backend#34@bbbbbbb running ${runId}`;
+  return `pair app#12@${APP_SHA} backend#34@${BACKEND_SHA} running ${runId}`;
 }
 
 function runningFor(appSha, backendSha, runId) {
-  return `pair app#12@${appSha.slice(0, 7)} backend#34@${backendSha.slice(0, 7)} running ${runId}`;
+  return `pair app#12@${appSha} backend#34@${backendSha} running ${runId}`;
 }
 
 class FakeGitHub {
@@ -767,7 +767,7 @@ test('a dispatch cancels only a proven previous-head run and invalidates the ope
       status({ state: 'pending', description: 'pair re-evaluation pending', creator: BOT }),
       status({ state: 'success', description: runningDescription(90), creator: BOT }),
       null,
-      status({ state: 'pending', description: 'pair app#13@aaaaaaa backend#35@bbbbbbb running 91', creator: BOT }),
+      status({ state: 'pending', description: `pair app#13@${OTHER_APP_SHA} backend#35@${BACKEND_SHA} running 91`, creator: BOT }),
     ],
     'GET /repos/DFXswiss/app/actions/runs/88': run('in_progress'),
     'GET /repos/DFXswiss/app/actions/runs/89': run('in_progress'),
@@ -818,7 +818,7 @@ test('cancellation rejects a marker for another pull-request number', async () =
   const fake = new FakeGitHub({
     ...openPairWithLocalRuns(),
     [`GET /repos/DFXswiss/app/commits/${PREVIOUS_SHA}/statuses?per_page=100`]: [
-      status({ state: 'pending', description: `pair app#13@${PREVIOUS_SHA.slice(0, 7)} backend#35@${BACKEND_SHA.slice(0, 7)} running 88`, creator: BOT }),
+      status({ state: 'pending', description: `pair app#13@${PREVIOUS_SHA} backend#35@${BACKEND_SHA} running 88`, creator: BOT }),
     ],
     'GET /repos/DFXswiss/app/actions/runs/88': run('in_progress'),
     [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
@@ -1355,6 +1355,26 @@ test('push cancellation cancels the exact old run when a head moved', async () =
   assert.equal(fake.cancels()[0].key, 'POST /repos/DFXswiss/app/actions/runs/88/cancel');
 });
 
+test('push cancellation compares the full previous head, not its seven-character prefix', async () => {
+  const samePrefix = `${PREVIOUS_SHA.slice(0, 7)}${'0'.repeat(33)}`;
+  const fake = new FakeGitHub({
+    ...openPairWithLocalRuns(),
+    [`GET /repos/DFXswiss/app/commits/${PREVIOUS_SHA}/statuses?per_page=100`]: [
+      status({ state: 'pending', description: runningFor(samePrefix, BACKEND_SHA, 88), creator: BOT }),
+    ],
+    'GET /repos/DFXswiss/app/actions/runs/88': run('in_progress'),
+    'POST /repos/DFXswiss/app/actions/runs/88/cancel': { id: 88 },
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+  });
+  const { deps: injected } = deps(fake);
+  assert.equal(await main(['resolve'], {
+    ...injected,
+    env: { ...injected.env, ...resolveEnv(), EVENT_NAME: 'pull_request_target', EVENT_ACTION: 'synchronize', PREVIOUS_SHA },
+  }), 0);
+  assert.equal(fake.cancels().length, 0);
+});
+
 test('cancellation never cancels the current run or an unrelated pair', async () => {
   const current = new FakeGitHub({
     ...openPairWithLocalRuns(),
@@ -1423,6 +1443,26 @@ test('a dispatch skips a pair whose newest exact status is already successful', 
   assert.equal(fake.statusPosts().filter((post) => post.body.description === runningDescription(77)).length, 0);
   assert.equal(fake.reruns().length, 0);
   assert.match(logs.join('\n'), /Skipped: pair already attested or running/);
+});
+
+test('a same-prefix head with a different full SHA is not an attestation for this pair', async () => {
+  const samePrefix = `${APP_SHA.slice(0, 7)}${'0'.repeat(33)}`;
+  const marker = status({ description: `pair app#12@${samePrefix} backend#34@${BACKEND_SHA} run 77` });
+  const fake = new FakeGitHub({
+    ...openPairWithLocalRuns(),
+    [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [marker],
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+  });
+  const { deps: injected, writes } = deps(fake);
+  const code = await main(['resolve'], {
+    ...injected,
+    env: { ...injected.env, ...resolveEnv(), EVENT_NAME: 'repository_dispatch', START_REPO: BACKEND_REPO, START_PR: '34' },
+  });
+  assert.equal(code, 0);
+  assert.equal(writes[0][0].valid, 'true');
+  assert.equal(fake.statusPosts().filter((post) => post.body.description === runningDescription(77)).length, 2);
 });
 
 test('comments do not fall back to an older success and fail closed on lookup errors', async () => {
@@ -1751,7 +1791,7 @@ test('resolve reopens from the open backend when the app companion merged', asyn
   assert.equal(running.length, 1);
   assert.equal(
     running[0].body.description,
-    `pair app#12@${MERGE_SHA.slice(0, 7)} backend#34@${BACKEND_SHA.slice(0, 7)} running 77`,
+    `pair app#12@${MERGE_SHA} backend#34@${BACKEND_SHA} running 77`,
   );
 });
 
@@ -2096,7 +2136,7 @@ test('verify-attestation rejects every stale or malformed input', async () => {
     ['inactive file', { ...base, 'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [] }],
     ['missing companion', { ...base, [`GET /repos/DFXswiss/app/contents/e2e-companion.json?ref=${APP_SHA}`]: { status: 404 } }],
     ['no statuses', { ...base, [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [] }],
-    ['wrong status', { ...base, [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: 'pair app#13@aaaaaaa backend#34@bbbbbbb run 77' })] }],
+    ['wrong status', { ...base, [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: `pair app#13@${APP_SHA} backend#34@${BACKEND_SHA} run 77` })] }],
   ];
   for (const [name, routes] of cases) {
     const fake = new FakeGitHub(routes);

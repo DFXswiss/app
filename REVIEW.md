@@ -24,10 +24,13 @@ Reject the pull request when any of these is true:
   `develop`, the full-stack harness has to have run, which means the `ci:full`
   label, a run that brings the stack up, or `mode=paired-attested` after the job
   verified the newest `Full-stack E2E (paired)` status from the pairing App on
-  every open head of this exact pair. Each repository's review state is checked
-  with its own guard pin and the guard identity from
-  `.github/e2e-pairing/guard-identities.json`; a merged companion is matched
-  through its merge commit, and a companion closed without merge is a failure.
+  every open head of this exact pair. The status description must name both
+  full heads (`pair app#<A>@<app head> backend#<B>@<backend head> run <run id>`);
+  a 7-character prefix is not an attestation. Each
+  repository's review state is checked with its own guard pin and the guard
+  identity from `.github/e2e-pairing/guard-identities.json`; a merged companion
+  is matched through its merge commit, and a companion closed without merge is
+  a failure.
 - The test offered as coverage of the function replaces the screen, the
   visitor's action, the session, the router, the navigation, this service's
   API, or this service's database.

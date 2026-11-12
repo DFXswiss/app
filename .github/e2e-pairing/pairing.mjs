@@ -8,9 +8,8 @@ export const STATUS_CONTEXT = 'Full-stack E2E (paired)';
 export const PAIR_KEY_PREFIX = 'e2e-paired-run';
 
 const SHA_RE = /^[0-9a-f]{40}$/;
-const SHA7_RE = /^[0-9a-f]{7}$/;
-const PAIR_DESCRIPTION_RE = /^pair app#([1-9][0-9]*)@([0-9a-f]{7}) backend#([1-9][0-9]*)@([0-9a-f]{7}) run ([1-9][0-9]*)$/;
-const RUNNING_DESCRIPTION_RE = /^pair app#([1-9][0-9]*)@([0-9a-f]{7}) backend#([1-9][0-9]*)@([0-9a-f]{7}) running ([1-9][0-9]*)$/;
+const PAIR_DESCRIPTION_RE = /^pair app#([1-9][0-9]*)@([0-9a-f]{40}) backend#([1-9][0-9]*)@([0-9a-f]{40}) run ([1-9][0-9]*)$/;
+const RUNNING_DESCRIPTION_RE = /^pair app#([1-9][0-9]*)@([0-9a-f]{40}) backend#([1-9][0-9]*)@([0-9a-f]{40}) running ([1-9][0-9]*)$/;
 const ACTIVE_FILE_STATUSES = new Set(['added', 'modified', 'renamed']);
 
 export class PairingError extends Error {
@@ -115,12 +114,9 @@ export function buildPairDescription({ appPr, appSha, backendPr, backendSha, run
   ) {
     throw new PairingError('invalid pair status description input');
   }
-  // Valid positive safe integers have at most 16 digits, so this description
-  // is always far below GitHub's 140-character status limit.
-  return `pair app#${Number(appPr)}@${appSha.slice(0, 7)} backend#${Number(backendPr)}@${backendSha.slice(
-    0,
-    7,
-  )} run ${Number(runId)}`;
+  // Full heads make the attestation bind to one exact commit. The longest
+  // realistic values still stay far below GitHub's 140-character limit.
+  return `pair app#${Number(appPr)}@${appSha} backend#${Number(backendPr)}@${backendSha} run ${Number(runId)}`;
 }
 
 export function buildRunningDescription(args) {
@@ -137,9 +133,9 @@ export function parsePairDescription(description) {
   }
   return {
     app_pr: Number(match[1]),
-    app_sha7: match[2],
+    app_sha: match[2],
     backend_pr: Number(match[3]),
-    backend_sha7: match[4],
+    backend_sha: match[4],
     run_id: Number(match[5]),
   };
 }
@@ -154,9 +150,9 @@ export function parseRunningDescription(description) {
   }
   return {
     app_pr: Number(match[1]),
-    app_sha7: match[2],
+    app_sha: match[2],
     backend_pr: Number(match[3]),
-    backend_sha7: match[4],
+    backend_sha: match[4],
     run_id: Number(match[5]),
   };
 }
@@ -167,9 +163,9 @@ function normalizedPair(pair) {
   }
   return {
     app_pr: Number(pair.app_pr),
-    app_sha: typeof pair.app_sha === 'string' ? pair.app_sha.toLowerCase() : '',
+    app_sha: typeof pair.app_sha === 'string' ? pair.app_sha : '',
     backend_pr: Number(pair.backend_pr),
-    backend_sha: typeof pair.backend_sha === 'string' ? pair.backend_sha.toLowerCase() : '',
+    backend_sha: typeof pair.backend_sha === 'string' ? pair.backend_sha : '',
     app_merged: pair.app_merged === true,
     backend_merged: pair.backend_merged === true,
     mutual: pair.mutual === true,
@@ -268,7 +264,7 @@ export function verifyAttestationStatus(status, { appPr, appSha, backendPr }) {
   if (parsed.app_pr !== Number(appPr)) {
     return { ok: false, reason: 'paired status names a different app pull request' };
   }
-  if (parsed.app_sha7 !== appSha.slice(0, 7)) {
+  if (parsed.app_sha !== appSha) {
     return { ok: false, reason: 'paired status names a different app head' };
   }
   if (parsed.backend_pr !== Number(backendPr)) {
@@ -288,12 +284,8 @@ export function verifyPairAttestation(status, { appPr, appSha, backendPr, backen
   if (typeof backendSha !== 'string' || !SHA_RE.test(backendSha)) {
     return { ok: false, reason: 'backend head is invalid' };
   }
-  if (verdict.parsed.backend_sha7 !== backendSha.slice(0, 7)) {
+  if (verdict.parsed.backend_sha !== backendSha) {
     return { ok: false, reason: 'paired status names a different backend head' };
   }
   return verdict;
-}
-
-export function isSha7(value) {
-  return typeof value === 'string' && SHA7_RE.test(value);
 }
