@@ -10,6 +10,7 @@ import {
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { ConnectProps } from '../connect-shared';
+import { useAppParams } from '../../../hooks/app-params.hook';
 import { useNavigation } from '../../../hooks/navigation.hook';
 import PasskeyDesk from './passkey-desk';
 import type { PasskeyHistory } from './passkey-wallet-history';
@@ -107,7 +108,8 @@ async function copyPageUrl(): Promise<boolean> {
 // stays behind ?feature=Passkey.
 export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const { onCancel }: ConnectProps = props;
-  const { translate } = useSettingsContext();
+  const { translate, language } = useSettingsContext();
+  const { refcode, recommendationCode, specialCode } = useAppParams();
   const { navigate } = useNavigation();
   const { session, isLoggedIn } = useAuthContext();
   const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
@@ -243,7 +245,13 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     const address = mail.trim();
     if (!isMail(address)) return;
     void run('register', async () => {
-      const result = await createWalletClient().register({ mail: address });
+      const result = await createWalletClient().register({
+        mail: address,
+        ...(language?.symbol ? { language: language.symbol } : {}),
+        ...(refcode ? { usedRef: refcode } : {}),
+        ...(recommendationCode ? { recommendationCode } : {}),
+        ...(specialCode ? { specialCode } : {}),
+      });
       await remember(result);
     });
   }

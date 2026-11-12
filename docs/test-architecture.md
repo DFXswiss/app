@@ -650,7 +650,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   synchronize does not run the wallet migration, installs a Chromium virtual authenticator, and
   adds PRF output only when that authenticator omits it. The page opens at `http://localhost:3001`
   through a forwarder to the frontend, because the relying party is `localhost` and the stack
-  hostname is not that host. When that route does not answer 404, a green run proves the device
+  hostname is not that host. It opens the login route with a fixed `refcode` and observes, without
+  intercepting or rewriting the request, that `register/finish` carries that value as `usedRef`.
+  That request assertion does not prove downstream referral attribution.
+  When the registration route does not answer 404, a green run proves the device
   card, the rejected first login without an existing credential, then `Open a new account`, the
   email and Continue, then the unlocked desk and the later login, the credential row is `Active`,
   and credential status plus the wallet list come from the API. It also proves that
@@ -722,7 +725,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **`src/__tests__/clipboard.hook.test.ts`: clipboard substitutes and fake timers.**
   The test replaces `navigator.clipboard` and `copy-to-clipboard`. `beforeEach` calls `jest.useFakeTimers()` and `afterEach` restores real timers. A green run does not prove a real clipboard or when a real browser timer fires.
 - **`src/__tests__/connect-passkey.test.tsx`: Bitcoin link timer.**
-  The silent-link tests use Jest fake timers and race the link against `BITCOIN_LINK_TIMEOUT_MS` (15000). A green run does not prove a real 15 second wait.
+  The silent-link tests use Jest fake timers, stubbed hanging link promises and replaced mainnet
+  login rings while racing the link against `BITCOIN_LINK_TIMEOUT_MS` (15000). They prove the
+  component releases each temporary ring immediately after its request starts, including a retry and
+  a synchronous start failure. A green run does not prove a real 15 second wait. Because the unit
+  tests replace `client.link`, they do not prove that the real SDK signs before its first `await`;
+  the full-stack passkey case proves that success path by linking Bitcoin through the browser and
+  reading the stored address from the database.
 - **`src/__tests__/connect-passkey.test.tsx`: tab-session spies.**
   Spies on `getOpenPasskey` supply stale, keyless or missing sessions. `keeps the session-changed sentence when the desk closes and does not take the reason again` spies on `takePasskeyCloseReason`. A green run does not prove session-store behaviour under concurrent changes, and it does not prove that a later desk close leaves the close reason untouched without that spy.
 - **`src/__tests__/connect-passkey.test.tsx`: in-app URL substitute.**

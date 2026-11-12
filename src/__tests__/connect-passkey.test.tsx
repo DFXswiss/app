@@ -5,7 +5,9 @@ jest.mock('@dfx.swiss/react/dist/definitions/auth', () => ({
 const mockLogout = jest.fn(() => Promise.resolve());
 const mockAuthState: { session?: { account?: number }; isLoggedIn: boolean } = { isLoggedIn: false };
 let mockCurrency: { name: string } | undefined;
+let mockLanguage: { symbol: string } | undefined;
 let mockLocale = 'en-US';
+let mockAppParams: { refcode?: string; recommendationCode?: string; specialCode?: string } = {};
 const mockChangeCurrency = jest.fn();
 function interpolate(text: string, values?: Record<string, string | number>): string {
   return text.replace(/{{(\w+)}}/g, (match, key: string) =>
@@ -56,7 +58,7 @@ jest.mock('browser-lang', () => ({
 }));
 
 jest.mock('../contexts/app-handling.context', () => ({
-  useAppHandlingContext: () => ({ isInitialized: true, params: {}, setRedirectPath: () => undefined }),
+  useAppHandlingContext: () => ({ isInitialized: true, params: mockAppParams, setRedirectPath: () => undefined }),
 }));
 
 jest.mock('../contexts/settings.context', () => ({
@@ -65,6 +67,7 @@ jest.mock('../contexts/settings.context', () => ({
     availableLanguages: [],
     locale: mockLocale,
     currency: mockCurrency,
+    language: mockLanguage,
     changeCurrency: mockChangeCurrency,
   }),
 }));
@@ -249,6 +252,17 @@ function ring(address: string) {
   };
 }
 
+function testnetRing() {
+  return {
+    bitcoinNetwork: 'testnet4' as const,
+    mnemonic: () => 'seed phrase',
+    wipe: jest.fn(),
+    evm: () => ({ address: SEED }),
+    bitcoinAddress: () => ({ address: BITCOIN_RECEIVE }),
+    sparkIdentity: () => ({ address: SPARK_RECEIVE }),
+  };
+}
+
 function requireWallet() {
   const session = passkeySession.getOpenPasskey();
   if (!session?.wallet) throw new Error('expected an open passkey wallet');
@@ -322,7 +336,9 @@ describe('ConnectPasskey', () => {
     mockPasskeyDiagnosticCalls.length = 0;
     mockTranslate.mockImplementation((_key, text, values) => interpolate(text, values));
     mockCurrency = undefined;
+    mockLanguage = undefined;
     mockLocale = 'en-US';
+    mockAppParams = {};
     mockLogout.mockResolvedValue(undefined);
     mockSetSession.mockResolvedValue(undefined);
     mockRevoke.mockResolvedValue({ id: 7, status: 'Lost' });
@@ -1890,6 +1906,46 @@ describe('ConnectPasskey', () => {
     expect(mockOnLogin).not.toHaveBeenCalled();
     expect(mockOnCancel).not.toHaveBeenCalled();
     expect(mockOnSwitch).not.toHaveBeenCalled();
+  });
+
+  it('registers with the current language and all link context', async () => {
+    mockLanguage = { symbol: 'DE' };
+    mockAppParams = {
+      refcode: 'used-ref',
+      recommendationCode: 'recommendation-code',
+      specialCode: 'special-code',
+    };
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockRegister.mockResolvedValue(authResult('unlocked', ring(SEED)));
+
+    renderPasskey();
+    await goToEmail();
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'context@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    await waitFor(() =>
+      expect(mockRegister).toHaveBeenCalledWith({
+        mail: 'context@example.com',
+        language: 'DE',
+        usedRef: 'used-ref',
+        recommendationCode: 'recommendation-code',
+        specialCode: 'special-code',
+      }),
+    );
+  });
+
+  it('registers with only the defined link context value and omits empty keys', async () => {
+    mockLanguage = { symbol: '' };
+    mockAppParams = { refcode: 'used-ref', recommendationCode: '', specialCode: '' };
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockRegister.mockResolvedValue(authResult('unlocked', ring(SEED)));
+
+    renderPasskey();
+    await goToEmail();
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'ref@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    await waitFor(() => expect(mockRegister).toHaveBeenCalledWith({ mail: 'ref@example.com', usedRef: 'used-ref' }));
   });
 
   it('logs in with an existing passkey without creating a DFX session', async () => {
@@ -4280,16 +4336,19 @@ describe('ConnectPasskey', () => {
     expect(BITCOIN_LINK_TIMEOUT_MS).toBe(15000);
     jest.useFakeTimers();
     try {
+      const wiped = jest.fn();
+      mockBuildLoginRing = () => ({ bitcoinNetwork: 'mainnet', wipe: wiped });
       let resolveLink: (value: { address: { family: string; address: string } }) => void = () => undefined;
       mockLink.mockReturnValue(
         new Promise((resolve) => {
           resolveLink = resolve;
         }),
       );
-      const keys = ring(SEED);
+      const keys = testnetRing();
       setOpenPasskey(authResult('unlocked', keys, false) as unknown as OpenPasskey);
       render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
       expect(mockLink).toHaveBeenCalledTimes(1);
+      expect(wiped).toHaveBeenCalledTimes(1);
       fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
       expect(screen.queryByRole('button', { name: 'Connect again' })).not.toBeInTheDocument();
       expect(screen.queryByText('Not connected to DFX yet')).not.toBeInTheDocument();
@@ -4307,10 +4366,52 @@ describe('ConnectPasskey', () => {
       });
       const rows = passkeySession.getOpenPasskey()?.wallet.addresses.filter((row) => row.address === 'bc1qlogin') ?? [];
       expect(rows).toHaveLength(1);
+      expect(wiped).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('button', { name: 'Connect again' })).not.toBeInTheDocument();
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('releases one mainnet login ring for every hanging Bitcoin link attempt', async () => {
+    jest.useFakeTimers();
+    try {
+      const wipes = [jest.fn(), jest.fn()];
+      let ringIndex = 0;
+      mockBuildLoginRing = () => ({ bitcoinNetwork: 'mainnet', wipe: wipes[ringIndex++] });
+      mockLink.mockImplementation(() => new Promise(() => undefined));
+      setOpenPasskey(authResult('unlocked', testnetRing(), false) as unknown as OpenPasskey);
+
+      render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      expect(mockLink).toHaveBeenCalledTimes(1);
+      expect(wipes[0]).toHaveBeenCalledTimes(1);
+      expect(wipes[1]).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+      await act(async () => {
+        jest.advanceTimersByTime(BITCOIN_LINK_TIMEOUT_MS);
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect again' }));
+
+      expect(mockLink).toHaveBeenCalledTimes(2);
+      expect(wipes[0]).toHaveBeenCalledTimes(1);
+      expect(wipes[1]).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('releases the mainnet login ring when starting the Bitcoin link throws synchronously', async () => {
+    const wiped = jest.fn();
+    mockBuildLoginRing = () => ({ bitcoinNetwork: 'mainnet', wipe: wiped });
+    mockLink.mockImplementationOnce(() => {
+      throw new Error('link start failed');
+    });
+    setOpenPasskey(authResult('unlocked', testnetRing(), false) as unknown as OpenPasskey);
+
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+
+    await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(1));
+    expect(wiped).toHaveBeenCalledTimes(1);
   });
 
   it('does not mark Bitcoin failed when the silent link finishes before the time limit', async () => {
@@ -4680,17 +4781,10 @@ describe('ConnectPasskey', () => {
     }
   });
 
-  it('releases the mainnet login ring when the desk unmounts during a Bitcoin link', async () => {
+  it('does not release the mainnet login ring twice when the desk unmounts during a Bitcoin link', async () => {
     const wiped = jest.fn();
     mockBuildLoginRing = () => ({ bitcoinNetwork: 'mainnet', wipe: wiped });
-    const keys = {
-      bitcoinNetwork: 'testnet4' as const,
-      mnemonic: () => 'seed phrase',
-      wipe: jest.fn(),
-      evm: () => ({ address: SEED }),
-      bitcoinAddress: () => ({ address: BITCOIN_RECEIVE }),
-      sparkIdentity: () => ({ address: SPARK_RECEIVE }),
-    };
+    const keys = testnetRing();
     let resolveLink: (value: { address: { family: string; address: string } }) => void = () => undefined;
     mockLink.mockImplementationOnce(
       () =>
@@ -4701,7 +4795,7 @@ describe('ConnectPasskey', () => {
     setOpenPasskey(authResult('unlocked', keys, false) as unknown as OpenPasskey);
     const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(1));
-    expect(wiped).not.toHaveBeenCalled();
+    expect(wiped).toHaveBeenCalledTimes(1);
     view.unmount();
     expect(wiped).toHaveBeenCalledTimes(1);
     expect(keys.wipe).not.toHaveBeenCalled();

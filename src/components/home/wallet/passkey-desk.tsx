@@ -144,7 +144,6 @@ export default function PasskeyDesk({
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const linkTimer = useRef<ReturnType<typeof setTimeout>>();
   const linkGeneration = useRef(0);
-  const loginReleases = useRef<Array<() => void>>([]);
   const noteKindRef = useRef(noteKind);
 
   function clearToastTimer(): void {
@@ -159,18 +158,6 @@ export default function PasskeyDesk({
       clearTimeout(linkTimer.current);
       linkTimer.current = undefined;
     }
-  }
-
-  function releaseTrackedLoginRing(release: () => void): void {
-    const index = loginReleases.current.indexOf(release);
-    if (index < 0) return;
-    loginReleases.current.splice(index, 1);
-    release();
-  }
-
-  function releaseOutstandingLoginRings(): void {
-    const pending = loginReleases.current.splice(0);
-    for (const release of pending) release();
   }
 
   function displayToast(message: string): void {
@@ -233,7 +220,6 @@ export default function PasskeyDesk({
       linkGeneration.current += 1;
       clearToastTimer();
       clearLinkTimer();
-      releaseOutstandingLoginRings();
       unsubscribe();
     };
   }, []);
@@ -321,13 +307,15 @@ export default function PasskeyDesk({
     accountIndex: number,
   ): Promise<PasskeyAddress> {
     const login = bitcoinLoginRing(keys);
-    loginReleases.current.push(login.release);
-    try {
-      const linked = await client.link('bitcoin', token, login.ring, accountIndex);
-      return linked.address;
-    } finally {
-      releaseTrackedLoginRing(login.release);
-    }
+    const pending = (() => {
+      try {
+        return client.link('bitcoin', token, login.ring, accountIndex);
+      } finally {
+        login.release();
+      }
+    })();
+    const linked = await pending;
+    return linked.address;
   }
 
   async function finishLink(

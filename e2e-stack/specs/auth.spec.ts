@@ -485,9 +485,10 @@ test.describe('Auth area e2e', () => {
     await ensurePasskeyPage();
     await installVirtualPasskey(page);
     const mail = testEmail('passkey');
+    const refcode = 'passkey-full-stack-ref';
 
     // The relying party is localhost. The stack hostname is not that host, so the page opens through the forwarder.
-    await page.goto(`${PASSKEY_PAGE_ORIGIN}/login?feature=Passkey&lang=en`);
+    await page.goto(`${PASSKEY_PAGE_ORIGIN}/login?feature=Passkey&lang=en&refcode=${encodeURIComponent(refcode)}`);
     await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible({ timeout: 20000 });
     await page.locator('img[src$="login-passkey.jpg"]').click();
     await expect(page.getByText('Log in with your device')).toBeVisible({ timeout: 20000 });
@@ -496,7 +497,12 @@ test.describe('Auth area e2e', () => {
     await page.getByRole('button', { name: 'Open a new account' }).click();
     await expect(page.getByLabel('Email address')).toBeVisible({ timeout: 20000 });
     await page.getByLabel('Email address').fill(mail);
+    const registration = page.waitForRequest(
+      (request) =>
+        request.method() === 'POST' && new URL(request.url()).pathname === '/v1/auth/passkey/register/finish',
+    );
     await page.getByRole('button', { name: 'Continue' }).click();
+    expect((await registration).postDataJSON()).toMatchObject({ mail, usedRef: refcode });
 
     let trackedUser = false;
     const trackPasskeyUser = async (): Promise<void> => {
