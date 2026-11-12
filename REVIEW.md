@@ -23,10 +23,21 @@ Reject the pull request when any of these is true:
   does not run in CI, is not a run of the real test. On a pull request into
   `develop`, the full-stack harness has to have run, which means the `ci:full`
   label, a run that brings the stack up, or `mode=paired-attested` after the job
-  verified the newest `Full-stack E2E (paired)` status from the pairing App on
-  every open head of this exact pair. The status description must name both
-  full heads (`pair app#<A>@<app head> backend#<B>@<backend head> run <run id>`);
-  a 7-character prefix is not an attestation. Each
+  verified the newest `Full-stack E2E (paired)` status from the pairing App for
+  this exact pair. The app-side `verify-attestation` runs in
+  the app's `pull_request` workflow without a token for the private backend
+  repository: it binds the exact app head, the app pull request, the backend
+  pull request number, and the newest App status; it cannot read the backend
+  head. The backend side (DFXswiss/backend#6154, `scripts/e2e-pairing`
+  `verify-attestation`) binds both exact heads. When the backend head moves, the
+  backend notifier dispatches to the coordinator, which re-resolves and replaces
+  the App status on the app head (`pending` or `failure`), so the app-side check
+  then fails. The status description must name both full heads
+  (`pair app#<A>@<app head> backend#<B>@<backend head> run <run id>`); a
+  7-character prefix is not an attestation. Only a terminal `success` attests;
+  a `pending` running marker is not an attestation. The coordinator polls for up
+  to 30 minutes and then reruns that local `Full-stack E2E` job after it posts
+  the result. Each
   repository's review state is checked with its own guard pin and the guard
   identity from `.github/e2e-pairing/guard-identities.json`; a merged companion
   is matched through its merge commit, and a companion closed without merge is

@@ -15,8 +15,10 @@ import {
   pairEvaluationSkipped,
   rerunLocalWorkflow,
   resolvePair,
+  runIsActive,
   runEntry,
 } from './cli.mjs';
+import { PairingError } from './pairing.mjs';
 
 const APP_REPO = 'DFXswiss/app';
 const BACKEND_REPO = 'DFXswiss/backend';
@@ -40,8 +42,8 @@ function response(data, status = 200, link = null) {
   };
 }
 
-function pull({ number, state = 'open', merged = false, sha, base = 'develop' }) {
-  return { number, state, merged, head: { sha }, base: { ref: base }, merge_commit_sha: MERGE_SHA };
+function pull({ number, state = 'open', merged = false, sha, base = 'develop', changedFiles = 0 }) {
+  return { number, state, merged, changed_files: changedFiles, head: { sha }, base: { ref: base }, merge_commit_sha: MERGE_SHA };
 }
 
 function appPull(number = 12, options = {}) {
@@ -237,6 +239,141 @@ test('inspectPair rejects bad inputs and non-object pull responses', async () =>
     () => inspectPair({ client: new GitHubClient({ token: 't', fetchImpl: companionFake.fetch.bind(companionFake) }), startRepo: APP_REPO, startPr: 12 }),
     /DFXswiss\/backend#34 is not an object/,
   );
+});
+
+test('truncated pull file lists fail closed for resolution', async () => {
+  const { GitHubClient } = await import('./github.mjs');
+  const fullPage = Array.from({ length: 3000 }, (_, index) => ({
+    filename: index === 2999 ? 'e2e-companion.json' : `file-${index}.js`,
+    status: 'modified',
+  }));
+  const cases = [
+    {
+      name: 'start file list at the API cap',
+      app: appPull(12, { changedFiles: 3001 }),
+      appFiles: fullPage,
+      reason: /truncated \(3000 of 3001 changed files\)/,
+    },
+    {
+      name: 'companion file list shorter than changed_files',
+      app: appPull(),
+      appFiles: [{ filename: 'e2e-companion.json', status: 'modified' }],
+      backend: backendPull(34, { changedFiles: 2 }),
+      backendFiles: [{ filename: 'e2e-companion.json', status: 'modified' }],
+      reason: /truncated \(1 of 2 changed files\)/,
+    },
+    {
+      name: 'missing changed_files with the cap reached',
+      app: appPull(12, { changedFiles: null }),
+      appFiles: fullPage,
+      reason: /truncated \(3000 of unknown changed files\)/,
+    },
+  ];
+  for (const item of cases) {
+    const fake = new FakeGitHub(
+      validPairRoutes({ app: item.app, backend: item.backend, appFiles: item.appFiles, backendFiles: item.backendFiles }),
+    );
+    await assert.rejects(
+      () => inspectPair({ client: new GitHubClient({ token: 't', fetchImpl: fake.fetch.bind(fake) }), startRepo: APP_REPO, startPr: 12 }),
+      item.reason,
+      item.name,
+    );
+  }
+});
+
+test('truncation is reported as a PairingError', async () => {
+  const { GitHubClient } = await import('./github.mjs');
+  const fake = new FakeGitHub(
+    validPairRoutes({
+      app: appPull(12, { changedFiles: 2 }),
+      appFiles: [{ filename: 'e2e-companion.json', status: 'modified' }],
+    }),
+  );
+  const client = new GitHubClient({ token: 't', fetchImpl: fake.fetch.bind(fake) });
+  await assert.rejects(
+    () => inspectPair({ client, startRepo: APP_REPO, startPr: 12 }),
+    (error) => error instanceof PairingError && error.code === 'pull-files-truncated',
+  );
+});
+
+test('pull-file truncation ignores non-integer changed-file counts below the cap', async () => {
+  const { GitHubClient } = await import('./github.mjs');
+  for (const changedFiles of [null, -1, '2', 1.5]) {
+    const fake = new FakeGitHub(
+      validPairRoutes({
+        app: appPull(12, { changedFiles }),
+        appFiles: [{ filename: 'e2e-companion.json', status: 'modified' }],
+      }),
+    );
+    const result = await inspectPair({
+      client: new GitHubClient({ token: 't', fetchImpl: fake.fetch.bind(fake) }),
+      startRepo: APP_REPO,
+      startPr: 12,
+    });
+    assert.equal(result.valid, true, String(changedFiles));
+  }
+});
+
+test('truncation propagates from companion checks and previous-companion invalidation', async () => {
+  const closedApp = appPull(12, { state: 'closed', merged: false, changedFiles: 2 });
+  const closed = new FakeGitHub({
+    ...validPairRoutes({ app: closedApp }),
+    'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'modified' }],
+  });
+  const { deps: closedDeps } = deps(closed);
+  assert.equal(
+    await main(['invalidate'], { ...closedDeps, env: { ...closedDeps.env, START_REPO: APP_REPO, START_PR: '12', CLOSED: 'true', MERGED: 'false', RUN_URL } }),
+    1,
+  );
+
+  const openCompanion = new FakeGitHub({
+    ...validPairRoutes({ app: appPull(12, { state: 'closed', merged: false }) }),
+    [`GET /repos/DFXswiss/app/contents/e2e-companion.json?ref=${APP_SHA}`]: content(companion(BACKEND_REPO, 35)),
+    'GET /repos/DFXswiss/backend/pulls/35': backendPull(35, { changedFiles: 2 }),
+    'GET /repos/DFXswiss/backend/pulls/35/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'modified' }],
+  });
+  const { deps: openCompanionDeps } = deps(openCompanion);
+  assert.equal(
+    await main(['invalidate'], { ...openCompanionDeps, env: { ...openCompanionDeps.env, START_REPO: APP_REPO, START_PR: '12', CLOSED: 'true', MERGED: 'false', RUN_URL } }),
+    1,
+  );
+  assert.equal(
+    openCompanion.calls.some((call) => call.key === 'GET /repos/DFXswiss/backend/pulls/35/files?per_page=100'),
+    true,
+  );
+
+  const previous = new FakeGitHub({
+    ...validPairRoutes(),
+    'GET /repos/DFXswiss/backend/pulls/35': backendPull(35, { sha: PREVIOUS_BACKEND_SHA, changedFiles: 2 }),
+    'GET /repos/DFXswiss/backend/pulls/35/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'modified' }],
+    [`GET /repos/DFXswiss/app/contents/e2e-companion.json?ref=${PREVIOUS_SHA}`]: content(companion(BACKEND_REPO, 35)),
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+  });
+  const { deps: previousDeps } = deps(previous);
+  assert.equal(
+    await main(['invalidate'], { ...previousDeps, env: { ...previousDeps.env, START_REPO: APP_REPO, START_PR: '12', PREVIOUS_SHA, RUN_URL } }),
+    1,
+  );
+});
+
+test('invalidate on a push rethrows a truncated current-pair file list', async () => {
+  const fake = new FakeGitHub({
+    'GET /repos/DFXswiss/app/pulls/12': appPull(12, { changedFiles: 2 }),
+    'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'modified' }],
+  });
+  const { deps: injected, errors, logs } = deps(fake);
+  assert.equal(
+    await main(['invalidate'], {
+      ...injected,
+      env: { ...injected.env, START_REPO: APP_REPO, START_PR: '12', RUN_URL },
+    }),
+    1,
+  );
+  assert.match(errors[0], /truncated/);
+  assert.equal(logs.some((message) => /could not be inspected/.test(message)), false);
+  assert.equal(fake.statusPosts().length, 0);
+  assert.equal(fake.reruns().length, 0);
 });
 
 test('close validation still yields to a closed non-develop start', async () => {
@@ -1580,6 +1717,53 @@ test('publish posts the exact description on open heads and reruns local jobs', 
   assert.match(logs.at(-1), /published success/);
 });
 
+test('publish resolves from the starting repository with an explicit or fallback START_PR', async () => {
+  for (const [startRepo, expectedStartPr, startPr = ''] of [[APP_REPO, '12'], [BACKEND_REPO, '34'], [BACKEND_REPO, '34', '34']]) {
+    const fake = new FakeGitHub({
+      ...openPairWithLocalRuns(),
+      [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+      [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+    });
+    const { deps: injected } = deps(fake);
+    const code = await main(['publish'], {
+      ...injected,
+      env: {
+        ...injected.env,
+        APP_PR: '12',
+        APP_SHA,
+        BACKEND_PR: '34',
+        BACKEND_SHA,
+        MUTUAL: 'true',
+        RUN_RESULT: 'success',
+        RUN_ID: '77',
+        START_REPO: startRepo,
+        START_PR: startPr,
+      },
+    });
+    assert.equal(code, 0, startRepo);
+    const resolvedStarts = fake.calls.filter((call) => call.key.endsWith('/pulls/12') || call.key.endsWith('/pulls/34'));
+    assert.equal(resolvedStarts.some((call) => call.key.endsWith(`/pulls/${expectedStartPr}`)), true, startRepo);
+  }
+});
+
+test('publish truncation aborts before posting or rerunning', async () => {
+  const fake = new FakeGitHub({
+    ...openPairWithLocalRuns(),
+    'GET /repos/DFXswiss/app/pulls/12': appPull(12, { changedFiles: 2 }),
+    'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'modified' }],
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+  });
+  const { deps: injected, errors } = deps(fake);
+  const code = await main(['publish'], {
+    ...injected,
+    env: { ...injected.env, APP_PR: '12', APP_SHA, BACKEND_PR: '34', BACKEND_SHA, MUTUAL: 'true', RUN_RESULT: 'success', RUN_ID: '77' },
+  });
+  assert.equal(code, 1);
+  assert.match(errors[0], /file list.*truncated/);
+  assert.equal(fake.statusPosts().length, 0);
+  assert.equal(fake.reruns().length, 0);
+});
+
 test('publish on a merged companion posts only the remaining open head', async () => {
   const fake = new FakeGitHub({
     ...validPairRoutes({ backend: backendPull(34, { state: 'closed', merged: true }) }),
@@ -1971,11 +2155,220 @@ test('rerunLocalWorkflow covers selection, missing jobs and non-completed runs',
   };
   await assert.rejects(() => rerunLocalWorkflow(noCandidateName, APP_REPO, APP_SHA), /job not found/);
 
-  const notCompleted = new FakeGitHub(localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, path: '.github/workflows/pr.yml', runStatus: 'in_progress' }));
-  assert.equal(await rerunLocalWorkflow(new GitHubClient({ token: 't', fetchImpl: notCompleted.fetch.bind(notCompleted) }), APP_REPO, APP_SHA), false);
+  const warnings = [];
+  const notCompleted = new FakeGitHub({
+    ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, path: '.github/workflows/pr.yml', runStatus: 'in_progress' }),
+    'GET /repos/DFXswiss/app/actions/runs/10': run('in_progress'),
+  });
+  assert.equal(
+    await rerunLocalWorkflow(new GitHubClient({ token: 't', fetchImpl: notCompleted.fetch.bind(notCompleted) }), APP_REPO, APP_SHA, {
+      sleep: async () => {},
+      now: () => 0,
+      pollTimeoutMs: 0,
+      warn: (message) => warnings.push(message),
+    }),
+    false,
+  );
+  assert.match(warnings[0], /still in_progress after 0 minutes/);
 
   const noJob = new FakeGitHub(localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, path: '.github/workflows/pr.yml', jobs: [] }));
   await assert.rejects(() => rerunLocalWorkflow(new GitHubClient({ token: 't', fetchImpl: noJob.fetch.bind(noJob) }), APP_REPO, APP_SHA), /job not found/);
+});
+
+test('rerunLocalWorkflow waits for an active run, then reruns its Full-stack E2E job', async () => {
+  const statuses = ['requested', 'waiting', 'pending', 'queued', 'in_progress', 'completed'];
+  let clock = 0;
+  const sleeps = [];
+  const calls = [];
+  const client = {
+    async paginateList(url) {
+      if (url.includes('&event=')) {
+        return [{ id: 10, status: 'in_progress', event: 'pull_request', head_sha: APP_SHA, path: '.github/workflows/pr.yml' }];
+      }
+      calls.push(url);
+      return [{ id: 205, name: 'Build / Full-stack E2E' }];
+    },
+    async getOptional(url) {
+      calls.push(url);
+      return { status: 200, data: { status: statuses.shift() } };
+    },
+    async postRerun(repo, jobId) {
+      calls.push(`${repo}:${jobId}`);
+    },
+  };
+  assert.equal(
+    await rerunLocalWorkflow(client, APP_REPO, APP_SHA, {
+      sleep: async (milliseconds) => {
+        sleeps.push(milliseconds);
+        clock += milliseconds;
+      },
+      now: () => clock,
+      warn: () => assert.fail('unexpected warning'),
+    }),
+    true,
+  );
+  assert.deepEqual(sleeps, [30_000, 30_000, 30_000, 30_000, 30_000]);
+  assert.equal(calls.at(-1), `${APP_REPO}:205`);
+});
+
+test('rerunLocalWorkflow returns false when the run disappears during the wait', async () => {
+  const warnings = [];
+  const client = {
+    async paginateList() {
+      return [{ id: 10, status: 'queued', event: 'pull_request', head_sha: APP_SHA, path: '.github/workflows/pr.yml' }];
+    },
+    async getOptional() {
+      return { status: 404, data: null };
+    },
+    async postRerun() {
+      assert.fail('must not rerun a missing run');
+    },
+  };
+  assert.equal(
+    await rerunLocalWorkflow(client, APP_REPO, APP_SHA, {
+      sleep: async () => {},
+      now: () => 0,
+      warn: (message) => warnings.push(message),
+    }),
+    false,
+  );
+  assert.match(warnings[0], /disappeared while waiting/);
+});
+
+test('rerunLocalWorkflow reruns immediately when the first poll is completed', async () => {
+  const calls = [];
+  const client = {
+    async paginateList(url) {
+      if (url.includes('&event=')) {
+        return [{ id: 10, status: 'queued', event: 'pull_request', head_sha: APP_SHA, path: '.github/workflows/pr.yml' }];
+      }
+      calls.push(url);
+      return [{ id: 206, name: 'Full-stack E2E' }];
+    },
+    async getOptional() {
+      return { status: 200, data: { status: 'completed' } };
+    },
+    async postRerun(repo, jobId) {
+      calls.push(`${repo}:${jobId}`);
+    },
+  };
+  assert.equal(
+    await rerunLocalWorkflow(client, APP_REPO, APP_SHA, {
+      sleep: () => assert.fail('must not sleep after a completed poll'),
+      now: () => 0,
+      warn: () => assert.fail('unexpected warning'),
+    }),
+    true,
+  );
+  assert.equal(calls.at(-1), `${APP_REPO}:206`);
+});
+
+test('rerunLocalWorkflow warns and stops after the wait deadline', async () => {
+  let clock = 0;
+  const sleeps = [];
+  const warnings = [];
+  const client = {
+    async paginateList() {
+      return [{ id: 10, status: 'queued', event: 'pull_request', head_sha: APP_SHA, path: '.github/workflows/pr.yml' }];
+    },
+    async getOptional() {
+      return { status: 200, data: { status: 'queued' } };
+    },
+    async postRerun() {
+      assert.fail('must not rerun before the run completes');
+    },
+  };
+  assert.equal(
+    await rerunLocalWorkflow(client, APP_REPO, APP_SHA, {
+      // Model the real clock advancing by each injected poll interval.
+      sleep: async (milliseconds) => {
+        sleeps.push(milliseconds);
+        clock += milliseconds;
+      },
+      now: () => clock,
+      pollTimeoutMs: 60_000,
+      pollIntervalMs: 30_000,
+      warn: (message) => warnings.push(message),
+    }),
+    false,
+  );
+  assert.deepEqual(sleeps, [30_000, 30_000]);
+  assert.match(warnings[0], /still queued after 1 minutes/);
+});
+
+test('rerunLocalWorkflow has a bounded poll count when the clock stalls', async () => {
+  let reads = 0;
+  const sleeps = [];
+  const warnings = [];
+  const client = {
+    async paginateList() {
+      return [{ id: 10, status: 'queued', event: 'pull_request', head_sha: APP_SHA, path: '.github/workflows/pr.yml' }];
+    },
+    async getOptional() {
+      reads += 1;
+      return { status: 200, data: { status: 'queued' } };
+    },
+    async postRerun() {
+      assert.fail('must not rerun before the run completes');
+    },
+  };
+  assert.equal(
+    await rerunLocalWorkflow(client, APP_REPO, APP_SHA, {
+      sleep: async (milliseconds) => sleeps.push(milliseconds),
+      now: () => 0,
+      pollTimeoutMs: 60_000,
+      pollIntervalMs: 30_000,
+      warn: (message) => warnings.push(message),
+    }),
+    false,
+  );
+  assert.equal(reads, 3);
+  assert.deepEqual(sleeps, [30_000, 30_000]);
+  assert.match(warnings[0], /still queued after 1 minutes/);
+});
+
+test('rerunLocalWorkflow stops when the wait expires during a poll', async () => {
+  let reads = 0;
+  const times = [0, 0, Number.MAX_SAFE_INTEGER];
+  const warnings = [];
+  const client = {
+    async paginateList() {
+      return [{ id: 10, status: 'queued', event: 'pull_request', head_sha: APP_SHA, path: '.github/workflows/pr.yml' }];
+    },
+    async getOptional() {
+      reads += 1;
+      return { status: 200, data: { status: 'queued' } };
+    },
+    async postRerun() {
+      assert.fail('must not rerun before the run completes');
+    },
+  };
+  assert.equal(
+    await rerunLocalWorkflow(client, APP_REPO, APP_SHA, {
+      sleep: async () => {},
+      now: () => times.shift(),
+      pollTimeoutMs: 60_000,
+      pollIntervalMs: 30_000,
+      warn: (message) => warnings.push(message),
+    }),
+    false,
+  );
+  assert.equal(reads, 2);
+  assert.deepEqual(times, []);
+  assert.match(warnings[0], /still queued after 1 minutes/);
+});
+
+test('runIsActive treats every non-completed workflow status as active', async () => {
+  for (const status of ['requested', 'waiting', 'pending', 'queued', 'in_progress', 'mystery']) {
+    const client = { getOptional: async () => ({ status: 200, data: { status } }) };
+    assert.equal(await runIsActive(client, APP_REPO, 88), true, status);
+  }
+  const completed = { getOptional: async () => ({ status: 200, data: { status: 'completed' } }) };
+  assert.equal(await runIsActive(completed, APP_REPO, 88), false);
+  const missing = { getOptional: async () => ({ status: 404, data: null }) };
+  assert.equal(await runIsActive(missing, APP_REPO, 88), false);
+  const invalid = { getOptional: async () => ({ status: 200, data: [] }) };
+  await assert.rejects(() => runIsActive(invalid, APP_REPO, 88), /is not an object/);
 });
 
 test('rerunLocalWorkflow picks the newest matching run and accepts a path without a ref', async () => {
@@ -2130,19 +2523,22 @@ test('verify-attestation rejects every stale or malformed input', async () => {
     [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
   };
   const cases = [
-    ['not open', { ...base, 'GET /repos/DFXswiss/app/pulls/12': appPull(12, { state: 'closed' }) }],
-    ['invalid head', { ...base, 'GET /repos/DFXswiss/app/pulls/12': appPull(12, { sha: 'bad' }) }],
-    ['moved head', { ...base, 'GET /repos/DFXswiss/app/pulls/12': appPull(12, { sha: 'f'.repeat(40) }) }],
-    ['inactive file', { ...base, 'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [] }],
-    ['missing companion', { ...base, [`GET /repos/DFXswiss/app/contents/e2e-companion.json?ref=${APP_SHA}`]: { status: 404 } }],
-    ['no statuses', { ...base, [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [] }],
-    ['wrong status', { ...base, [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: `pair app#13@${APP_SHA} backend#34@${BACKEND_SHA} run 77` })] }],
+    ['not open', { ...base, 'GET /repos/DFXswiss/app/pulls/12': appPull(12, { state: 'closed' }) }, APP_SHA, /app pull request is not open/],
+    ['invalid head', { ...base, 'GET /repos/DFXswiss/app/pulls/12': appPull(12, { sha: 'bad' }) }, APP_SHA, /app head is invalid/],
+    ['moved head', { ...base, 'GET /repos/DFXswiss/app/pulls/12': appPull(12, { sha: 'f'.repeat(40) }) }, APP_SHA, /head moved/],
+    ['truncated file list', { ...base, 'GET /repos/DFXswiss/app/pulls/12': appPull(12, { changedFiles: 2 }) }, APP_SHA, /truncated/],
+    ['inactive file', { ...base, 'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [] }, APP_SHA, /is not active/],
+    ['missing companion', { ...base, [`GET /repos/DFXswiss/app/contents/e2e-companion.json?ref=${APP_SHA}`]: { status: 404 } }, APP_SHA, /invalid e2e-companion\.json/],
+    ['invalid companion', { ...base, [`GET /repos/DFXswiss/app/contents/e2e-companion.json?ref=${APP_SHA}`]: content(companion('DFXswiss/other', 34)) }, APP_SHA, /invalid e2e-companion\.json/],
+    ['no statuses', { ...base, [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [] }, APP_SHA, /no status from the pairing app/],
+    ['wrong status', { ...base, [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: `pair app#13@${APP_SHA} backend#34@${BACKEND_SHA} run 77` })] }, APP_SHA, /different app pull request/],
   ];
-  for (const [name, routes] of cases) {
+  for (const [name, routes, appSha, expected] of cases) {
     const fake = new FakeGitHub(routes);
     const { deps: injected, errors } = deps(fake);
-    assert.equal(await main(['verify-attestation'], { ...injected, env: { ...injected.env, APP_PR: '12', APP_SHA: 'f'.repeat(40) } }), 1, name);
+    assert.equal(await main(['verify-attestation'], { ...injected, env: { ...injected.env, APP_PR: '12', APP_SHA: appSha } }), 1, name);
     assert.match(errors[0], /::error::waiting for paired attestation:/, name);
+    assert.match(errors[0], expected, name);
   }
 
   const noSlug = new FakeGitHub(base);

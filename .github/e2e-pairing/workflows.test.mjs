@@ -74,6 +74,19 @@ test('paired resolve receives the action and previous head, and privileged jobs 
   }
   assert.match(job(workflow, 'resolve'), /private-key: \$\{\{ secrets\.E2E_PAIR_APP_PRIVATE_KEY \}\}/);
   assert.match(job(workflow, 'publish'), /private-key: \$\{\{ secrets\.E2E_PAIR_APP_PRIVATE_KEY \}\}/);
+  assert.match(job(workflow, 'publish'), /timeout-minutes: 75/);
+});
+
+test('pairing unit tests enforce full coverage in PR CI', () => {
+  const workflow = read('.github/workflows/pr.yml');
+  const runStep = step(workflow, 'Run pairing unit tests');
+  assert.match(runStep, /--experimental-test-coverage/);
+  assert.match(runStep, /--test-coverage-lines=100/);
+  assert.match(runStep, /--test-coverage-branches=100/);
+  assert.match(runStep, /--test-coverage-functions=100/);
+  assert.match(runStep, /--test-coverage-include='\.github\/e2e-pairing\/\*\.mjs'/);
+  assert.match(runStep, /--test-coverage-exclude='\.github\/e2e-pairing\/\*\.test\.mjs'/);
+  assert.match(runStep, /"\.github\/e2e-pairing\/\*\.test\.mjs"/);
 });
 
 test('stack scope only enters paired mode for a develop pull request', () => {
@@ -88,6 +101,19 @@ test('stack scope only enters paired mode for a develop pull request', () => {
   assert.ok(readFiles > fetchBase, 'the file list is read only after the base is known');
   assert.ok(readFiles > developGuard, 'the file list is read only for develop');
   assert.ok(paired > developGuard, 'paired mode is not selected before the base guard');
+  assert.match(scope, /\.status != "removed" and \.status != "unchanged"/);
+  assert.match(scope, /changed_files=/);
+  assert.doesNotMatch(scope, /\.changed_files \/\/ 0/);
+  assert.match(
+    scope,
+    /\.changed_files \| if type == "number" and \. >= 0 and \. == floor then tostring else "invalid" end/,
+  );
+  assert.match(scope, /else "invalid" end/);
+  assert.match(scope, /if ! \[\[ "\$changed_files" =~ \^\[0-9\]\+\$ \]\]/);
+  assert.match(scope, /::error::pull request changed-file count is not a non-negative integer\./);
+  assert.match(scope, /file_count >= 3000/);
+  assert.match(scope, /file_count < changed_files/);
+  assert.match(scope, /refusing to decide paired E2E scope/);
 });
 
 test('the local verifier is checked out at the pull request base commit', () => {

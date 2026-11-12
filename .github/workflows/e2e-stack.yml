@@ -145,13 +145,28 @@ jobs:
             paired=false
             rc=0
             if [ "$BASE" = 'develop' ]; then
-              paired=$(gh api --paginate --slurp \
+              changed_files=$(gh api "repos/DFXswiss/app/pulls/${PR_NUMBER}" \
+                --jq '.changed_files | if type == "number" and . >= 0 and . == floor then tostring else "invalid" end') || rc=$?
+              if (( rc != 0 )); then
+                echo "::error::could not read the pull request changed-file count (exit $rc)."
+                exit 1
+              fi
+              if ! [[ "$changed_files" =~ ^[0-9]+$ ]]; then
+                echo '::error::pull request changed-file count is not a non-negative integer.'
+                exit 1
+              fi
+              file_fields=$(gh api --paginate --slurp \
                 "repos/DFXswiss/app/pulls/${PR_NUMBER}/files?per_page=100" \
-                --jq 'add // [] | any(.filename == "e2e-companion.json" and (.status == "added" or .status == "modified" or .status == "renamed"))') || rc=$?
-            fi
-            if (( rc != 0 )); then
-              echo "::error::could not read the pull request file list for paired E2E scope (exit $rc)."
-              exit 1
+                --jq 'add // [] | [length, any(.filename == "e2e-companion.json" and (.status != "removed" and .status != "unchanged"))] | @tsv') || rc=$?
+              if (( rc != 0 )); then
+                echo "::error::could not read the pull request file list for paired E2E scope (exit $rc)."
+                exit 1
+              fi
+              IFS=$'\t' read -r file_count paired <<< "$file_fields"
+              if (( file_count >= 3000 || file_count < changed_files )); then
+                echo "::error::pull request file list is truncated (${file_count} of ${changed_files} changed files); refusing to decide paired E2E scope."
+                exit 1
+              fi
             fi
             if [ "$paired" = 'true' ]; then
               echo 'Paired run: e2e-companion.json is active on a develop PR; waiting for the shared attestation.'

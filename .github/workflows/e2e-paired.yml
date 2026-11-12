@@ -509,6 +509,7 @@ jobs:
     needs: [resolve, run]
     if: always() && needs.resolve.outputs.valid == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 75
     environment: e2e-pairing
     permissions:
       contents: read

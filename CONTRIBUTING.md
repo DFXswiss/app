@@ -406,11 +406,39 @@ A develop pull request that declares a pair instead records
 `mode=paired-attested` after the trusted coordinator verified its exact pair; a
 release pull request into `main` always runs the full stack; see
 [Paired backend and app pull requests](#paired-backend-and-app-pull-requests).
+An active pair takes precedence over `ci:full`: the pair records
+`mode=paired-attested` and runs once in the coordinator instead of starting a
+second stack in either local job. The local stack scope checks the pair before
+it checks `ci:full`.
 
 A pull request that adds or changes a website function must add or update the
 real test of that function in this harness, and that test must have run. See
 [Real tests](#real-tests). Opening the route, or injecting a finished session,
 does not meet that rule.
+
+Coverage of the route tree is enforced, not tracked by hand. The suite reads the
+route definitions out of `src/App.tsx` and fails if a route is claimed by no test
+file or by more than one, and — on a full run (`E2E_FULL_RUN=1`, which CI sets
+whenever it brings the stack up) — if a route
+was never actually opened by any test. The browser records every navigation it
+makes, and the gate compares that recording against the route list, so a claim
+pointing at a file that never visits the route does not satisfy it. Adding a route
+therefore means adding a claim in `e2e-stack/specs/registry/` and a test that
+navigates there. That gate runs only when the stack comes up (`ci:full`, a PR
+into `main`, a bare `workflow_dispatch`, or a verified paired run); a standard
+develop PR without `ci:full` and without a pair does not enforce it. Opening a
+route satisfies only this route gate. It does not satisfy
+[Real tests](#real-tests). A green check on a run that records `mode=none` does
+not satisfy that rule either; a paired run enforces the same full-run route
+gate in the coordinator.
+
+Run locally:
+
+```
+npm run e2e:stack
+```
+
+Details: [`e2e-stack/README.md`](e2e-stack/README.md).
 
 ### Paired backend and app pull requests
 
@@ -424,9 +452,11 @@ request's repository:
 
 The app file names `DFXswiss/backend`; the backend file names `DFXswiss/app`.
 The object must contain exactly `repository` and `pull_request`, and the number
-must be a positive integer. The file is active only when the pull request's own
-diff adds, modifies, or renames it. An unchanged copy inherited from `develop`
-does not pair anything, and deleting it removes the pairing.
+must be a positive integer. The file is active when the pull request's own diff
+changes it, including `added`, `modified`, `renamed`, `copied`, and `changed`
+rows. A row with status `removed` or `unchanged` is inactive. An unchanged copy
+inherited from `develop` does not pair anything, and deleting it removes the
+pairing.
 
 Both companion files must be active and name each other's pull request. Both
 pull requests must target `develop`. Every **open** side's exact head must
@@ -454,11 +484,21 @@ a short prefix is not an attestation. A result is the same description with
 `run` instead of `running`, posted as a commit status `Full-stack E2E (paired)`
 on every open head of the pair. The whole description stays below GitHub's
 140-character limit.
-The local `Full-stack E2E` job accepts only the newest App status for the exact
-current full heads: a valid `success`, or a `pending` running marker whose run is
-still `in_progress` or `queued`. It never falls back to an older success and
-never matches by wildcard. The result is therefore one run of both exact
-heads, not two independent stacks.
+The app-side `verify-attestation` runs in the app's `pull_request` workflow
+without a token for the private backend repository. It binds the exact app
+head, the app pull request, the backend pull request number, and the newest App
+status on that app head; it cannot read the backend head. The backend side
+(DFXswiss/backend#6154, `scripts/e2e-pairing` `verify-attestation`) binds both
+exact heads. When the backend head moves, the backend notifier dispatches to
+the coordinator, which re-resolves and replaces the App status on the app head
+(`pending` or `failure`), so the app-side check then fails. The local
+`Full-stack E2E` job accepts only a terminal `success`; a `pending` running
+marker is not an attestation. The coordinator polls the local run every 30
+seconds for at most 30 minutes after posting the result, then reruns its
+`Full-stack E2E` job once the run has completed. If the deadline passes, it
+warns and leaves the coordinator status posted. The local check never falls
+back to an older success and never matches by wildcard. The result is therefore
+one run of both exact heads, not two independent stacks.
 
 A push to either pull request invalidates the previous result and reruns the
 local jobs; a stale green status cannot be reused. Review comments do not
@@ -483,27 +523,3 @@ deployment-branch policy limited to `develop`, and store
 — including a same-repository pull request that edits a workflow — can read the
 key. No `A38_GUARD_APP_SLUG` variable is used. Contributors cannot provision or
 bypass this App.
-
-Coverage of the route tree is enforced, not tracked by hand. The suite reads the
-route definitions out of `src/App.tsx` and fails if a route is claimed by no test
-file or by more than one, and — on a full run (`E2E_FULL_RUN=1`, which CI sets
-whenever it brings the stack up) — if a route
-was never actually opened by any test. The browser records every navigation it
-makes, and the gate compares that recording against the route list, so a claim
-pointing at a file that never visits the route does not satisfy it. Adding a route
-therefore means adding a claim in `e2e-stack/specs/registry/` and a test that
-navigates there. That gate runs only when the stack comes up (`ci:full`, a PR
-into `main`, a bare `workflow_dispatch`, or a verified paired run); a standard
-develop PR without `ci:full` and without a pair does not enforce it. Opening a
-route satisfies only this route gate. It does not satisfy
-[Real tests](#real-tests). A green check on a run that records `mode=none` does
-not satisfy that rule either; a paired run enforces the same full-run route
-gate in the coordinator.
-
-Run locally:
-
-```
-npm run e2e:stack
-```
-
-Details: [`e2e-stack/README.md`](e2e-stack/README.md).

@@ -72,7 +72,7 @@ jobs:
       # Pure decision logic and the CLI's injected-fetch tests. No stack, no
       # network: these protect the pairing contract that both repositories use.
       - name: Run pairing unit tests
-        run: node --test ".github/e2e-pairing/*.test.mjs"
+        run: node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-include='.github/e2e-pairing/*.mjs' --test-coverage-exclude='.github/e2e-pairing/*.test.mjs' ".github/e2e-pairing/*.test.mjs"
 
       - name: Run review-gate unit tests
         run: python3 -m unittest discover -s .github/e2e-pairing -p 'test_*.py'

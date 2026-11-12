@@ -152,8 +152,9 @@ The app repository hosts the trusted coordinator in
 [`.github/workflows/e2e-paired.yml`](../.github/workflows/e2e-paired.yml). It
 uses `e2e-companion.json` in the root of each repository to pair one app pull
 request with one backend pull request. The file is active only when that pull
-request's own diff adds, modifies, or renames it. Both files must name each
-other and both pull requests must target `develop`. Every open side must carry
+request's own diff changes it, including `added`, `modified`, `renamed`,
+`copied`, and `changed` rows; `removed` and `unchanged` are inactive. Both files
+must name each other and both pull requests must target `develop`. Every open side must carry
 its own repository's complete A38 review state at its exact head before the
 coordinator runs any pull-request code. Each repository is checked with its
 own pinned A38 checkout and the guard identity from
@@ -170,11 +171,22 @@ open head with a description naming both full heads and the run:
 `pair app#<A>@<app head> backend#<B>@<backend head> running <run id>`. Each
 head must be exactly 40 lowercase hex characters, so a 7-character prefix never
 matches. The attestation replaces `running` with `run`; the full description
-stays under GitHub's 140-character limit. The local required
-`Full-stack E2E` job reads the newest App status for the exact current full
-heads and accepts a valid `success`, or a `pending` running marker whose run is
-still active. It never falls back to an older success and never matches by
-wildcard, so no second stack is started.
+stays under GitHub's 140-character limit. The app-side `verify-attestation`
+runs in the app's `pull_request` workflow without a token for the private
+backend repository. It binds the exact app head, the app pull request, the
+backend pull request number, and the newest App status on that app head; it
+cannot read the backend head. The backend side (DFXswiss/backend#6154,
+`scripts/e2e-pairing` `verify-attestation`) binds both exact heads. When the
+backend head moves, the backend notifier dispatches to the coordinator, which
+re-resolves and replaces the App status on the app head (`pending` or
+`failure`), so the app-side check then fails. A `pending` running marker is not
+an attestation. The coordinator polls that local run every 30 seconds for at
+most 30 minutes after posting the result, then reruns its `Full-stack E2E` job
+once the run has completed. After the deadline it warns without replacing the
+posted status. It never falls back to an older success and never matches by
+wildcard, so no second stack is started. A develop pull request that declares a
+pair also takes precedence over `ci:full`: the local stack scope checks the pair
+first and records `mode=paired-attested`.
 
 A push to either side posts `pending`, reruns the local jobs, and invalidates
 the old result. Review comments do not cancel a running shared run. A backend

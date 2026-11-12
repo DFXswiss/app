@@ -10,7 +10,7 @@ export const PAIR_KEY_PREFIX = 'e2e-paired-run';
 const SHA_RE = /^[0-9a-f]{40}$/;
 const PAIR_DESCRIPTION_RE = /^pair app#([1-9][0-9]*)@([0-9a-f]{40}) backend#([1-9][0-9]*)@([0-9a-f]{40}) run ([1-9][0-9]*)$/;
 const RUNNING_DESCRIPTION_RE = /^pair app#([1-9][0-9]*)@([0-9a-f]{40}) backend#([1-9][0-9]*)@([0-9a-f]{40}) running ([1-9][0-9]*)$/;
-const ACTIVE_FILE_STATUSES = new Set(['added', 'modified', 'renamed']);
+const INACTIVE_FILE_STATUSES = new Set(['removed', 'unchanged']);
 
 export class PairingError extends Error {
   constructor(message) {
@@ -60,7 +60,7 @@ export function isCompanionActive(files, path = COMPANION_PATH) {
       isObject(file) &&
       file.filename === path &&
       typeof file.status === 'string' &&
-      ACTIVE_FILE_STATUSES.has(file.status),
+      !INACTIVE_FILE_STATUSES.has(file.status),
   );
 }
 

@@ -84,6 +84,9 @@ test('isCompanionActive only accepts a changed companion path, custom paths incl
   assert.equal(isCompanionActive([{ filename: COMPANION_PATH, status: 'added' }]), true);
   assert.equal(isCompanionActive([{ filename: COMPANION_PATH, status: 'modified' }]), true);
   assert.equal(isCompanionActive([{ filename: COMPANION_PATH, status: 'renamed' }]), true);
+  assert.equal(isCompanionActive([{ filename: COMPANION_PATH, status: 'copied' }]), true);
+  assert.equal(isCompanionActive([{ filename: COMPANION_PATH, status: 'changed' }]), true);
+  assert.equal(isCompanionActive([{ filename: COMPANION_PATH, status: 'unknown' }]), true);
   assert.equal(isCompanionActive([{ filename: 'custom.json', status: 'modified' }], 'custom.json'), true);
   assert.equal(isCompanionActive([{ filename: COMPANION_PATH, status: 'removed' }]), false);
   assert.equal(isCompanionActive([{ filename: COMPANION_PATH, status: 'unchanged' }]), false);

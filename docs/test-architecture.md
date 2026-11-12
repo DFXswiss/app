@@ -10,12 +10,12 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 ## The layers this repository owns
 
-| Layer              | Location                        | What it proves                                                               | What it cannot prove                                                                 | Runs in CI                                                                                       |
-| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                                      | drafts run (forks may wait as `action_required`); suite full / related / none                    |
-| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query                         | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                |
-| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job except Scorechain is off during the run | drafts run (job `mode=none` without `ci:full`); stack only with `ci:full` / main / bare dispatch |
-| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                                             | no                                                                                               |
+| Layer              | Location                        | What it proves                                                               | What it cannot prove                                                  | Runs in CI                                                                                       |
+| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                       | drafts run (forks may wait as `action_required`); suite full / related / none                    |
+| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query          | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                |
+| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job except Scorechain is off | drafts skip; local job `mode=paired-attested`, one coordinator stack; else `ci:full`, main, bare |
+| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                              | no                                                                                               |
 
 A develop app/backend pull request that declares a pair runs the same stack once in the trusted
 coordinator instead of starting it in either repository's local job; a release pull request into
@@ -102,7 +102,8 @@ The trusted coordinator
 [`.github/workflows/e2e-paired.yml`](../.github/workflows/e2e-paired.yml) pairs
 one app PR with one backend PR through `e2e-companion.json`. Both files must be
 active in their own pull request's diff, name each other, and both pull requests
-must target `develop`. Every open side's exact head must carry its own
+must target `develop`. A row is active for `added`, `modified`, `renamed`,
+`copied`, and `changed`; `removed` and `unchanged` are inactive. Every open side's exact head must carry its own
 repository's complete A38 review state, including a first-review comment that
 names that exact head, before any paired code runs. Each side is checked with
 its repository's own pinned A38 checkout and its guard identity from
@@ -120,11 +121,23 @@ naming both full heads and the run:
 head must be exactly 40 lowercase hex characters, so a 7-character prefix never
 matches. The attestation replaces `running` with `run`; the full description
 stays under GitHub's 140-character limit. It posts
-`Full-stack E2E (paired)` on every open head of the pair. The local required
-job reads the newest App status for the exact current full heads and accepts a
-valid `success`, or a `pending` running marker whose run is still active. It
-never falls back to an older success and never matches by wildcard, so it
-verifies one shared run rather than starting a second stack.
+`Full-stack E2E (paired)` on every open head of the pair. The app-side
+`verify-attestation` runs in the app's `pull_request` workflow without a token
+for the private backend repository. It binds the exact app head, the app pull
+request, the backend pull request number, and the newest App status on that app
+head; it cannot read the backend head. The backend side
+(DFXswiss/backend#6154, `scripts/e2e-pairing` `verify-attestation`) binds both
+exact heads. When the backend head moves, the backend notifier dispatches to
+the coordinator, which re-resolves and replaces the App status on the app head
+(`pending` or `failure`), so the app-side check then fails. A `pending` running
+marker is not an attestation. The coordinator polls that local run every 30
+seconds for at most 30 minutes after posting the result, then reruns its
+`Full-stack E2E` job once the run has completed. After the deadline it warns
+without replacing the posted status. It never falls back to an older success
+and never matches by wildcard, so it verifies one shared run rather than
+starting a second stack. A develop pull request that declares a pair takes
+precedence over `ci:full`: the local stack scope checks the pair first and
+records `mode=paired-attested`.
 
 A push to either side posts `pending`, reruns the local required jobs, and
 invalidates the old result. Review comments do not cancel a running shared run.

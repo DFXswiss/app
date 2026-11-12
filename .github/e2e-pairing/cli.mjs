@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
 import { GitHubClient } from './github.mjs';
@@ -29,7 +30,9 @@ import {
 
 const DEFAULT_REVIEW_GATE_SCRIPT = new URL('./review-gate.py', import.meta.url);
 const SHA_RE = /^[0-9a-f]{40}$/;
-const ACTIVE_RUN_STATUSES = new Set(['in_progress', 'queued']);
+const PULL_FILES_LIMIT = 3000;
+const RERUN_POLL_INTERVAL_MS = 30_000;
+const RERUN_POLL_TIMEOUT_MS = 30 * 60_000;
 
 function requirePositiveInteger(value, label) {
   const number = Number(value);
@@ -123,8 +126,25 @@ async function getPullOrNull(client, repo, number) {
   return response.data;
 }
 
-async function pullFiles(client, repo, number) {
-  return client.paginate(`/repos/${repo}/pulls/${number}/files?per_page=100`);
+function pullChangedFiles(pull) {
+  return Number.isInteger(pull?.changed_files) && pull.changed_files >= 0 ? pull.changed_files : null;
+}
+
+function truncatedFileList(files, changedFiles) {
+  return files.length >= PULL_FILES_LIMIT || (changedFiles !== null && files.length < changedFiles);
+}
+
+async function pullFiles(client, repo, number, pull) {
+  const files = await client.paginate(`/repos/${repo}/pulls/${number}/files?per_page=100`);
+  const changedFiles = pullChangedFiles(pull);
+  if (truncatedFileList(files, changedFiles)) {
+    const error = new PairingError(
+      `pull request file list for ${repo}#${number} is truncated (${files.length} of ${changedFiles ?? 'unknown'} changed files); refusing to decide pairing`,
+    );
+    error.code = 'pull-files-truncated';
+    throw error;
+  }
+  return files;
 }
 
 async function companionText(client, repo, ref) {
@@ -142,7 +162,7 @@ async function openMutualCompanion(client, repo, number, expectedRepository, exp
   if (!/^[0-9a-f]{40}$/.test(sha)) {
     return null;
   }
-  const files = await pullFiles(client, repo, number);
+  const files = await pullFiles(client, repo, number, pull);
   if (!isCompanionActive(files)) {
     return null;
   }
@@ -176,7 +196,7 @@ async function failOpenCompanion(client, env, deps, startRepo, startPr, { repend
   if (!SHA_RE.test(startSha)) {
     return false;
   }
-  const startFiles = await pullFiles(client, startRepo, startPr);
+  const startFiles = await pullFiles(client, startRepo, startPr, startPull);
   if (!isCompanionActive(startFiles)) {
     return false;
   }
@@ -294,15 +314,20 @@ async function newestPairStatus(client, { appPr, appSha, backendPr, backendSha, 
   return selectAttestedStatus(pages.flat().filter(namesPair), { context: STATUS_CONTEXT, creatorLogin });
 }
 
-async function runIsActive(client, repo, runId) {
+async function workflowRunStatus(client, repo, runId) {
   const response = await client.getOptional(`/repos/${repo}/actions/runs/${runId}`);
   if (response.status === 404) {
-    return false;
+    return null;
   }
   if (!isPullObject(response.data)) {
     throw new PairingError(`run response for ${repo} run ${runId} is not an object`);
   }
-  return ACTIVE_RUN_STATUSES.has(response.data.status);
+  return response.data.status;
+}
+
+export async function runIsActive(client, repo, runId) {
+  const status = await workflowRunStatus(client, repo, runId);
+  return status !== null && status !== 'completed';
 }
 
 // A chatty trigger must not start a second shared run for an exact pair that
@@ -450,7 +475,7 @@ export async function inspectPair({ client, startRepo, startPr }) {
     return invalidateResult(result, `${startRepo}#${startNumber} not found`);
   }
   setSide(result, startRepo, startPull);
-  const startFiles = await pullFiles(client, startRepo, startNumber);
+  const startFiles = await pullFiles(client, startRepo, startNumber, startPull);
   if (!isCompanionActive(startFiles)) {
     return invalidateResult(result, `${COMPANION_PATH} is not active for ${startRepo}#${startNumber}`);
   }
@@ -505,7 +530,7 @@ export async function inspectPair({ client, startRepo, startPr }) {
   setSide(result, companionRepo, companionPull);
   const companionEffective = effectivePullHead(companionPull);
   setEffective(result, companionRepo, companionEffective);
-  const companionFiles = await pullFiles(client, companionRepo, companionPr);
+  const companionFiles = await pullFiles(client, companionRepo, companionPr, companionPull);
   if (!isCompanionActive(companionFiles)) {
     return invalidateResult(result, `${COMPANION_PATH} is not active for ${companionRepo}#${companionPr}`);
   }
@@ -738,7 +763,7 @@ async function invalidatePreviousCompanion(client, env, deps, startRepo, startPr
   if (!SHA_RE.test(previousHead)) {
     return;
   }
-  const previousFiles = await pullFiles(client, previousRepo, previous.pull_request);
+  const previousFiles = await pullFiles(client, previousRepo, previous.pull_request, previousPull);
   if (!isCompanionActive(previousFiles)) {
     return;
   }
@@ -784,7 +809,18 @@ function newestRun(runs) {
   })[0];
 }
 
-export async function rerunLocalWorkflow(client, repo, sha) {
+export async function rerunLocalWorkflow(
+  client,
+  repo,
+  sha,
+  {
+    sleep = delay,
+    now = Date.now,
+    pollIntervalMs = RERUN_POLL_INTERVAL_MS,
+    pollTimeoutMs = RERUN_POLL_TIMEOUT_MS,
+    warn = console.warn,
+  } = {},
+) {
   if (!sha) {
     return false;
   }
@@ -806,7 +842,26 @@ export async function rerunLocalWorkflow(client, repo, sha) {
     return false;
   }
   if (run.status !== 'completed') {
-    return false;
+    const deadline = now() + pollTimeoutMs;
+    const maxPolls = Math.ceil(pollTimeoutMs / pollIntervalMs);
+    for (let poll = 0; ; poll += 1) {
+      const status = await workflowRunStatus(client, repo, run.id);
+      if (status === null) {
+        warn(`warning: ${repo} run ${run.id} disappeared while waiting for Full-stack E2E; not rerunning`);
+        return false;
+      }
+      if (status === 'completed') {
+        break;
+      }
+      const remaining = deadline - now();
+      if (poll >= maxPolls || remaining <= 0) {
+        warn(
+          `warning: ${repo} run ${run.id} was still ${status} after ${pollTimeoutMs / 60_000} minutes; not rerunning Full-stack E2E`,
+        );
+        return false;
+      }
+      await sleep(Math.min(pollIntervalMs, remaining));
+    }
   }
   const jobs = await client.paginateList(
     `/repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`,
@@ -946,7 +1001,10 @@ async function publishCommand(client, env, deps, reviewGate) {
     mutual: boolValue(env.MUTUAL),
   };
   const startRepo = env.START_REPO || APP_REPO;
-  const startPr = requirePositiveInteger(env.START_PR || expected.app_pr, 'START_PR');
+  const startPr = requirePositiveInteger(
+    env.START_PR || (startRepo === APP_REPO ? expected.app_pr : expected.backend_pr),
+    'START_PR',
+  );
   const fresh = await resolvePair({
     client,
     startRepo,
@@ -1001,6 +1059,9 @@ async function invalidateCommand(client, env, deps) {
   try {
     current = await inspectPair({ client, startRepo, startPr });
   } catch (error) {
+    if (error?.code === 'pull-files-truncated') {
+      throw error;
+    }
     deps.log(`current pair could not be inspected during invalidation: ${error.message}`);
   }
   await invalidateOpenPair(client, current, env);
@@ -1027,7 +1088,7 @@ async function verifyAttestationCommand(client, env, deps) {
     if (env.APP_SHA && env.APP_SHA !== head) {
       throw new PairingError('pull request head moved during the run');
     }
-    const files = await pullFiles(client, APP_REPO, appPr);
+    const files = await pullFiles(client, APP_REPO, appPr, pull);
     if (!isCompanionActive(files)) {
       throw new PairingError(`${COMPANION_PATH} is not active`);
     }
