@@ -497,8 +497,10 @@ export default function PasskeyDesk({
         return;
       }
       await navigator.clipboard.writeText(address);
+      if (!mounted.current) return;
       toastMessage('Address copied');
     } catch {
+      if (!mounted.current) return;
       displayToast(translate('screens/home', PASSKEY_COPY_UNAVAILABLE));
     }
   };

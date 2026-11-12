@@ -14,6 +14,9 @@ export function useLayoutOptions({
 }: LayoutConfig): void {
   const { setConfig } = useLayoutConfigContext();
   const prevConfig = useRef<LayoutConfig>();
+  const onBackRef = useRef(onBack);
+  const stableOnBack = useRef(() => onBackRef.current?.());
+  onBackRef.current = onBack;
 
   useLayoutEffect(() => {
     const newConfig: LayoutConfig = {
@@ -24,7 +27,7 @@ export function useLayoutOptions({
       noHeader,
       noMaxWidth,
       smallMenu,
-      onBack,
+      onBack: onBack === undefined ? undefined : stableOnBack.current,
     };
 
     const changed = !isEqual(

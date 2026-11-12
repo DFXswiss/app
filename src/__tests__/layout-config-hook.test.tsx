@@ -26,15 +26,22 @@ describe('useLayoutOptions', () => {
         title: 'Wallet',
         noHeader: true,
         noMaxWidth: true,
-        onBack: firstBack,
+        onBack: expect.any(Function),
       }),
     );
+    const publishedBack = mockSetConfig.mock.calls[0][0].onBack as (() => void) | undefined;
+    if (publishedBack === undefined) throw new Error('Expected a published back handler');
     expect(mockSetConfig).toHaveBeenCalledTimes(1);
     rerender(<Configured options={{ title: 'Wallet', noHeader: true, noMaxWidth: true, onBack: secondBack }} />);
+    publishedBack();
+    expect(secondBack).toHaveBeenCalledTimes(1);
+    expect(firstBack).not.toHaveBeenCalled();
     expect(mockSetConfig).toHaveBeenCalledTimes(1);
     rerender(<Configured options={{ title: 'Wallet', noHeader: true, noMaxWidth: false, onBack: secondBack }} />);
     expect(mockSetConfig).toHaveBeenCalledTimes(2);
-    expect(mockSetConfig).toHaveBeenLastCalledWith(expect.objectContaining({ noHeader: true, noMaxWidth: false }));
+    expect(mockSetConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({ noHeader: true, noMaxWidth: false, onBack: publishedBack }),
+    );
     rerender(<Configured options={{ title: 'Wallet', noHeader: false, noMaxWidth: false }} />);
     expect(mockSetConfig).toHaveBeenCalledTimes(3);
     expect(mockSetConfig).toHaveBeenCalledWith(
@@ -45,6 +52,8 @@ describe('useLayoutOptions', () => {
         onBack: undefined,
       }),
     );
+    publishedBack();
+    expect(secondBack).toHaveBeenCalledTimes(1);
     unmount();
     expect(mockSetConfig).toHaveBeenLastCalledWith({});
   });

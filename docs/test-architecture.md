@@ -578,6 +578,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/layout-config-hook.test.tsx` uses `mockSetConfig`; a green run does not prove that the real provider updates its context.
 - **The passkey sheet unit test replaces the active element in one case.**
   `src/__tests__/passkey-sheet.test.tsx` stubs `document.activeElement`; a green run does not prove browser focus behaviour for that case.
+- **The passkey sheet unit test replaces the settings context.**
+  `src/__tests__/passkey-sheet.test.tsx` stubs `useSettingsContext` so `translate` returns the key. A green run does not prove a real translation of the Close label.
+- **The passkey wallet card unit test replaces the settings context.**
+  `src/__tests__/passkey-wallet-card.test.tsx` stubs `useSettingsContext` so `translate` returns the key and `locale` is fixed to `en-US`. A green run does not prove a real translation, the real context wiring, or the number format of another locale.
 - **The passkey wallet dialog unit test replaces scrolling.**
   `src/__tests__/passkey-wallet-dialogs.test.tsx` stubs `scrollIntoView`; a green run does not prove that a real browser scrolls the note clear of the sticky title.
 - **The passkey wallet dialog unit test prefixes three address families.**
@@ -733,6 +737,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/passkey-wallet-history.test.tsx` replaces `IntersectionObserver`; a green run does not prove a real scroll observer. Its settings-context stub is declared above.
 - **`src/__tests__/layout.test.tsx`: replaced shell modules.**
   The file replaces `App` routes, `useNavigation`, `useAppParams`, `isWebComponent`, `isNode`, `InfoBannerComponent`, and `Navigation` (`forwardRef`). A green run does not prove those modules.
+- **`src/__tests__/layout-redirect.test.tsx`: replaced shell modules.**
+  The file replaces `App` routes, `@dfx.swiss/react`, `useAppHandlingContext`, `useAppParams`, `InfoBannerComponent`, and `Navigation` (`forwardRef`). A green run does not prove those modules.
 - **`e2e-stack/specs/cross-cutting.spec.ts`: injected transaction errors.**
   The API-error tests fulfil transaction fetches with HTTP 500, 400 and 403 and with the injected message, and one test answers later API calls with 401. The 401 case requires a Login control or a path of `/login`; a path of `/` alone does not pass. A green run does not prove the API returns those statuses or that a real session ends that way.
 - **The wallet-client unit test replaces the wallet package and the core HTTP client.**

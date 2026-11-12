@@ -644,6 +644,44 @@ describe('ConnectPasskey', () => {
     }
   });
 
+  it.each(['resolves', 'rejects'] as const)(
+    'does not show a copy toast after the desk unmounts when writeText %s',
+    async (outcome) => {
+      jest.useFakeTimers();
+      let settleWrite = () => undefined;
+      const writeText = jest.fn(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            settleWrite = () => {
+              if (outcome === 'resolves') resolve();
+              else reject(new Error('clipboard denied'));
+            };
+          }),
+      );
+      const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+      setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+
+      try {
+        const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' }));
+        expect(writeText).toHaveBeenCalledWith(SEED);
+        view.unmount();
+        await act(async () => {
+          settleWrite();
+          await Promise.resolve();
+        });
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+        expect(jest.getTimerCount()).toBe(0);
+      } finally {
+        if (original) Object.defineProperty(navigator, 'clipboard', original);
+        else delete (navigator as { clipboard?: Clipboard }).clipboard;
+        jest.useRealTimers();
+      }
+    },
+  );
+
   it.each(['missing', 'throws'] as const)('reports a %s clipboard without throwing', async (mode) => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');

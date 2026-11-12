@@ -79,6 +79,67 @@ describe('useClipboard', () => {
       expect(result.current.isCopying).toBe(false);
     });
 
+    it('keeps isCopying true for 500 milliseconds after the latest successful copy', async () => {
+      writeText.mockResolvedValue(undefined);
+      const { result } = renderHook(() => useClipboard());
+
+      await act(async () => {
+        result.current.copy('first');
+      });
+      act(() => {
+        jest.advanceTimersByTime(400);
+      });
+
+      await act(async () => {
+        result.current.copy('second');
+      });
+      act(() => {
+        jest.advanceTimersByTime(100);
+      });
+      expect(result.current.isCopying).toBe(true);
+
+      act(() => {
+        jest.advanceTimersByTime(400);
+      });
+      expect(result.current.isCopying).toBe(false);
+    });
+
+    it('ignores a successful write that settles after unmount', async () => {
+      let resolveWrite!: () => void;
+      writeText.mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveWrite = resolve;
+        }),
+      );
+      const { result, unmount } = renderHook(() => useClipboard());
+
+      act(() => {
+        result.current.copy('test text');
+      });
+      unmount();
+      await act(async () => {
+        resolveWrite();
+        await Promise.resolve();
+      });
+
+      expect(result.current.isCopying).toBe(false);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('clears the copied timer on unmount', async () => {
+      writeText.mockResolvedValue(undefined);
+      const { result, unmount } = renderHook(() => useClipboard());
+
+      await act(async () => {
+        result.current.copy('test text');
+      });
+      expect(result.current.isCopying).toBe(true);
+      expect(jest.getTimerCount()).toBe(1);
+
+      unmount();
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
     it('calls writeText on the clipboard object and does not fall back when a detached call would throw', async () => {
       writeText.mockImplementation(function (this: unknown) {
         if (this !== navigator.clipboard) throw new TypeError('Illegal invocation');
