@@ -243,6 +243,107 @@ test.describe('Auth area e2e', () => {
     expect(normPath(new URL(page.url()).pathname)).toBe('/account');
   });
 
+  test('command-line wallet login trims a signature pasted with surrounding whitespace', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet();
+    const signInBodies: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && /\/v1\/auth$/.test(new URL(request.url()).pathname)) {
+        signInBodies.push(request.postData() ?? '');
+      }
+    });
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(`  ${signature}\n `);
+    await signatureInput.blur();
+
+    await expect(page.getByText('Invalid pattern')).toHaveCount(0);
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+    expect(signInBodies.length).toBeGreaterThan(0);
+    for (const body of signInBodies) expect(JSON.parse(body).signature).toBe(signature);
+    const user = await queryOne<{ address: string }>('SELECT address FROM "user" WHERE LOWER(address) = LOWER($1)', [
+      wallet.address,
+    ]);
+    expect(user?.address.toLowerCase()).toBe(wallet.address.toLowerCase());
+  });
+
+  test('command-line wallet login shows a field error for a malformed signature and sends nothing', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet();
+    const sentRequests: string[] = [];
+    page.on('request', (request) => {
+      const { pathname } = new URL(request.url());
+      if (request.method() === 'POST' && /\/v1\/(auth|log\/clientError)$/.test(pathname)) sentRequests.push(pathname);
+    });
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    const login = page.getByRole('button', { name: 'Login' });
+    for (const malformed of [
+      ['-----BEGIN ETHEREUM SIGNED MESSAGE-----', message, '-----BEGIN SIGNATURE-----', signature].join('\n'),
+      `signature ${signature}`,
+    ]) {
+      await signatureInput.fill(malformed);
+      await signatureInput.blur();
+
+      await expect(page.getByText('Invalid pattern')).toBeVisible();
+      await expect(login).toBeDisabled();
+      await login.click({ force: true });
+    }
+
+    await page.waitForTimeout(2000);
+    expect(sentRequests).toEqual([]);
+    await expect(page.getByText('Connection failed!')).toHaveCount(0);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/login');
+    const user = await queryOne<{ id: number }>('SELECT id FROM "user" WHERE LOWER(address) = LOWER($1)', [
+      wallet.address,
+    ]);
+    expect(user).toBeUndefined();
+  });
+
   test('command-line login on /login with a deleted address reactivates and continues to /buy', async ({ page }) => {
     test.setTimeout(90000);
 
