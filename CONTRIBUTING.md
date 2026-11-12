@@ -158,10 +158,12 @@ A pull request that adds a fake test, or that presents a fake test as the
 coverage of a website function, is rejected. Removing a fake test is allowed.
 A green check that did not run the real test does not satisfy this rule. On a
 pull request into `develop`, apply `ci:full` so the full-stack harness runs
-the test. A job that records `mode=none` is not a run. A function this pull
-request does not touch is not an excuse to add a fake test, and a fake test
-that already exists does not count as the real test of a function this pull
-request changes.
+the test, or pair the pull request with its backend companion as described
+under [Paired backend and app pull requests](#paired-backend-and-app-pull-requests);
+the paired coordinator runs the one shared stack. A job that records
+`mode=none` is not a run. A function this pull request does not touch is not
+an excuse to add a fake test, and a fake test that already exists does not
+count as the real test of a function this pull request changes.
 
 A unit test of pure logic may exist. It is not coverage of a website function,
 and it must not stand in for the real test.
@@ -263,10 +265,10 @@ characters, test/build infrastructure, and deleting or renaming files under
 `src/` or `functions/`. Lint, Markdown formatting (`format:md:check`),
 `build:dev` and `widget:dev` always run in full when the job runs. A standard
 PR into `develop` (no `ci:full`) must finish CI in under 10 minutes wall-clock;
-the full-stack E2E job is an in-job no-op unless `ci:full` is set. Full-stack
-E2E is called from PR CI after Build and test succeed, so it cannot start
-while unit tests are still queued. Full runs (`ci:full`, PRs into `main`, a
-bare `workflow_dispatch`) may take longer.
+the full-stack E2E job is an in-job no-op unless `ci:full` is set or the PR is
+paired. Full-stack E2E is called from PR CI after Build and test succeed, so it
+cannot start while unit tests are still queued. Full runs (`ci:full`, PRs into
+`main`, a bare `workflow_dispatch`, and paired runs) may take longer.
 
 #### Coverage
 
@@ -397,13 +399,85 @@ does not start CI. After a
 fresh A38 enforce pass on
 the current head, `dfx pr guard` approves those waiting initial runs. Do not
 ask a maintainer to approve workflow runs. A develop PR without `ci:full`
-records `mode=none` and does not bring the stack up (the job still runs). Apply
+and without a pair records `mode=none` and does not bring the stack up (the job
+still runs). Apply
 `ci:full`, target `main`, or run a bare `workflow_dispatch` to force a full run.
+A develop pull request that declares a pair instead records
+`mode=paired-attested` after the trusted coordinator verified its exact pair; a
+release pull request into `main` always runs the full stack; see
+[Paired backend and app pull requests](#paired-backend-and-app-pull-requests).
 
 A pull request that adds or changes a website function must add or update the
 real test of that function in this harness, and that test must have run. See
 [Real tests](#real-tests). Opening the route, or injecting a finished session,
 does not meet that rule.
+
+### Paired backend and app pull requests
+
+A feature that needs one backend pull request and one app pull request is
+declared as a pair in code. Add `e2e-companion.json` at the root of each pull
+request's repository:
+
+```json
+{ "repository": "DFXswiss/backend", "pull_request": 6140 }
+```
+
+The app file names `DFXswiss/backend`; the backend file names `DFXswiss/app`.
+The object must contain exactly `repository` and `pull_request`, and the number
+must be a positive integer. The file is active only when the pull request's own
+diff adds, modifies, or renames it. An unchanged copy inherited from `develop`
+does not pair anything, and deleting it removes the pairing.
+
+Both companion files must be active and name each other's pull request. Both
+pull requests must target `develop`. Every **open** side's exact head must
+carry its own repository's complete A38 review state before any paired code
+runs; each repository is evaluated with its own pinned guard checkout and the
+guard identity from `.github/e2e-pairing/guard-identities.json`. The selected
+first-review comment must name exactly that head. A merged companion is
+resolved through its immutable merge commit, not through moving `develop`.
+The remaining open side is then re-resolved, re-reviewed and re-attested
+against the companion's merge commit. A companion closed without merge makes
+the pair invalid and the other open side receives a `failure` status.
+
+The one shared run happens in
+[`.github/workflows/e2e-paired.yml`](.github/workflows/e2e-paired.yml) on an
+ephemeral GitHub-hosted `ubuntu-latest` runner. Its resolve and publish jobs
+use a dedicated GitHub App token, while the job that executes the app and
+backend heads has only `contents: read` and no App credential. The backend
+read-only deploy key is used in exactly one fetch step, with an explicit
+per-command `GIT_SSH_COMMAND`, and is removed before any pull-request-controlled
+file runs. Before the shared run, the App posts `pending` on every open head
+with a description naming both exact heads and the run. A result is a commit status
+`Full-stack E2E (paired)` posted by that App on every open head of the pair.
+The local `Full-stack E2E` job accepts only the newest App status for the exact
+current heads: a valid `success`, or a `pending` running marker whose run is
+still `in_progress` or `queued`. It never falls back to an older success and
+never matches by wildcard. The result is therefore one run of both exact
+heads, not two independent stacks.
+
+A push to either pull request invalidates the previous result and reruns the
+local jobs; a stale green status cannot be reused. Review comments do not
+cancel a running shared run. A backend `repository_dispatch` follows the same
+invalidation path as an app push, using the dispatch's `before` head as a hint
+to find the previous companion at that SHA. A run is cancelled only after the
+re-resolved heads prove that a head of the pair moved; a dispatch does not
+cancel unconditionally. If both pull requests are open, merge order is free.
+After one side merges, the remaining side resolves against that side's merge
+commit and is re-run and re-attested. If a side is closed without merging, the
+pair fails closed. A pair whose both sides are already merged is not run.
+
+Administrators provision the GitHub App on `DFXswiss/app` and
+`DFXswiss/backend` with commit-status read/write, Actions read/write, Contents
+read/write, Pull requests read, Issues read, and Metadata read. Both
+repositories need the variables `E2E_PAIR_APP_CLIENT_ID` and
+`E2E_PAIR_APP_SLUG`. The private key is **not** a repository secret: in
+`DFXswiss/app`, create the GitHub Actions environment `e2e-pairing` with a
+deployment-branch policy limited to `develop`, and store
+`E2E_PAIR_APP_PRIVATE_KEY` as an environment secret there. The `resolve` and
+`publish` jobs declare `environment: e2e-pairing`, so no pull-request workflow
+— including a same-repository pull request that edits a workflow — can read the
+key. No `A38_GUARD_APP_SLUG` variable is used. Contributors cannot provision or
+bypass this App.
 
 Coverage of the route tree is enforced, not tracked by hand. The suite reads the
 route definitions out of `src/App.tsx` and fails if a route is claimed by no test
@@ -414,10 +488,12 @@ makes, and the gate compares that recording against the route list, so a claim
 pointing at a file that never visits the route does not satisfy it. Adding a route
 therefore means adding a claim in `e2e-stack/specs/registry/` and a test that
 navigates there. That gate runs only when the stack comes up (`ci:full`, a PR
-into `main`, or a bare `workflow_dispatch`); a standard develop PR without
-`ci:full` does not enforce it. Opening a route satisfies only this route gate.
-It does not satisfy [Real tests](#real-tests). A green check on a run that
-records `mode=none` does not satisfy that rule either.
+into `main`, a bare `workflow_dispatch`, or a verified paired run); a standard
+develop PR without `ci:full` and without a pair does not enforce it. Opening a
+route satisfies only this route gate. It does not satisfy
+[Real tests](#real-tests). A green check on a run that records `mode=none` does
+not satisfy that rule either; a paired run enforces the same full-run route
+gate in the coordinator.
 
 Run locally:
 

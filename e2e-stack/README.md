@@ -138,10 +138,65 @@ This harness checks function, not appearance. Draft pull requests run the
 job after Build and test. GitHub may hold fork runs as `action_required`.
 Ready does not start CI. After a fresh A38 enforce pass, `dfx pr guard`
 approves those waiting initial runs. A develop PR
-without `ci:full` records `mode=none` and does
+without `ci:full` and without a pair records `mode=none` and does
 not bring the stack up. There is no selected/partial mode: `ci:full`, PRs
 into `main`, and a bare `workflow_dispatch` (empty `base_ref`) force a full
-run. Both suites exist side by side and serve different purposes.
+run. A develop pull request that declares a pair instead records
+`mode=paired-attested` and waits for the shared coordinator's status; a release
+pull request into `main` always runs the full stack. Both
+suites exist side by side and serve different purposes.
+
+## Paired app and backend pull requests
+
+The app repository hosts the trusted coordinator in
+[`.github/workflows/e2e-paired.yml`](../.github/workflows/e2e-paired.yml). It
+uses `e2e-companion.json` in the root of each repository to pair one app pull
+request with one backend pull request. The file is active only when that pull
+request's own diff adds, modifies, or renames it. Both files must name each
+other and both pull requests must target `develop`. Every open side must carry
+its own repository's complete A38 review state at its exact head before the
+coordinator runs any pull-request code. Each repository is checked with its
+own pinned A38 checkout and the guard identity from
+`.github/e2e-pairing/guard-identities.json`.
+
+The coordinator runs once on an ephemeral GitHub-hosted `ubuntu-latest`
+runner. Resolve and publish are privileged jobs that use a dedicated GitHub
+App token on both repositories. Execution is a separate job with only
+`contents: read`; it checks out both exact heads, verifies each unmerged head
+against `refs/pull/<n>/head`, uses the backend deploy key only in the single
+fetch step that removes it before any PR code runs, and then runs the same
+stack steps as this workflow. Before the run, the App posts `pending` on every
+open head with a description naming both exact heads and the run. It posts
+`Full-stack E2E (paired)` on every open head of the pair. The local required
+`Full-stack E2E` job reads the newest App status for the exact current heads
+and accepts a valid `success`, or a `pending` running marker whose run is still
+active. It never falls back to an older success and never matches by wildcard,
+so no second stack is started.
+
+A push to either side posts `pending`, reruns the local jobs, and invalidates
+the old result. Review comments do not cancel a running shared run. A backend
+`repository_dispatch` takes the same invalidation path, using its `before` head
+as a hint to find the previous companion at that SHA. The coordinator cancels
+a run only after the re-resolved heads prove that a head of the pair moved.
+Merge order is free: a merged companion is resolved through its merge commit,
+and the remaining open side is re-run and re-attested. A companion closed
+without merge posts `failure` on the open companion. If both sides are merged,
+nothing is run. A green paired run proves that the exact app and backend heads
+started together against a real Postgres database and passed the full suite and
+route gate. It does not prove external providers, money movement, the migration
+chain, or a future merge result.
+
+Administrators install the pairing GitHub App on both repositories with commit
+status read/write, Actions read/write, Contents read/write, Pull requests read,
+Issues read, and Metadata read. Both repositories set `E2E_PAIR_APP_CLIENT_ID`
+and `E2E_PAIR_APP_SLUG` as variables. The private key is **not** a repository
+secret: in `DFXswiss/app`, create the GitHub Actions environment `e2e-pairing`
+with a deployment-branch policy limited to `develop`, and store
+`E2E_PAIR_APP_PRIVATE_KEY` as an environment secret there. The `resolve` and
+`publish` jobs declare `environment: e2e-pairing`, so no pull-request workflow
+— including a same-repository pull request that edits a workflow — can read it.
+No `A38_GUARD_APP_SLUG` variable is used; the guard identity is the committed
+per-repository map.
 
 ## Relationship with the API repository
 

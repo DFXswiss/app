@@ -1,0 +1,607 @@
+# Trusted coordinator for one app PR plus one backend PR.
+#
+# Every trigger runs this default-branch definition. Privileged jobs resolve
+# and publish with a dedicated GitHub App token; the run job executes the two
+# exact PR heads with no write token and no App credential. A status is
+# therefore attributable to the App, while a pull request cannot alter the
+# workflow that posts it.
+#
+# Matching uses only the exact-pair App status on the current heads. The run
+# name is informational. Equal pull-request numbers on the two repositories
+# cannot collide because every status names both sides and both heads.
+
+name: Paired full-stack E2E
+run-name: Paired full-stack E2E
+
+on:
+  pull_request_target:
+    branches:
+      - develop
+    types: [opened, synchronize, reopened, closed]
+  issue_comment:
+    types: [created, edited]
+  repository_dispatch:
+    types: [e2e-pair-backend]
+  workflow_dispatch:
+    inputs:
+      app_pr:
+        description: App pull request number (exactly one side is required)
+        required: false
+        type: string
+      backend_pr:
+        description: Backend pull request number (exactly one side is required)
+        required: false
+        type: string
+
+permissions: {}
+
+jobs:
+  resolve:
+    name: Resolve pair
+    runs-on: ubuntu-latest
+    environment: e2e-pairing
+    permissions:
+      contents: read
+    # Comment-triggered evaluations are keyed by <repo>-<pr> and never cancel
+    # each other. They skip a shared run when the pair is already attested or
+    # running. Every other event resolves in its own run and is superseded by
+    # the publish-time pair check.
+    concurrency:
+      group: ${{ github.event_name == 'issue_comment' && format('e2e-paired-eval-{0}-{1}', github.repository, github.event.issue.number) || format('e2e-paired-resolve-{0}', github.run_id) }}
+      cancel-in-progress: false
+    outputs:
+      app_pr: ${{ steps.resolve.outputs.app_pr }}
+      app_sha: ${{ steps.resolve.outputs.app_sha }}
+      backend_pr: ${{ steps.resolve.outputs.backend_pr }}
+      backend_sha: ${{ steps.resolve.outputs.backend_sha }}
+      backend_merged: ${{ steps.resolve.outputs.backend_merged }}
+      app_merged: ${{ steps.resolve.outputs.app_merged }}
+      mutual: ${{ steps.resolve.outputs.mutual }}
+      valid: ${{ steps.resolve.outputs.valid }}
+      reason: ${{ steps.resolve.outputs.reason }}
+      start_repo: ${{ steps.side.outputs.start_repo }}
+      start_pr: ${{ steps.side.outputs.start_pr }}
+    steps:
+      - name: Check out trusted pairing tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted-e2e-pairing
+          persist-credentials: false
+
+      - name: Mint pairing App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.E2E_PAIR_APP_CLIENT_ID }}
+          private-key: ${{ secrets.E2E_PAIR_APP_PRIVATE_KEY }}
+          owner: DFXswiss
+          repositories: app,backend
+
+      - name: Decide the starting side
+        id: side
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_IS_PR: ${{ github.event.issue.pull_request != null }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          DISPATCH_BACKEND_PR: ${{ github.event.client_payload.backend_pr }}
+          DISPATCH_SENDER: ${{ github.event.sender.login }}
+          APP_SLUG: ${{ vars.E2E_PAIR_APP_SLUG }}
+          INPUT_APP_PR: ${{ inputs.app_pr }}
+          INPUT_BACKEND_PR: ${{ inputs.backend_pr }}
+        run: |
+          set -euo pipefail
+          close() {
+            echo "invalidate=false" >> "$GITHUB_OUTPUT"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          if [ "$EVENT_NAME" = 'pull_request_target' ]; then
+            echo "start_repo=DFXswiss/app" >> "$GITHUB_OUTPUT"
+            echo "start_pr=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "action=$EVENT_ACTION" >> "$GITHUB_OUTPUT"
+            if [ "$EVENT_ACTION" = 'closed' ]; then
+              if [ "$PR_MERGED" = 'true' ]; then
+                # A merge with an open companion still needs a shared run at
+                # the merge commit; the resolve step re-derives the pair.
+                echo "invalidate=false" >> "$GITHUB_OUTPUT"
+                echo "run=true" >> "$GITHUB_OUTPUT"
+              else
+                # Closed without merge: fail the open mutual companion.
+                echo "invalidate=true" >> "$GITHUB_OUTPUT"
+                echo "run=false" >> "$GITHUB_OUTPUT"
+              fi
+            else
+              echo "invalidate=true" >> "$GITHUB_OUTPUT"
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+          if [ "$EVENT_NAME" = 'issue_comment' ]; then
+            if [ "$ISSUE_IS_PR" != 'true' ] || [[ "$COMMENT_BODY" != *'<!-- A38-REVIEW:v1 -->'* ]]; then
+              close
+            fi
+            echo "start_repo=DFXswiss/app" >> "$GITHUB_OUTPUT"
+            echo "start_pr=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "action=$EVENT_ACTION" >> "$GITHUB_OUTPUT"
+            echo "invalidate=false" >> "$GITHUB_OUTPUT"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$EVENT_NAME" = 'repository_dispatch' ]; then
+            if [ "$DISPATCH_SENDER" != "${APP_SLUG}[bot]" ]; then
+              echo '::error::repository_dispatch sender is not the pairing App.'
+              exit 1
+            fi
+            if ! [[ "${DISPATCH_BACKEND_PR:-}" =~ ^[1-9][0-9]*$ ]]; then
+              echo '::error::repository_dispatch payload has no valid backend_pr hint.'
+              exit 1
+            fi
+            echo "start_repo=DFXswiss/backend" >> "$GITHUB_OUTPUT"
+            echo "start_pr=$DISPATCH_BACKEND_PR" >> "$GITHUB_OUTPUT"
+            # The pull-request state is read from the API during resolution; a
+            # closed-unmerged companion is handled there, never by guessing.
+            echo "action=dispatch" >> "$GITHUB_OUTPUT"
+            echo "invalidate=false" >> "$GITHUB_OUTPUT"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+            if { [ -n "${INPUT_APP_PR:-}" ] && [ -n "${INPUT_BACKEND_PR:-}" ]; } ||
+              { [ -z "${INPUT_APP_PR:-}" ] && [ -z "${INPUT_BACKEND_PR:-}" ]; }; then
+              echo '::error::workflow_dispatch needs exactly one of app_pr or backend_pr.'
+              exit 1
+            fi
+            if [ -n "${INPUT_APP_PR:-}" ]; then
+              if ! [[ "$INPUT_APP_PR" =~ ^[1-9][0-9]*$ ]]; then
+                echo '::error::app_pr is not a positive integer.'
+                exit 1
+              fi
+              echo "start_repo=DFXswiss/app" >> "$GITHUB_OUTPUT"
+              echo "start_pr=$INPUT_APP_PR" >> "$GITHUB_OUTPUT"
+            else
+              # The number is a hint only; resolution re-reads the backend PR
+              # and its companion from the API.
+              if ! [[ "$INPUT_BACKEND_PR" =~ ^[1-9][0-9]*$ ]]; then
+                echo '::error::backend_pr is not a positive integer.'
+                exit 1
+              fi
+              echo "start_repo=DFXswiss/backend" >> "$GITHUB_OUTPUT"
+              echo "start_pr=$INPUT_BACKEND_PR" >> "$GITHUB_OUTPUT"
+            fi
+            echo "action=dispatch" >> "$GITHUB_OUTPUT"
+            echo "invalidate=false" >> "$GITHUB_OUTPUT"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          close
+
+      - name: Invalidate stale attestations
+        if: steps.side.outputs.invalidate == 'true'
+        env:
+          START_REPO: ${{ steps.side.outputs.start_repo }}
+          START_PR: ${{ steps.side.outputs.start_pr }}
+          EVENT_NAME: ${{ github.event_name }}
+          ACTION: ${{ steps.side.outputs.action }}
+          PREVIOUS_SHA: ${{ github.event.before || github.event.client_payload.before || '' }}
+          CLOSED: ${{ github.event.action == 'closed' }}
+          MERGED: ${{ github.event.pull_request.merged == true }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "${RUN_URL:-}" = '' ]; then
+            echo '::error::status target URL unavailable.'
+            exit 1
+          fi
+          # Only pushes invalidate a previous result. Review comments and
+          # pairing dispatches may complete a gate or retry, but do not erase
+          # an existing attestation first.
+          node trusted-e2e-pairing/.github/e2e-pairing/cli.mjs invalidate
+
+      # Each repository's A38 review gate is pinned by that repository's own
+      # default branch. Read the pin with the App token (contents API, never a
+      # PR checkout), then install it in a dedicated venv with the token
+      # not passed to the install steps at all.
+      - name: Read the app A38 pin
+        id: app-pin
+        if: steps.side.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          pin="$(
+            gh api "repos/DFXswiss/app/contents/.github/workflows/a38-guard.yml?ref=develop" \
+              --jq '.content' | base64 -d \
+              | sed -n 's/.*DFXswiss\/agent\/\.github\/actions\/a38-guard@\([0-9a-f]\{40\}\).*/\1/p' \
+              | head -n 1
+          )"
+          if ! [[ "$pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::DFXswiss/app develop:.github/workflows/a38-guard.yml has no 40-hex A38 pin.'
+            exit 1
+          fi
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+
+      - name: Read the backend A38 pin
+        id: backend-pin
+        if: steps.side.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          pin="$(
+            gh api "repos/DFXswiss/backend/contents/.github/workflows/a38-guard.yml?ref=develop" \
+              --jq '.content' | base64 -d \
+              | sed -n 's/.*DFXswiss\/agent\/\.github\/actions\/a38-guard@\([0-9a-f]\{40\}\).*/\1/p' \
+              | head -n 1
+          )"
+          if ! [[ "$pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::DFXswiss/backend develop:.github/workflows/a38-guard.yml has no 40-hex A38 pin.'
+            exit 1
+          fi
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+
+      - name: Install app A38 validator
+        if: steps.side.outputs.run == 'true'
+        env:
+          PIN: ${{ steps.app-pin.outputs.pin }}
+        run: |
+          set -euo pipefail
+          python -m venv .a38-venv-app
+          GIT_TERMINAL_PROMPT=0 .a38-venv-app/bin/python -m pip install --quiet --disable-pip-version-check --no-input "git+https://github.com/DFXswiss/agent@${PIN}"
+
+      - name: Install backend A38 validator
+        if: steps.side.outputs.run == 'true'
+        env:
+          PIN: ${{ steps.backend-pin.outputs.pin }}
+        run: |
+          set -euo pipefail
+          python -m venv .a38-venv-backend
+          GIT_TERMINAL_PROMPT=0 .a38-venv-backend/bin/python -m pip install --quiet --disable-pip-version-check --no-input "git+https://github.com/DFXswiss/agent@${PIN}"
+
+      - name: Resolve pair and review gates
+        id: resolve
+        if: steps.side.outputs.run == 'true'
+        env:
+          START_REPO: ${{ steps.side.outputs.start_repo }}
+          START_PR: ${{ steps.side.outputs.start_pr }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ steps.side.outputs.action }}
+          PREVIOUS_SHA: ${{ github.event.before || github.event.client_payload.before || '' }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          E2E_PAIR_APP_SLUG: ${{ vars.E2E_PAIR_APP_SLUG }}
+          REVIEW_GATE_PYTHON_APP: ${{ github.workspace }}/.a38-venv-app/bin/python
+          REVIEW_GATE_PYTHON_BACKEND: ${{ github.workspace }}/.a38-venv-backend/bin/python
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node trusted-e2e-pairing/.github/e2e-pairing/cli.mjs resolve
+
+      - name: Report invalid pair
+        if: steps.side.outputs.run == 'true' && steps.resolve.outputs.valid != 'true'
+        env:
+          REASON: ${{ steps.resolve.outputs.reason }}
+        run: |
+          set -euo pipefail
+          reason="${REASON:-pair invalid}"
+          if [ "${#reason}" -gt 140 ]; then
+            reason="${reason:0:139}…"
+          fi
+          echo "::warning::${reason}"
+
+      - name: Reject an event that cannot identify a side
+        if: steps.side.outputs.run != 'true' && steps.side.outputs.invalidate != 'true'
+        run: |
+          set -euo pipefail
+          if [ '${{ github.event_name }}' = 'workflow_dispatch' ] || [ '${{ github.event_name }}' = 'repository_dispatch' ]; then
+            echo '::error::the event did not identify a pull request to pair.'
+            exit 1
+          fi
+          echo 'Ignored: the event is not a pull-request review comment or pairing dispatch.'
+
+  run:
+    name: Run paired stack
+    needs: resolve
+    if: needs.resolve.outputs.valid == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    # One shared run per pair. The resolve job cancels a run only after it has
+    # proved from the previous head's exact running marker that a head moved.
+    # GitHub's automatic cancellation cannot make that proof, so it stays off.
+    concurrency:
+      group: e2e-paired-run-app${{ needs.resolve.outputs.app_pr }}-backend${{ needs.resolve.outputs.backend_pr }}
+      cancel-in-progress: false
+    outputs:
+      result: ${{ steps.result.outputs.result }}
+    steps:
+      - name: Check out app head
+        uses: actions/checkout@v4
+        with:
+          repository: DFXswiss/app
+          # An open PR may come from a fork; its commit is reachable through
+          # the pull ref even when the base repository cannot fetch the SHA.
+          ref: ${{ needs.resolve.outputs.app_merged == 'true' && needs.resolve.outputs.app_sha || format('refs/pull/{0}/head', needs.resolve.outputs.app_pr) }}
+          persist-credentials: false
+
+      - name: Verify app pull-request head
+        if: needs.resolve.outputs.app_merged != 'true'
+        env:
+          APP_PR: ${{ needs.resolve.outputs.app_pr }}
+          APP_SHA: ${{ needs.resolve.outputs.app_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin "refs/pull/${APP_PR}/head:refs/remotes/origin/e2e-pair-app-head"
+          test "$(git rev-parse HEAD)" = "$APP_SHA"
+          test "$(git rev-parse refs/remotes/origin/e2e-pair-app-head)" = "$APP_SHA"
+
+      # The backend deploy key must never be reachable through a checkout's
+      # git configuration that PR code could later read. Fetch into a fresh git
+      # repository outside GITHUB_WORKSPACE so a PR-planted .git, hook, or
+      # config cannot influence it. This single step runs before any
+      # PR-controlled file executes, uses an explicit per-command
+      # GIT_SSH_COMMAND, verifies the fetched commit, removes the key and host
+      # keys on every exit path, and only then moves a .git-free tree into the
+      # workspace.
+      - name: Fetch backend pull-request head without a checkout credential
+        env:
+          KEY: ${{ secrets.E2E_API_CHECKOUT_KEY }}
+          BACKEND_PR: ${{ needs.resolve.outputs.backend_pr }}
+          BACKEND_SHA: ${{ needs.resolve.outputs.backend_sha }}
+          BACKEND_MERGED: ${{ needs.resolve.outputs.backend_merged }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/backend-key"
+          known_hosts="$RUNNER_TEMP/known_hosts"
+          backend_dir="$(mktemp -d "$RUNNER_TEMP/backend.XXXXXX")"
+          git_ssh_command=""
+          run_git() {
+            GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+              git -c core.hooksPath=/dev/null -c core.fsmonitor=false \
+              "$@"
+          }
+          cleanup() {
+            rm -f -- "$key" "$known_hosts"
+            rm -rf -- "$backend_dir"
+          }
+          trap cleanup EXIT
+          if [ -z "${KEY:-}" ]; then
+            echo '::error::E2E_API_CHECKOUT_KEY is not available to this run.'
+            exit 1
+          fi
+          if ! [[ "$BACKEND_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::backend head is not a 40-hex commit.'
+            exit 1
+          fi
+          case "$backend_dir" in
+            "$GITHUB_WORKSPACE"/*)
+              echo '::error::backend checkout was created inside the pull-request workspace.'
+              exit 1
+              ;;
+          esac
+          umask 077
+          printf '%s\n' "$KEY" > "$key"
+          chmod 600 "$key"
+          # Host keys come from GitHub's published meta, not from ssh-keyscan.
+          # No token is sent there: the endpoint is public.
+          (
+            unset GH_TOKEN
+            curl --silent --show-error --fail https://api.github.com/meta
+          ) | jq -r '.ssh_keys[] | "github.com " + .' > "$known_hosts"
+          if [ ! -s "$known_hosts" ]; then
+            echo '::error::could not read GitHub SSH host keys.'
+            exit 1
+          fi
+          if [ "$BACKEND_MERGED" = 'true' ]; then
+            ref="$BACKEND_SHA"
+          else
+            if ! [[ "$BACKEND_PR" =~ ^[1-9][0-9]*$ ]]; then
+              echo '::error::backend pull-request number is invalid.'
+              exit 1
+            fi
+            ref="refs/pull/${BACKEND_PR}/head"
+          fi
+          run_git init --quiet --template= "$backend_dir"
+          if [ -d "$backend_dir/.git/hooks" ] && [ -n "$(find "$backend_dir/.git/hooks" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+            echo '::error::backend checkout has unexpected git hooks before checkout.'
+            exit 1
+          fi
+          git_ssh_command="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$known_hosts -o StrictHostKeyChecking=yes"
+          export GIT_SSH_COMMAND="$git_ssh_command"
+          run_git -C "$backend_dir" fetch --quiet --depth=1 git@github.com:DFXswiss/backend.git "$ref"
+          run_git -C "$backend_dir" checkout --quiet --detach --no-recurse-submodules FETCH_HEAD
+          if [ "$(run_git -C "$backend_dir" rev-parse HEAD)" != "$BACKEND_SHA" ]; then
+            echo '::error::fetched backend commit does not match the resolved head.'
+            exit 1
+          fi
+          rm -f -- "$key" "$known_hosts"
+          test ! -e "$key"
+          test ! -e "$known_hosts"
+          # Remove a planted api-repo path without following a symlink. Only
+          # the already verified tree is then moved into the workspace.
+          if [ -L "$GITHUB_WORKSPACE/api-repo" ]; then
+            rm -f -- "$GITHUB_WORKSPACE/api-repo"
+          fi
+          rm -rf -- "$GITHUB_WORKSPACE/api-repo"
+          rm -rf -- "$backend_dir/.git"
+          mv -- "$backend_dir" "$GITHUB_WORKSPACE/api-repo"
+
+      # Paired mode has no bootstrap fallback: the companion backend must carry
+      # the guarded process error handling itself.
+      - name: Require the backend guarded error handling
+        run: |
+          set -euo pipefail
+          if [ ! -f api-repo/src/shared/utils/safe-log.ts ]; then
+            echo '::error::The paired backend head does not carry src/shared/utils/safe-log.ts.'
+            echo '::error::Paired mode does not bootstrap the API from another revision; fix the companion backend head.'
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: e2e-stack/package-lock.json
+
+      - name: Type-check the harness
+        working-directory: e2e-stack
+        run: |
+          npm ci
+          npx tsc --noEmit
+
+      - name: Bring stack up
+        run: E2E_API_REPO=$GITHUB_WORKSPACE/api-repo bash e2e-stack/scripts/up.sh
+
+      - name: Run Playwright tests
+        id: playwright
+        run: |
+          E2E_FULL_RUN=1 docker compose \
+            -p dfx-e2e-stack \
+            --env-file e2e-stack/.env.generated \
+            -f e2e-stack/compose.yml \
+            -f e2e-stack/compose.tests.yml \
+            run --name dfx-e2e-stack-tests tests
+
+      - name: Collect test artifacts
+        if: always()
+        run: |
+          mkdir -p e2e-stack-artifacts
+          docker cp dfx-e2e-stack-tests:/work/test-results e2e-stack-artifacts/test-results \
+            || docker compose -p dfx-e2e-stack cp dfx-e2e-stack-tests:/work/test-results e2e-stack-artifacts/test-results \
+            || true
+          docker cp dfx-e2e-stack-tests:/work/playwright-report e2e-stack-artifacts/playwright-report \
+            || docker compose -p dfx-e2e-stack cp dfx-e2e-stack-tests:/work/playwright-report e2e-stack-artifacts/playwright-report \
+            || true
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-stack-report
+          path: e2e-stack-artifacts
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Tear down stack
+        if: always()
+        run: bash e2e-stack/scripts/down.sh
+
+      # A red Playwright test fails the job. The outcome step still runs with
+      # `always()` and records `failure`, so `publish` receives `failure` and
+      # attestationStateForRun posts a failing status. Only a Playwright
+      # outcome of `success` is published as success; cancelled/skipped map
+      # to error, never to success.
+      - name: Record Playwright outcome
+        if: always()
+        env:
+          OUTCOME: ${{ steps.playwright.outcome }}
+        run: echo "result=$OUTCOME" >> "$GITHUB_OUTPUT"
+        id: result
+
+  publish:
+    name: Publish pair attestation
+    needs: [resolve, run]
+    if: always() && needs.resolve.outputs.valid == 'true'
+    runs-on: ubuntu-latest
+    environment: e2e-pairing
+    permissions:
+      contents: read
+    # Same pair key as the run, but a publish never cancels anything.
+    concurrency:
+      group: e2e-paired-run-app${{ needs.resolve.outputs.app_pr }}-backend${{ needs.resolve.outputs.backend_pr }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out trusted pairing tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted-e2e-pairing
+          persist-credentials: false
+
+      - name: Mint pairing App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.E2E_PAIR_APP_CLIENT_ID }}
+          private-key: ${{ secrets.E2E_PAIR_APP_PRIVATE_KEY }}
+          owner: DFXswiss
+          repositories: app,backend
+
+      # Same per-repository pins as the resolve job, each in its own venv.
+      - name: Read the app A38 pin
+        id: app-pin
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          pin="$(
+            gh api "repos/DFXswiss/app/contents/.github/workflows/a38-guard.yml?ref=develop" \
+              --jq '.content' | base64 -d \
+              | sed -n 's/.*DFXswiss\/agent\/\.github\/actions\/a38-guard@\([0-9a-f]\{40\}\).*/\1/p' \
+              | head -n 1
+          )"
+          if ! [[ "$pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::DFXswiss/app develop:.github/workflows/a38-guard.yml has no 40-hex A38 pin.'
+            exit 1
+          fi
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+
+      - name: Read the backend A38 pin
+        id: backend-pin
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          pin="$(
+            gh api "repos/DFXswiss/backend/contents/.github/workflows/a38-guard.yml?ref=develop" \
+              --jq '.content' | base64 -d \
+              | sed -n 's/.*DFXswiss\/agent\/\.github\/actions\/a38-guard@\([0-9a-f]\{40\}\).*/\1/p' \
+              | head -n 1
+          )"
+          if ! [[ "$pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::DFXswiss/backend develop:.github/workflows/a38-guard.yml has no 40-hex A38 pin.'
+            exit 1
+          fi
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+
+      - name: Install app A38 validator
+        env:
+          PIN: ${{ steps.app-pin.outputs.pin }}
+        run: |
+          set -euo pipefail
+          python -m venv .a38-venv-app
+          GIT_TERMINAL_PROMPT=0 .a38-venv-app/bin/python -m pip install --quiet --disable-pip-version-check --no-input "git+https://github.com/DFXswiss/agent@${PIN}"
+
+      - name: Install backend A38 validator
+        env:
+          PIN: ${{ steps.backend-pin.outputs.pin }}
+        run: |
+          set -euo pipefail
+          python -m venv .a38-venv-backend
+          GIT_TERMINAL_PROMPT=0 .a38-venv-backend/bin/python -m pip install --quiet --disable-pip-version-check --no-input "git+https://github.com/DFXswiss/agent@${PIN}"
+
+      - name: Publish or supersede
+        env:
+          APP_PR: ${{ needs.resolve.outputs.app_pr }}
+          APP_SHA: ${{ needs.resolve.outputs.app_sha }}
+          BACKEND_PR: ${{ needs.resolve.outputs.backend_pr }}
+          BACKEND_SHA: ${{ needs.resolve.outputs.backend_sha }}
+          APP_MERGED: ${{ needs.resolve.outputs.app_merged }}
+          BACKEND_MERGED: ${{ needs.resolve.outputs.backend_merged }}
+          MUTUAL: ${{ needs.resolve.outputs.mutual }}
+          START_REPO: ${{ needs.resolve.outputs.start_repo }}
+          START_PR: ${{ needs.resolve.outputs.start_pr }}
+          RUN_RESULT: ${{ needs.run.outputs.result }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          E2E_PAIR_APP_SLUG: ${{ vars.E2E_PAIR_APP_SLUG }}
+          REVIEW_GATE_PYTHON_APP: ${{ github.workspace }}/.a38-venv-app/bin/python
+          REVIEW_GATE_PYTHON_BACKEND: ${{ github.workspace }}/.a38-venv-backend/bin/python
+        run: node trusted-e2e-pairing/.github/e2e-pairing/cli.mjs publish
