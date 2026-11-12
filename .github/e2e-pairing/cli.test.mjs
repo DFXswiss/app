@@ -1292,6 +1292,21 @@ test('pair evaluation ignores invalid heads and non-marker status shapes', async
   await assert.rejects(() => pairEvaluationSkipped(client, pair, { E2E_PAIR_APP_SLUG: '' }), /slug unavailable/);
 });
 
+test('pair evaluation proceeds when the newest app status has no usable description', async () => {
+  const pair = { app_pr: 12, app_sha: APP_SHA, backend_pr: 34, backend_sha: BACKEND_SHA };
+  for (const description of [undefined, 1]) {
+    const requested = [];
+    const client = {
+      async paginate(url) {
+        requested.push(url);
+        return url.includes(APP_SHA) ? [status({ description })] : [status({ description: pairDescription() })];
+      },
+    };
+    assert.equal(await pairEvaluationSkipped(client, pair, { E2E_PAIR_APP_SLUG: SLUG }), false);
+    assert.equal(requested.length, 2);
+  }
+});
+
 test('comments keep an invalid open pair invalid without publishing', async () => {
   const fake = new FakeGitHub({});
   const { deps: injected, writes } = deps(fake);
@@ -1635,6 +1650,40 @@ test('comments do not fall back to an older success and fail closed on lookup er
   const { deps: noSlugDeps, errors: noSlugErrors } = deps(noSlug, { env: { E2E_PAIR_APP_SLUG: '' } });
   assert.equal(await main(['resolve'], { ...noSlugDeps, env: { ...noSlugDeps.env, E2E_PAIR_APP_SLUG: '', ...resolveEnv(), EVENT_NAME: 'issue_comment' } }), 1);
   assert.match(noSlugErrors[0], /pairing app slug unavailable/);
+});
+
+test('comments restart when a newer generic pending supersedes an exact success', async () => {
+  const olderSuccess = status({ id: 1, description: pairDescription(), createdAt: '2026-01-01T00:00:00Z' });
+  const newerPending = status({
+    id: 2,
+    state: 'pending',
+    description: 'pair re-evaluation pending',
+    createdAt: '2026-01-02T00:00:00Z',
+  });
+  const appStatuses = [olderSuccess, newerPending];
+  const routes = {
+    ...validPairRoutes(),
+    [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: appStatuses,
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+    ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, path: '.github/workflows/pr.yml' }),
+    ...localRunRoutes({ repo: BACKEND_REPO, sha: BACKEND_SHA, runId: 20, path: '.github/workflows/api-pr.yaml' }),
+  };
+  const pair = { app_pr: 12, app_sha: APP_SHA, backend_pr: 34, backend_sha: BACKEND_SHA };
+  const client = {
+    async paginate(url) {
+      return url.includes(`/commits/${APP_SHA}/statuses`) ? appStatuses : [];
+    },
+  };
+  assert.equal(await pairEvaluationSkipped(client, pair, { E2E_PAIR_APP_SLUG: SLUG }), false);
+
+  const fake = new FakeGitHub(routes);
+  const { deps: injected, writes } = deps(fake);
+  assert.equal(await main(['resolve'], { ...injected, env: { ...injected.env, ...resolveEnv(), EVENT_NAME: 'issue_comment' } }), 0);
+  assert.equal(writes[0][0].valid, 'true');
+  assert.equal(fake.statusPosts().filter((post) => post.body.description === runningDescription(77)).length, 2);
+  assert.equal(fake.reruns().length, 2);
 });
 
 test('comment selections require valid 40-hex heads before reading statuses', async () => {

@@ -311,7 +311,18 @@ async function newestPairStatus(client, { appPr, appSha, backendPr, backendSha, 
   const pages = await Promise.all(
     [...heads].map(([repo, sha]) => client.paginate(`/repos/${repo}/commits/${sha}/statuses?per_page=100`)),
   );
-  return selectAttestedStatus(pages.flat().filter(namesPair), { context: STATUS_CONTEXT, creatorLogin });
+  const newestByHead = [];
+  for (const statuses of pages) {
+    const newest = selectAttestedStatus(statuses, { context: STATUS_CONTEXT, creatorLogin });
+    if (!newest) {
+      continue;
+    }
+    if (!namesPair(newest)) {
+      return null;
+    }
+    newestByHead.push(newest);
+  }
+  return selectAttestedStatus(newestByHead, { context: STATUS_CONTEXT, creatorLogin });
 }
 
 async function workflowRunStatus(client, repo, runId) {
