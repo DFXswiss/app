@@ -343,18 +343,23 @@ test('truncation propagates from companion checks and previous-companion invalid
   );
 
   const previous = new FakeGitHub({
-    ...validPairRoutes(),
+    ...openPairWithLocalRuns(),
     'GET /repos/DFXswiss/backend/pulls/35': backendPull(35, { sha: PREVIOUS_BACKEND_SHA, changedFiles: 2 }),
     'GET /repos/DFXswiss/backend/pulls/35/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'modified' }],
     [`GET /repos/DFXswiss/app/contents/e2e-companion.json?ref=${PREVIOUS_SHA}`]: content(companion(BACKEND_REPO, 35)),
     [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
     [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
   });
-  const { deps: previousDeps } = deps(previous);
+  const { deps: previousDeps, errors: previousErrors } = deps(previous);
   assert.equal(
     await main(['invalidate'], { ...previousDeps, env: { ...previousDeps.env, START_REPO: APP_REPO, START_PR: '12', PREVIOUS_SHA, RUN_URL } }),
     1,
   );
+  assert.equal(
+    previous.calls.some((call) => call.key === 'GET /repos/DFXswiss/backend/pulls/35/files?per_page=100'),
+    true,
+  );
+  assert.match(previousErrors[0], /truncated/);
 });
 
 test('invalidate on a push rethrows a truncated current-pair file list', async () => {
@@ -1741,8 +1746,11 @@ test('publish resolves from the starting repository with an explicit or fallback
       },
     });
     assert.equal(code, 0, startRepo);
-    const resolvedStarts = fake.calls.filter((call) => call.key.endsWith('/pulls/12') || call.key.endsWith('/pulls/34'));
-    assert.equal(resolvedStarts.some((call) => call.key.endsWith(`/pulls/${expectedStartPr}`)), true, startRepo);
+    assert.equal(
+      fake.calls[0].key,
+      `GET /repos/${startRepo}/pulls/${expectedStartPr}`,
+      `${startRepo} startPr=${startPr || '(fallback)'}`,
+    );
   }
 });
 
