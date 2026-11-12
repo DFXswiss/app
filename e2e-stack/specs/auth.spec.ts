@@ -246,7 +246,8 @@ test.describe('Auth area e2e', () => {
   test('command-line wallet login trims a signature pasted with surrounding whitespace', async ({ page }) => {
     test.setTimeout(90000);
 
-    const wallet = testWallet();
+    // Dedicated index so the user row below can only come from this login, not from testWallet() / index 0.
+    const wallet = testWallet(52);
     const signInBodies: string[] = [];
     page.on('request', (request) => {
       if (request.method() === 'POST' && /\/v1\/auth$/.test(new URL(request.url()).pathname)) {
@@ -295,7 +296,8 @@ test.describe('Auth area e2e', () => {
   }) => {
     test.setTimeout(90000);
 
-    const wallet = testWallet();
+    // Dedicated index that no other test logs in with, so the absent user row is meaningful.
+    const wallet = testWallet(53);
     const sentRequests: string[] = [];
     page.on('request', (request) => {
       const { pathname } = new URL(request.url());
