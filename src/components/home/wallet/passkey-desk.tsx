@@ -401,7 +401,7 @@ export default function PasskeyDesk({
       }
       if (!outcome.ok) {
         markLink(original, 'failed');
-        if (reportSuccess) throw outcome.error;
+        if (reportSuccess && sameSession(getOpenPasskey(), original)) throw outcome.error;
         return;
       }
       await finishLink(client, original, isCurrent, outcome.address, reportSuccess);

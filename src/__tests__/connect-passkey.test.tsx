@@ -4592,6 +4592,42 @@ describe('ConnectPasskey', () => {
     }
   });
 
+  it('does not show a manual Bitcoin link error after the session changes', async () => {
+    jest.useFakeTimers();
+    try {
+      let rejectLink: (error: Error) => void = () => undefined;
+      mockLink.mockRejectedValueOnce(new Error('silent link failed')).mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectLink = reject;
+          }),
+      );
+      const original = authResult('unlocked', ring(SEED), false) as unknown as OpenPasskey;
+      setOpenPasskey(original);
+      render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+      await act(async () => {
+        for (let step = 0; step < 8; step += 1) await Promise.resolve();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect again' }));
+      expect(mockLink).toHaveBeenCalledTimes(2);
+      const next = { ...original, accessToken: 'other-token' };
+      act(() => setOpenPasskey(next));
+      await act(async () => {
+        rejectLink(new Error('manual link failed'));
+        for (let step = 0; step < 8; step += 1) await Promise.resolve();
+      });
+      expect(passkeySession.getOpenPasskey()).toBe(next);
+      expect(screen.queryByText(GENERIC)).not.toBeInTheDocument();
+      expect(screen.queryByText('manual link failed')).not.toBeInTheDocument();
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('releases one mainnet login ring for every hanging Bitcoin link attempt', async () => {
     jest.useFakeTimers();
     try {
