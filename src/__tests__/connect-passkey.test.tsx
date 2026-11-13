@@ -3,7 +3,6 @@ jest.mock('@dfx.swiss/react/dist/definitions/auth', () => ({
 }));
 
 const mockLogout = jest.fn(() => Promise.resolve());
-const mockAuthState: { session?: { account?: number }; isLoggedIn: boolean } = { isLoggedIn: false };
 let mockCurrency: { name: string } | undefined;
 let mockLocale = 'en-US';
 const mockChangeCurrency = jest.fn();
@@ -19,7 +18,6 @@ const mockTranslate = jest.fn((_key: string, text: string, values?: Record<strin
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: { ETHEREUM: 'Ethereum', BITCOIN: 'Bitcoin' },
   Utils: { isJwt: () => false },
-  useAuthContext: () => mockAuthState,
   useSessionContext: () => ({
     isInitialized: false,
     isLoggedIn: false,
@@ -280,8 +278,6 @@ function stubExecCommand(impl: () => boolean): { exec: jest.Mock; restore: () =>
 describe('ConnectPasskey', () => {
   beforeEach(() => {
     setOpenPasskey(undefined);
-    mockAuthState.session = undefined;
-    mockAuthState.isLoggedIn = false;
     localStorage.removeItem('dfx.wallet.currency');
     mockBuildLoginRing = () => {
       throw new Error('unexpected login ring');
@@ -2955,33 +2951,8 @@ describe('ConnectPasskey', () => {
     renderPasskey();
     fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
     await waitFor(() => expect(passkeySession.getOpenPasskey()).toBe(result));
-    expect(passkeySession.getOpenPasskeyAccount()).toBeUndefined();
     expect(mockLogout).not.toHaveBeenCalled();
     expect(keys.wipe).not.toHaveBeenCalled();
-  });
-
-  it('stores the current DFX account with the passkey session', async () => {
-    mockAuthState.isLoggedIn = true;
-    mockAuthState.session = { account: 7 };
-    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
-    const result = authResult('unlocked', ring(SEED));
-    mockLogin.mockResolvedValueOnce(result);
-    renderPasskey();
-    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
-    await waitFor(() => expect(passkeySession.getOpenPasskey()).toBe(result));
-    expect(passkeySession.getOpenPasskeyAccount()).toBe(7);
-  });
-
-  it('stores no DFX account when the login token is expired', async () => {
-    mockAuthState.isLoggedIn = false;
-    mockAuthState.session = { account: 7 };
-    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
-    const result = authResult('unlocked', ring(SEED));
-    mockLogin.mockResolvedValueOnce(result);
-    renderPasskey();
-    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
-    await waitFor(() => expect(passkeySession.getOpenPasskey()).toBe(result));
-    expect(passkeySession.getOpenPasskeyAccount()).toBeUndefined();
   });
 
   it.each(['locked', 'seed-mismatch'] as const)(

@@ -753,28 +753,23 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/wallet-entry.test.tsx` replaces the service names from `App`, `@dfx.swiss/react`,
   `react-i18next`, `@dfx.swiss/react-components`, the connect wrapper, the custody-asset list, and the layout,
   settings, wallet, app-handling, app-params, feature-tree, navigation and resize hooks.
-  It writes minimal passkey sessions into the tab session module via `setOpenPasskey` (unlocked sessions, and sessions with only an access token, wallet id and credential id to tell two identities apart), and the mocked Connect wrapper clears them on “Use another passkey”; a green run proves neither a real passkey login nor a real session.
+  It writes minimal passkey sessions into the tab session module via `setOpenPasskey` (unlocked
+  sessions, and sessions with only an access token, wallet id and credential id to tell two
+  identities apart), and the mocked Connect wrapper clears them on “Use another passkey”. A
+  green run proves neither a real passkey login nor a real session.
   A green run proves the signed-out `/wallet` path opens the passkey stub and a later sign-in
   with no open passkey closes it. It does not prove a real session, a real SDK, a real passkey
-  ceremony, the published components, a DFX session change (covered by
-  `src/__tests__/passkey-dfx-session.test.tsx`), or that the home shell's other modes work
-  against the real feature tree.
-- **The DFX session guard unit test replaces the session hooks.**
-  `src/__tests__/passkey-dfx-session.test.tsx` replaces `useSessionContext` and `useAuthContext`
-  from `@dfx.swiss/react` with in-memory objects. A green run proves that each of these calls
-  `wipe` and clears the tab session: logout, another account, a login after the passkey was
-  opened with no account, and a mismatch already present at the first render. The same account
-  with a new session object keeps it. No open passkey, and a signed-in session whose account
-  is still missing, do nothing. It does not prove a real DFX session, the published SDK, or a session
-  installed from URL parameters of the same account (that is indistinguishable from token
-  renewal without comparing the token).
-- **The DFX session guard unit test replaces key destruction.**
-  The open passkey's `keys.wipe` is `jest.fn`. A green run proves the guard calls it when the
-  account differs. It does not prove that key material is destroyed.
-- **The DFX session guard unit test replaces the layout shell.**
-  The same file renders `LayoutWrapper` with `Layout` replaced by a passthrough. A green run
-  proves `LayoutWrapper` mounts the guard and still renders its child. It does not prove the
-  real shell or the real route tree.
+  ceremony, the published components or that the home shell's other modes work against the real
+  feature tree. `src/__tests__/layout-wrapper.test.tsx` proves against in-memory hooks that logout,
+  another account and login after the wallet opened without an account keep the same open passkey
+  and do not call `keys.wipe`. It does not prove the real SDK or a real DFX session.
+- **The layout-wrapper unit test replaces DFX session hooks, the layout shell and key destruction.**
+  `src/__tests__/layout-wrapper.test.tsx` replaces `useSessionContext` and `useAuthContext`
+  from `@dfx.swiss/react` with in-memory objects, replaces `Layout` with a passthrough and uses
+  `jest.fn` for `keys.wipe`. A green run proves that logout, another account and login after the
+  wallet opened without an account do not call that stub and keep the same in-memory passkey
+  object. It does not prove a real DFX session, the published SDK, the real layout shell or
+  destruction of actual key material.
 - **The wallet entry visual spec answers the bootstrap itself.**
   `e2e/wallet-entry.spec.ts` fulfils geolocation-db, the bootstrap GETs and `/v2/**`.
   The loading shot plants an account token and holds `GET /v2/user`. Before that shot, the
@@ -783,8 +778,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   circle is too small to read on the full page. The signed-out shot
   replaces `window.PublicKeyCredential` with a class that reports passkeys as available.
   The blocked shot removes `window.PublicKeyCredential`. The signed-in wallet shot injects an unlocked
-  passkey tab session without keys through the non-production hook and passes account id 7, the same
-  claim as the planted token, so the session guard keeps it. The planted token is a synthetic JWT: the
+  passkey tab session without keys through the non-production hook. The planted token is a synthetic JWT: the
   payload has a future expiry, an empty blockchain list and account 7, and the signature is not checked.
   A green run does not prove a real passkey login or a real account session.
   The logo, the home tiles, the wallet card background and the

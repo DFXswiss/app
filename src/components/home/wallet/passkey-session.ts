@@ -13,48 +13,21 @@ export function sameSession(a: OpenPasskey | undefined, b: OpenPasskey): boolean
   );
 }
 
-// Account id bound to an open passkey. An expired token still carries session.account,
-// but isLoggedIn is false. Storing that number looks like another account and the guard wipes the keys.
-export function dfxPasskeyAccount(
-  isLoggedIn: boolean,
-  session: { account?: unknown } | null | undefined,
-): number | undefined {
-  const account = session?.account;
-  if (isLoggedIn && typeof account === 'number') return account;
-  return undefined;
-}
-
 declare global {
   interface Window {
-    __dfxSetOpenPasskey?: (next: OpenPasskey | undefined, ...accountArg: [] | [number | undefined]) => void;
+    __dfxSetOpenPasskey?: (next: OpenPasskey | undefined) => void;
   }
 }
 
 let current: OpenPasskey | undefined;
-// Account id from the DFX session that was current when this passkey was opened.
-// Undefined means the passkey was opened with no DFX session.
-let openedForAccount: number | undefined;
 const listeners = new Set<() => void>();
-// A wallet refresh calls setOpenPasskey with one argument. That must keep the account.
-// Clearing it would look like a session change and wipe the keys.
-// A default parameter would also treat an explicit undefined as omitted, so the second
-// argument is a rest parameter: length 0 keeps the account, a present argument sets it.
 
 export function getOpenPasskey(): OpenPasskey | undefined {
   return current;
 }
 
-export function getOpenPasskeyAccount(): number | undefined {
-  return openedForAccount;
-}
-
-export function setOpenPasskey(next: OpenPasskey | undefined, ...accountArg: [] | [number | undefined]): void {
+export function setOpenPasskey(next: OpenPasskey | undefined): void {
   current = next;
-  if (next === undefined) {
-    openedForAccount = undefined;
-  } else if (accountArg.length > 0) {
-    openedForAccount = accountArg[0];
-  }
   listeners.forEach((listener) => listener());
 }
 
