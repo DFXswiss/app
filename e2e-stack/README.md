@@ -200,6 +200,9 @@ nothing is run. A green paired run proves that the exact app and backend heads
 started together against a real Postgres database and passed the full suite and
 route gate. It does not prove external providers, money movement, the migration
 chain, or a future merge result.
+The coordinator also reconciles every open paired pull request every 30
+minutes, which catches a backend retarget to a branch other than
+`develop`/`main` and any lost notification.
 
 Administrators install the pairing GitHub App on both repositories with commit
 status read/write, Actions read/write, Contents read/write, Pull requests read,

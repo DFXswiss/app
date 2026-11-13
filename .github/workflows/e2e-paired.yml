@@ -18,6 +18,8 @@ on:
     branches:
       - develop
     types: [opened, synchronize, reopened, closed]
+  schedule:
+    - cron: '*/30 * * * *'
   issue_comment:
     types: [created, edited]
   repository_dispatch:
@@ -38,6 +40,7 @@ permissions: {}
 jobs:
   resolve:
     name: Resolve pair
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     environment: e2e-pairing
     permissions:
@@ -306,7 +309,7 @@ jobs:
   run:
     name: Run paired stack
     needs: resolve
-    if: needs.resolve.outputs.valid == 'true'
+    if: github.event_name != 'schedule' && needs.resolve.outputs.valid == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -507,7 +510,7 @@ jobs:
   publish:
     name: Publish pair attestation
     needs: [resolve, run]
-    if: always() && needs.resolve.outputs.valid == 'true'
+    if: always() && github.event_name != 'schedule' && needs.resolve.outputs.valid == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     environment: e2e-pairing
@@ -606,3 +609,40 @@ jobs:
           REVIEW_GATE_PYTHON_APP: ${{ github.workspace }}/.a38-venv-app/bin/python
           REVIEW_GATE_PYTHON_BACKEND: ${{ github.workspace }}/.a38-venv-backend/bin/python
         run: node trusted-e2e-pairing/.github/e2e-pairing/cli.mjs publish
+
+  reconcile:
+    name: Reconcile paired pull requests
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    environment: e2e-pairing
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - name: Check out trusted pairing tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted-e2e-pairing
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Mint pairing App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.E2E_PAIR_APP_CLIENT_ID }}
+          private-key: ${{ secrets.E2E_PAIR_APP_PRIVATE_KEY }}
+          owner: DFXswiss
+          repositories: app,backend
+
+      - name: Reconcile open paired pull requests
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          E2E_PAIR_APP_SLUG: ${{ vars.E2E_PAIR_APP_SLUG }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node trusted-e2e-pairing/.github/e2e-pairing/cli.mjs reconcile

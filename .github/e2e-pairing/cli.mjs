@@ -56,6 +56,43 @@ function otherRepository(repo) {
   throw new PairingError(`unsupported repository ${repo}`);
 }
 
+function parseStatusPair(status) {
+  if (!isPullObject(status) || typeof status.description !== 'string') {
+    return null;
+  }
+  try {
+    return parsePairDescription(status.description);
+  } catch {
+    try {
+      return parseRunningDescription(status.description);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function isRunningMarker(status) {
+  if (!isPullObject(status) || typeof status.description !== 'string') {
+    return false;
+  }
+  try {
+    parseRunningDescription(status.description);
+  } catch {
+    return false;
+  }
+  return status.state === 'pending';
+}
+
+function statusMatchesPair(status, result) {
+  const pair = parseStatusPair(status);
+  if (pair === null) {
+    return false;
+  }
+  const actual = [pair.app_pr, pair.app_sha, pair.backend_pr, pair.backend_sha].join('@');
+  const expected = [Number(result.app_pr), result.app_sha, Number(result.backend_pr), result.backend_sha].join('@');
+  return actual === expected;
+}
+
 function pullHeadSha(pull) {
   return pull && pull.head && typeof pull.head.sha === 'string' ? pull.head.sha : '';
 }
@@ -182,7 +219,7 @@ async function openMutualCompanion(client, repo, number, expectedRepository, exp
   return { pull, sha };
 }
 
-async function failOpenCompanion(client, env, deps, startRepo, startPr, { repend = false } = {}) {
+async function failOpenCompanion(client, env, deps, startRepo, startPr, { repend = false, rerun = true } = {}) {
   let startPull = await getPullOrNull(client, startRepo, startPr);
   if (
     !startPull ||
@@ -247,7 +284,9 @@ async function failOpenCompanion(client, env, deps, startRepo, startPr, { repend
     description: 'companion closed without merge',
     targetUrl,
   });
-  await rerunLocalWorkflow(client, companionRepo, openCompanion.sha);
+  if (rerun) {
+    await rerunLocalWorkflow(client, companionRepo, openCompanion.sha);
+  }
   deps.log(`failed open companion ${companionRepo}#${openCompanion.pull.number} after a closed-unmerged pair`);
   return true;
 }
@@ -284,18 +323,9 @@ async function newestPairStatus(client, { appPr, appSha, backendPr, backendSha, 
     return null;
   }
   const namesPair = (status) => {
-    if (!isPullObject(status) || typeof status.description !== 'string') {
+    const parsed = parseStatusPair(status);
+    if (parsed === null) {
       return false;
-    }
-    let parsed;
-    try {
-      parsed = parsePairDescription(status.description);
-    } catch {
-      try {
-        parsed = parseRunningDescription(status.description);
-      } catch {
-        return false;
-      }
     }
     return (
       parsed.app_pr === Number(appPr) &&
@@ -699,7 +729,7 @@ async function postOnOpenSides(client, result, { state, description, targetUrl }
   return posted;
 }
 
-async function invalidateOpenPair(client, result, env) {
+async function invalidateOpenPair(client, result, env, { rerun = true } = {}) {
   if (!result?.paired) {
     return;
   }
@@ -708,7 +738,9 @@ async function invalidateOpenPair(client, result, env) {
     description: 'pair re-evaluation pending',
     targetUrl: statusTargetUrl(env),
   });
-  await rerunOpenSides(client, result);
+  if (rerun) {
+    await rerunOpenSides(client, result);
+  }
 }
 
 export async function finalizeResolution(client, result, env, deps, { rerun = true } = {}) {
@@ -896,7 +928,7 @@ async function rerunOpenSides(client, result) {
   }
 }
 
-async function postResolutionState(client, result, env) {
+async function postResolutionState(client, result, env, { rerun = true } = {}) {
   if (!result.paired || result.valid) {
     return;
   }
@@ -906,7 +938,7 @@ async function postResolutionState(client, result, env) {
     description: result.reason || (result.review_pending ? 'review gate not satisfied' : 'pair invalid'),
     targetUrl: statusTargetUrl(env),
   });
-  if (!result.review_pending) {
+  if (rerun && !result.review_pending) {
     await rerunOpenSides(client, result);
   }
 }
@@ -1080,6 +1112,88 @@ async function invalidateCommand(client, env, deps) {
   return 0;
 }
 
+async function newestAppHeadStatus(client, appSha, creatorLogin) {
+  const statuses = await client.paginate(`/repos/${APP_REPO}/commits/${appSha}/statuses?per_page=100`);
+  return selectAttestedStatus(statuses, { context: STATUS_CONTEXT, creatorLogin });
+}
+
+// A scheduled sweep only repairs statuses that a lost notification left behind.
+// It never starts a shared run and never reruns a local workflow.
+async function reconcilePull(client, env, deps, slug, appPr) {
+  const pull = await getPullOrNull(client, APP_REPO, appPr);
+  if (!pull) {
+    return false;
+  }
+  // The file list and the current head decide whether this is a candidate.
+  // Both are read fresh; the scheduled trigger has no pull-request payload.
+  if (pull.state !== 'open') {
+    return false;
+  }
+  const files = await pullFiles(client, APP_REPO, appPr, pull);
+  if (!isCompanionActive(files)) {
+    return false;
+  }
+  const head = pullHeadSha(pull);
+  if (!SHA_RE.test(head)) {
+    throw new PairingError(`app#${appPr} head is invalid`);
+  }
+  const newest = await newestAppHeadStatus(client, head, `${slug}[bot]`);
+  if (!newest) {
+    return false;
+  }
+  const isRunning = isRunningMarker(newest);
+  if (newest.state !== 'success' && !isRunning) {
+    return false;
+  }
+
+  // The scheduled sweep re-runs the same structural resolution as a dispatch.
+  // It does not run the review gate or any pull-request code.
+  const result = await inspectPair({ client, startRepo: APP_REPO, startPr: appPr });
+  if (result.valid) {
+    if (!statusMatchesPair(newest, result)) {
+      // The dispatch path for a moved head posts a pending invalidation first.
+      await invalidateOpenPair(client, result, env, { rerun: false });
+      deps.log(`reconcile app#${appPr}: stale head or pair, invalidated`);
+      return true;
+    }
+    deps.log(`reconcile app#${appPr}: pair is valid, no status change`);
+    return false;
+  }
+  const failedCompanion = await failOpenCompanion(client, env, deps, BACKEND_REPO, result.backend_pr, {
+    repend: true,
+    rerun: false,
+  });
+  if (failedCompanion) {
+    deps.log(`reconcile app#${appPr}: failed the open app companion`);
+    return true;
+  }
+  await invalidateOpenPair(client, result, env, { rerun: false });
+  await postResolutionState(client, result, env, { rerun: false });
+  deps.log(`reconcile app#${appPr}: invalidated`);
+  return true;
+}
+
+async function reconcileCommand(client, env, deps) {
+  const slug = env.E2E_PAIR_APP_SLUG || '';
+  if (!slug) {
+    throw new PairingError('pairing app slug unavailable');
+  }
+  const pulls = await client.paginate(`/repos/${APP_REPO}/pulls?state=open&base=develop&per_page=100`);
+  let failed = 0;
+  for (const pull of pulls) {
+    const appPr = Number(pull?.number);
+    try {
+      requirePositiveInteger(appPr, 'app pull request number');
+      await reconcilePull(client, env, deps, slug, appPr);
+    } catch (error) {
+      failed += 1;
+      deps.error(`::error::reconcile app#${pull?.number ?? '?'}: ${error.message}`);
+    }
+  }
+  deps.log(`reconciled ${pulls.length} open app pull requests; ${failed} failed`);
+  return failed === 0 ? 0 : 1;
+}
+
 async function verifyAttestationCommand(client, env, deps) {
   try {
     const appPr = requirePositiveInteger(env.APP_PR, 'APP_PR');
@@ -1142,6 +1256,8 @@ function commandHandler(command, client, env, deps) {
       return publishCommand(client, env, deps, reviewGate);
     case 'invalidate':
       return invalidateCommand(client, env, deps);
+    case 'reconcile':
+      return reconcileCommand(client, env, deps);
     case 'verify-attestation':
       return verifyAttestationCommand(client, env, deps);
     default:

@@ -152,6 +152,9 @@ that the exact app and backend heads started together against a real Postgres
 database and passed the full suite, including the route gate. It does not prove
 external-provider behavior, money movement, the migration chain, or that the
 pull requests will merge without conflicts.
+The coordinator also reconciles every open paired pull request every 30
+minutes, which catches a backend retarget to a branch other than
+`develop`/`main` and any lost notification.
 
 Administrators install the pairing GitHub App on both repositories with commit
 status read/write, Actions read/write, Contents read/write, Pull requests read,

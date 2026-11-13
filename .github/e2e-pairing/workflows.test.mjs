@@ -177,3 +177,25 @@ test('admin docs scope the App private key to the develop-only environment', () 
     assert.match(text, /\*\*not\*\* a repository\s+secret/, relativePath);
   }
 });
+
+test('a schedule reconciles paired pull requests without running the paired stack', () => {
+  const workflow = read('.github/workflows/e2e-paired.yml');
+  assert.match(workflow, /\n  schedule:\n    - cron: '\*\/30 \* \* \* \*'\n/);
+  const reconcile = job(workflow, 'reconcile');
+  assert.match(reconcile, /if: github\.event_name == 'schedule'/);
+  assert.match(reconcile, /runs-on: ubuntu-latest/);
+  assert.match(reconcile, /environment: e2e-pairing/);
+  assert.match(reconcile, /permissions:\n      contents: read/);
+  assert.match(reconcile, /timeout-minutes: 15/);
+  assert.match(reconcile, /ref: \$\{\{ github\.workflow_sha \}\}/);
+  assert.match(reconcile, /uses: actions\/setup-node@v4/);
+  assert.match(reconcile, /node-version: '24'/);
+  assert.match(reconcile, /private-key: \$\{\{ secrets\.E2E_PAIR_APP_PRIVATE_KEY \}\}/);
+  assert.match(reconcile, /repositories: app,backend/);
+  assert.match(reconcile, /cli\.mjs reconcile/);
+  assert.doesNotMatch(reconcile, /actions\/checkout@v4\n        with:\n          repository: DFXswiss\/app/);
+
+  for (const name of ['resolve', 'run', 'publish']) {
+    assert.match(job(workflow, name), /github\.event_name != 'schedule'/, `${name} does not run on schedule`);
+  }
+});
