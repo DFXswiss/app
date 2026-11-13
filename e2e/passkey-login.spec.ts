@@ -1,16 +1,25 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { DESK_CREDENTIAL_BYTES, deskBase64Url, installDeskAuthenticator } from './passkey-desk-authenticator';
 
-// A value jwt-decode cannot read is removed on boot. The expiry is in the future. The signature is not checked.
-// blockchains is an array so the login screen can read session.blockchains without throwing.
-const ACCOUNT_TOKEN =
-  'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDAsImJsb2NrY2hhaW5zIjpbXX0.x';
+// EVM index 0 derived from the fixed DESK_PRF_BYTES by the wallet package.
+const DESK_DERIVED_EVM = '0xA6EC3c72017965c5fAeEdaF020895ef1aDD7Ad72';
+// BIP-84 receive index 1 on testnet4 (the loc network) derived from the fixed DESK_PRF_BYTES by the wallet package.
+const DESK_DERIVED_BITCOIN_RECEIVE = 'tb1q0cxey6x9nz35jky4v0rh77ta34z63j4hzl6tvt';
 
-const VISUAL_USER = {
-  mail: 'user@example.com',
-  language: { id: 2, name: 'English', symbol: 'EN' },
-  kyc: { hash: '' },
-  addresses: [],
+type HistoryWindow = {
+  __dfxHandbookPasskeyHistory?: {
+    items: {
+      type: 'buy' | 'sell' | 'swap' | 'send' | 'receive' | 'pay';
+      title: string;
+      date: string;
+      amount: string;
+      direction: 'in' | 'out';
+      fiatValue: string;
+      pending?: boolean;
+    }[];
+    hasMore: boolean;
+    loadMore: () => Promise<void>;
+  };
 };
 
 // Bootstrap calls are mocked so the login screen renders without a live API. The tile shots stub
@@ -62,14 +71,7 @@ async function installLoginRoutes(page: Page): Promise<void> {
   });
 
   await page.route('**/v2/**', async (route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    const authorization = request.headers()['authorization'] ?? '';
-    // A 401 for this token clears it. The login screen stays up, and later getAuthToken() is empty.
-    if (authorization.includes(ACCOUNT_TOKEN)) {
-      if (request.method() === 'GET' && path === '/v2/user') return fulfillJson(route, VISUAL_USER);
-      return fulfillJson(route, []);
-    }
+    // All account requests receive 401 so the login screen stays signed out.
     await route.fulfill({
       status: 401,
       contentType: 'application/json',
@@ -165,8 +167,6 @@ const DESK_CHALLENGE = {
   timeout: 600000,
 };
 
-const MISMATCH_ADDRESS = '0x0000000000000000000000000000000000000001';
-
 const DESK_EVM = {
   address: '0x00000000000000000000000000000000000000aa',
   family: 'Evm',
@@ -190,9 +190,9 @@ function deskWallet(seedCheckAddress: string, addresses: Record<string, unknown>
     created: '2026-01-01T00:00:00.000Z',
     derivationVersion: 'V1',
     seedCheckAddress,
-    backupEligible: true,
+    backupEligible: false,
     backedUp: false,
-    backupRequired: false,
+    backupRequired: true,
     addresses,
   };
 }
@@ -216,7 +216,11 @@ function postedLinkAddress(raw: string | null): { address: string; family: strin
   return { address, family, path };
 }
 
-async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<void> {
+async function installDeskRoutes(
+  page: Page,
+  seedCheckAddress: string,
+  linkedBitcoin?: { address?: string },
+): Promise<void> {
   const linkedAddresses: Record<string, unknown>[] = [];
 
   function listedWallet(): Record<string, unknown> {
@@ -228,8 +232,6 @@ async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<
     const path = new URL(request.url()).pathname;
     const method = request.method();
     if (method === 'GET' && path === '/v1/passkey/wallets') return fulfillJson(route, [listedWallet()]);
-    if (method === 'PUT' && path.endsWith('/backupSeen')) return fulfillJson(route, listedWallet());
-    if (method === 'PUT' && path.endsWith('/revoke')) return fulfillJson(route, listedWallet());
     return fulfillJson(route, []);
   });
 
@@ -248,6 +250,7 @@ async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<
     if (method === 'POST' && path.endsWith('/link')) {
       const posted = postedLinkAddress(request.postData());
       if (posted === undefined) return fulfillNotOk(route);
+      if (posted.address.startsWith('bc1') && linkedBitcoin) linkedBitcoin.address = posted.address;
       const address = { ...posted, status: 'Active', blockchains: [] };
       const key = `${posted.family}:${posted.path}:${posted.address}`;
       const alreadyLinked = linkedAddresses.some(
@@ -260,10 +263,8 @@ async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<
       return fulfillJson(route, [{ credentialId: deskBase64Url(DESK_CREDENTIAL_BYTES), status: 'Active' }]);
     }
     if (method === 'POST' && path.endsWith('/revoke/begin')) return fulfillJson(route, DESK_CHALLENGE);
-    if (method === 'POST' && path.endsWith('/revoke/finish')) return fulfillJson(route, listedWallet());
-    if (method === 'POST' && path.endsWith('/claim/begin')) return fulfillJson(route, DESK_CHALLENGE);
-    if (method === 'POST' && path.endsWith('/claim/finish')) {
-      return fulfillJson(route, deskAuth('', [DESK_EVM, DESK_SPARK]));
+    if (method === 'POST' && path.endsWith('/revoke/finish')) {
+      return fulfillJson(route, { ...listedWallet(), status: 'Lost' });
     }
     return fulfillJson(route, []);
   });
@@ -296,88 +297,65 @@ async function installRegisterErrorRoutes(page: Page): Promise<void> {
   });
 }
 
-async function plantAccountToken(page: Page): Promise<void> {
-  await page.addInitScript((token) => {
-    window.localStorage.setItem('dfx.authenticationToken', token);
-  }, ACCOUNT_TOKEN);
-}
-
-async function openDesk(page: Page, mode: 'unlocked' | 'locked' | 'mismatch', dismissFirstGet = false): Promise<void> {
+async function openDesk(
+  page: Page,
+  mode: 'unlocked' | 'locked',
+  dismissFirstGet = false,
+  linkedBitcoin?: { address?: string },
+): Promise<void> {
   await installDeskAuthenticator(page, mode !== 'locked', dismissFirstGet);
   await installLoginRoutes(page);
-  await installDeskRoutes(page, mode === 'mismatch' ? MISMATCH_ADDRESS : '');
+  await installDeskRoutes(page, '', linkedBitcoin);
   await page.goto('/login?feature=Passkey&lang=en');
   await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible();
   await page.locator('img[src$="login-passkey.jpg"]').click();
   await waitForPlatform(page);
 }
 
-async function waitForLinkedBitcoin(page: Page): Promise<string> {
-  const note = page.getByText(/^Linked Bitcoin bc1q/);
-  await expect(note).toBeVisible();
-  const text = await note.innerText();
-  const match = /^Linked Bitcoin (bc1q\S+)\.$/.exec(text);
-  if (match === null || match[1] === undefined) {
-    throw new Error(`linked Bitcoin note was not a complete sentence: ${text}`);
-  }
-  const address = match[1];
-  await expect(page.locator('li', { hasText: `${DESK_EVM.family} ${DESK_EVM.address}` })).toBeVisible();
-  await expect(page.locator('li', { hasText: `${DESK_SPARK.family} ${DESK_SPARK.address}` })).toBeVisible();
-  await expect(page.locator('li', { hasText: address })).toBeVisible();
-  return address;
+async function expectDerivedReceiveRows(page: Page): Promise<void> {
+  await expect(page.locator(`li [title="${DESK_DERIVED_EVM}"]`)).toHaveCount(1);
+  await expect(page.locator(`li [title="${DESK_DERIVED_BITCOIN_RECEIVE}"]`)).toHaveCount(1);
+  const spark = page.locator('li [title^="spark1"]');
+  await expect(spark).toHaveCount(1);
+  const sparkTitle = await spark.getAttribute('title');
+  expect(sparkTitle).toMatch(/^spark1[023456789acdefghjklmnpqrstuvwxyz]{62}$/);
+  expect(sparkTitle).not.toBe(DESK_SPARK.address);
+  await expect(page.locator('li [title^="bc1q"]')).toHaveCount(0);
+  await expect(page.locator(`li [title="${DESK_EVM.address}"]`)).toHaveCount(0);
 }
 
 async function registerUnlockedDesk(page: Page): Promise<string> {
-  await openDesk(page, 'unlocked', true);
+  const linkedBitcoin: { address?: string } = {};
+  await openDesk(page, 'unlocked', true, linkedBitcoin);
+  const listed = page.waitForResponse(async (response) => {
+    const posted = linkedBitcoin.address;
+    if (!posted) return false;
+    const url = new URL(response.url());
+    if (response.request().method() !== 'GET' || url.pathname !== '/v1/passkey/wallets') return false;
+    const text = await response.text();
+    return text.includes(posted);
+  });
   await registerThroughGuidance(page);
-  await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible();
-  await expect(page.getByText('Passkey wallet', { exact: true })).toBeVisible();
-  return waitForLinkedBitcoin(page);
+  await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
+  await listed;
+  const posted = linkedBitcoin.address;
+  if (!posted || !posted.startsWith('bc1')) throw new Error('Missing Bitcoin login address');
+  return posted;
 }
 
-async function setTabSession(page: Page, state: 'compromised' | 'open-elsewhere'): Promise<void> {
-  const session = {
-    state,
-    accessToken: 'visual-passkey-token',
-    wallet: deskWallet('', []),
-  };
-  await page.evaluate((next) => {
-    const hook = (window as unknown as { __dfxSetOpenPasskey?: (value: typeof next) => void }).__dfxSetOpenPasskey;
-    if (hook === undefined) throw new Error('handbook session hook is missing');
-    hook(next);
-  }, session);
+async function openSettings(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Settings' }).click();
+}
+
+async function openRevoke(page: Page): Promise<void> {
+  await openSettings(page);
+  await page.getByRole('button', { name: 'Block passkey' }).click();
 }
 
 async function deskControls(page: Page): Promise<Locator[]> {
-  const show = page.getByRole('button', { name: 'Show recovery words' });
-  const hide = page.getByRole('button', { name: 'Hide recovery words' });
-  const showCount = await show.count();
-  const hideCount = await hide.count();
-  if (showCount + hideCount !== 1) {
-    throw new Error(`expected exactly one recovery-words button, found show=${showCount} hide=${hideCount}`);
-  }
-  const recoveryToggle = hideCount === 1 ? hide : show;
-  return [
-    page.getByRole('button', { name: 'Receive' }),
-    page.getByRole('button', { name: 'Send' }),
-    page.getByRole('button', { name: 'Open the app' }),
-    page.getByRole('button', { name: 'Unlock wallet' }),
-    page.getByRole('button', { name: 'Link Bitcoin' }),
-    page.getByRole('button', { name: 'Link EVM account' }),
-    page.getByRole('button', { name: 'Refresh wallets' }),
-    page.getByRole('button', { name: 'Mark backup seen' }),
-    page.getByRole('button', { name: 'Check server addresses' }),
-    page.getByRole('button', { name: 'Credential status' }),
-    page.getByRole('button', { name: 'Record a diagnostic' }),
-    recoveryToggle,
-    page.getByRole('button', { name: 'Revoke with passkey as lost' }),
-    page.getByRole('button', { name: 'Revoke with passkey as compromised' }),
-    page.getByRole('button', { name: 'Revoke this wallet by id as lost' }),
-    page.getByRole('button', { name: 'Revoke this wallet by id as compromised' }),
-    page.getByRole('button', { name: 'Start another ceremony' }),
-    page.getByRole('button', { name: 'Close' }),
-    page.getByLabel('EVM account index'),
-  ];
+  return ['Settings', 'Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay'].map((name) =>
+    page.getByRole('button', { name, exact: true }),
+  );
 }
 
 // The login layout clips inside overflow-auto. Expanding those nodes and growing the viewport is
@@ -473,17 +451,6 @@ test.describe('Passkey login', () => {
     await expect(page).toHaveScreenshot('passkey-login-preparing.png', { fullPage: true });
   });
 
-  test('asks for a mail login before adding a passkey to this account', async ({ page }) => {
-    await openDesk(page, 'unlocked', true);
-    await page.getByRole('button', { name: 'Log in' }).click();
-    await expect(page.getByText('Do you already have an account?')).toBeVisible();
-    await page.getByRole('button', { name: 'Add passkey to this account' }).click();
-    const sentence = page.getByText('Sign in with mail first. The passkey is added to that account.', { exact: true });
-    await expect(sentence).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Log in with existing account' })).toBeVisible();
-    await expect(page).toHaveScreenshot('passkey-login-no-account.png', { fullPage: true });
-  });
-
   test('shows the register error on the form', async ({ page }) => {
     await installDeskAuthenticator(page, true, true);
     await installLoginRoutes(page);
@@ -519,22 +486,53 @@ test.describe('Passkey login', () => {
 
   test('shows the unlocked desk after registration', async ({ page }) => {
     await registerUnlockedDesk(page);
-    await shoot(page, 'passkey-desk-unlocked.png', [
-      ...(await deskControls(page)),
-      page.getByText(/^Linked Bitcoin bc1q/),
-    ]);
+    await shoot(page, 'passkey-desk-unlocked.png', await deskControls(page));
   });
 
   test('shows the receive address on the unlocked desk', async ({ page }) => {
     await registerUnlockedDesk(page);
     await page.getByRole('button', { name: 'Receive' }).click();
     await page.getByRole('button', { name: 'EVM', exact: true }).click();
-    const paragraph = page.locator('p').filter({ hasNotText: 'Unlock the wallet to show this address.' });
-    await expect(paragraph.first()).toBeVisible();
+    const address = page.getByTestId('passkey-receive-address');
+    await expect(address).toHaveText(/^0x[0-9a-fA-F]{40}$/);
+    await expect(address).toHaveText(DESK_DERIVED_EVM);
+    await expect(address).not.toHaveText(DESK_EVM.address);
     await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
     const qr = page.locator('[data-testid=passkey-receive-qr]');
     await expect(qr).toBeVisible();
     await shoot(page, 'passkey-desk-receive.png', [
+      ...(await deskControls(page)),
+      page.getByRole('button', { name: 'Copy address' }),
+      qr,
+    ]);
+  });
+
+  test('shows the Bitcoin receive address on the unlocked desk', async ({ page }) => {
+    await registerUnlockedDesk(page);
+    await page.getByRole('button', { name: 'Receive' }).click();
+    await page.getByRole('button', { name: 'Bitcoin', exact: true }).click();
+    const address = page.getByTestId('passkey-receive-address');
+    await expect(address).toHaveText(DESK_DERIVED_BITCOIN_RECEIVE);
+    await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
+    const qr = page.locator('[data-testid=passkey-receive-qr]');
+    await expect(qr).toBeVisible();
+    await shoot(page, 'passkey-desk-receive-bitcoin.png', [
+      ...(await deskControls(page)),
+      page.getByRole('button', { name: 'Copy address' }),
+      qr,
+    ]);
+  });
+
+  test('shows the Spark receive address on the unlocked desk', async ({ page }) => {
+    await registerUnlockedDesk(page);
+    await page.getByRole('button', { name: 'Receive' }).click();
+    await page.getByRole('button', { name: 'Spark', exact: true }).click();
+    const address = page.getByTestId('passkey-receive-address');
+    await expect(address).toHaveText(/^spark1[023456789acdefghjklmnpqrstuvwxyz]{62}$/);
+    await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
+    const qr = page.locator('[data-testid=passkey-receive-qr]');
+    await expect(qr).toBeVisible();
+    await shoot(page, 'passkey-desk-receive-spark.png', [
       ...(await deskControls(page)),
       page.getByRole('button', { name: 'Copy address' }),
       qr,
@@ -574,11 +572,12 @@ test.describe('Passkey login', () => {
     await registerUnlockedDesk(page);
 
     await page.getByRole('button', { name: 'Send' }).click();
-    const destination = page.getByLabel('Destination');
-    const paste = page.getByRole('button', { name: 'Paste' });
-    const scan = page.getByRole('button', { name: 'Scan' });
+    const dialog = page.getByRole('dialog', { name: 'Send' });
+    const destination = dialog.getByLabel('Destination');
+    const paste = dialog.getByRole('button', { name: 'Paste' });
+    const scan = dialog.getByRole('button', { name: 'Scan' });
     await paste.click();
-    const sentence = page.getByText('Paste is not available in this browser.', { exact: true });
+    const sentence = dialog.getByText('Paste is not available in this browser.', { exact: true });
 
     await expect(sentence).toBeVisible();
     await shoot(page, 'passkey-desk-send-paste.png', [
@@ -603,11 +602,12 @@ test.describe('Passkey login', () => {
     await registerUnlockedDesk(page);
 
     await page.getByRole('button', { name: 'Send' }).click();
-    const destination = page.getByLabel('Destination');
-    const paste = page.getByRole('button', { name: 'Paste' });
-    const scan = page.getByRole('button', { name: 'Scan' });
+    const dialog = page.getByRole('dialog', { name: 'Send' });
+    const destination = dialog.getByLabel('Destination');
+    const paste = dialog.getByRole('button', { name: 'Paste' });
+    const scan = dialog.getByRole('button', { name: 'Scan' });
     await scan.click();
-    const sentence = page.getByText('QR scanning is not available in this browser.', { exact: true });
+    const sentence = dialog.getByText('QR scanning is not available in this browser.', { exact: true });
 
     await expect(sentence).toBeVisible();
     await shoot(page, 'passkey-desk-send-scan.png', [
@@ -639,12 +639,13 @@ test.describe('Passkey login', () => {
     await registerUnlockedDesk(page);
 
     await page.getByRole('button', { name: 'Send' }).click();
-    const destination = page.getByLabel('Destination');
-    const paste = page.getByRole('button', { name: 'Paste' });
-    const scan = page.getByRole('button', { name: 'Scan' });
-    const sentence = page.getByText('Sending is not active yet.', { exact: true });
+    const dialog = page.getByRole('dialog', { name: 'Send' });
+    const destination = dialog.getByLabel('Destination');
+    const paste = dialog.getByRole('button', { name: 'Paste' });
+    const scan = dialog.getByRole('button', { name: 'Scan' });
+    const sentence = dialog.getByText('Sending is not active yet.', { exact: true });
     await scan.click();
-    const video = page.locator('[data-testid="passkey-send-scan"]');
+    const video = dialog.locator('[data-testid="passkey-send-scan"]');
 
     await expect(video).toBeVisible();
     await expect(destination).toHaveValue('');
@@ -659,23 +660,10 @@ test.describe('Passkey login', () => {
     ]);
   });
 
-  test('shows the unlocked desk after claiming a passkey', async ({ page }) => {
-    await plantAccountToken(page);
-    await openDesk(page, 'unlocked', true);
-    await page.getByRole('button', { name: 'Log in' }).click();
-    await expect(page.getByText('Do you already have an account?')).toBeVisible();
-    await page.getByRole('button', { name: 'Add passkey to this account' }).click();
-    await expect(page.getByText('The wallet is unlocked.', { exact: true })).toBeVisible();
-    await waitForLinkedBitcoin(page);
-    await shoot(page, 'passkey-login-claimed.png', [
-      ...(await deskControls(page)),
-      page.getByText(/^Linked Bitcoin bc1q/),
-    ]);
-  });
-
   test('returns to the form when starting another ceremony', async ({ page }) => {
     await registerUnlockedDesk(page);
-    await page.getByRole('button', { name: 'Start another ceremony' }).click();
+    await openSettings(page);
+    await page.getByRole('button', { name: 'Use another passkey' }).click();
     await expect(page.getByText('Log in with your device')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
     await expect(page.getByLabel('Email address')).toHaveCount(0);
@@ -684,7 +672,9 @@ test.describe('Passkey login', () => {
 
   test('shows the revoked sentence after revoking with the passkey', async ({ page }) => {
     await registerUnlockedDesk(page);
-    await page.getByRole('button', { name: 'Revoke with passkey as lost' }).click();
+    await openRevoke(page);
+    await page.getByLabel('I understand that this cannot be undone.').check();
+    await page.getByRole('button', { name: 'Block', exact: true }).click();
     const sentence = page.getByText('The passkey wallet was revoked.', { exact: true });
     await expect(sentence).toBeVisible();
     await expect(page.getByText('Log in with your device')).toBeVisible();
@@ -692,153 +682,90 @@ test.describe('Passkey login', () => {
     await expect(page).toHaveScreenshot('passkey-login-revoked.png', { fullPage: true });
   });
 
-  test('shows recovery words from the fixed authenticator output', async ({ page }) => {
+  test('shows the unsuccessful revocation message when the wallet remains active', async ({ page }) => {
     await registerUnlockedDesk(page);
-    await expect(page.getByRole('button', { name: 'Show recovery words' })).toBeEnabled();
-    await page.getByRole('button', { name: 'Show recovery words' }).click();
-    const words = page.getByTestId('passkey-recovery-words');
-    await expect(words).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Hide recovery words' })).toBeVisible();
-    await shoot(page, 'passkey-desk-recovery.png', [...(await deskControls(page)), words]);
+    await page.route('**/v1/auth/passkey/revoke/finish', (route) =>
+      fulfillJson(route, { ...deskWallet('', [DESK_EVM, DESK_SPARK]), status: 'Active' }),
+    );
+    await openRevoke(page);
+    await page.getByLabel('I understand that this cannot be undone.').check();
+    await page.getByRole('button', { name: 'Block', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Block passkey' });
+    const alert = dialog.getByRole('alert');
+    await expect(alert).toHaveText('The passkey was not blocked. Please try again.');
+    await expect(alert).toBeInViewport();
+    const titleBar = dialog.getByRole('heading', { name: 'Block passkey' }).locator('..');
+    await expect
+      .poll(async () => {
+        const alertBox = await alert.boundingBox();
+        const titleBox = await titleBar.boundingBox();
+        return alertBox && titleBox ? alertBox.y - (titleBox.y + titleBox.height) : -1;
+      })
+      .toBeGreaterThanOrEqual(0);
+    await expect(page).toHaveScreenshot('passkey-desk-revoke-active.png', { fullPage: true });
   });
 
-  test('hides the recovery words and keeps the note', async ({ page }) => {
+  test('shows and hides recovery words from the fixed authenticator output', async ({ page }) => {
     await registerUnlockedDesk(page);
-    await page.getByRole('button', { name: 'Show recovery words' }).click();
+    await openSettings(page);
+    await page.getByRole('button', { name: /Export recovery phrase/ }).click();
     await expect(page.getByTestId('passkey-recovery-words')).toBeVisible();
-    await page.getByRole('button', { name: 'Hide recovery words' }).click();
+    await expect(page).toHaveScreenshot('passkey-desk-recovery.png', { fullPage: true });
+    await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
     await expect(page.getByTestId('passkey-recovery-words')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Show recovery words' })).toBeVisible();
-    const note = page.getByText('Recovery words stay on this page until you hide them.', { exact: true });
-    await expect(note).toBeVisible();
-    await shoot(page, 'passkey-desk-recovery-hidden.png', [...(await deskControls(page)), note]);
+    await expect(page).toHaveScreenshot('passkey-desk-recovery-hidden.png', { fullPage: true });
   });
 
-  test('shows a locked desk when login returns no PRF output', async ({ page }) => {
+  test('shows the failed sign-in', async ({ page }) => {
     await openDesk(page, 'locked');
     await page.getByRole('button', { name: 'Log in' }).click();
-    const sentence = page.getByText('This passkey did not unlock the wallet', { exact: true });
+    const sentence = page.getByText(
+      'This passkey did not unlock the wallet. Please try again with the passkey of this wallet.',
+      { exact: true },
+    );
+    const heading = page.getByText('Log in with your device');
+    const login = page.getByRole('button', { name: 'Log in' });
     await expect(sentence).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Link Bitcoin' })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Link EVM account' })).toBeDisabled();
-    await shoot(page, 'passkey-desk-locked.png', [...(await deskControls(page)), sentence]);
-  });
-
-  test('shows the unlock sentence when receive is locked', async ({ page }) => {
-    await openDesk(page, 'locked');
-    await page.getByRole('button', { name: 'Log in' }).click();
-    await page.getByRole('button', { name: 'Receive' }).click();
-    await page.getByRole('button', { name: 'EVM', exact: true }).click();
-    const sentence = page.getByText('Unlock the wallet to show this address.', { exact: true });
-    await expect(sentence).toBeVisible();
-    await expect(page.locator('[data-testid=passkey-receive-qr]')).toHaveCount(0);
-    await shoot(page, 'passkey-desk-receive-locked.png', [...(await deskControls(page)), sentence]);
-  });
-
-  test('shows a seed mismatch when the server address differs', async ({ page }) => {
-    await openDesk(page, 'mismatch');
-    await page.getByRole('button', { name: 'Log in' }).click();
-    const sentence = page.getByText('This passkey does not match the wallet', { exact: true });
-    await expect(sentence).toBeVisible();
-    await shoot(page, 'passkey-desk-mismatch.png', [...(await deskControls(page)), sentence]);
-  });
-
-  test('shows the compromised sentence from the tab session', async ({ page }) => {
-    await registerUnlockedDesk(page);
-    await setTabSession(page, 'compromised');
-    const sentence = page.getByText('This passkey was revoked as compromised', { exact: true });
-    await expect(sentence).toBeVisible();
-    await shoot(page, 'passkey-desk-compromised.png', [...(await deskControls(page)), sentence]);
-  });
-
-  test('shows the other-tab sentence from the tab session', async ({ page }) => {
-    await registerUnlockedDesk(page);
-    await setTabSession(page, 'open-elsewhere');
-    const sentence = page.getByText('This wallet is open in another tab', { exact: true });
-    await expect(sentence).toBeVisible();
-    await shoot(page, 'passkey-desk-open-elsewhere.png', [...(await deskControls(page)), sentence]);
-  });
-
-  test('marks the backup as seen', async ({ page }) => {
-    await registerUnlockedDesk(page);
-    await page.getByRole('button', { name: 'Mark backup seen' }).click();
-    const note = page.getByText('Backup marked as seen.', { exact: true });
-    await expect(note).toBeVisible();
-    await shoot(page, 'passkey-desk-backup-seen.png', [...(await deskControls(page)), note]);
+    await expect(heading).toBeVisible();
+    await expect(login).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Settings' })).toHaveCount(0);
+    await expect(page.getByLabel('Email address')).toHaveCount(0);
+    await expect(page).toHaveScreenshot('passkey-login-failed.png', { fullPage: true });
   });
 
   test('lists wallets on this account', async ({ page }) => {
     await registerUnlockedDesk(page);
-    await page.getByRole('button', { name: 'Refresh wallets' }).click();
-    const note = page.getByText('Wallets on this account: 1.', { exact: true });
-    await expect(note).toBeVisible();
-    await shoot(page, 'passkey-desk-wallets.png', [...(await deskControls(page)), note]);
+    await openSettings(page);
+    await page.getByRole('button', { name: 'Reload data' }).click();
+    await expect(page.getByText('Wallets on this account: 1.', { exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-desk-wallets.png', { fullPage: true });
   });
 
   test('checks server addresses after the auto-link', async ({ page }) => {
     const bitcoinAddress = await registerUnlockedDesk(page);
-    await page.getByRole('button', { name: 'Check server addresses' }).click();
-    const note = page.getByText('Checked 4 addresses.', { exact: true });
-    await expect(note).toBeVisible();
-    await expect(page.locator('li', { hasText: bitcoinAddress })).toContainText('matches');
-    await expect(page.locator('li', { hasText: 'bc1qdeskdiffers' })).toContainText('differs');
-    await shoot(page, 'passkey-desk-addresses.png', [...(await deskControls(page)), note]);
+    await openSettings(page);
+    await page.getByRole('button', { name: /Check addresses/ }).click();
+    await expect(page.getByText('1 / 4 addresses match', { exact: true })).toBeVisible();
+    const linkedBitcoin = `${bitcoinAddress.slice(0, 10)}…${bitcoinAddress.slice(-8)}`;
+    await expect(page.getByRole('listitem').filter({ hasText: linkedBitcoin })).toContainText('Matches');
+    await expect(page.getByRole('listitem').filter({ hasText: 'bc1qdeskdi…kdiffers' })).toContainText('Differs');
+    await expect(page).toHaveScreenshot('passkey-desk-addresses.png', { fullPage: true });
   });
 
   test('shows credential status', async ({ page }) => {
     await registerUnlockedDesk(page);
-    await page.getByRole('button', { name: 'Credential status' }).click();
-    const note = page.getByText(': Active');
-    await expect(note).toBeVisible();
-    await shoot(page, 'passkey-desk-credential.png', [...(await deskControls(page)), note]);
+    await openSettings(page);
+    await page.getByRole('button', { name: 'Check passkey status' }).click();
+    await expect(page.getByText(': Active')).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-desk-credential.png', { fullPage: true });
   });
 
   test('records a diagnostic', async ({ page }) => {
     await registerUnlockedDesk(page);
+    await openSettings(page);
     await page.getByRole('button', { name: 'Record a diagnostic' }).click();
-    const note = page.getByText('Diagnostic recorded.', { exact: true });
-    await expect(note).toBeVisible();
-    await shoot(page, 'passkey-desk-diagnostic.png', [...(await deskControls(page)), note]);
-  });
-
-  test('links an EVM account at the default index', async ({ page }) => {
-    await registerUnlockedDesk(page);
-    await expect(page.getByLabel('EVM account index')).toHaveValue('1');
-    await page.getByRole('button', { name: 'Link EVM account' }).click();
-    const note = page.getByText(/^Linked Evm 0x/);
-    await expect(note).toBeVisible();
-    await shoot(page, 'passkey-desk-link-evm.png', [...(await deskControls(page)), note]);
-  });
-
-  test('needs a fresh login to revoke this wallet by id', async ({ page }) => {
-    await registerUnlockedDesk(page);
-    await page.getByRole('button', { name: 'Revoke this wallet by id as lost' }).click();
-    const note = page.getByText('Revoke by id needs a fresh mail or wallet login.', { exact: true });
-    await expect(note).toBeVisible();
-    await shoot(page, 'passkey-desk-revoke-login.png', [...(await deskControls(page)), note]);
-  });
-
-  test('keeps the desk when revoke by id stays Active', async ({ page }) => {
-    await plantAccountToken(page);
-    await registerUnlockedDesk(page);
-    // Opening the desk sets a wallet address. The session hook then clears the account token
-    // because that address is not in the token. getAuthToken reads the store once the ref is empty.
-    await page.evaluate((token) => {
-      window.localStorage.setItem('dfx.authenticationToken', token);
-    }, ACCOUNT_TOKEN);
-    await page.getByRole('button', { name: 'Revoke this wallet by id as lost' }).click();
-    const note = page.getByText('Wallet status is Active.', { exact: true });
-    await expect(note).toBeVisible();
-    await expect(page.getByText('Passkey wallet', { exact: true })).toBeVisible();
-    await shoot(page, 'passkey-desk-revoke-kept.png', [...(await deskControls(page)), note]);
-  });
-
-  test('disables Link EVM account when the index is above 99', async ({ page }) => {
-    await registerUnlockedDesk(page);
-    await expect(page.getByRole('button', { name: 'Record a diagnostic' })).toBeEnabled();
-    await page.getByLabel('EVM account index').fill('100');
-    await expect(page.getByRole('button', { name: 'Link EVM account' })).toBeDisabled();
-    await shoot(page, 'passkey-desk-evm-index.png', await deskControls(page));
+    await expect(page.getByText('Diagnostic recorded.', { exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-desk-diagnostic.png', { fullPage: true });
   });
 
   test('shows the account choice after a dismissed login', async ({ page }) => {
@@ -969,4 +896,174 @@ test.describe('Passkey login', () => {
     await expect(page.getByText('Open this page in your browser')).toHaveCount(0);
     await expect(page).toHaveScreenshot('passkey-login-os.png', { fullPage: true });
   });
+});
+
+test.describe('Passkey wallet design', () => {
+  async function openWallet(page: Page): Promise<void> {
+    await openDesk(page, 'unlocked', true);
+    await registerThroughGuidance(page);
+    await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
+  }
+
+  test('shows the wallet, expanded addresses and settings', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWallet(page);
+    await expect(page).toHaveScreenshot('passkey-wallet-start.png');
+    await page.getByRole('button', { name: 'Show wallet' }).first().click();
+    await expect(page.getByText('Addresses', { exact: true })).toBeVisible();
+    await expect(page.getByText('Not connected yet')).toHaveCount(0);
+    await expectDerivedReceiveRows(page);
+    await expect(page).toHaveScreenshot('passkey-wallet-expanded.png');
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-settings.png');
+  });
+
+  test('shows the danger zone of the settings', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWallet(page);
+    await page.getByRole('button', { name: 'Settings' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    const blockPasskey = dialog.getByRole('button', { name: 'Block passkey' });
+    await blockPasskey.scrollIntoViewIfNeeded();
+    await expect(blockPasskey).toBeInViewport();
+    await expect(page).toHaveScreenshot('passkey-wallet-settings-danger.png');
+  });
+
+  test('shows the wallet with EUR selected', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWallet(page);
+    const eur = page.getByRole('button', { name: 'EUR', exact: true });
+    await eur.click();
+    await expect(eur).toHaveAttribute('aria-pressed', 'true');
+    await expect(page).toHaveScreenshot('passkey-wallet-start-eur.png');
+  });
+
+  test('shows an empty transaction history from test props', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyHistory = {
+        items: [],
+        hasMore: false,
+        loadMore: async () => undefined,
+      };
+    });
+    await openWallet(page);
+    await expect(page.getByText('No transactions yet.', { exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-history-empty.png', { fullPage: true });
+  });
+
+  test('shows populated transaction history before and after show more', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyHistory = {
+        items: [
+          {
+            type: 'buy',
+            direction: 'in',
+            title: 'Bitcoin purchase',
+            date: '6 Nov 2026',
+            amount: '+0.01 BTC',
+            fiatValue: 'CHF 500',
+          },
+          {
+            type: 'receive',
+            direction: 'in',
+            title: 'Received Bitcoin',
+            date: '5 Nov 2026',
+            amount: '+0.001 BTC',
+            fiatValue: 'CHF 50',
+          },
+          {
+            type: 'send',
+            direction: 'out',
+            title: 'Sent Bitcoin',
+            date: '4 Nov 2026',
+            amount: '-0.001 BTC',
+            fiatValue: 'CHF 50',
+            pending: true,
+          },
+          {
+            type: 'swap',
+            direction: 'in',
+            title: 'Swap',
+            date: '3 Nov 2026',
+            amount: '+0.01 ETH',
+            fiatValue: 'CHF 30',
+          },
+          {
+            type: 'sell',
+            direction: 'out',
+            title: 'Bitcoin sale',
+            date: '2 Nov 2026',
+            amount: '-0.002 BTC',
+            fiatValue: 'CHF 100',
+          },
+          {
+            type: 'pay',
+            direction: 'out',
+            title: 'Payment',
+            date: '1 Nov 2026',
+            amount: '-0.0001 BTC',
+            fiatValue: 'CHF 5',
+          },
+        ],
+        hasMore: false,
+        loadMore: async () => undefined,
+      };
+    });
+    await openWallet(page);
+    await expect(page.getByText('Payout pending')).toBeVisible();
+    const showMore = page.getByRole('button', { name: 'Show more' });
+    await showMore.scrollIntoViewIfNeeded();
+    await expect(showMore).toBeInViewport();
+    await expect(page).toHaveScreenshot('passkey-wallet-history-populated.png', { fullPage: true });
+    await showMore.click();
+    await expect(page.getByText('Payment', { exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-history-expanded.png', { fullPage: true });
+  });
+
+  test('shows recovery words and revocation confirmation', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWallet(page);
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('button', { name: /Export recovery phrase/ }).click();
+    await expect(page.getByTestId('passkey-recovery-words')).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-words.png');
+    await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('button', { name: 'Block passkey' }).click();
+    await expect(page.getByRole('dialog', { name: 'Block passkey' })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-revoke.png');
+  });
+});
+
+test('wallet shows Bitcoin reconnect after an auto-link failure', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.install();
+  await page.clock.resume();
+  await openDesk(page, 'unlocked', true);
+  let releaseLink = (): void => undefined;
+  const linkGate = new Promise<void>((resolve) => {
+    releaseLink = resolve;
+  });
+  await page.route('**/v1/auth/passkey/link', async (route) => {
+    await linkGate;
+    await fulfillNotOk(route);
+  });
+  await registerThroughGuidance(page);
+  await page.getByRole('button', { name: 'Show wallet' }).first().click();
+  const bitcoinRow = page.locator('li', { has: page.getByText('Bitcoin', { exact: true }) });
+  await expect(bitcoinRow).toHaveCount(1);
+  await bitcoinRow.scrollIntoViewIfNeeded();
+  await expect(bitcoinRow.locator(`[title="${DESK_DERIVED_BITCOIN_RECEIVE}"]`)).toHaveCount(1);
+  await expect(bitcoinRow.getByText('Not connected yet')).toBeInViewport();
+  await expect(bitcoinRow.getByRole('button', { name: 'Connect again' })).toBeInViewport();
+  await expect(bitcoinRow.getByRole('button', { name: 'Copy address Bitcoin' })).toBeEnabled();
+  await expectDerivedReceiveRows(page);
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 10000);
+  releaseLink();
+  await expect(page.getByRole('status')).toHaveText('Link body is invalid.');
+  await expect(page.getByRole('status')).toBeVisible();
+  await expect(page).toHaveScreenshot('passkey-wallet-bitcoin-offline.png');
 });

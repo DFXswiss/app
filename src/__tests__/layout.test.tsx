@@ -72,7 +72,7 @@ jest.mock('src/components/navigation', () => {
   };
 });
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MutableRefObject, ReactNode, useLayoutEffect } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { Layout } from 'src/components/layout';
@@ -327,4 +327,25 @@ describe('Layout', () => {
     renderLayout({ path: '/account' });
     expect(contentColumn().className.split(/\s+/)).toContain('max-w-screen-md');
   });
+});
+
+it('hides the navigation when noHeader is set', () => {
+  renderLayout({ config: { noHeader: true } });
+  expect(screen.queryByTestId('navigation')).not.toBeInTheDocument();
+});
+
+it('closes the navigation overlay when the header is hidden', () => {
+  mockWebComponent = true;
+  let hideHeader: () => void = () => undefined;
+  function HideHeader(): JSX.Element {
+    const { setConfig } = useLayoutConfigContext();
+    hideHeader = () => setConfig({ noHeader: true });
+    return <div>page</div>;
+  }
+  renderLayout({ children: <HideHeader /> });
+  fireEvent.click(screen.getByTestId('open-nav'));
+  expect(appRoot().querySelector('.absolute.inset-0.z-40')).not.toBeNull();
+  act(() => hideHeader());
+  expect(screen.queryByTestId('navigation')).not.toBeInTheDocument();
+  expect(appRoot().querySelector('.absolute.inset-0.z-40')).toBeNull();
 });

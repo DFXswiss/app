@@ -1,7 +1,14 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
+import type { AuthResult } from '@dfx.swiss/wallet';
+
+type PasskeyWindow = {
+  __dfxSetOpenPasskey?: (next: AuthResult | undefined) => void;
+};
 
 // A value jwt-decode cannot read is removed on boot. The expiry is in the future. The signature is not checked.
-const ACCOUNT_TOKEN = 'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDAsImJsb2NrY2hhaW5zIjpbXX0.x';
+// The account claim makes the visual fixture a signed-in DFX session.
+const ACCOUNT_TOKEN =
+  'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDAsImJsb2NrY2hhaW5zIjpbXSwiYWNjb3VudCI6N30.x';
 
 const VISUAL_USER = {
   mail: 'user@example.com',
@@ -209,6 +216,39 @@ test.describe('/wallet passkey entry', () => {
     await expect(page.getByRole('button', { name: 'Create passkey' })).toHaveCount(0);
     await expectWalletAddress(page);
     await shoot(page, 'wallet-entry-signed-out.png', [heading, login]);
+  });
+
+  test('shows the passkey wallet on /wallet without the header while a DFX session is signed in', async ({ page }) => {
+    await plantAccountToken(page);
+    await installRoutes(page);
+    await page.goto('/wallet?lang=en');
+    await expect(page.locator('img[src*="/kaufen_"]')).toBeVisible();
+    await expect(page.locator('img[alt="logo"]')).toBeVisible();
+    await page.waitForFunction(() => typeof (window as unknown as PasskeyWindow).__dfxSetOpenPasskey === 'function');
+    await page.evaluate(() => {
+      (window as unknown as PasskeyWindow).__dfxSetOpenPasskey?.({
+        state: 'unlocked',
+        accessToken: 'handbook-passkey-token',
+        wallet: {
+          id: 7,
+          credentialId: 'handbook-credential',
+          status: 'Active',
+          created: '2026-11-04',
+          derivationVersion: 'V1',
+          seedCheckAddress: '',
+          backupEligible: false,
+          backedUp: false,
+          backupRequired: true,
+          addresses: [],
+        },
+      } as AuthResult);
+    });
+    const settings = page.getByRole('button', { name: 'Settings' });
+    await expect(settings).toBeVisible();
+    await expect(page.locator('img[alt="logo"]')).toHaveCount(0);
+    await expect(page.locator('img[src*="/kaufen_"]')).toHaveCount(0);
+    await expectWalletAddress(page);
+    await shoot(page, 'wallet-entry-signed-in-passkey.png', [settings]);
   });
 
   test('shows the home services when the session is already signed in', async ({ page }) => {
