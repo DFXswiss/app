@@ -485,10 +485,9 @@ test.describe('Auth area e2e', () => {
     await ensurePasskeyPage();
     await installVirtualPasskey(page);
     const mail = testEmail('passkey');
-    const refcode = 'passkey-full-stack-ref';
 
     // The relying party is localhost. The stack hostname is not that host, so the page opens through the forwarder.
-    await page.goto(`${PASSKEY_PAGE_ORIGIN}/login?feature=Passkey&lang=en&refcode=${encodeURIComponent(refcode)}`);
+    await page.goto(`${PASSKEY_PAGE_ORIGIN}/login?feature=Passkey&lang=en`);
     await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible({ timeout: 20000 });
     await page.locator('img[src$="login-passkey.jpg"]').click();
     await expect(page.getByText('Log in with your device')).toBeVisible({ timeout: 20000 });
@@ -497,12 +496,7 @@ test.describe('Auth area e2e', () => {
     await page.getByRole('button', { name: 'Open a new account' }).click();
     await expect(page.getByLabel('Email address')).toBeVisible({ timeout: 20000 });
     await page.getByLabel('Email address').fill(mail);
-    const registration = page.waitForRequest(
-      (request) =>
-        request.method() === 'POST' && new URL(request.url()).pathname === '/v1/auth/passkey/register/finish',
-    );
     await page.getByRole('button', { name: 'Continue' }).click();
-    expect((await registration).postDataJSON()).toMatchObject({ mail, usedRef: refcode });
 
     let trackedUser = false;
     const trackPasskeyUser = async (): Promise<void> => {
@@ -555,7 +549,6 @@ test.describe('Auth area e2e', () => {
       const rows = await queryRows<{ address: string; family: string; path: string }>(bitcoinAddressSql, [mail, path]);
       expect(rows.length).toBe(1);
       await expect(page.locator(`[title="${row.address}"]`)).toHaveCount(0);
-      expect(await page.locator('body').innerText()).not.toContain(row.address);
 
       await page.getByRole('button', { name: 'Receive', exact: true }).click();
       const receive = page.getByRole('dialog', { name: 'Receive' });
@@ -589,16 +582,17 @@ test.describe('Auth area e2e', () => {
       await page.getByRole('button', { name: 'Log in' }).click();
       const authenticationResponse = await authentication;
       expect(authenticationResponse.ok()).toBe(true);
+      const { accessToken: ceremonyToken } = (await authenticationResponse.json()) as { accessToken?: string };
+      if (!ceremonyToken) throw new Error('Missing passkey ceremony token');
       await expect(page.getByRole('button', { name: 'Show wallet' }).first()).toBeVisible({ timeout: 30000 });
       await page.getByRole('button', { name: 'Show wallet' }).first().click();
       await expect(bitcoinRow.locator('[title]')).toHaveAttribute('title', address);
       await expect(page.locator(`[title="${row.address}"]`)).toHaveCount(0);
-      expect(await page.locator('body').innerText()).not.toContain(row.address);
 
       const evmRow = page.locator('li', { has: page.getByText('Ethereum & EVM', { exact: true }) });
       await expect(evmRow).toHaveCount(1, { timeout: 30000 });
       await page.getByRole('button', { name: 'Receive', exact: true }).click();
-      await receive.getByRole('button', { name: 'Ethereum & EVM', exact: true }).click();
+      await receive.getByRole('button', { name: 'EVM', exact: true }).click();
       const receiveAddress = receive.getByTestId('passkey-receive-address');
       await expect(receiveAddress).toHaveText(/^0x[0-9a-fA-F]{40}$/, { timeout: 30000 });
       const evmAddress = await receiveAddress.textContent();

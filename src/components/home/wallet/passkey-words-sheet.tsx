@@ -1,16 +1,9 @@
 import { useSettingsContext } from '../../../contexts/settings.context';
 import PasskeySheet from './passkey-sheet';
 
-export interface RecoveryPaths {
-  evm: string;
-  bitcoin: string;
-  spark: string;
-}
-
 interface PasskeyWordsSheetProps {
   words?: string[];
   note?: string;
-  paths: RecoveryPaths;
   busy: boolean;
   returnFocus?: HTMLElement | null;
   onDone: () => void;
@@ -20,7 +13,6 @@ interface PasskeyWordsSheetProps {
 export default function PasskeyWordsSheet({
   words,
   note,
-  paths,
   busy,
   returnFocus,
   onDone,
@@ -28,11 +20,6 @@ export default function PasskeyWordsSheet({
 }: PasskeyWordsSheetProps): JSX.Element {
   const { translate } = useSettingsContext();
   const t = (key: string) => translate('screens/home', key);
-  const rows: { label: string; path: string }[] = [
-    { label: t('Ethereum & EVM'), path: paths.evm },
-    { label: t('Bitcoin'), path: paths.bitcoin },
-    { label: t('Lightning (Spark)'), path: paths.spark },
-  ];
 
   return (
     <PasskeySheet title={t('Export recovery phrase')} onClose={onClose} busy={busy} returnFocus={returnFocus}>
@@ -47,26 +34,16 @@ export default function PasskeyWordsSheet({
         </p>
       )}
       {words && (
-        <>
-          <ol data-testid="passkey-recovery-words" className="my-4 grid grid-cols-2 gap-2">
-            {words.map((word, index) => (
-              <li
-                key={index}
-                className="flex items-baseline gap-2 rounded-md bg-dfxGray-300 px-3 py-2.5 font-mono text-[15px]"
-              >
-                <span className="min-w-[16px] text-right font-sans text-xs text-dfxGray-800">{index + 1}</span> {word}
-              </li>
-            ))}
-          </ol>
-          <p className="text-sm font-semibold">{t('Derivation version v1')}</p>
-          <ul className="mt-2 text-sm">
-            {rows.map((row) => (
-              <li key={row.label}>
-                {row.label} <span className="font-mono">{row.path}</span>
-              </li>
-            ))}
-          </ul>
-        </>
+        <ol data-testid="passkey-recovery-words" className="my-4 grid grid-cols-2 gap-2">
+          {words.map((word, index) => (
+            <li
+              key={index}
+              className="flex items-baseline gap-2 rounded-md bg-dfxGray-300 px-3 py-2.5 font-mono text-[15px]"
+            >
+              <span className="min-w-[16px] text-right font-sans text-xs text-dfxGray-800">{index + 1}</span> {word}
+            </li>
+          ))}
+        </ol>
       )}
       <button
         disabled={!words || busy}

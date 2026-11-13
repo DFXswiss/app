@@ -31,8 +31,6 @@ declare global {
 }
 
 let current: OpenPasskey | undefined;
-export type PasskeyCloseReason = 'revoked' | 'blocked' | 'session-changed';
-let closeReason: PasskeyCloseReason | undefined;
 // Account id from the DFX session that was current when this passkey was opened.
 // Undefined means the passkey was opened with no DFX session.
 let openedForAccount: number | undefined;
@@ -50,27 +48,12 @@ export function getOpenPasskeyAccount(): number | undefined {
   return openedForAccount;
 }
 
-export function setPasskeyCloseReason(reason: PasskeyCloseReason): void {
-  closeReason = reason;
-}
-
-export function readPasskeyCloseReason(): PasskeyCloseReason | undefined {
-  return closeReason;
-}
-
-export function takePasskeyCloseReason(): PasskeyCloseReason | undefined {
-  const reason = closeReason;
-  closeReason = undefined;
-  return reason;
-}
-
 export function setOpenPasskey(next: OpenPasskey | undefined, ...accountArg: [] | [number | undefined]): void {
   current = next;
   if (next === undefined) {
     openedForAccount = undefined;
-  } else {
-    closeReason = undefined;
-    if (accountArg.length > 0) openedForAccount = accountArg[0];
+  } else if (accountArg.length > 0) {
+    openedForAccount = accountArg[0];
   }
   listeners.forEach((listener) => listener());
 }

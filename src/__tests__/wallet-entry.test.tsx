@@ -96,6 +96,17 @@ jest.mock('../components/home/connect-wrapper', () => ({
       <button onClick={onCancel}>cancel-connect</button>
       <button onClick={() => onSwitch('Mail')}>switch-wallet</button>
       <button onClick={() => onSwitch('Address')}>switch-address</button>
+      <button
+        onClick={() =>
+          jest
+            .requireActual<typeof import('../components/home/wallet/passkey-session')>(
+              '../components/home/wallet/passkey-session',
+            )
+            .setOpenPasskey(undefined)
+        }
+      >
+        Use another passkey
+      </button>
     </div>
   ),
 }));
@@ -268,12 +279,12 @@ describe('/wallet passkey entry', () => {
     expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
   });
 
-  it('keeps the passkey form open for a signed-in user after the passkey session disappears', () => {
+  it('keeps the passkey form open when an already signed-in user chooses another passkey', () => {
     mockSessionState.isLoggedIn = true;
     setOpenPasskey({ state: 'unlocked' } as OpenPasskey);
     renderAt('/wallet');
     expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
-    act(() => setOpenPasskey(undefined));
+    fireEvent.click(screen.getByRole('button', { name: 'Use another passkey' }));
     expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
   });
 

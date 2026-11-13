@@ -6,7 +6,6 @@ interface PasskeySettingsSheetProps {
   busy: boolean;
   note?: string;
   noteKind?: 'message' | 'refresh' | 'status' | 'diagnostics';
-  statusOk?: boolean;
   checks?: { family: string; address: string; matches: boolean }[];
   onWords: () => void;
   onVerify: () => void;
@@ -169,10 +168,7 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
           <span className={text}>
             {t('Check passkey status')}
             {statusResult && (
-              <small
-                role="status"
-                className={`block text-sm font-semibold ${props.statusOk ? 'text-dfxGreen-300' : 'text-dfxRed-150'}`}
-              >
+              <small role="status" className="block text-sm font-semibold text-dfxGreen-300">
                 {props.note}
               </small>
             )}
@@ -219,7 +215,7 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
         </button>
       </div>
       <button className={`${button} mt-5`} disabled={props.busy} onClick={props.onCancel}>
-        {t('Back to DFX')}
+        {t('Close')}
       </button>
     </PasskeySheet>
   );

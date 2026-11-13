@@ -19,15 +19,12 @@ import {
   dfxPasskeyAccount,
   getOpenPasskey,
   getOpenPasskeyAccount,
-  readPasskeyCloseReason,
   setOpenPasskey,
-  takePasskeyCloseReason,
   type OpenPasskey,
 } from '../components/home/wallet/passkey-session';
 
 function reset(): void {
   setOpenPasskey(undefined);
-  takePasskeyCloseReason();
   mockSessionState.isInitialized = true;
   mockSessionState.isLoggedIn = false;
   mockAuthState.session = undefined;
@@ -61,7 +58,6 @@ describe('PasskeyDfxSession', () => {
     expect(wipe).toHaveBeenCalledTimes(1);
     expect(getOpenPasskey()).toBeUndefined();
     expect(getOpenPasskeyAccount()).toBeUndefined();
-    expect(takePasskeyCloseReason()).toBe('session-changed');
   });
 
   it('wipes passkey keys when the DFX account changes', () => {
@@ -78,7 +74,6 @@ describe('PasskeyDfxSession', () => {
 
     expect(wipe).toHaveBeenCalledTimes(1);
     expect(getOpenPasskey()).toBeUndefined();
-    expect(takePasskeyCloseReason()).toBe('session-changed');
   });
 
   it('keeps the passkey when the same DFX account receives a new token', () => {
@@ -93,7 +88,6 @@ describe('PasskeyDfxSession', () => {
 
     expect(wipe).not.toHaveBeenCalled();
     expect(getOpenPasskey()).toBe(open);
-    expect(readPasskeyCloseReason()).toBeUndefined();
   });
 
   it('wipes a passkey that was opened with no DFX session when a DFX login arrives', () => {
@@ -109,7 +103,6 @@ describe('PasskeyDfxSession', () => {
 
     expect(wipe).toHaveBeenCalledTimes(1);
     expect(getOpenPasskey()).toBeUndefined();
-    expect(takePasskeyCloseReason()).toBe('session-changed');
   });
 
   it('wipes when the stored account already differs from the account at the first render', () => {
@@ -122,7 +115,6 @@ describe('PasskeyDfxSession', () => {
 
     expect(wipe).toHaveBeenCalledTimes(1);
     expect(getOpenPasskey()).toBeUndefined();
-    expect(takePasskeyCloseReason()).toBe('session-changed');
   });
 
   it('does nothing when no passkey is open', () => {
@@ -137,7 +129,6 @@ describe('PasskeyDfxSession', () => {
     view.rerender(<PasskeyDfxSession />);
 
     expect(getOpenPasskey()).toBeUndefined();
-    expect(readPasskeyCloseReason()).toBeUndefined();
   });
 
   it('does nothing while signed in until the account id is a number', () => {
@@ -155,7 +146,6 @@ describe('PasskeyDfxSession', () => {
 
     expect(wipe).not.toHaveBeenCalled();
     expect(getOpenPasskey()).toBe(open);
-    expect(readPasskeyCloseReason()).toBeUndefined();
   });
 
   it('keeps the wallet open when the DFX token is expired but the account id remains', () => {
@@ -168,7 +158,6 @@ describe('PasskeyDfxSession', () => {
     expect(getOpenPasskeyAccount()).toBeUndefined();
     expect(wipe).not.toHaveBeenCalled();
     expect(getOpenPasskey()).toBe(open);
-    expect(readPasskeyCloseReason()).toBeUndefined();
   });
 
   it('does nothing before the DFX session is initialized', () => {
@@ -181,7 +170,6 @@ describe('PasskeyDfxSession', () => {
 
     expect(wipe).not.toHaveBeenCalled();
     expect(getOpenPasskey()).toBe(open);
-    expect(readPasskeyCloseReason()).toBeUndefined();
   });
 
   it('clears an open passkey that has no keys when the account changes', () => {
@@ -195,7 +183,6 @@ describe('PasskeyDfxSession', () => {
 
     expect(getOpenPasskey()).toBeUndefined();
     expect(getOpenPasskeyAccount()).toBeUndefined();
-    expect(takePasskeyCloseReason()).toBe('session-changed');
   });
 
   it('mounts the guard from the layout wrapper', () => {
@@ -213,6 +200,5 @@ describe('PasskeyDfxSession', () => {
     expect(screen.getByText('child')).toBeInTheDocument();
     expect(wipe).toHaveBeenCalledTimes(1);
     expect(getOpenPasskey()).toBeUndefined();
-    expect(takePasskeyCloseReason()).toBe('session-changed');
   });
 });

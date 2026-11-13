@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { useClipboard } from '../../../hooks/clipboard.hook';
 import { QrBasic } from '../../payment/qr-code';
-import { passkeyWalletError } from './passkey-host';
+import { passkeyMessage } from './passkey-host';
 
 export type ReceiveFamily = 'evm' | 'bitcoin' | 'spark';
 
@@ -52,15 +52,15 @@ export function PasskeyReceivePanel({
       onReceiveErrorRef.current(undefined);
     } catch (caught) {
       setAddress(undefined);
-      onReceiveErrorRef.current(passkeyWalletError(caught));
+      onReceiveErrorRef.current(passkeyMessage(caught));
     }
   }, [family]);
 
   const families: ReceiveFamily[] = ['evm', 'bitcoin', 'spark'];
   const familyLabel: Record<ReceiveFamily, string> = {
-    evm: 'Ethereum & EVM',
+    evm: 'EVM',
     bitcoin: 'Bitcoin',
-    spark: 'Lightning (Spark)',
+    spark: 'Spark',
   };
 
   return (
@@ -95,7 +95,7 @@ export function PasskeyReceivePanel({
         >
           <p
             data-testid="passkey-receive-address"
-            className="select-all break-all text-center font-mono text-dfxBlue-800 [font-feature-settings:'calt'_0]"
+            className="select-all break-all text-dfxBlue-800 [font-feature-settings:'calt'_0]"
           >
             {address}
           </p>
