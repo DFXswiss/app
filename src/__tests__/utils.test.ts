@@ -24,6 +24,7 @@ import {
   delay,
   isAbsoluteUrl,
   isSafeRedirectUri,
+  isDfxOwnedPaymentUrl,
   blankedAddress,
   formatBytes,
   formatUnits,
@@ -194,6 +195,26 @@ describe('utils', () => {
       expect(isSafeRedirectUri('')).toBe(false);
       expect(isSafeRedirectUri('not a uri')).toBe(false);
       expect(isSafeRedirectUri('example.com/path')).toBe(false);
+    });
+  });
+
+  describe('isDfxOwnedPaymentUrl', () => {
+    it('should allow the dfx.swiss host family over HTTPS', () => {
+      expect(isDfxOwnedPaymentUrl('https://dfx.swiss/pl')).toBe(true);
+      expect(isDfxOwnedPaymentUrl('https://api.dfx.swiss/v1/lnurlp/pl_1')).toBe(true);
+      expect(isDfxOwnedPaymentUrl('https://dev.api.dfx.swiss/v1/lnurlp/pl_1')).toBe(true);
+    });
+
+    it('should reject foreign origins and look-alike hosts', () => {
+      expect(isDfxOwnedPaymentUrl('https://evil.example.org/v1/lnurlp/pl_1')).toBe(false);
+      expect(isDfxOwnedPaymentUrl('https://evil-dfx.swiss/pl')).toBe(false);
+      expect(isDfxOwnedPaymentUrl('https://dfx.swiss.evil.com/pl')).toBe(false);
+    });
+
+    it('should reject non-HTTPS dfx.swiss and unparsable input', () => {
+      expect(isDfxOwnedPaymentUrl('http://api.dfx.swiss/v1/lnurlp/pl_1')).toBe(false);
+      expect(isDfxOwnedPaymentUrl('')).toBe(false);
+      expect(isDfxOwnedPaymentUrl('not a url')).toBe(false);
     });
   });
 

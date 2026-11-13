@@ -173,6 +173,9 @@ export function clearLoginSessionStorage(): void {
   storageRemove('localStorage', 'dfx.authenticationToken');
   storageRemove('localStorage', 'dfx.srv.activeWallet');
   storageRemove('localStorage', 'dfx.srv.queryParams');
+  // Drop the stored redirect target too: otherwise a new login started via a fresh link inherits the
+  // previous session's redirectUri and would hand off to a stale (possibly foreign) destination.
+  storageRemove('localStorage', 'dfx.srv.redirectUri');
   storageClear('sessionStorage');
 }
 
