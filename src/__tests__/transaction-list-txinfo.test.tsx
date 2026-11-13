@@ -1395,6 +1395,7 @@ describe('TxInfo sell rates', () => {
   it.each([
     ['Sell', 'Output amount = (Input amount - Total fee) × Base rate.'],
     ['Buy', 'Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.'],
+    ['Swap', 'Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.'],
   ])('shows the exchange rate explanation for %s', (type, explanation) => {
     render(<TxInfo showUserDetails={false} tx={makeListTx({ type, rate: 0.020801 }) as any} />);
     expect(screen.getByTestId('expandable-info')).toHaveTextContent(explanation);
