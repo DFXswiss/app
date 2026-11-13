@@ -31,6 +31,10 @@
     "title": "Transaktion zuordnen",
     "description": "Zuweisungs-Formular für nicht zugeordnete Banküberweisungen: Liste, Vorauswahl bei genau einem Ziel und deaktivierter Button bei mehreren Zielen."
   },
+  "transaction-sell-rate": {
+    "title": "Verkaufskurs einer Transaktion",
+    "description": "Abgeschlossener Verkauf mit aufgeklapptem Wechselkurs, Basiskurs und Gebühren in der Transaktionsansicht."
+  },
   "transaction-invoice": {
     "title": "Rechnung bei offenem Kauf",
     "description": "Transaktionsliste mit einem Bankkauf, der auf die Zahlung wartet: Aufgeklappt zeigt die Zeile den Button „Open invoice“ („Rechnung öffnen“); „Open receipt“ („Bestätigung öffnen“) erscheint erst nach Abschluss des Kaufs."

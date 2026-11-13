@@ -420,7 +420,7 @@ jest.mock('src/util/client-error', () => ({
 import { Utils } from '@dfx.swiss/react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
-import TransactionScreen from '../screens/transaction.screen';
+import TransactionScreen, { TransactionRefund } from '../screens/transaction.screen';
 
 const COUNTRY_CH = { symbol: 'CH', name: 'Switzerland' };
 const COUNTRY_DE = { symbol: 'DE', name: 'Germany' };
@@ -1335,6 +1335,54 @@ describe('TransactionRefund rendered view', () => {
 });
 
 describe('TransactionRefund logged-in list path', () => {
+  it('does not submit a guest refund if the transaction id disappears', async () => {
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ inputPaymentMethod: 'Card' }));
+    const router = createMemoryRouter(
+      [{ path: '/:secret?/:id?', element: <TransactionRefund setError={jest.fn()} /> }],
+      { initialEntries: [`/${ACTION_SECRET}/T123`] },
+    );
+    render(<RouterProvider router={router} />);
+    await waitForRefundFormLoaded();
+    await act(async () => {
+      await router.navigate(`/${ACTION_SECRET}`);
+    });
+    await waitForSubmitEnabled('Confirm refund');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }));
+    });
+    expect(mockSetGuestRefund).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('does not submit when authentication disappears after loading refund details', async () => {
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ inputPaymentMethod: 'Card' }));
+    const router = createMemoryRouter(
+      [{ path: '/:id/:secret?', element: <TransactionRefund setError={jest.fn()} /> }],
+      { initialEntries: [`/T123/${ACTION_SECRET}`] },
+    );
+    render(<RouterProvider router={router} />);
+    await waitForRefundFormLoaded();
+    mockIsLoggedIn = false;
+    await act(async () => {
+      await router.navigate('/T123');
+    });
+    await waitForSubmitEnabled('Confirm refund');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }));
+    });
+    expect(mockSetGuestRefund).not.toHaveBeenCalled();
+    expect(mockSetTransactionRefundTarget).not.toHaveBeenCalled();
+  });
+
+  it('does not fetch refund details when the transaction has no numeric id', async () => {
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ id: undefined }));
+    renderRefund('/tx/T123/refund');
+    await waitFor(() => expect(mockGetTransactionByUid).toHaveBeenCalledWith('T123'));
+    await act(() => Promise.resolve());
+    expect(mockGetTransactionRefund).not.toHaveBeenCalled();
+    expect(mockGetGuestRefund).not.toHaveBeenCalled();
+  });
+
   it('loads and submits via JWT APIs on /tx/T123/refund without secret', async () => {
     mockIsLoggedIn = true;
     mockGetTransactionByUid.mockResolvedValue(

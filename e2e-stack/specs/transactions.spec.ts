@@ -49,6 +49,43 @@ test('empty transaction list shows "No transactions found"', async ({ page }) =>
   await expect(page.getByText('No transactions found', { exact: true })).toBeVisible();
 });
 
+test('completed sell detail displays fiat per asset for the rate and price step', async ({ page }) => {
+  const user = await createUser({ tag: 'tx-sell-rate', kycLevel: 30, completePersonalData: true });
+  const tx = await createTransaction({
+    state: 'completed_sell',
+    tag: 'tx-sell-rate',
+    inputAsset: 'ETH',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 1,
+  });
+  const eur = required(
+    await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'EUR' LIMIT 1`),
+    'EUR must exist',
+  );
+  await queryRows(
+    `UPDATE buy_fiat SET "inputAmount" = 1, "outputAmount" = 50, "inputReferenceAmount" = 1,
+       "inputReferenceAmountMinusFee" = 1, "outputAssetId" = $1, "priceSteps" = $2 WHERE id = $3`,
+    [
+      eur.id,
+      JSON.stringify([
+        { source: 'Synthetic', from: 'ETH', to: 'EUR', price: 0.025, timestamp: '2026-10-22T13:29:00.687Z' },
+      ]),
+      tx.buyFiatId,
+    ],
+  );
+
+  await openScreen(page, `/tx/${tx.uid}`, user.jwt);
+  await page.getByText('50 EUR/ETH', { exact: true }).first().click();
+  await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+  await expect(page.getByText('50 EUR/ETH', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('50 EUR/ETH', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('0.02 ETH/EUR', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/ETH to EUR at 40 EUR\/ETH/)).toBeVisible();
+  await expect(page.getByText(/ETH to EUR at 0.025 ETH\/EUR/)).toHaveCount(0);
+});
+
 test('transaction list shows buy and sell rows with expected labels and amounts', async ({ page }) => {
   const user = await createUser({
     tag: 'tx-list-rows',

@@ -292,6 +292,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   from `global.setup.ts`), or EUR. It also does not prove that the IBAN in the document is the
   one the quote showed: every quote in this environment uses the collection account and stores
   no bank selection.
+- **The transaction-sell-rate visual spec supplies a synthetic completed sale.**
+  `e2e/transaction-sell-rate.spec.ts` replaces `GET /v1/transaction/single`, startup lookups,
+  `/v1/setting/infoBanner`, `/v1/transaction/unassigned`, and `/v2/user` and uses an unsigned session token. It shows the expanded rate for that fixture. It does not prove that
+  the API returns those values or that login and transaction processing work.
 - **The transaction-invoice visual spec answers the waiting buy row itself.**
   `e2e/transaction-invoice.spec.ts` fulfils `GET /v1/transaction/detail` with a synthetic CHF
   `WaitingForPayment` buy, signs in with an unsigned client-side session token, and answers

@@ -752,6 +752,7 @@
     "Transaction status": "Stato della transazione",
     "Transaction refund": "Rimborso della transazione",
     "{{from}} to {{to}} at {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})": "{{from}} a {{to}} a {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})",
+    "{{from}} to {{to}} at {{price}} {{to}}/{{from}} ({{source}}, {{timestamp}})": "{{from}} a {{to}} a {{price}} {{to}}/{{from}} ({{source}}, {{timestamp}})",
     "No transactions yet": "Nessuna transazione",
     "ID": "ID",
     "External ID": "ID esterno",
