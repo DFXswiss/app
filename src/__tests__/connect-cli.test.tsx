@@ -13,6 +13,8 @@ const mockOnSwitch = jest.fn();
 let mockActiveWallet: string | undefined;
 let mockSession: { address?: string } | undefined;
 let mockLanguage: { symbol: string } | undefined;
+const mockReportDisplayedError = jest.fn();
+let mockApplyRules = true;
 
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: {
@@ -30,8 +32,16 @@ jest.mock('@dfx.swiss/react', () => ({
     SPARK: 'Spark',
     ARKADE: 'Arkade',
   },
-  Utils: { createRules: (rules: unknown) => rules },
-  Validations: { Required: {}, Custom: (validate: unknown) => validate },
+  Utils: {
+    createRules: (rules: Record<string, object | object[] | undefined>) =>
+      Object.fromEntries(
+        Object.entries(rules).map(([name, rule]) => [name, Array.isArray(rule) ? Object.assign({}, ...rule) : rule]),
+      ),
+  },
+  Validations: {
+    Required: { required: { value: true, message: 'required' } },
+    Custom: (validate: unknown) => ({ validate }),
+  },
   useAuth: () => ({ getSignMessage: mockGetSignMessage }),
   useAuthContext: () => ({ session: mockSession }),
   useSessionContext: () => ({ logout: mockLogout }),
@@ -44,8 +54,19 @@ jest.mock('@dfx.swiss/react-components', () => {
   const { useController } = require('react-hook-form');
   const FormControl = React.createContext(null);
   const Field = ({ name, label, items }: { name: string; label: string; items?: string[] }) => {
-    const control = React.useContext(FormControl) as Control<FieldValues>;
-    const { field } = useController({ name, control });
+    const { control, rules } = React.useContext(FormControl) as {
+      control: Control<FieldValues>;
+      rules: Record<string, object | undefined>;
+    };
+    const { field, fieldState } = useController({ name, control, rules: mockApplyRules ? rules[name] : undefined });
+    if (fieldState.error) {
+      return (
+        <>
+          <input aria-label={label} {...field} value={field.value ?? ''} />
+          <span>{`${name} error: ${fieldState.error.message}`}</span>
+        </>
+      );
+    }
     return items ? (
       <select aria-label={label} {...field} value={field.value ?? ''}>
         {items.map((item) => (
@@ -61,14 +82,16 @@ jest.mock('@dfx.swiss/react-components', () => {
   return {
     Form: ({
       control,
+      rules,
       children,
       onSubmit,
     }: {
       control: Control<FieldValues>;
+      rules: Record<string, object | undefined>;
       children: JSX.Element;
       onSubmit: () => void;
     }) => (
-      <FormControl.Provider value={control}>
+      <FormControl.Provider value={{ control, rules }}>
         <form onSubmit={onSubmit}>{children}</form>
       </FormControl.Provider>
     ),
@@ -162,7 +185,9 @@ jest.mock('../hooks/clipboard.hook', () => ({ useClipboard: () => ({ copy: mockC
 jest.mock('../util/lnurl', () => ({ Lnurl: { addressToLnurl: (address: string) => `encoded:${address}` } }));
 jest.mock('../components/home/install-hint', () => ({ InstallHint: () => <div>install</div> }));
 jest.mock('../components/home/sign-hint', () => ({ SignHint: () => <div>sign hint</div> }));
-jest.mock('../hooks/report-displayed-error.hook', () => ({ useReportDisplayedError: () => undefined }));
+jest.mock('../hooks/report-displayed-error.hook', () => ({
+  useReportDisplayedError: (...args: unknown[]) => mockReportDisplayedError(...args),
+}));
 
 import { Blockchain } from '@dfx.swiss/react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -198,6 +223,16 @@ async function change(label: string, value: string) {
   });
 }
 
+async function blur(label: string) {
+  await act(async () => {
+    fireEvent.blur(screen.getByLabelText(label));
+  });
+}
+
+const btcAddress = `1${'A'.repeat(25)}`;
+const btcSignature = `H${'A'.repeat(86)}=`;
+const lnSignature = 'd'.repeat(104);
+
 async function clickLogin() {
   await act(async () => {
     fireEvent.click(screen.getByText('Login'));
@@ -209,6 +244,7 @@ beforeEach(() => {
   mockActiveWallet = undefined;
   mockSession = { address: 'session-address' };
   mockLanguage = undefined;
+  mockApplyRules = true;
   mockLogin.mockResolvedValue(undefined);
   mockSwitchBlockchain.mockResolvedValue(undefined);
   mockLogout.mockResolvedValue(undefined);
@@ -331,19 +367,19 @@ describe('ConnectCli content', () => {
     expect(mockCopy).toHaveBeenCalledWith('sign this');
   });
 
-  it.each<[WalletType, Blockchain, string, string]>([
-    [WalletType.CLI_BTC, Blockchain.BITCOIN, `1${'A'.repeat(25)}`, `1${'A'.repeat(25)}`],
-    [WalletType.CLI_LN, Blockchain.LIGHTNING, 'alice@example.com', 'encoded:alice@example.com'],
-  ])('submits the form values for %s to login', async (wallet, blockchain, address, encoded) => {
+  it.each<[WalletType, Blockchain, string, string, string]>([
+    [WalletType.CLI_BTC, Blockchain.BITCOIN, btcAddress, btcAddress, btcSignature],
+    [WalletType.CLI_LN, Blockchain.LIGHTNING, 'alice@example.com', 'encoded:alice@example.com', lnSignature],
+  ])('submits the form values for %s to login', async (wallet, blockchain, address, encoded, signature) => {
     await ready({ wallet, blockchain, isConnect: true });
     await change('Address', address);
     await screen.findByText('sign this');
-    await change('Signature', 'signature');
+    await change('Signature', signature);
     await clickLogin();
     await waitFor(() =>
       expect(mockLogin).toHaveBeenCalledWith(wallet, encoded, blockchain, expect.any(Function), undefined),
     );
-    await expect(mockLogin.mock.calls[0][3](encoded, 'message')).resolves.toBe('signature');
+    await expect(mockLogin.mock.calls[0][3](encoded, 'message')).resolves.toBe(signature);
   });
 
   it('logs in with the entered address and signature without logging out when the wallet is active on connect', async () => {
@@ -352,7 +388,7 @@ describe('ConnectCli content', () => {
     await ready({ wallet: WalletType.CLI_LN, blockchain: Blockchain.LIGHTNING, isConnect: true });
     await change('Address', 'alice@example.com');
     await screen.findByText('sign this');
-    await change('Signature', 'signature');
+    await change('Signature', lnSignature);
     await clickLogin();
     await waitFor(() =>
       expect(mockLogin).toHaveBeenCalledWith(
@@ -363,7 +399,7 @@ describe('ConnectCli content', () => {
         undefined,
       ),
     );
-    await expect(mockLogin.mock.calls[0][3]('encoded:alice@example.com', 'message')).resolves.toBe('signature');
+    await expect(mockLogin.mock.calls[0][3]('encoded:alice@example.com', 'message')).resolves.toBe(lnSignature);
     expect(mockLogout).not.toHaveBeenCalled();
   });
 
@@ -374,7 +410,7 @@ describe('ConnectCli content', () => {
     const address = `1${'A'.repeat(25)}`;
     await change('Address', address);
     await screen.findByText('sign this');
-    await change('Signature', 'signature');
+    await change('Signature', btcSignature);
     await clickLogin();
     await waitFor(() =>
       expect(mockLogin).toHaveBeenCalledWith(
@@ -385,7 +421,7 @@ describe('ConnectCli content', () => {
         undefined,
       ),
     );
-    await expect(mockLogin.mock.calls[0][3](address, 'message')).resolves.toBe('signature');
+    await expect(mockLogin.mock.calls[0][3](address, 'message')).resolves.toBe(btcSignature);
   });
 
   it('submits form values when the active wallet has no session address', async () => {
@@ -395,7 +431,7 @@ describe('ConnectCli content', () => {
     const address = `1${'A'.repeat(25)}`;
     await change('Address', address);
     await screen.findByText('sign this');
-    await change('Signature', 'signature');
+    await change('Signature', btcSignature);
     await clickLogin();
     await waitFor(() =>
       expect(mockLogin).toHaveBeenCalledWith(
@@ -409,6 +445,8 @@ describe('ConnectCli content', () => {
   });
 
   it('shows the error when a login requests a signature from the CLI wallet', async () => {
+    // the form rules never let an empty signature through, so they are bypassed to reach the wallet sign call
+    mockApplyRules = false;
     mockLogin.mockImplementation((_wallet, address, _blockchain, sign) => sign(address, 'message'));
     await ready({ isConnect: true });
     await change('Address', `1${'A'.repeat(25)}`);
@@ -416,4 +454,90 @@ describe('ConnectCli content', () => {
     await clickLogin();
     expect(await screen.findByText('Invalid signature call')).toBeInTheDocument();
   });
+});
+
+describe('ConnectCli signature format', () => {
+  const armoredSignature = [
+    '-----BEGIN BITCOIN SIGNED MESSAGE-----',
+    'sign this',
+    '-----BEGIN SIGNATURE-----',
+    btcAddress,
+    btcSignature,
+    '-----END BITCOIN SIGNED MESSAGE-----',
+  ].join('\n');
+  const eoaSignature = `0x${'ab'.repeat(65)}`;
+  const smartWalletSignature = `0x${'Cd'.repeat(65 + 32 * 6)}`;
+  const masterKey = '0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d';
+
+  async function enterSignature(wallet: WalletType, blockchain: Blockchain, address: string, signature: string) {
+    await ready({ wallet, blockchain, isConnect: true });
+    if (screen.queryByLabelText('Key')) await change('Key', 'public-key');
+    await change('Address', address);
+    await screen.findByText('sign this');
+    await change('Signature', signature);
+    await blur('Signature');
+  }
+
+  it('logs in with the trimmed signature when it is pasted with surrounding whitespace', async () => {
+    await enterSignature(WalletType.CLI_BTC, Blockchain.BITCOIN, btcAddress, `  \n${btcSignature}\t\n `);
+    expect(screen.queryByText('signature error: pattern')).not.toBeInTheDocument();
+    await clickLogin();
+    await waitFor(() => expect(mockLogin).toHaveBeenCalledTimes(1));
+    await expect(mockLogin.mock.calls[0][3](btcAddress, 'message')).resolves.toBe(btcSignature);
+  });
+
+  it.each<[string, string]>([
+    ['an armored signed message', armoredSignature],
+    ['text with inner spaces', 'not a signature'],
+    ['only whitespace', '   '],
+  ])('shows the field error for %s without logging in or reporting', async (_name, signature) => {
+    await enterSignature(WalletType.CLI_BTC, Blockchain.BITCOIN, btcAddress, signature);
+    expect(await screen.findByText(/^signature error: (pattern|required)$/)).toBeInTheDocument();
+    expect(screen.getByText('Login')).toBeDisabled();
+    await clickLogin();
+    expect(mockLogin).not.toHaveBeenCalled();
+    expect(screen.queryByText('Connection failed!')).not.toBeInTheDocument();
+    expect(mockReportDisplayedError.mock.calls.filter(([error]) => error)).toEqual([]);
+  });
+
+  it.each<[WalletType, Blockchain, string, string, string]>([
+    [
+      WalletType.CLI_BTC,
+      Blockchain.BITCOIN,
+      btcAddress,
+      btcSignature,
+      `${btcSignature.slice(0, 40)} ${btcSignature.slice(40)}`,
+    ],
+    [WalletType.CLI_SPARK, Blockchain.SPARK, 'spark1abcdef', 'ab'.repeat(64), `${'ab'.repeat(64)} x`],
+    [WalletType.CLI_ARK, Blockchain.ARKADE, 'ark1abcdef', 'ab'.repeat(64), '-'.repeat(128)],
+    [WalletType.CLI_FIRO, Blockchain.FIRO, `a${'A'.repeat(33)}`, btcSignature, `${btcSignature}!`],
+    [WalletType.CLI_LN, Blockchain.LIGHTNING, 'alice@example.com', lnSignature, 'd'.repeat(105)],
+    [WalletType.CLI_LN, Blockchain.LIGHTNING, 'alice@example.com', 'e'.repeat(140), 'E'.repeat(140)],
+    [WalletType.CLI_ETH, Blockchain.ETHEREUM, `0x${'a'.repeat(40)}`, eoaSignature, `0x${'ab'.repeat(64)}`],
+    [WalletType.CLI_ETH, Blockchain.ETHEREUM, `0x${'a'.repeat(40)}`, smartWalletSignature, `0x${'g'.repeat(130)}`],
+    [WalletType.CLI_ETH, Blockchain.ETHEREUM, `0x${'a'.repeat(40)}`, 'ab'.repeat(65), `0y${'ab'.repeat(65)}`],
+    [WalletType.CLI_TRX, Blockchain.TRON, `T${'A'.repeat(32)}`, eoaSignature, btcSignature],
+    [WalletType.CLI_XMR, Blockchain.MONERO, `40${'A'.repeat(93)}`, `SigV2${'a'.repeat(88)}`, `SigV2${'a'.repeat(87)}`],
+    [WalletType.CLI_ZANO, Blockchain.ZANO, `Z${'a'.repeat(96)}`, 'f'.repeat(128), 'f'.repeat(127)],
+    [WalletType.CLI_ICP, Blockchain.INTERNET_COMPUTER, 'aaaaa-bbbbb', 'f'.repeat(144), 'f'.repeat(145)],
+    [WalletType.CLI_ADA, Blockchain.CARDANO, 'addr1abc', 'a0'.repeat(80), 'z0'.repeat(80)],
+    [WalletType.CLI_AR, Blockchain.ARWEAVE, 'a'.repeat(43), `${'a-_'.repeat(227)}aa`, 'a+'.repeat(342)],
+    [WalletType.CLI_SOL, Blockchain.SOLANA, 'A'.repeat(43), 'A'.repeat(88), 'O'.repeat(88)],
+    [WalletType.CLI_BTC, Blockchain.BITCOIN, btcAddress, masterKey, `${masterKey}-`],
+    [WalletType.CLI_LN, Blockchain.LIGHTNING, 'alice@example.com', masterKey, masterKey.replace(/-/g, ' ')],
+  ])(
+    'accepts a well-formed %s signature and rejects a malformed one',
+    async (wallet, blockchain, address, valid, malformed) => {
+      await enterSignature(wallet, blockchain, address, malformed);
+      expect(await screen.findByText('signature error: pattern')).toBeInTheDocument();
+      expect(screen.getByText('Login')).toBeDisabled();
+
+      await change('Signature', valid);
+      await waitFor(() => expect(screen.queryByText('signature error: pattern')).not.toBeInTheDocument());
+      expect(screen.getByText('Login')).toBeEnabled();
+      await clickLogin();
+      await waitFor(() => expect(mockLogin).toHaveBeenCalledTimes(1));
+      await expect(mockLogin.mock.calls[0][3](address, 'message')).resolves.toBe(valid);
+    },
+  );
 });

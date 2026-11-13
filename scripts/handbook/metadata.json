@@ -195,6 +195,10 @@
     "title": "Abgelehnter Adresswechsel",
     "description": "Eine Sitzung ohne Adresse (z. B. nach Mail-Login) öffnet /connect; die App wechselt automatisch auf die einzige Adresse des Kontos. Lehnt die API den Wechsel ab, wird er nicht wiederholt: über der Adressauswahl erscheint ein übersetzter Hinweis, dass diese Adresse nicht ausgewählt werden konnte (ohne den Text der API), die Auswahl ist leer und bleibt bedienbar. Weitere Varianten: ein anderer Fehler beim Wechsel (z. B. ein Serverfehler) zeigt nun den allgemeinen Fehlerhinweis über der Adressauswahl; schlägt die Safe-Eröffnung ohne Fehlertext fehl, erscheint der allgemeine Hinweis mit «Unknown error» statt eines endlosen Ladekreises."
   },
+  "cli-signature-format": {
+    "title": "Signaturformat beim Kommandozeilen-Login",
+    "description": "Beim Login per Kommandozeilen-Wallet wird die eingefügte Signatur ohne umgebende Leerzeichen verwendet. Kann der Text keine Signatur der gewählten Wallet sein, etwa ein ganzer signierter Nachrichtenblock, zeigt das Feld einen Formatfehler, Login bleibt deaktiviert und es wird nichts gesendet."
+  },
   "deleted-address": {
     "title": "Gelöschte Adresse",
     "description": "Ist die angemeldete Wallet-Adresse gelöscht, zeigt die App statt Kauf und Verkauf einen Hinweis mit dem Button zum Wiederaktivieren. Nach einer erfolgreichen Aktivierung verschwindet der Hinweis, und auf den Login-Seiten geht es weiter: zum Screen, der zur Anmeldung geschickt hat, sonst von /login nach /buy und von /connect nach /account; im eingebetteten Widget mit service=connect schließt sich stattdessen das Widget. Varianten: Hinweis mit Button und Hinweis nach einer fehlgeschlagenen Aktivierung mit der Fehlermeldung der API."
