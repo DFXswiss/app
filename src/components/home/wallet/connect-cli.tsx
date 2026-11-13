@@ -48,6 +48,32 @@ const SupportedBlockchains = Wallets.map((w) => WalletBlockchains[w])
   .filter((c) => c)
   .flat() as Blockchain[];
 
+// a custody provider key is accepted in place of a signature for any address
+const masterKeyFormat = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+const bitcoinSignatureFormat = '.{87}=|[A-Za-z0-9+/]+={0,2}';
+// smart contract wallet signatures (ERC-1271, ERC-6492) are longer than 65 bytes
+const evmSignatureFormat = '(0x)?[a-fA-F0-9]{130,}';
+
+function signatureFormat(format: string): RegExp {
+  return new RegExp(`^(${masterKeyFormat}|${format})$`);
+}
+
+const signatureRegex: { [wallet in WalletType]?: RegExp } = {
+  [WalletType.CLI_BTC]: signatureFormat(bitcoinSignatureFormat),
+  [WalletType.CLI_SPARK]: signatureFormat(bitcoinSignatureFormat),
+  [WalletType.CLI_ARK]: signatureFormat(bitcoinSignatureFormat),
+  [WalletType.CLI_FIRO]: signatureFormat(bitcoinSignatureFormat),
+  [WalletType.CLI_LN]: signatureFormat('[a-z0-9]{104}|[a-z0-9]{140,146}'),
+  [WalletType.CLI_XMR]: signatureFormat('SigV\\d[0-9a-zA-Z]{88}'),
+  [WalletType.CLI_ETH]: signatureFormat(evmSignatureFormat),
+  [WalletType.CLI_TRX]: signatureFormat(evmSignatureFormat),
+  [WalletType.CLI_AR]: signatureFormat('[\\w-]{683}'),
+  [WalletType.CLI_ADA]: signatureFormat('[a-fA-F0-9]+'),
+  [WalletType.CLI_SOL]: signatureFormat('[1-9A-HJ-NP-Za-km-z]{87,88}'),
+  [WalletType.CLI_ZANO]: signatureFormat('[a-fA-F0-9]{128}'),
+  [WalletType.CLI_ICP]: signatureFormat('[a-fA-F0-9]{128,144}'),
+};
+
 function encodeAddress(address: string): string {
   return /^\S+@\S+\.\S+$/.test(address) ? Lnurl.addressToLnurl(address) : address;
 }
@@ -66,6 +92,7 @@ export default function ConnectCli(props: ConnectProps): JSX.Element {
 
     const values = form.getValues();
     values.address = encodeAddress(values.address);
+    values.signature = values.signature?.trim();
     return values;
   }
 
@@ -117,6 +144,10 @@ function Content({ wallet, isConnecting, connect, error, form, onSwitch, rootRef
     return regex && regex.test(address) ? true : 'pattern';
   }
 
+  function validateSignature(signature: string): true | string {
+    return signatureRegex[wallet]?.test(signature.trim()) ? true : 'pattern';
+  }
+
   const {
     control,
     handleSubmit,
@@ -157,7 +188,7 @@ function Content({ wallet, isConnecting, connect, error, form, onSwitch, rootRef
   const rules = Utils.createRules({
     blockchain: Validations.Required,
     address: [Validations.Required, Validations.Custom(validateAddress)],
-    signature: Validations.Required,
+    signature: [Validations.Required, Validations.Custom(validateSignature)],
     key: requiresKey ? Validations.Required : undefined,
   });
 

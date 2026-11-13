@@ -431,6 +431,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   verification. A green run proves the notice replaces the app and shows the API error after
   a failed activation. It does not prove that the API marks a deleted address that way, that
   it rejects or accepts a real reactivation, or that a successful activation opens the app.
+- **The command-line signature format visual spec answers GET /v1/auth/signMessage itself.**
+  `e2e/cli-signature-format.spec.ts` fulfils `/v1/auth/signMessage` with a fixed sign message
+  and fulfils the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`,
+  `/v1/country`, `/v1/setting/infoBanner`). Unmatched `/v1/**` and `/v2/**` calls get `501`.
+  A green run proves the signature field shows its format error and keeps Login disabled for a
+  pasted armored block. It does not prove the API's sign message or signature check; the login
+  with a malformed and with a whitespace-padded signature runs in `e2e-stack/specs/auth.spec.ts`.
 - **Full-stack screen-sync regressions hold delivery of real API responses.**
   `e2e-stack/specs/screen-sync.spec.ts` intercepts `GET /v2/kyc/file/:id` and
   `GET /v1/dashboard/financial/latest`, calls `route.fetch()` against the real API, then
