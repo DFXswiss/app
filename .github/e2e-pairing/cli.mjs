@@ -168,7 +168,8 @@ function pullChangedFiles(pull) {
 }
 
 function truncatedFileList(files, changedFiles) {
-  return files.length >= PULL_FILES_LIMIT || (changedFiles !== null && files.length < changedFiles);
+  // An absent or malformed count is not evidence that the list is complete.
+  return files.length >= PULL_FILES_LIMIT || changedFiles === null || files.length < changedFiles;
 }
 
 async function pullFiles(client, repo, number, pull) {
@@ -1118,8 +1119,9 @@ async function newestAppHeadStatus(client, appSha, creatorLogin) {
 }
 
 // A scheduled sweep only repairs statuses that a lost notification left behind.
-// It never starts a shared run and never reruns a local workflow.
-async function reconcilePull(client, env, deps, slug, appPr) {
+// It never starts a shared run, but it does rerun local jobs after an
+// invalidation so branch protection stops seeing their previous green result.
+async function reconcilePull(client, env, deps, slug, appPr, reviewGate) {
   const pull = await getPullOrNull(client, APP_REPO, appPr);
   if (!pull) {
     return false;
@@ -1146,14 +1148,34 @@ async function reconcilePull(client, env, deps, slug, appPr) {
     return false;
   }
 
-  // The scheduled sweep re-runs the same structural resolution as a dispatch.
-  // It does not run the review gate or any pull-request code.
-  const result = await inspectPair({ client, startRepo: APP_REPO, startPr: appPr });
+  // The scheduled sweep re-runs the same structural resolution and review gate
+  // as a dispatch. It never checks out or executes pull-request code.
+  const result = await applyReviewGate(
+    await inspectPair({ client, startRepo: APP_REPO, startPr: appPr }),
+    { reviewGate },
+  );
   if (result.valid) {
     if (!statusMatchesPair(newest, result)) {
       // The dispatch path for a moved head posts a pending invalidation first.
-      await invalidateOpenPair(client, result, env, { rerun: false });
+      await invalidateOpenPair(client, result, env);
       deps.log(`reconcile app#${appPr}: stale head or pair, invalidated`);
+      return true;
+    }
+    if (isRunning) {
+      const running = parseRunningDescription(newest.description);
+      if (await runIsActive(client, env.GITHUB_REPOSITORY || APP_REPO, running.run_id)) {
+        deps.log(`reconcile app#${appPr}: paired run is still active, no status change`);
+        return false;
+      }
+      // The running marker is stale: the shared run completed without a
+      // publish result. Replace it so a later trigger can start a new run.
+      await postOnOpenSides(client, result, {
+        state: 'failure',
+        description: 'paired run ended without a result',
+        targetUrl: statusTargetUrl(env),
+      });
+      await rerunOpenSides(client, result);
+      deps.log(`reconcile app#${appPr}: paired run ended without a result, reran local jobs`);
       return true;
     }
     deps.log(`reconcile app#${appPr}: pair is valid, no status change`);
@@ -1161,19 +1183,20 @@ async function reconcilePull(client, env, deps, slug, appPr) {
   }
   const failedCompanion = await failOpenCompanion(client, env, deps, BACKEND_REPO, result.backend_pr, {
     repend: true,
-    rerun: false,
   });
   if (failedCompanion) {
     deps.log(`reconcile app#${appPr}: failed the open app companion`);
     return true;
   }
-  await invalidateOpenPair(client, result, env, { rerun: false });
+  // Post the pending invalidation and rerun local jobs before replacing it
+  // with the final resolution status, as the event-driven paths do.
+  await invalidateOpenPair(client, result, env);
   await postResolutionState(client, result, env, { rerun: false });
   deps.log(`reconcile app#${appPr}: invalidated`);
   return true;
 }
 
-async function reconcileCommand(client, env, deps) {
+async function reconcileCommand(client, env, deps, reviewGate) {
   const slug = env.E2E_PAIR_APP_SLUG || '';
   if (!slug) {
     throw new PairingError('pairing app slug unavailable');
@@ -1184,7 +1207,7 @@ async function reconcileCommand(client, env, deps) {
     const appPr = Number(pull?.number);
     try {
       requirePositiveInteger(appPr, 'app pull request number');
-      await reconcilePull(client, env, deps, slug, appPr);
+      await reconcilePull(client, env, deps, slug, appPr, reviewGate);
     } catch (error) {
       failed += 1;
       deps.error(`::error::reconcile app#${pull?.number ?? '?'}: ${error.message}`);
@@ -1257,7 +1280,7 @@ function commandHandler(command, client, env, deps) {
     case 'invalidate':
       return invalidateCommand(client, env, deps);
     case 'reconcile':
-      return reconcileCommand(client, env, deps);
+      return reconcileCommand(client, env, deps, reviewGate);
     case 'verify-attestation':
       return verifyAttestationCommand(client, env, deps);
     default:

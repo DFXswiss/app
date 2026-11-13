@@ -154,7 +154,10 @@ external-provider behavior, money movement, the migration chain, or that the
 pull requests will merge without conflicts.
 The coordinator also reconciles every open paired pull request every 30
 minutes, which catches a backend retarget to a branch other than
-`develop`/`main` and any lost notification.
+`develop`/`main` and any lost notification. After an invalidation it also
+reruns the local required `Full-stack E2E` jobs, and it replaces a running
+marker whose shared run ended without a result with a terminal `failure`, then
+reruns those local jobs so a later trigger can start a new shared run.
 
 Administrators install the pairing GitHub App on both repositories with commit
 status read/write, Actions read/write, Contents read/write, Pull requests read,

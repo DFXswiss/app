@@ -21,7 +21,7 @@ on:
   schedule:
     - cron: '*/30 * * * *'
   issue_comment:
-    types: [created, edited]
+    types: [created, edited, deleted]
   repository_dispatch:
     types: [e2e-pair-backend]
   workflow_dispatch:
@@ -91,6 +91,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_IS_PR: ${{ github.event.issue.pull_request != null }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          PREVIOUS_COMMENT_BODY: ${{ github.event.changes.body.from }}
           DISPATCH_BACKEND_PR: ${{ github.event.client_payload.backend_pr }}
           DISPATCH_SENDER: ${{ github.event.sender.login }}
           APP_SLUG: ${{ vars.E2E_PAIR_APP_SLUG }}
@@ -125,7 +126,18 @@ jobs:
             exit 0
           fi
           if [ "$EVENT_NAME" = 'issue_comment' ]; then
-            if [ "$ISSUE_IS_PR" != 'true' ] || [[ "$COMMENT_BODY" != *'<!-- A38-REVIEW:v1 -->'* ]]; then
+            if [ "$ISSUE_IS_PR" != 'true' ]; then
+              close
+            fi
+            # A deletion has no new body to inspect; its comment body is the
+            # deleted record. An edit must also be recognised by its old body
+            # so removing the marker cannot silently leave a stale verdict.
+            if [ "$EVENT_ACTION" = 'deleted' ]; then
+              if [[ "$COMMENT_BODY" != *'<!-- A38-REVIEW:v1 -->'* ]]; then
+                close
+              fi
+            elif [[ "$COMMENT_BODY" != *'<!-- A38-REVIEW:v1 -->'* ]] &&
+              [[ "${PREVIOUS_COMMENT_BODY:-}" != *'<!-- A38-REVIEW:v1 -->'* ]]; then
               close
             fi
             echo "start_repo=DFXswiss/app" >> "$GITHUB_OUTPUT"
@@ -640,9 +652,66 @@ jobs:
           owner: DFXswiss
           repositories: app,backend
 
+      # Reconciliation runs the same review gate as resolve, against the same
+      # per-repository pins. The tooling is installed from the default branch,
+      # never from a pull-request checkout.
+      - name: Read the app A38 pin
+        id: app-pin
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          pin="$(
+            gh api "repos/DFXswiss/app/contents/.github/workflows/a38-guard.yml?ref=develop" \
+              --jq '.content' | base64 -d \
+              | sed -n 's/.*DFXswiss\/agent\/\.github\/actions\/a38-guard@\([0-9a-f]\{40\}\).*/\1/p' \
+              | head -n 1
+          )"
+          if ! [[ "$pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::DFXswiss/app develop:.github/workflows/a38-guard.yml has no 40-hex A38 pin.'
+            exit 1
+          fi
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+
+      - name: Read the backend A38 pin
+        id: backend-pin
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          pin="$(
+            gh api "repos/DFXswiss/backend/contents/.github/workflows/a38-guard.yml?ref=develop" \
+              --jq '.content' | base64 -d \
+              | sed -n 's/.*DFXswiss\/agent\/\.github\/actions\/a38-guard@\([0-9a-f]\{40\}\).*/\1/p' \
+              | head -n 1
+          )"
+          if ! [[ "$pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::DFXswiss/backend develop:.github/workflows/a38-guard.yml has no 40-hex A38 pin.'
+            exit 1
+          fi
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+
+      - name: Install app A38 validator
+        env:
+          PIN: ${{ steps.app-pin.outputs.pin }}
+        run: |
+          set -euo pipefail
+          python -m venv .a38-venv-app
+          GIT_TERMINAL_PROMPT=0 .a38-venv-app/bin/python -m pip install --quiet --disable-pip-version-check --no-input "git+https://github.com/DFXswiss/agent@${PIN}"
+
+      - name: Install backend A38 validator
+        env:
+          PIN: ${{ steps.backend-pin.outputs.pin }}
+        run: |
+          set -euo pipefail
+          python -m venv .a38-venv-backend
+          GIT_TERMINAL_PROMPT=0 .a38-venv-backend/bin/python -m pip install --quiet --disable-pip-version-check --no-input "git+https://github.com/DFXswiss/agent@${PIN}"
+
       - name: Reconcile open paired pull requests
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           E2E_PAIR_APP_SLUG: ${{ vars.E2E_PAIR_APP_SLUG }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REVIEW_GATE_PYTHON_APP: ${{ github.workspace }}/.a38-venv-app/bin/python
+          REVIEW_GATE_PYTHON_BACKEND: ${{ github.workspace }}/.a38-venv-backend/bin/python
         run: node trusted-e2e-pairing/.github/e2e-pairing/cli.mjs reconcile

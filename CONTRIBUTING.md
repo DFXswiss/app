@@ -512,7 +512,10 @@ commit and is re-run and re-attested. If a side is closed without merging, the
 pair fails closed. A pair whose both sides are already merged is not run.
 The coordinator also reconciles every open paired pull request every 30
 minutes, which catches a backend retarget to a branch other than
-`develop`/`main` and any lost notification.
+`develop`/`main` and any lost notification. After an invalidation it also
+reruns the local required `Full-stack E2E` jobs, and it replaces a running
+marker whose shared run ended without a result with a terminal `failure`, then
+reruns those local jobs so a later trigger can start a new shared run.
 
 Administrators provision the GitHub App on `DFXswiss/app` and
 `DFXswiss/backend` with commit-status read/write, Actions read/write, Contents

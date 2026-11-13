@@ -170,7 +170,7 @@ test('the backend fetch is isolated, hook-free, key-scoped and moved in safely',
 
 test('admin docs scope the App private key to the develop-only environment', () => {
   for (const relativePath of ['CONTRIBUTING.md', 'e2e-stack/README.md', 'docs/test-architecture.md']) {
-    const text = read(relativePath);
+    const text = read(relativePath).replace(/\s+/g, ' ');
     assert.match(text, /environment `e2e-pairing`/, relativePath);
     assert.match(text, /deployment-branch policy limited\s+to\s+`develop`/, relativePath);
     assert.match(text, /`E2E_PAIR_APP_PRIVATE_KEY` as an environment secret/, relativePath);
@@ -193,9 +193,34 @@ test('a schedule reconciles paired pull requests without running the paired stac
   assert.match(reconcile, /private-key: \$\{\{ secrets\.E2E_PAIR_APP_PRIVATE_KEY \}\}/);
   assert.match(reconcile, /repositories: app,backend/);
   assert.match(reconcile, /cli\.mjs reconcile/);
+  assert.match(reconcile, /REVIEW_GATE_PYTHON_APP: \$\{\{ github\.workspace \}\}\/\.a38-venv-app\/bin\/python/);
+  assert.match(reconcile, /REVIEW_GATE_PYTHON_BACKEND: \$\{\{ github\.workspace \}\}\/\.a38-venv-backend\/bin\/python/);
   assert.doesNotMatch(reconcile, /actions\/checkout@v4\n        with:\n          repository: DFXswiss\/app/);
 
   for (const name of ['resolve', 'run', 'publish']) {
     assert.match(job(workflow, name), /github\.event_name != 'schedule'/, `${name} does not run on schedule`);
   }
+});
+
+test('review-comment deletion and marker removal re-evaluate the pair from event env', () => {
+  const workflow = read('.github/workflows/e2e-paired.yml');
+  assert.match(workflow, /issue_comment:\n    types: \[created, edited, deleted\]/);
+  const decide = step(workflow, 'Decide the starting side');
+  assert.match(decide, /COMMENT_BODY: \$\{\{ github\.event\.comment\.body \}\}/);
+  assert.match(decide, /PREVIOUS_COMMENT_BODY: \$\{\{ github\.event\.changes\.body\.from \}\}/);
+  assert.match(decide, /if \[ "\$EVENT_ACTION" = 'deleted' \]; then/);
+  assert.match(decide, /\[\[ "\$COMMENT_BODY" != \*'<!-- A38-REVIEW:v1 -->'\* \]\]/);
+  assert.match(decide, /\[\[ "\$\{PREVIOUS_COMMENT_BODY:-\}" != \*'<!-- A38-REVIEW:v1 -->'\* \]\]/);
+  assert.doesNotMatch(decide, /\$\{\{ github\.event\.comment\.body \}\}.*A38-REVIEW/);
+});
+
+test('paired docs describe reconcile reruns and stale running markers', () => {
+  for (const relativePath of ['CONTRIBUTING.md', 'e2e-stack/README.md', 'docs/test-architecture.md']) {
+    const text = read(relativePath);
+    assert.match(text, /reruns\s+the\s+local\s+required\s+`Full-stack\s+E2E`\s+jobs/, relativePath);
+    assert.match(text, /running\s+marker\s+whose\s+shared\s+run\s+ended\s+without\s+a\s+result/, relativePath);
+  }
+  const stackReadme = read('e2e-stack/README.md');
+  assert.match(stackReadme, /local\s+job\s+verifies\s+the\s+newest\s+App\s+status/);
+  assert.doesNotMatch(stackReadme, /waits\s+for\s+the\s+shared\s+coordinator's\s+status/);
 });

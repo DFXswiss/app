@@ -142,7 +142,8 @@ without `ci:full` and without a pair records `mode=none` and does
 not bring the stack up. There is no selected/partial mode: `ci:full`, PRs
 into `main`, and a bare `workflow_dispatch` (empty `base_ref`) force a full
 run. A develop pull request that declares a pair instead records
-`mode=paired-attested` and waits for the shared coordinator's status; a release
+`mode=paired-attested`; the local job verifies the newest App status, and the
+coordinator reruns the local job once the shared run posts its result. A release
 pull request into `main` always runs the full stack. Both
 suites exist side by side and serve different purposes.
 
@@ -202,7 +203,11 @@ route gate. It does not prove external providers, money movement, the migration
 chain, or a future merge result.
 The coordinator also reconciles every open paired pull request every 30
 minutes, which catches a backend retarget to a branch other than
-`develop`/`main` and any lost notification.
+`develop`/`main` and any lost notification. After it invalidates a pair, it also
+reruns the local required `Full-stack E2E` jobs so branch protection cannot keep
+seeing their previous green result. A running marker whose shared run ended
+without a result is replaced with a terminal `failure`, and the local jobs are
+rerun so a later trigger can start a new shared run.
 
 Administrators install the pairing GitHub App on both repositories with commit
 status read/write, Actions read/write, Contents read/write, Pull requests read,
