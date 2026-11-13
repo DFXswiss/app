@@ -287,6 +287,19 @@ describe('SupportDashboardScreen', () => {
     expect(queryFilterSelect('Department')).toBeNull();
   });
 
+  it('shows the App column with the ticket source also for the Support role, which has no Dept column', async () => {
+    mockAuth.role = 'Support';
+    mockGetIssueList.mockResolvedValue({
+      data: [issue({ id: 1, name: 'From RealUnit', source: 'RealUnit' })],
+      total: 1,
+    });
+    render(<SupportDashboardScreen />);
+    await flushDebounce();
+
+    expect(screen.getByRole('columnheader', { name: 'App' })).toBeInTheDocument();
+    expect(screen.getByText('From RealUnit').closest('tr')).toHaveTextContent('RealUnit');
+  });
+
   it('keeps Limit tab issues independent of the Open type filter', async () => {
     mockGetIssueList.mockImplementation(async (params?: { type?: string; states?: string }) => {
       if (params?.type === 'LimitRequest') {

@@ -506,6 +506,7 @@ export default function SupportDashboardScreen(): JSX.Element {
         <GroupedIssueTable
           groups={activeTab === 'open' ? openIssueGroups : limitIssueGroups}
           showDepartment={canFilterDepartment}
+          showSource
           onRowClick={(issue) => navigate(`/support/dashboard/issue/${issue.id}`)}
         />
       ) : (
@@ -513,6 +514,7 @@ export default function SupportDashboardScreen(): JSX.Element {
           <IssueTable
             issues={displayedIssues}
             showDepartment={canFilterDepartment}
+            showSource
             onRowClick={(issue) => navigate(`/support/dashboard/issue/${issue.id}`)}
           />
           {hasMore && (

@@ -16,6 +16,8 @@ export interface SupportIssueListItem {
   name: string;
   clerk?: string;
   department?: string;
+  // App the ticket was opened from ('DFX' or 'RealUnit'); missing from an API that predates the field.
+  source?: string;
   created: string;
   updated?: string;
   messageCount: number;
