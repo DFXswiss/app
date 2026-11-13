@@ -2645,7 +2645,9 @@ describe('ConnectPasskey', () => {
   });
 
   it('shows the empty credential status in red', async () => {
-    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys) as unknown as OpenPasskey;
+    setOpenPasskey(session);
     mockCredentialStatus.mockResolvedValueOnce([]);
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -2653,6 +2655,8 @@ describe('ConnectPasskey', () => {
     const status = await screen.findByText('No credential status.');
     expect(status).toHaveClass('text-dfxRed-150');
     expect(status).not.toHaveClass('text-dfxGreen-300');
+    expect(passkeySession.getOpenPasskey()).toBe(session);
+    expect(keys.wipe).not.toHaveBeenCalled();
   });
 
   it('shows an active credential status in green', async () => {
@@ -2666,15 +2670,112 @@ describe('ConnectPasskey', () => {
     expect(status).not.toHaveClass('text-dfxRed-150');
   });
 
-  it('shows a blocked credential status in red', async () => {
-    setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
+  it('wipes the keys and records the blocked reason for a blocked credential status', async () => {
+    const keys = ring(SEED);
+    setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
     mockCredentialStatus.mockResolvedValueOnce([{ credentialId: 'cred', status: 'Compromised' }]);
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
-    const status = await screen.findByText('cred: Compromised');
-    expect(status).toHaveClass('text-dfxRed-150');
-    expect(status).not.toHaveClass('text-dfxGreen-300');
+    await waitFor(() => expect(passkeySession.getOpenPasskey()).toBeUndefined());
+    expect(keys.wipe).toHaveBeenCalledTimes(1);
+    expect(readPasskeyCloseReason()).toBe('blocked');
+    expect(screen.queryByText('cred: Compromised')).not.toBeInTheDocument();
+    expect(mockTranslate).not.toHaveBeenCalledWith('screens/home', '{{credentialId}}: {{status}}', expect.anything());
+  });
+
+  it('closes a blocked wallet after the settings desk disappears during the status request', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const keys = ring(SEED);
+    setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
+    let finish: (value: { credentialId: string; status: 'Compromised' }[]) => void = () => undefined;
+    mockCredentialStatus.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
+    view.unmount();
+    await act(async () => finish([{ credentialId: 'cred', status: 'Compromised' }]));
+    expect(keys.wipe).toHaveBeenCalledTimes(1);
+    expect(passkeySession.getOpenPasskey()).toBeUndefined();
+    expect(readPasskeyCloseReason()).toBe('blocked');
+    renderPasskey();
+    expect(await screen.findByText(PASSKEY_BLOCKED)).toBeInTheDocument();
+    expect(screen.getByText('Log in with your device')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument();
+  });
+
+  it('shows the blocked login card when credential status closes the wallet', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const keys = ring(SEED);
+    mockLogin.mockResolvedValue(authResult('unlocked', keys));
+    mockCredentialStatus.mockResolvedValueOnce([{ credentialId: 'cred', status: 'Compromised' }]);
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
+    expect(await screen.findByText(PASSKEY_BLOCKED)).toBeInTheDocument();
+    expect(screen.getByText('Log in with your device')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument();
+    expect(screen.queryByText('cred: Compromised')).not.toBeInTheDocument();
+    expect(passkeySession.getOpenPasskey()).toBeUndefined();
+    expect(keys.wipe).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the wallet open when credential status is unknown', async () => {
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    mockCredentialStatus.mockResolvedValueOnce([{ credentialId: 'cred', status: 'Unknown' }]);
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
+    expect(await screen.findByText('cred: Unknown')).toBeInTheDocument();
+    expect(passkeySession.getOpenPasskey()).toBe(session);
+    expect(keys.wipe).not.toHaveBeenCalled();
+  });
+
+  it('keeps the wallet open when credential status omits the open passkey', async () => {
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    mockCredentialStatus.mockResolvedValueOnce([{ credentialId: 'other', status: 'Compromised' }]);
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
+    expect(await screen.findByText('other: Compromised')).toBeInTheDocument();
+    expect(passkeySession.getOpenPasskey()).toBe(session);
+    expect(keys.wipe).not.toHaveBeenCalled();
+  });
+
+  it('does not close a newer session when an older credential status reports blocked', async () => {
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    let finish: (value: { credentialId: string; status: 'Compromised' }[]) => void = () => undefined;
+    mockCredentialStatus.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
+    const otherKeys = ring(OTHER);
+    const other = authResult('unlocked', otherKeys) as unknown as OpenPasskey;
+    other.accessToken = 'other-token';
+    act(() => setOpenPasskey(other));
+    await act(async () => finish([{ credentialId: 'cred', status: 'Compromised' }]));
+    expect(passkeySession.getOpenPasskey()).toBe(other);
+    expect(keys.wipe).not.toHaveBeenCalled();
+    expect(otherKeys.wipe).not.toHaveBeenCalled();
+    expect(readPasskeyCloseReason()).toBeUndefined();
+    expect(screen.queryByText('cred: Compromised')).not.toBeInTheDocument();
   });
 
   it('shows a mixed credential status in red', async () => {
@@ -4368,6 +4469,124 @@ describe('ConnectPasskey', () => {
       expect(rows).toHaveLength(1);
       expect(wiped).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('button', { name: 'Connect again' })).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('stops a manual Bitcoin link after 15 seconds and applies a late address once', async () => {
+    expect(BITCOIN_LINK_TIMEOUT_MS).toBe(15000);
+    jest.useFakeTimers();
+    try {
+      let resolveLink: (value: { address: { family: string; address: string } }) => void = () => undefined;
+      mockLink.mockRejectedValueOnce(new Error('silent link failed')).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveLink = resolve;
+          }),
+      );
+      setOpenPasskey(authResult('unlocked', ring(SEED), false) as unknown as OpenPasskey);
+      render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+      await act(async () => {
+        for (let step = 0; step < 8; step += 1) await Promise.resolve();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect again' }));
+      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Connect again' })).not.toBeInTheDocument();
+      await act(async () => {
+        jest.advanceTimersByTime(BITCOIN_LINK_TIMEOUT_MS - 1);
+      });
+      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+      expect(screen.getByRole('button', { name: 'Connect again' })).toBeEnabled();
+      expect(screen.getByText('Not connected to DFX yet')).toBeInTheDocument();
+      expect(jest.getTimerCount()).toBe(0);
+      await act(async () => {
+        resolveLink({ address: { family: 'Bitcoin', address: 'bc1qmanual' } });
+        for (let step = 0; step < 8; step += 1) await Promise.resolve();
+      });
+      const rows =
+        passkeySession.getOpenPasskey()?.wallet.addresses.filter((row) => row.address === 'bc1qmanual') ?? [];
+      expect(rows).toHaveLength(1);
+      expect(screen.queryByRole('button', { name: 'Connect again' })).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('discards a late manual Bitcoin link after a newer attempt starts', async () => {
+    jest.useFakeTimers();
+    let view: ReturnType<typeof render> | undefined;
+    try {
+      let resolveExpired: (value: { address: { family: string; address: string } }) => void = () => undefined;
+      mockLink
+        .mockRejectedValueOnce(new Error('silent link failed'))
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveExpired = resolve;
+            }),
+        )
+        .mockImplementationOnce(() => new Promise(() => undefined));
+      setOpenPasskey(authResult('unlocked', ring(SEED), false) as unknown as OpenPasskey);
+      view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+      await act(async () => {
+        for (let step = 0; step < 8; step += 1) await Promise.resolve();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect again' }));
+      await act(async () => {
+        jest.advanceTimersByTime(BITCOIN_LINK_TIMEOUT_MS);
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect again' }));
+      expect(mockLink).toHaveBeenCalledTimes(3);
+      await act(async () => {
+        resolveExpired({ address: { family: 'Bitcoin', address: 'bc1qexpired' } });
+        for (let step = 0; step < 8; step += 1) await Promise.resolve();
+      });
+      expect(passkeySession.getOpenPasskey()?.wallet.addresses.some((row) => row.address === 'bc1qexpired')).toBe(
+        false,
+      );
+      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    } finally {
+      view?.unmount();
+      jest.useRealTimers();
+    }
+  });
+
+  it('discards a late manual Bitcoin link after the session changes', async () => {
+    jest.useFakeTimers();
+    try {
+      let resolveExpired: (value: { address: { family: string; address: string } }) => void = () => undefined;
+      mockLink.mockRejectedValueOnce(new Error('silent link failed')).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveExpired = resolve;
+          }),
+      );
+      const original = authResult('unlocked', ring(SEED), false) as unknown as OpenPasskey;
+      setOpenPasskey(original);
+      render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+      await act(async () => {
+        for (let step = 0; step < 8; step += 1) await Promise.resolve();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect again' }));
+      await act(async () => {
+        jest.advanceTimersByTime(BITCOIN_LINK_TIMEOUT_MS);
+      });
+      const next = { ...original, accessToken: 'other-token' };
+      act(() => setOpenPasskey(next));
+      await act(async () => {
+        resolveExpired({ address: { family: 'Bitcoin', address: 'bc1qexpired' } });
+        for (let step = 0; step < 8; step += 1) await Promise.resolve();
+      });
+      expect(passkeySession.getOpenPasskey()).toBe(next);
+      expect(next.wallet.addresses.some((row) => row.address === 'bc1qexpired')).toBe(false);
+      expect(screen.queryByText('Bitcoin connected.')).not.toBeInTheDocument();
     } finally {
       jest.useRealTimers();
     }

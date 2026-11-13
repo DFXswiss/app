@@ -923,17 +923,17 @@ test.describe('Passkey login', () => {
     await expect(page).toHaveScreenshot('passkey-desk-credential.png', { fullPage: true });
   });
 
-  test('shows a non-active passkey status in red', async ({ page }) => {
+  test('closes the wallet for a non-active passkey status', async ({ page }) => {
     await registerUnlockedDesk(page);
     await page.route('**/*credentialStatus*', (route) =>
       fulfillJson(route, [{ credentialId: deskBase64Url(DESK_CREDENTIAL_BYTES), status: 'Compromised' }]),
     );
     await openSettings(page);
     await page.getByRole('button', { name: 'Check passkey status' }).click();
-    const status = page.getByRole('status').filter({ hasText: 'Compromised' });
-    await expect(status).toBeVisible();
-    await expect(status).toHaveClass(/text-dfxRed-150/);
-    await expect(status).not.toHaveClass(/text-dfxGreen-300/);
+    await expect(page.getByText('This passkey is blocked.')).toBeVisible();
+    await expect(page.getByText('Log in with your device')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+    await expect(page.getByText('Compromised')).not.toBeVisible();
     await expect(page).toHaveScreenshot('passkey-desk-credential-blocked.png', { fullPage: true });
   });
 

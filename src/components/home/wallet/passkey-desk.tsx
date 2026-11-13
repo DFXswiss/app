@@ -276,7 +276,6 @@ export default function PasskeyDesk({
   }
 
   function markLink(session: OpenPasskey, next: BitcoinLinkState): void {
-    if (!mounted.current) return;
     if (!sameSession(getOpenPasskey(), session)) {
       setBitcoinLink('idle');
       return;
@@ -287,7 +286,7 @@ export default function PasskeyDesk({
   function applyLinkedAddress(linkedAddress: PasskeyAddress, session: OpenPasskey): void {
     const latest = liveSession(session);
     if (latest === undefined) {
-      if (mounted.current) setBitcoinLink('idle');
+      setBitcoinLink('idle');
       return;
     }
     const present = latest.wallet.addresses.some(
@@ -315,6 +314,7 @@ export default function PasskeyDesk({
       }
     })();
     const linked = await pending;
+    // The link response carries an address token; the wallet routes keep using the sign-in token.
     return linked.address;
   }
 
@@ -337,6 +337,14 @@ export default function PasskeyDesk({
     }
   }
 
+  function closeBlockedSession(session: OpenPasskey): void {
+    const current = getOpenPasskey();
+    if (!current || !sameSession(current, session)) return;
+    current.keys?.wipe();
+    setPasskeyCloseReason('blocked');
+    setOpenPasskey(undefined);
+  }
+
   async function refreshWallet(
     client: WalletClient,
     session: OpenPasskey,
@@ -346,12 +354,7 @@ export default function PasskeyDesk({
     const list = await client.wallets(session.accessToken);
     const match = list.find((item) => item.id === session.wallet.id);
     if (match && match.status !== 'Active') {
-      const current = getOpenPasskey();
-      if (current && sameSession(current, session)) {
-        current.keys?.wipe();
-        setPasskeyCloseReason('blocked');
-        setOpenPasskey(undefined);
-      }
+      closeBlockedSession(session);
       return match;
     }
     if (match) replaceWallet(match, session);
@@ -369,25 +372,14 @@ export default function PasskeyDesk({
     await run(async (client, original, isCurrent) => {
       const generation = ++linkGeneration.current;
       markLink(original, 'running');
-      if (reportSuccess) {
-        let address: PasskeyAddress;
-        try {
-          address = await linkBitcoin(client, keys, token, accountIndex);
-        } catch (caught) {
-          markLink(original, 'failed');
-          throw caught;
-        }
-        await finishLink(client, original, isCurrent, address, true);
-        return;
-      }
       const work = linkBitcoin(client, keys, token, accountIndex).then(
         (address) => ({ ok: true as const, address }),
-        () => ({ ok: false as const }),
+        (error: unknown) => ({ ok: false as const, error }),
       );
       const timeout = new Promise<'timeout'>((resolve) => {
         linkTimer.current = setTimeout(() => resolve('timeout'), BITCOIN_LINK_TIMEOUT_MS);
       });
-      let outcome: 'timeout' | { ok: true; address: PasskeyAddress } | { ok: false };
+      let outcome: 'timeout' | { ok: true; address: PasskeyAddress } | { ok: false; error: unknown };
       try {
         outcome = await Promise.race([work, timeout]);
       } finally {
@@ -409,9 +401,10 @@ export default function PasskeyDesk({
       }
       if (!outcome.ok) {
         markLink(original, 'failed');
+        if (reportSuccess) throw outcome.error;
         return;
       }
-      await finishLink(client, original, isCurrent, outcome.address, false);
+      await finishLink(client, original, isCurrent, outcome.address, reportSuccess);
     });
   }
 
@@ -668,7 +661,14 @@ export default function PasskeyDesk({
           onStatus={() =>
             void run(async (client, session, isCurrent) => {
               const rows = await client.credentialStatus([session.wallet.credentialId]);
-              if (isCurrent()) {
+              const blocked = rows.some(
+                (item) =>
+                  item.credentialId === session.wallet.credentialId &&
+                  item.status !== 'Active' &&
+                  item.status !== 'Unknown',
+              );
+              if (blocked) closeBlockedSession(session);
+              if (isCurrent() && sameSession(getOpenPasskey(), session)) {
                 setStatusOk(rows.length > 0 && rows.every((item) => item.status === 'Active'));
                 setNote(
                   rows

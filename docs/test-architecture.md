@@ -631,7 +631,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **`e2e/passkey-login.spec.ts`: paused clock.**
   The `Address copied` and `Bitcoin connected.` shots install Playwright's clock and pause it after the toast is visible. A green run does not prove how long a real browser shows the toast.
 - **`e2e/passkey-login.spec.ts`: credential status fixture.**
-  `installDeskRoutes` answers credential status with `Active`. `passkey-desk-credential-blocked` answers the same call with `Compromised`, and the status line has `text-dfxRed-150` and not `text-dfxGreen-300`. A green run does not prove the API reports that status. `POST /v1/passkey/diagnostics` returns `{}`, and the screen shows `Diagnostic recorded.`. A green run does not prove the API stored a diagnostic.
+  `installDeskRoutes` answers credential status with `Active`. `passkey-desk-credential-blocked`
+  answers the same call with `Compromised`, so the wallet closes and the login card shows
+  `This passkey is blocked.`. A green run does not prove the API reports that status or closes a
+  real passkey session. `POST /v1/passkey/diagnostics` returns `{}`, and the screen shows
+  `Diagnostic recorded.`. A green run does not prove the API stored a diagnostic.
 - **`e2e/passkey-login.spec.ts`: history load fixtures.**
   `passkey-wallet-history-loading` sets `__dfxHandbookPasskeyHistory` with `hasMore` and a `loadMore` that never settles, so the screen shows three pulsing loading bars with the accessible name `Loading more transactions`. `passkey-wallet-history-error` makes `loadMore` reject, so the screen shows `Could not load transactions.` and Try again. A green run does not prove a real transaction list or a real scroll observer.
 - **`e2e/passkey-login.spec.ts` and `e2e/wallet-entry.spec.ts`: viewport expansion.**
@@ -725,13 +729,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **`src/__tests__/clipboard.hook.test.ts`: clipboard substitutes and fake timers.**
   The test replaces `navigator.clipboard` and `copy-to-clipboard`. `beforeEach` calls `jest.useFakeTimers()` and `afterEach` restores real timers. A green run does not prove a real clipboard or when a real browser timer fires.
 - **`src/__tests__/connect-passkey.test.tsx`: Bitcoin link timer.**
-  The silent-link tests use Jest fake timers, stubbed hanging link promises and replaced mainnet
-  login rings while racing the link against `BITCOIN_LINK_TIMEOUT_MS` (15000). They prove the
+  The silent- and manual-link tests use Jest fake timers, stubbed hanging link promises and replaced
+  mainnet login rings while racing the link against `BITCOIN_LINK_TIMEOUT_MS` (15000). They prove the
   component releases each temporary ring immediately after its request starts, including a retry and
-  a synchronous start failure. A green run does not prove a real 15 second wait. Because the unit
-  tests replace `client.link`, they do not prove that the real SDK signs before its first `await`;
-  the full-stack passkey case proves that success path by linking Bitcoin through the browser and
-  reading the stored address from the database.
+  a synchronous start failure, and that late manual responses follow the session and generation guards.
+  A green run does not prove a real 15 second wait. Because the unit tests replace `client.link`, they
+  do not prove that the real SDK signs before its first `await`; the full-stack passkey case proves that
+  success path by linking Bitcoin through the browser and reading the stored address from the database.
 - **`src/__tests__/connect-passkey.test.tsx`: tab-session spies.**
   Spies on `getOpenPasskey` supply stale, keyless or missing sessions. `keeps the session-changed sentence when the desk closes and does not take the reason again` spies on `takePasskeyCloseReason`. A green run does not prove session-store behaviour under concurrent changes, and it does not prove that a later desk close leaves the close reason untouched without that spy.
 - **`src/__tests__/connect-passkey.test.tsx`: in-app URL substitute.**
