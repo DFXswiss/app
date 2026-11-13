@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { expect, openScreen, queryOne, queryRows, required, test } from './fixtures';
+import { fulfillRealResponseAfterGate } from './fixtures/screen-sync';
 import {
   createUser,
   createBankAccount,
@@ -79,6 +80,9 @@ test('completed sell detail displays fiat per asset for the rate and price step'
   await openScreen(page, `/tx/${tx.uid}`, user.jwt);
   await page.getByText('50 EUR/ETH', { exact: true }).first().click();
   await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Output amount = (Input amount - Total fee) × Base rate.', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('50 EUR/ETH', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('50 EUR/ETH', { exact: true })).toHaveCount(2);
   await expect(page.getByText('0.02 ETH/EUR', { exact: true })).toHaveCount(0);
@@ -923,6 +927,74 @@ test('refund form with invalid ZIP keeps submit disabled and leaves buy_crypto u
   expect(row?.chargebackAmount).toBeNull();
   expect(row?.chargebackIban).toBeNull();
   expect(row?.chargebackAllowedDateUser).toBeNull();
+});
+
+test('late refund error does not appear after leaving the refund screen', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-refund-late',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  const tx = await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-refund-late',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 190,
+    inputAsset: 'CHF',
+  });
+  await seedActionSecret(tx.uid);
+  const sql = `SELECT "chargebackAmount", "chargebackIban", "chargebackAllowedDateUser"
+    FROM buy_crypto WHERE id = $1`;
+  const before = required(await queryOne(sql, [tx.buyCryptoId]), 'completed buy row must exist');
+  const refundPath = `/v1/transaction/uid/${tx.uid}/${ACTION_SECRET}/refund`;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let routeHandled: Promise<void> | undefined;
+  let intercepted = false;
+  await page.route(`**${refundPath}`, async (route) => {
+    if (route.request().method() !== 'GET' || new URL(route.request().url()).pathname !== refundPath) {
+      await route.fallback();
+      return;
+    }
+    intercepted = true;
+    routeHandled = fulfillRealResponseAfterGate(route, gate);
+    await routeHandled;
+  });
+
+  try {
+    await page.context().clearCookies();
+    await page.goto(`/tx/${tx.uid}/${ACTION_SECRET}/refund`);
+    await expect.poll(() => intercepted).toBe(true);
+    const title = page.getByText('Transaction refund', { exact: true });
+    await expect(title).toBeVisible();
+    await title.locator('..').locator('button').first().click();
+    await expect(page).toHaveURL(new RegExp(`/tx/${tx.uid}$`));
+    await expect(page.getByText('Transaction status', { exact: true })).toBeVisible();
+    await expect(page.getByText('Completed', { exact: true })).toBeVisible();
+
+    const response = page.waitForResponse(
+      (result) => result.request().method() === 'GET' && new URL(result.url()).pathname === refundPath,
+    );
+    release();
+    const delivered = await response;
+    expect(delivered.ok()).toBe(false);
+    await delivered.finished();
+    await required(routeHandled, 'refund route must have been intercepted');
+    await page.waitForLoadState('networkidle');
+    await expect(
+      page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.', {
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    expect(await queryOne(sql, [tx.buyCryptoId])).toEqual(before);
+  } finally {
+    release();
+    if (routeHandled) await routeHandled;
+  }
 });
 
 test('completed buy is not refundable and shows ErrorHint with DB unchanged', async ({ page }) => {

@@ -449,6 +449,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   verification. A green run proves the notice replaces the app and shows the API error after
   a failed activation. It does not prove that the API marks a deleted address that way, that
   it rejects or accepts a real reactivation, or that a successful activation opens the app.
+- **The late refund-error case holds delivery of a real API response.**
+  `e2e-stack/specs/transactions.spec.ts` intercepts the guest refund request, fetches the real API
+  response with `route.fetch()` and delivers that response only after leaving the refund screen.
+  A green run proves that a late real refund error is not shown after navigation. It does not prove
+  the API's natural latency or the behavior of a late successful response.
 - **Full-stack screen-sync regressions hold delivery of real API responses.**
   `e2e-stack/specs/screen-sync.spec.ts` intercepts `GET /v2/kyc/file/:id` and
   `GET /v1/dashboard/financial/latest`, calls `route.fetch()` against the real API, then
