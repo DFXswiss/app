@@ -565,6 +565,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   A green run proves the signature field shows its format error and keeps Login disabled for a
   pasted armored block. It does not prove the API's sign message or signature check; the login
   with a malformed and with a whitespace-padded signature runs in `e2e-stack/specs/auth.spec.ts`.
+- **The late refund-error case holds delivery of a real API response.**
+  `e2e-stack/specs/transactions.spec.ts` intercepts the guest refund request, fetches the real API
+  response with `route.fetch()` and delivers that response only after leaving the refund screen.
+  A green run proves that a late real refund error is not shown after navigation. It does not prove
+  the API's natural latency or the behavior of a late successful response.
 - **Full-stack screen-sync regressions hold delivery of real API responses.**
   `e2e-stack/specs/screen-sync.spec.ts` intercepts `GET /v2/kyc/file/:id` and
   `GET /v1/dashboard/financial/latest`, calls `route.fetch()` against the real API, then
