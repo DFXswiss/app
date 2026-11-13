@@ -9,10 +9,13 @@
  * Passing `bank-account` used to recreate accounts in a loop; that regression is pinned by the
  * dedicated test at the end of this file (select the existing account, do not POST again).
  * Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
+ * /sell also proves three wallet address-check outcomes through the real API: Ok without a banner,
+ * LikelyReturn with the return banner, and Unknown (chain without Scorechain coverage) without a banner.
  */
 
 import type { Page, Response } from '@playwright/test';
-import { expect, gotoWithSession, normPath, openScreen, test, waitForRow } from './fixtures';
+import { ethers } from 'ethers';
+import { expect, gotoWithSession, normPath, openScreen, queryRows, test, waitForRow, withDb } from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -41,6 +44,28 @@ let __sellSwap_WALLET_SEQ = 0;
 function nextWalletIndex(): number {
   __sellSwap_WALLET_SEQ += 1;
   return 8000000 + __sellSwap_WALLET_SEQ;
+}
+
+// Keep this in sync with the dedicated sanction-list address in e2e-stack/env/api.env.
+const SANCTION_LIST_WALLET_INDEX = 7700001;
+
+/**
+ * The API serialises every precheck behind one non-waiting Postgres advisory lock and answers
+ * `Unknown` immediately when the lock is taken. The provider mock answers after five seconds, so a
+ * precheck started by an earlier screen is still in flight when the next screen asks. This probe
+ * takes the lock only for the instant of the probe and always unlocks: a free lock means no precheck
+ * is running, and the next request gets the real provider answer instead of the busy fallback.
+ */
+async function precheckLockIsFree(): Promise<boolean> {
+  return withDb(async (client) => {
+    const { rows } = await client.query<{ locked: boolean }>(
+      `SELECT pg_try_advisory_lock(hashtext('scorechain-precheck')::bigint) AS locked`,
+    );
+    if (rows[0]?.locked) {
+      await client.query(`SELECT pg_advisory_unlock(hashtext('scorechain-precheck')::bigint)`);
+    }
+    return rows[0]?.locked === true;
+  });
 }
 
 /**
@@ -356,6 +381,297 @@ test.describe('Sell + Swap e2e', () => {
     // Amount field is a number input (StyledInput type=number → inputMode=decimal).
     await expect(page.locator('input[inputmode="decimal"]').first()).toBeVisible();
   });
+
+  test('/sell checks the connected wallet in parallel and shows no banner when the API answers Ok', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+
+    const user = await createUser({
+      walletIndex: nextWalletIndex(),
+      tag: 'sell-address-check',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    const checkResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' && new URL(response.url()).pathname === '/v1/sell/address-check',
+      { timeout: 60000 },
+    );
+    let checkAnswered = false;
+    void checkResponse.then(
+      () => {
+        checkAnswered = true;
+      },
+      () => undefined,
+    );
+    const checkRequest = page.waitForRequest(
+      (request) => request.method() === 'GET' && new URL(request.url()).pathname === '/v1/sell/address-check',
+      { timeout: 30000 },
+    );
+
+    // Hold the answer until the form assertions below have run. The mock API answers within
+    // milliseconds, so without a gate the check can be finished before the test types — and then the
+    // pending state the test is about would be a race instead of a property of the page.
+    let releaseAddressCheck: () => void = () => undefined;
+    const addressCheckGate = new Promise<void>((resolve) => (releaseAddressCheck = resolve));
+    await page.route('**/v1/sell/address-check**', async (route) => {
+      await addressCheckGate;
+      await route.continue();
+    });
+
+    await page.goto('/sell?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).not.toBe('/sell');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(user.wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(user.wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/sell');
+
+    await checkRequest;
+    // The form is unaffected: it renders and accepts input while and after the check runs.
+    await expect(page.getByText('You spend', { exact: true })).toBeVisible();
+    const amount = page.locator('input[inputmode="decimal"]').first();
+    await expect(amount).toBeEnabled();
+    await amount.fill('0.1');
+    await expect(amount).toHaveValue('0.1');
+    expect(checkAnswered, 'the form must be usable while the address check is still pending').toBe(false);
+    await expect
+      .poll(precheckLockIsFree, {
+        timeout: 30000,
+        message: 'another precheck must finish before the held address check is released',
+      })
+      .toBe(true);
+    releaseAddressCheck();
+
+    const response = await checkResponse;
+    const requestUrl = new URL(response.url());
+    expect(requestUrl.searchParams.get('blockchain'), 'the hint checks the chain of the selected asset').toBeTruthy();
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toEqual({ result: 'Ok' });
+
+    await expect(amount).toHaveValue('0.1');
+
+    await expect(
+      page.getByText(
+        'Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.',
+      ),
+    ).toHaveCount(0);
+
+    // The precheck screened the address through the Scorechain loc mock.
+    const rows = await queryRows(`SELECT context, severity FROM scorechain_screening WHERE "objectId" = $1`, [
+      user.address,
+    ]);
+    expect(rows).toEqual([{ context: 'Precheck', severity: 'NO_RISK' }]);
+  });
+
+  test('/sell shows the return banner when the connected wallet has a sanction-list hit', async ({ page }) => {
+    test.setTimeout(120000);
+
+    const user = await createUser({
+      walletIndex: SANCTION_LIST_WALLET_INDEX,
+      tag: 'sell-address-check-sanction',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    expect(user.wallet.address.toLowerCase()).toBe('0xcb43872a1cfa064dd61cc7e7507023837a1984f2');
+
+    const checkResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' && new URL(response.url()).pathname === '/v1/sell/address-check',
+      { timeout: 60000 },
+    );
+    let checkAnswered = false;
+    void checkResponse.then(
+      () => {
+        checkAnswered = true;
+      },
+      () => undefined,
+    );
+    const checkRequest = page.waitForRequest(
+      (request) => request.method() === 'GET' && new URL(request.url()).pathname === '/v1/sell/address-check',
+      { timeout: 30000 },
+    );
+
+    // Hold the answer until the form assertions below have run. The mock API answers within
+    // milliseconds, so without a gate the check can be finished before the test types — and then the
+    // pending state the test is about would be a race instead of a property of the page.
+    let releaseAddressCheck: () => void = () => undefined;
+    const addressCheckGate = new Promise<void>((resolve) => (releaseAddressCheck = resolve));
+    await page.route('**/v1/sell/address-check**', async (route) => {
+      await addressCheckGate;
+      await route.continue();
+    });
+
+    await page.goto('/sell?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).not.toBe('/sell');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(user.wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(user.wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/sell');
+
+    await checkRequest;
+    await expect(page.getByText('You spend', { exact: true })).toBeVisible();
+    const amount = page.locator('input[inputmode="decimal"]').first();
+    await expect(amount).toBeEnabled();
+    await amount.fill('0.1');
+    await expect(amount).toHaveValue('0.1');
+    expect(checkAnswered, 'the form must be usable while the address check is still pending').toBe(false);
+    await expect
+      .poll(precheckLockIsFree, {
+        timeout: 30000,
+        message: 'another precheck must finish before the held address check is released',
+      })
+      .toBe(true);
+    releaseAddressCheck();
+
+    const response = await checkResponse;
+    const requestUrl = new URL(response.url());
+    expect(requestUrl.searchParams.get('blockchain'), 'the hint checks the chain of the selected asset').toBeTruthy();
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toEqual({ result: 'LikelyReturn' });
+
+    await expect(
+      page.getByText(
+        'Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByTestId('sell-address-check-banner')).toBeVisible();
+
+    await expect(amount).toHaveValue('0.1');
+
+    const rows = await queryRows(`SELECT context FROM scorechain_screening WHERE "objectId" = $1`, [user.address]);
+    expect(rows).toEqual([{ context: 'Precheck' }]);
+  });
+
+  test(
+    '/sell shows no banner when the address check runs into nothing (Unknown on a chain Scorechain does not cover)',
+    async ({ page }) => {
+      test.setTimeout(120000);
+
+      const user = await createUser({
+        walletIndex: nextWalletIndex(),
+        tag: 'sell-address-check-unknown',
+        kycLevel: 30,
+        completePersonalData: true,
+        language: 'EN',
+      });
+
+      const checkResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'GET' && new URL(response.url()).pathname === '/v1/sell/address-check',
+        { timeout: 60000 },
+      );
+      const checkRequest = page.waitForRequest(
+        (request) => request.method() === 'GET' && new URL(request.url()).pathname === '/v1/sell/address-check',
+        { timeout: 30000 },
+      );
+
+      await page.goto('/sell?blockchain=Gnosis');
+      await page.waitForLoadState('networkidle');
+
+      await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible({ timeout: 15000 });
+      await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).not.toBe('/sell');
+
+      await page.locator('img[src*="cryptowallet"]').click();
+      await page.locator('img[src*="command"]').click();
+
+      const address = page.locator('input[name="address"]');
+      await address.fill(user.wallet.address);
+      await address.blur();
+
+      const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+      await expect(messageNode).toBeVisible({ timeout: 20000 });
+      const message = await messageNode.textContent();
+      if (message == null || message.length === 0) {
+        throw new Error('command-line sign message was empty');
+      }
+      const signature = await new ethers.Wallet(user.wallet.privateKey).signMessage(message);
+
+      const signatureInput = page.locator('input[type="password"]');
+      await signatureInput.fill(signature);
+      await signatureInput.blur();
+
+      const login = page.getByRole('button', { name: 'Login' });
+      await expect(login).toBeEnabled();
+      await login.click();
+
+      await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/sell');
+
+      await checkRequest;
+      await expect(page.getByText('You spend', { exact: true })).toBeVisible();
+      const amount = page.locator('input[inputmode="decimal"]').first();
+      await expect(amount).toBeEnabled();
+      await amount.fill('0.1');
+      await expect(amount).toHaveValue('0.1');
+
+      const response = await checkResponse;
+      const requestUrl = new URL(response.url());
+      expect(requestUrl.searchParams.get('blockchain')).toBe('Gnosis');
+      expect(response.status()).toBe(200);
+      expect(await response.json()).toEqual({ result: 'Unknown' });
+
+      await expect(
+        page.getByText(
+          'Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.',
+        ),
+      ).toHaveCount(0);
+      await expect(page.getByTestId('sell-address-check-banner')).toHaveCount(0);
+
+      const rows = await queryRows(`SELECT id FROM scorechain_screening WHERE "objectId" = $1`, [user.address]);
+      expect(rows).toEqual([]);
+    },
+  );
 
   test('/sell bank account: invalid IBAN rejected; valid IBAN creates bank_data via UI', async ({ page }) => {
     const user = await createUser({

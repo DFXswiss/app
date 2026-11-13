@@ -10,12 +10,12 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 ## The layers this repository owns
 
-| Layer              | Location                        | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                                       |
-| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts run (forks may wait as `action_required`); suite full / related / none                    |
-| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                |
-| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts run (job `mode=none` without `ci:full`); stack only with `ci:full` / main / bare dispatch |
-| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                           | no                                                                                               |
+| Layer              | Location                        | What it proves                                                               | What it cannot prove                                                                 | Runs in CI                                                                                       |
+| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                                      | drafts run (forks may wait as `action_required`); suite full / related / none                    |
+| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query                         | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                |
+| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job except Scorechain is off during the run | drafts run (job `mode=none` without `ci:full`); stack only with `ci:full` / main / bare dispatch |
+| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                                             | no                                                                                               |
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
 payout, ledger booking — is **not** testable from this repository. It belongs to the integration
@@ -39,7 +39,9 @@ Measured on `develop` at `4e9544a9`, 2026-08-10, Node 20, with
 
 Read that number together with the coverage rule in `CONTRIBUTING.md`, section
 "Coverage": every file a pull request touches must reach 100 % on
-all four metrics, and CI does not enforce it — it is a review gate. With the repository at 18 %, that
+all four metrics, and CI does not enforce it. The rule is still mandatory: reviewers reject a pull
+request that leaves a touched file below 100 %, and no deviation from it can be declared or granted
+(`CONTRIBUTING.md`, section "Complete test coverage is mandatory"). With the repository at 18 %, that
 means touching a long-neglected file makes its whole coverage your obligation. Plan for it rather
 than discovering it in review.
 
@@ -135,6 +137,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   (`compliance-user-15`) intercepts `GET /v2/kyc/file/:uid?access=View` and answers HTTP 500 with a
   fixed message. A green run proves that the loaded dossier keeps rendering the file error in its
   preview area, not that the API rejects a real KYC-file request or returns that message.
+- **The transaction-search test writes the customer's verified name itself.**
+  `e2e-stack/specs/compliance.spec.ts` (`/compliance search by transaction id …`) sets
+  `user_data.verifiedName` by SQL before the search, because no identification runs in the stack. A green
+  run proves that the search lists the stored name next to the transaction, not that an identification
+  sets it.
 - **The non-Frick buy screens inject a currency list.** `e2e/buy-process.spec.ts` and
   `e2e/buy-info.spec.ts` fulfil `**/v1/fiat` with CHF, EUR, and one buyable row outside the
   Bank Frick set, and they fulfil the quote in that currency. The product does not offer that
@@ -648,17 +655,35 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   enums, the order hook, the debounce hook and the payment-info component. A green run proves the
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
+- **The full-stack harness answers Scorechain through the API's loc mock.** `e2e-stack/env/api.env`
+  enables only the Scorechain process (`DISABLED_PROCESSES=*,!Scorechain`) and maps the address of
+  `testWallet(7700001)` to the mock form `SanctionList` in `SCORECHAIN_LOC_MOCK`; every other address
+  gets `NoRisk`. The mock answers after `SCORECHAIN_LOC_MOCK_DELAY_MS` (5 s), and the tests prove the
+  form is usable before that answer arrives. `e2e-stack/specs/sell-swap.spec.ts` proves that the sell
+  page shows no banner for `Ok` and the banner for `LikelyReturn`, through the real API and database.
+  A third test opens the sell page on Gnosis, which Scorechain does not cover, and proves the `Unknown`
+  answer shows no banner.
+  A green run does not prove what the real Scorechain returns for an address, or that the API stays
+  within its 15-second bound against the real provider.
+- **The sell address check visuals answer the API themselves.** `e2e/sell-address-check.spec.ts` uses a synthetic
+  unsigned JWT and fulfils the sell bootstrap calls and `GET /v1/sell/address-check` with `LikelyReturn` and
+  `Ok`. It also answers `PUT /v1/sell/paymentInfos` (and `PUT /v1/sell/quote`) with a synthetic quote so the
+  sell form shows its normal exchange rate and payment information. A green run proves how the sell page renders
+  the banner and its absence for those answers. It does not prove production auth, that the API answers
+  `LikelyReturn` for a real address, or that the API returns that quote.
 
 ## Known gaps
 
 All four points below concern the full-stack harness.
 
-- **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*`
+- **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*,!Scorechain`
   (`e2e-stack/env/api.env`); what that switches off in the API is described in the companion document
   there — every process-gated cron job — so the processing chain never executes;
   transaction states are inserted with SQL instead. What is verified is the synchronous path:
   interaction, HTTP, validation, authorisation, persistence, display. (A cron without a `process` field
   is not covered by that switch and keeps running — see the companion document in `DFXswiss/backend`.)
+  The one enabled process, Scorechain, answers from the API's loc mock (`SCORECHAIN_LOC_MOCK`,
+  `SCORECHAIN_LOC_MOCK_DELAY_MS`), so no provider is called; the processing chain stays off.
 - **The harness does not exercise the migration chain.** It builds the schema from the entities,
   because one migration requires a seed row that does not exist at migration time on a fresh
   database. Migrations are covered in `DFXswiss/backend` instead.

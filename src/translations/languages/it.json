@@ -380,6 +380,7 @@
     "No entries found": "Nessuna voce trovata",
     "found by {{type}}": "trovati tramite {{type}}",
     "Customers": "Clienti",
+    "Transactions": "Transazioni",
     "Bank Transactions": "Transazioni bancarie",
     "AmlCheck": "AmlCheck",
     "No change": "nessuna modifica",
@@ -458,10 +459,15 @@
     "KYC verified name": "Nome verificato KYC",
     "KYC Level": "Livello KYC",
     "ID": "ID",
+    "UserData ID": "ID UserData",
+    "Verified name": "Nome verificato",
     "Email": "E-mail",
     "Type": "Tipo",
     "Account Service Ref": "Rif. servizio conto",
     "Amount": "Importo",
+    "Amount (CHF)": "Importo (CHF)",
+    "AML check": "Controllo AML",
+    "Customer": "Cliente",
     "User name": "Nome utente",
     "Complete name": "Nome completo",
     "Creditor name": "Nome del creditore",
@@ -673,7 +679,8 @@
     "e.g. Deutsche Bank": "Ad esempio, Deutsche Bank",
     "As soon as the transaction arrives in our wallet, we will transfer your money to your bank account.": "Non appena la transazione arriva nel nostro portafoglio, trasferiamo il denaro sul vostro conto bancario.",
     "The output amount is computed as the input amount times the base rate minus the DFX fee, bank fee and the network fee. That is, {{output}} {{inputSymbol}} = {{input}} {{outputSymbol}} × {{baseRate}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}.": "L'importo di output è calcolato come l'importo di input moltiplicato per il tasso base meno la commissione DFX, la commissione bancaria e la commissione di rete. Cioè, {{output}} {{inputSymbol}} = {{input}} {{outputSymbol}} × {{baseRate}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}.",
-    "Output amount = Input amount × Base rate - DFX fee - Network fee.": "Importo di output = Importo di input × Tasso base - Commissione DFX - Commissione di rete."
+    "Output amount = Input amount × Base rate - DFX fee - Network fee.": "Importo di output = Importo di input × Tasso base - Commissione DFX - Commissione di rete.",
+    "Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.": "Attenzione: secondo la nostra analisi blockchain, le criptovalute inviate da questo indirizzo wallet molto probabilmente non verranno elaborate ma ti verranno restituite."
   },
   "screens/swap": {
     "Confirm swap": "Conferma swap",

@@ -32,10 +32,25 @@ import { useComplianceGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { cacheBankTx } from 'src/util/bank-tx-cache';
+import { formatSwissDate } from 'src/util/utils';
 
 interface FormData {
   key: string;
 }
+
+interface TransactionSearchResult {
+  id: number;
+  uid: string;
+  type?: string;
+  sourceType: string;
+  userDataId?: number;
+  verifiedName?: string;
+  amountInChf?: number;
+  amlCheck?: string;
+  created: string;
+}
+
+type SearchResult = ComplianceSearchResult & { transactions?: TransactionSearchResult[] };
 
 export default function ComplianceScreen(): JSX.Element {
   useComplianceGuard();
@@ -49,7 +64,7 @@ export default function ComplianceScreen(): JSX.Element {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [dashboardError, setDashboardError] = useState<string>();
-  const [searchResult, setSearchResult] = useState<ComplianceSearchResult>();
+  const [searchResult, setSearchResult] = useState<SearchResult>();
   const [showInfo, setShowInfo] = useState(false);
   const [downloadingUserId, setDownloadingUserId] = useState<number>();
   const [pendingReviews, setPendingReviews] = useState<PendingReviewSummaryEntry[]>([]);
@@ -250,6 +265,59 @@ export default function ComplianceScreen(): JSX.Element {
     },
   ];
 
+  const transactionTableData = [
+    {
+      key: 'id',
+      label: translate('screens/compliance', 'ID'),
+      render: (t: TransactionSearchResult) => t.id,
+    },
+    {
+      key: 'userDataId',
+      label: translate('screens/compliance', 'UserData ID'),
+      render: (t: TransactionSearchResult) => t.userDataId ?? '-',
+    },
+    {
+      key: 'verifiedName',
+      label: translate('screens/compliance', 'Verified name'),
+      render: (t: TransactionSearchResult) => t.verifiedName ?? '-',
+    },
+    {
+      key: 'type',
+      label: translate('screens/compliance', 'Type'),
+      render: (t: TransactionSearchResult) => t.type ?? t.sourceType,
+    },
+    {
+      key: 'amountInChf',
+      label: translate('screens/compliance', 'Amount (CHF)'),
+      render: (t: TransactionSearchResult) => t.amountInChf ?? '-',
+    },
+    {
+      key: 'amlCheck',
+      label: translate('screens/compliance', 'AML check'),
+      render: (t: TransactionSearchResult) => t.amlCheck ?? '-',
+    },
+    {
+      key: 'created',
+      label: translate('screens/compliance', 'Date'),
+      render: (t: TransactionSearchResult) => formatSwissDate(t.created),
+    },
+    {
+      key: 'actions',
+      label: '',
+      render: (t: TransactionSearchResult) =>
+        t.userDataId != null ? (
+          <div className="flex gap-2 justify-end items-center">
+            <button
+              className="px-2 py-1 text-xs font-medium bg-dfxBlue-800 text-white rounded hover:bg-dfxBlue-800/80 transition-colors"
+              onClick={() => navigate(`compliance/user/${t.userDataId}`)}
+            >
+              {translate('screens/compliance', 'Customer')}
+            </button>
+          </div>
+        ) : null,
+    },
+  ];
+
   useLayoutOptions({ title: translate('screens/compliance', 'Compliance') });
 
   return (
@@ -307,7 +375,7 @@ export default function ComplianceScreen(): JSX.Element {
           isLoading={isLoading}
         />
         {searchResult &&
-          (searchResult.userDatas.length + searchResult.bankTx.length > 0 ? (
+          (searchResult.userDatas.length + searchResult.bankTx.length + (searchResult.transactions?.length ?? 0) > 0 ? (
             <>
               <div>
                 <h1 className="text-dfxGray-700">{translate('screens/compliance', 'Matching Entries')}</h1>
@@ -353,6 +421,36 @@ export default function ComplianceScreen(): JSX.Element {
                             </tr>
                           );
                         })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {searchResult.transactions && searchResult.transactions.length > 0 && (
+                <div className="w-full">
+                  <h2 className="text-dfxGray-700">{translate('screens/compliance', 'Transactions')}</h2>
+                  <div className="w-full overflow-x-auto">
+                    <table className="w-full border-collapse bg-white rounded-lg shadow-sm">
+                      <thead>
+                        <tr className="bg-dfxGray-300">
+                          {transactionTableData.map((column) => (
+                            <th key={column.key} className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                              {column.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {searchResult.transactions.map((t) => (
+                          <tr key={t.id} className="border-b border-dfxGray-300 transition-colors hover:bg-dfxGray-300">
+                            {transactionTableData.map((column) => (
+                              <td key={column.key} className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                                {column.render(t)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>

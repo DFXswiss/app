@@ -380,6 +380,7 @@
     "No entries found": "Aucune entrée trouvée",
     "found by {{type}}": "trouvés par {{type}}",
     "Customers": "Clients",
+    "Transactions": "Transactions",
     "Bank Transactions": "Transactions bancaires",
     "AmlCheck": "AmlCheck",
     "No change": "aucun changement",
@@ -458,10 +459,15 @@
     "KYC verified name": "Nom vérifié KYC",
     "KYC Level": "Niveau KYC",
     "ID": "ID",
+    "UserData ID": "ID UserData",
+    "Verified name": "Nom vérifié",
     "Email": "E-mail",
     "Type": "Type",
     "Account Service Ref": "Réf. service compte",
     "Amount": "Montant",
+    "Amount (CHF)": "Montant (CHF)",
+    "AML check": "Contrôle AML",
+    "Customer": "Client",
     "User name": "Nom d'utilisateur",
     "Complete name": "Nom complet",
     "Creditor name": "Nom du créancier",
@@ -673,7 +679,8 @@
     "e.g. Deutsche Bank": "par exemple, la Deutsche Bank",
     "As soon as the transaction arrives in our wallet, we will transfer your money to your bank account.": "Dès que la transaction arrive dans notre portefeuille, nous transférons votre argent sur votre compte bancaire.",
     "The output amount is computed as the input amount times the base rate minus the DFX fee, bank fee and the network fee. That is, {{output}} {{inputSymbol}} = {{input}} {{outputSymbol}} × {{baseRate}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}.": "Le montant de sortie est calculé comme le montant d'entrée multiplié par le taux de base moins les frais DFX, les frais bancaires et les frais de réseau. C'est-à-dire, {{output}} {{inputSymbol}} = {{input}} {{outputSymbol}} × {{baseRate}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}.",
-    "Output amount = Input amount × Base rate - DFX fee - Network fee.": "Montant de sortie = Montant d'entrée × Taux de base - Frais DFX - Frais de réseau."
+    "Output amount = Input amount × Base rate - DFX fee - Network fee.": "Montant de sortie = Montant d'entrée × Taux de base - Frais DFX - Frais de réseau.",
+    "Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.": "Attention : selon notre analyse blockchain, les cryptomonnaies envoyées depuis cette adresse de portefeuille ne seront très probablement pas traitées mais vous seront retournées."
   },
   "screens/swap": {
     "Confirm swap": "Confirmer le swap",

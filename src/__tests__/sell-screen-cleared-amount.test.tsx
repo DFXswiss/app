@@ -61,6 +61,7 @@ const mockSellInterface = {
     return mockCurrencies;
   },
   receiveFor: (...args: unknown[]) => mockReceiveFor(...args),
+  checkAddress: () => Promise.resolve({ result: 'Unknown' }),
 };
 const mockTranslate = (_ns: string, key: string) => key;
 const mockTranslateError = (key: string) => key;
@@ -86,6 +87,7 @@ jest.mock('@dfx.swiss/react', () => ({
     EMAIL_REQUIRED: 'EmailRequired',
   },
   TransactionType: { SELL: 'Sell' },
+  SellAddressCheckResult: { OK: 'Ok', LIKELY_RETURN: 'LikelyReturn', UNKNOWN: 'Unknown' },
   Utils: {
     formatAmount: (n: number) => String(n),
     formatAmountCrypto: (n: number) => String(n),
@@ -137,6 +139,7 @@ jest.mock('@dfx.swiss/react-components', () => {
 
   return {
     AssetIconVariant: {},
+    IconColor: { RED: 'Red' },
     Form: ({ children, control, onSubmit }: any) => (
       <div>
         {enrich(children, control)}

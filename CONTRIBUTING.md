@@ -10,6 +10,65 @@ departs from and the reason. An undeclared deviation is not a discussion point
 A declared deviation is the reviewer's call: they may accept it or refuse it at
 their own discretion. Declaring one is not the same as being granted one.
 
+The only exception is
+[Complete test coverage is mandatory](#complete-test-coverage-is-mandatory):
+no deviation from it can be declared or granted.
+
+## Complete test coverage is mandatory
+
+This rule is binding for every pull request and every contributor at DFX. It
+takes precedence over any softer wording elsewhere in this repository's
+documentation. It is excluded from the deviation process above: no deviation
+from this rule can be declared or granted.
+
+### Every function is fully covered
+
+Every function must be fully covered by tests. Every single one, without
+exception. A function without complete tests is not done.
+
+### Changing a function means covering it
+
+If you change an existing function that is not yet fully covered, you cover it
+completely in the same pull request. "It was untested before" is not an excuse;
+touching it makes you responsible for it.
+
+### 100 % is the goal, and everyone works towards it
+
+Complete test coverage is the goal of this repository. Everyone who opens a pull
+request actively helps to reach 100 %. Excuses for not having raised the
+coverage of an element you changed are not accepted and can lead to sanctions.
+Avoid them.
+
+### What 100 % means
+
+100 % test coverage means that the customer's behaviour — clicking buttons,
+calling functions — is completely represented by end-to-end tests. For these
+tests:
+
+- A **real backend API** and a **real database** run inside the end-to-end test.
+- The tests are **self-contained**. They have no dependency on any server,
+  hosted API or other running service. Never call `dev.api.dfx.swiss`,
+  `api.dfx.swiss` or any other deployed environment; everything runs locally.
+- **All external providers are fully mocked**: banks, KYC providers such as
+  SumSub, screening and compliance services such as Dilisense and Scorechain,
+  exchanges, blockchain nodes, pricing, and every other outbound integration.
+  "The provider is switched off in the test environment" is not a mock; a
+  disabled provider leaves the function untested.
+
+### Mocks cover every known provider response
+
+Before you write or change a mock, use the DEBUG endpoint (`POST /v1/gs/debug`)
+in the PRD environment to check which responses of that external provider are
+known — every outcome and every shape the provider has actually returned (for
+example pass, fail, pending, error, no coverage). Every known response form must
+be simulated by a mock and exercised by a test. Fixtures contain no personal
+data: derive the response forms from production, never copy customer data into
+the repository.
+
+The full-stack harness under `e2e-stack/` (see
+[Full-stack E2E tests](#full-stack-e2e-tests)) is where these end-to-end tests
+run.
+
 ## Pull requests
 
 ### Every pull request is self-contained
@@ -114,13 +173,13 @@ this service's database.
 ### A38
 
 This repository requires A38 according to the canonical A38 standard in
-[DFXswiss/agent](https://github.com/DFXswiss/agent/blob/b421c4a7c957738187aa620a44e2f115dd939bd1/docs/a38.md)
-at commit `b421c4a7c957738187aa620a44e2f115dd939bd1`. Repo job selection:
+[DFXswiss/agent](https://github.com/DFXswiss/agent/blob/4a666e836a1acd94be73482b6b10b9fa6f384185/docs/a38.md)
+at commit `4a666e836a1acd94be73482b6b10b9fa6f384185`. Repo job selection:
 `.github/a38.json`. Target-branch applicability and fork workflow approval:
 `.github/pr-guard.json`. `workflow_approval.workflows` stays a required field
 there but no longer filters: after a fresh enforce pass the guard approves
 every initial held fork `pull_request` run. `dfx pr guard` is
-[wired in](https://github.com/DFXswiss/agent/blob/b421c4a7c957738187aa620a44e2f115dd939bd1/docs/a38-guard.md#how-fork-github-actions-are-meant-to-work).
+[wired in](https://github.com/DFXswiss/agent/blob/4a666e836a1acd94be73482b6b10b9fa6f384185/docs/a38-guard.md#how-fork-github-actions-are-meant-to-work).
 
 This is a **public** repository. GitHub-hosted runners execute the heavy suite
 (Jest, `build:dev`, `widget:dev`, handbook smoke, full-stack E2E, CodeQL).
@@ -226,11 +285,13 @@ guard clauses and the state combinations a screen only reaches in production. If
 a line genuinely cannot be exercised, delete it rather than excluding it from the
 measurement.
 
-CI runs the suite without a coverage gate, so this is a review gate, not an
-automated one: state the per-file numbers in the pull-request description and let
-the reviewer check them against the diff. Most files in this repository are far
-below the mark today, so touching a long-neglected one means bringing that whole
-file up — plan for it rather than discovering it in review.
+CI runs the suite without a coverage gate. The rule is still mandatory (see
+[Complete test coverage is mandatory](#complete-test-coverage-is-mandatory)) and
+reviewers reject a pull request that leaves a touched file below 100 %: state
+the per-file numbers in the pull-request description and let the reviewer check
+them against the diff. Most files in this repository are far below the mark
+today, so touching a long-neglected one means bringing that whole file up — plan
+for it rather than discovering it in review.
 
 ### Visual regression tests (Playwright)
 

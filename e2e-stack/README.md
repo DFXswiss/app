@@ -17,7 +17,7 @@ This harness runs the full application in one pass: the frontend, a real API, an
 
 **Mocked**
 
-- All external providers: banks, KYC/AML, exchanges, blockchain nodes, pricing, storage, and similar outbound integrations
+- All external providers: banks, KYC/AML (for example SumSub, Dilisense, Scorechain), exchanges, blockchain nodes, pricing, storage, and similar outbound integrations
 
 Mocking happens on two levels at once:
 
@@ -25,6 +25,13 @@ Mocking happens on two levels at once:
 2. The stack sits on a Docker network with `internal: true`, which has no route to the internet at all.
 
 A test therefore cannot structurally reach any real payment provider or other external service, even if application code tried to.
+Scorechain is mocked this way: see `SCORECHAIN_LOC_MOCK` in `env/api.env`.
+
+A provider that is only switched off here — for example through
+`DISABLED_PROCESSES=*` — is not mocked, and the functions that depend on it are
+not covered. Such a provider gets a mock in the API's `loc` mode that simulates
+every response form known from production. See "Complete test coverage is
+mandatory" in CONTRIBUTING.md.
 
 ### Schema: synchronize, not migrations
 
