@@ -1393,6 +1393,36 @@ describe('TxInfo priceSteps base rate info', () => {
 
 describe('TxInfo sell rates', () => {
   it.each([
+    ['Sell', 'Output amount = (Input amount - Total fee) × Base rate.'],
+    ['Buy', 'Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.'],
+  ])('shows the exchange rate explanation for %s', (type, explanation) => {
+    render(<TxInfo showUserDetails={false} tx={makeListTx({ type, rate: 0.020801 }) as any} />);
+    expect(screen.getByTestId('expandable-info')).toHaveTextContent(explanation);
+  });
+
+  it('inverts rates and price steps for a sell still processing', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            state: 'Processing',
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            rate: 0.020801,
+            exchangeRate: 0.020801,
+            priceSteps: [{ source: 'Denario', from: 'DSC', to: 'USD', price: 0.017966, timestamp: new Date() }],
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Base rate')).toHaveTextContent('48.075 EUR/DSC');
+    expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent('55.661 USD/DSC');
+    expect(screen.getAllByText('48.075 EUR/DSC', { exact: false }).length).toBeGreaterThan(0);
+  });
+
+  it.each([
     ['Sell', 0.020801, '48.075 EUR/DSC', '55.661 USD/DSC'],
     ['Buy', 0.020801, '0.020801 DSC/EUR', '0.017966 DSC/USD'],
     ['Swap', 0.020801, '0.020801 DSC/EUR', '0.017966 DSC/USD'],

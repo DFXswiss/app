@@ -359,6 +359,8 @@ export function TransactionRefund({ setError }: TransactionRefundProps): JSX.Ele
   useEffect(() => {
     if (!id || !transaction) return;
 
+    let cancelled = false;
+
     async function fetchRefund(refundId: string, refundTransaction: Transaction) {
       // Guest money APIs require a valid action secret; do not fall through without one.
       const loadRefund =
@@ -372,6 +374,7 @@ export function TransactionRefund({ setError }: TransactionRefundProps): JSX.Ele
 
       loadRefund
         .then((response) => {
+          if (cancelled) return;
           setRefundDetails(response);
           if (response.expiryDate) {
             const timeout = new Date(response.expiryDate).getTime() - Date.now();
@@ -382,12 +385,16 @@ export function TransactionRefund({ setError }: TransactionRefundProps): JSX.Ele
             );
           }
         })
-        .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
+        .catch((error: ApiError) => {
+          if (cancelled) return;
+          setError(error.message ?? 'Unknown error');
+        });
     }
 
     fetchRefund(id, transaction);
 
     return () => {
+      cancelled = true;
       if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
     };
   }, [transaction, id, secret, hasActionSecret, isLoggedIn]);
@@ -1094,7 +1101,7 @@ export function TxInfo({ tx, showUserDetails }: TxInfoProps): JSX.Element {
     `screens/${type}`,
     type === 'buy'
       ? 'Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.'
-      : 'Output amount = Input amount × Base rate - DFX fee - Network fee.',
+      : 'Output amount = (Input amount - Total fee) × Base rate.',
   );
 
   const sell = tx.type === TransactionType.SELL;
