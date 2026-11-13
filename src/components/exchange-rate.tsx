@@ -80,17 +80,31 @@ export function ExchangeRate({
           <div className="text-dfxGray-800">{translate('screens/payment', 'Base rate')}</div>
           <StyledVerticalStack gap={1}>
             <div>{baseRate}</div>
-            {steps.map((step: any, index: any) => (
-              <div key={index} className="flex flex-row gap-1 text-xs text-dfxGray-700 leading-tight">
-                <PathArrow className="w-2.5 h-2.5" />
-                {translate('screens/payment', '{{from}} to {{to}} at {{price}} {{from}}/{{to}} on {{source}}', {
-                  source: step.source,
-                  from: step.from,
-                  to: step.to,
-                  price: step.price,
-                })}
-              </div>
-            ))}
+            {steps.map((step, index) => {
+              const inverse = 1 / step.price;
+              const inverted =
+                type === TransactionType.SELL &&
+                step.price !== 0 &&
+                Number.isFinite(step.price) &&
+                Number.isFinite(inverse);
+              return (
+                <div key={index} className="flex flex-row gap-1 text-xs text-dfxGray-700 leading-tight">
+                  <PathArrow className="w-2.5 h-2.5" />
+                  {translate(
+                    'screens/payment',
+                    inverted
+                      ? '{{from}} to {{to}} at {{price}} {{to}}/{{from}} on {{source}}'
+                      : '{{from}} to {{to}} at {{price}} {{from}}/{{to}} on {{source}}',
+                    {
+                      source: step.source,
+                      from: step.from,
+                      to: step.to,
+                      price: inverted ? Utils.formatAmountCrypto(inverse) : step.price,
+                    },
+                  )}
+                </div>
+              );
+            })}
           </StyledVerticalStack>
           <div className="text-dfxGray-800">{translate('screens/payment', 'Total fee')}</div>
           <div>{totalFee}</div>
