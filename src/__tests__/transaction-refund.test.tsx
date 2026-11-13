@@ -699,16 +699,17 @@ describe('TransactionRefund fetchRefund', () => {
     });
   });
 
-  it('does not schedule a refetch when refund details arrive after unmount', async () => {
+  it.each(['guest', 'logged-in'])('does not schedule a refetch after unmount for %s', async (path) => {
     jest.useFakeTimers();
     let resolveRefund!: (value: ReturnType<typeof makeRefund>) => void;
-    mockGetGuestRefund.mockReturnValue(
+    const loader = path === 'guest' ? mockGetGuestRefund : mockGetTransactionRefund;
+    loader.mockReturnValue(
       new Promise<ReturnType<typeof makeRefund>>((resolve) => {
         resolveRefund = resolve;
       }),
     );
-    const { unmount } = renderRefund();
-    await waitFor(() => expect(mockGetGuestRefund).toHaveBeenCalledTimes(1), {
+    const { unmount } = renderRefund(path === 'guest' ? GUEST_REFUND_PATH : '/tx/T123/refund');
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(1), {
       advanceTimers: jest.advanceTimersByTime,
     });
     unmount();
@@ -719,22 +720,23 @@ describe('TransactionRefund fetchRefund', () => {
       jest.advanceTimersByTime(1000);
     });
 
-    expect(mockGetGuestRefund).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(1);
   });
 
-  it('does not report a refund request failure after unmount', async () => {
+  it.each(['guest', 'logged-in'])('does not report a refund failure after unmount for %s', async (path) => {
     let rejectRefund!: (error: unknown) => void;
-    mockGetGuestRefund.mockReturnValue(
+    const loader = path === 'guest' ? mockGetGuestRefund : mockGetTransactionRefund;
+    loader.mockReturnValue(
       new Promise((_resolve, reject) => {
         rejectRefund = reject;
       }),
     );
     const setError = jest.fn();
-    const router = createMemoryRouter([{ path: '/:id/:secret', element: <TransactionRefund setError={setError} /> }], {
-      initialEntries: [`/T123/${ACTION_SECRET}`],
+    const router = createMemoryRouter([{ path: '/:id/:secret?', element: <TransactionRefund setError={setError} /> }], {
+      initialEntries: [path === 'guest' ? `/T123/${ACTION_SECRET}` : '/T123'],
     });
     const { unmount } = render(<RouterProvider router={router} />);
-    await waitFor(() => expect(mockGetGuestRefund).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(1));
     unmount();
 
     await act(async () => {
@@ -743,6 +745,51 @@ describe('TransactionRefund fetchRefund', () => {
     });
 
     expect(setError).not.toHaveBeenCalled();
+  });
+
+  it('keeps the newer refund response when an earlier request resolves late', async () => {
+    jest.useFakeTimers();
+    const nextSecret = 'cd'.repeat(32);
+    let resolveFirst!: (value: ReturnType<typeof makeRefund>) => void;
+    let resolveSecond!: (value: ReturnType<typeof makeRefund>) => void;
+    mockGetGuestRefund
+      .mockReturnValueOnce(
+        new Promise<ReturnType<typeof makeRefund>>((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<ReturnType<typeof makeRefund>>((resolve) => {
+          resolveSecond = resolve;
+        }),
+      );
+    const router = createMemoryRouter([{ path: '/:id/:secret', element: <TransactionRefund setError={jest.fn()} /> }], {
+      initialEntries: [`/T123/${ACTION_SECRET}`],
+    });
+    render(<RouterProvider router={router} />);
+    await waitFor(() => expect(mockGetGuestRefund).toHaveBeenCalledTimes(1), {
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    await act(async () => {
+      await router.navigate(`/T123/${nextSecret}`);
+    });
+    expect(mockGetGuestRefund).toHaveBeenCalledTimes(2);
+    expect(mockGetGuestRefund).toHaveBeenNthCalledWith(2, 'T123', nextSecret);
+
+    await act(async () => {
+      resolveSecond(makeRefund({ refundAmount: 97 }));
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('row-Refund amount')).toHaveTextContent('97 EUR');
+
+    await act(async () => {
+      resolveFirst(makeRefund({ refundAmount: 90, expiryDate: new Date(Date.now() + 1000).toISOString() }));
+      await Promise.resolve();
+      jest.advanceTimersByTime(1000);
+    });
+    expect(screen.getByTestId('row-Refund amount')).toHaveTextContent('97 EUR');
+    expect(screen.getByTestId('row-Refund amount')).not.toHaveTextContent('90 EUR');
+    expect(mockGetGuestRefund).toHaveBeenCalledTimes(2);
   });
 
   it('clears the pending refetch timeout on unmount', async () => {
