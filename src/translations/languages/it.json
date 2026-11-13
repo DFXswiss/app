@@ -679,7 +679,7 @@
     "e.g. Deutsche Bank": "Ad esempio, Deutsche Bank",
     "As soon as the transaction arrives in our wallet, we will transfer your money to your bank account.": "Non appena la transazione arriva nel nostro portafoglio, trasferiamo il denaro sul vostro conto bancario.",
     "The output amount is computed as the input amount times the base rate minus the DFX fee, bank fee and the network fee. That is, {{output}} {{inputSymbol}} = {{input}} {{outputSymbol}} × {{baseRate}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}.": "L'importo di output è calcolato come l'importo di input moltiplicato per il tasso base meno la commissione DFX, la commissione bancaria e la commissione di rete. Cioè, {{output}} {{inputSymbol}} = {{input}} {{outputSymbol}} × {{baseRate}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}.",
-    "Output amount = Input amount × Base rate - DFX fee - Network fee.": "Importo di output = Importo di input × Tasso base - Commissione DFX - Commissione di rete.",
+    "Output amount = (Input amount - Total fee) × Base rate.": "Importo di output = (Importo di input - Commissione totale) × Tasso base.",
     "Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.": "Attenzione: secondo la nostra analisi blockchain, le criptovalute inviate da questo indirizzo wallet molto probabilmente non verranno elaborate ma ti verranno restituite."
   },
   "screens/swap": {

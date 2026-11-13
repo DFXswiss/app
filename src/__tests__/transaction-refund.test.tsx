@@ -699,6 +699,52 @@ describe('TransactionRefund fetchRefund', () => {
     });
   });
 
+  it('does not schedule a refetch when refund details arrive after unmount', async () => {
+    jest.useFakeTimers();
+    let resolveRefund!: (value: ReturnType<typeof makeRefund>) => void;
+    mockGetGuestRefund.mockReturnValue(
+      new Promise<ReturnType<typeof makeRefund>>((resolve) => {
+        resolveRefund = resolve;
+      }),
+    );
+    const { unmount } = renderRefund();
+    await waitFor(() => expect(mockGetGuestRefund).toHaveBeenCalledTimes(1), {
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    unmount();
+
+    await act(async () => {
+      resolveRefund(makeRefund({ expiryDate: new Date(Date.now() + 1000).toISOString() }));
+      await Promise.resolve();
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(mockGetGuestRefund).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report a refund request failure after unmount', async () => {
+    let rejectRefund!: (error: unknown) => void;
+    mockGetGuestRefund.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectRefund = reject;
+      }),
+    );
+    const setError = jest.fn();
+    const router = createMemoryRouter([{ path: '/:id/:secret', element: <TransactionRefund setError={setError} /> }], {
+      initialEntries: [`/T123/${ACTION_SECRET}`],
+    });
+    const { unmount } = render(<RouterProvider router={router} />);
+    await waitFor(() => expect(mockGetGuestRefund).toHaveBeenCalledTimes(1));
+    unmount();
+
+    await act(async () => {
+      rejectRefund({ message: 'late failure' });
+      await Promise.resolve();
+    });
+
+    expect(setError).not.toHaveBeenCalled();
+  });
+
   it('clears the pending refetch timeout on unmount', async () => {
     jest.useFakeTimers();
     const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
