@@ -319,7 +319,7 @@ interface TransactionRefundProps {
   setError: (error: string) => void;
 }
 
-function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
+export function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   const { id, secret } = useParams();
 
   const { state } = useLocation();
@@ -357,34 +357,44 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   }, [id, transaction]);
 
   useEffect(() => {
-    async function fetchRefund() {
-      if (!id || !transaction) return;
+    if (!id || !transaction) return;
 
+    let cancelled = false;
+
+    async function fetchRefund(refundId: string, refundTransaction: Transaction) {
       // Guest money APIs require a valid action secret; do not fall through without one.
       const loadRefund =
         hasActionSecret && secret
-          ? getRefund(id, secret)
-          : isLoggedIn && typeof transaction.id === 'number'
-            ? getTransactionRefund(transaction.id)
+          ? getRefund(refundId, secret)
+          : isLoggedIn && typeof refundTransaction.id === 'number'
+            ? getTransactionRefund(refundTransaction.id)
             : undefined;
 
       if (!loadRefund) return;
 
       loadRefund
         .then((response) => {
+          if (cancelled) return;
           setRefundDetails(response);
           if (response.expiryDate) {
             const timeout = new Date(response.expiryDate).getTime() - Date.now();
             if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
-            refetchTimeout.current = setTimeout(() => fetchRefund(), timeout > 0 ? timeout : 0);
+            refetchTimeout.current = setTimeout(
+              () => fetchRefund(refundId, refundTransaction),
+              timeout > 0 ? timeout : 0,
+            );
           }
         })
-        .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
+        .catch((error: ApiError) => {
+          if (cancelled) return;
+          setError(error.message ?? 'Unknown error');
+        });
     }
 
-    if (transaction && id) fetchRefund();
+    fetchRefund(id, transaction);
 
     return () => {
+      cancelled = true;
       if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
     };
   }, [transaction, id, secret, hasActionSecret, isLoggedIn]);
@@ -631,7 +641,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   );
 }
 
-function TransactionAssign({ setError }: TransactionStatusProps): JSX.Element {
+export function TransactionAssign({ setError }: TransactionStatusProps): JSX.Element {
   const { id, secret } = useParams();
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
@@ -1069,6 +1079,13 @@ interface TxInfoProps {
   showUserDetails: boolean;
 }
 
+function displayRate(value: number, from: string, to: string, sell: boolean) {
+  const inverse = 1 / value;
+  return sell && value !== 0 && Number.isFinite(value) && Number.isFinite(inverse)
+    ? { value: Utils.formatAmountCrypto(inverse), from: to, to: from, inverted: true }
+    : { value, from, to, inverted: false };
+}
+
 export function TxInfo({ tx, showUserDetails }: TxInfoProps): JSX.Element {
   const { translate } = useSettingsContext();
   const { toString } = useBlockchain();
@@ -1084,23 +1101,35 @@ export function TxInfo({ tx, showUserDetails }: TxInfoProps): JSX.Element {
     `screens/${type}`,
     type === 'buy'
       ? 'Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.'
-      : 'Output amount = Input amount × Base rate - DFX fee - Network fee.',
+      : 'Output amount = (Input amount - Total fee) × Base rate.',
   );
 
+  const sell = tx.type === TransactionType.SELL;
   const baseRateInfo = tx.priceSteps
-    ?.map((step) =>
-      translate('screens/payment', '{{from}} to {{to}} at {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})', {
-        source: step.source,
-        from: step.from,
-        to: step.to,
-        price: step.price,
-        // Typed Date, but a raw ISO string at runtime: the API layer parses JSON without a
-        // reviver, so this hits String.prototype.toLocaleString() and renders the string
-        // unchanged, in UTC and independent of any locale. Not part of the defect this fixes.
-        timestamp: step.timestamp.toLocaleString(),
-      }),
-    )
+    ?.map((step) => {
+      const rate = displayRate(step.price, step.from, step.to, sell);
+      return translate(
+        'screens/payment',
+        rate.inverted
+          ? '{{from}} to {{to}} at {{price}} {{to}}/{{from}} ({{source}}, {{timestamp}})'
+          : '{{from}} to {{to}} at {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})',
+        {
+          source: step.source,
+          from: step.from,
+          to: step.to,
+          price: rate.value,
+          // Typed Date, but a raw ISO string at runtime: the API layer parses JSON without a
+          // reviver, so this hits String.prototype.toLocaleString() and renders the string
+          // unchanged, in UTC and independent of any locale. Not part of the defect this fixes.
+          timestamp: step.timestamp.toLocaleString(),
+        },
+      );
+    })
     .join('\n');
+  const formatRate = (value: number) => {
+    const rate = displayRate(value, `${tx.inputAsset}`, `${tx.outputAsset}`, sell);
+    return `${rate.value} ${rate.from}/${rate.to}`;
+  };
   const chargebackTarget =
     tx.type === TransactionType.BUY ? Utils.formatIban(tx.chargebackTarget) : tx.chargebackTarget;
 
@@ -1108,7 +1137,7 @@ export function TxInfo({ tx, showUserDetails }: TxInfoProps): JSX.Element {
   tx.exchangeRate != null &&
     rateItems.push({
       label: translate('screens/payment', 'Base rate'),
-      text: `${tx.exchangeRate} ${tx.inputAsset}/${tx.outputAsset}`,
+      text: formatRate(tx.exchangeRate),
       infoText: baseRateInfo,
     });
   tx.fees?.total != null &&
@@ -1238,9 +1267,7 @@ export function TxInfo({ tx, showUserDetails }: TxInfoProps): JSX.Element {
           expansionItems={rateItems}
           infoText={exchangeRateInfo}
         >
-          <p>
-            {tx.rate} {tx.inputAsset}/{tx.outputAsset}
-          </p>
+          <p>{formatRate(tx.rate)}</p>
         </StyledDataTableExpandableRow>
       )}
 

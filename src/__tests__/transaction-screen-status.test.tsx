@@ -125,7 +125,15 @@ jest.mock('@dfx.swiss/react-components', () => ({
   StyledButtonColor: { STURDY_WHITE: 'sturdy-white', BLUE: 'blue', WHITE: 'white' },
   StyledButtonWidth: { FULL: 'full', MIN: 'min' },
   Form: ({ children }: any) => <div>{children}</div>,
-  StyledDropdown: () => null,
+  StyledDropdown: ({ items, labelFunc, descriptionFunc }: any) => (
+    <div>
+      {(items ?? []).map((item: any) => (
+        <div key={item.id}>
+          {labelFunc?.(item)} {descriptionFunc?.(item)}
+        </div>
+      ))}
+    </div>
+  ),
   StyledInput: () => null,
   StyledLink: ({ label, children }: any) => <div>{label ?? children}</div>,
   StyledSearchDropdown: () => null,
@@ -206,7 +214,7 @@ jest.mock('copy-to-clipboard', () => jest.fn());
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
-import TransactionScreen from '../screens/transaction.screen';
+import TransactionScreen, { TransactionAssign } from '../screens/transaction.screen';
 
 const originalCreateObjectURL = (global.URL as any).createObjectURL;
 
@@ -892,6 +900,41 @@ describe('TransactionAssign via TransactionScreen', () => {
       expect(mockGetTargets).toHaveBeenCalledWith('T123', ACTION_SECRET);
     });
     expect(mockSetTarget).not.toHaveBeenCalled();
+  });
+
+  it('does not load or submit targets after route parameters disappear', async () => {
+    const setError = jest.fn();
+    const router = createMemoryRouter(
+      [{ path: '/:id?/:secret?', element: <TransactionAssign setError={setError} /> }],
+      { initialEntries: [`/T123/${ACTION_SECRET}`] },
+    );
+    render(<RouterProvider router={router} />);
+    await screen.findByRole('button', { name: 'Assign transaction' });
+    await act(async () => {
+      await router.navigate('/');
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Assign transaction' }));
+    expect(mockGetTargets).toHaveBeenCalledTimes(1);
+    expect(mockSetTarget).not.toHaveBeenCalled();
+  });
+
+  it('renders the target label and description', async () => {
+    renderScreen(GUEST_ASSIGN_PATH);
+    expect(await screen.findByText(/ABCD-EFGH/)).toHaveTextContent('ABCD-EFGH');
+    expect(screen.getByText(/BTC/)).toHaveTextContent('BTC');
+  });
+
+  it('uses the fallback when loading targets fails without a message', async () => {
+    mockGetTargets.mockRejectedValue({});
+    renderScreen(GUEST_ASSIGN_PATH);
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('uses the fallback when assigning fails without a message', async () => {
+    mockSetTarget.mockRejectedValue({});
+    renderScreen(GUEST_ASSIGN_PATH);
+    await userEvent.click(await screen.findByRole('button', { name: 'Assign transaction' }));
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
   });
 
   it('surfaces getTargets errors via ErrorHint', async () => {

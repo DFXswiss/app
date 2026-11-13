@@ -194,6 +194,13 @@ beforeEach(() => {
 });
 
 describe('TransactionList document error display', () => {
+  it('does not request a receipt when the completed transaction has no id', async () => {
+    mockGetDetailTransactions.mockResolvedValue([tx({ id: null })]);
+    renderList();
+    await userEvent.click(await screen.findByRole('button', { name: 'Open receipt' }));
+    expect(mockGetTransactionReceipt).not.toHaveBeenCalled();
+  });
+
   it('maps StoredBankNoLongerAcceptsPayments on Open receipt to customer-facing copy', async () => {
     mockGetTransactionReceipt.mockRejectedValue({ message: 'StoredBankNoLongerAcceptsPayments' });
 

@@ -292,6 +292,24 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   from `global.setup.ts`), or EUR. It also does not prove that the IBAN in the document is the
   one the quote showed: every quote in this environment uses the collection account and stores
   no bank selection.
+- **The transaction-sell-rate visual spec supplies a synthetic completed sale.**
+  `e2e/transaction-sell-rate.spec.ts` replaces `GET /v1/transaction/single`, startup lookups,
+  `/v1/setting/infoBanner`, `/v1/transaction/unassigned`, and `/v2/user` and uses an unsigned session token. It shows the expanded rate for that fixture. It does not prove that
+  the API returns those values or that login and transaction processing work.
+- **The transaction-list unit test replaces the SDK and component library.**
+  `src/__tests__/transaction-list-txinfo.test.tsx` replaces `@dfx.swiss/react` and implements
+  `Utils.formatAmountCrypto` locally as `String(Number(n.toPrecision(5)))`; the components are
+  replacements too. A green run does not prove the real SDK's formatting or the real component
+  library's rendering.
+- **The transaction-status unit test replaces the dropdown.**
+  `src/__tests__/transaction-screen-status.test.tsx` replaces `StyledDropdown` with a list that
+  calls `labelFunc` and `descriptionFunc` itself. A green run proves which labels the callbacks
+  return. It does not prove that the real `StyledDropdown` displays them.
+- **The completed sell rate full-stack case writes its starting row with SQL.**
+  `e2e-stack/specs/transactions.spec.ts` sets `inputAmount`, `outputAmount`, `inputReferenceAmount`,
+  `inputReferenceAmountMinusFee`, `outputAssetId` and `priceSteps` on a `buy_fiat` row. A green run
+  proves that the API returns the saved rate fields and the screen displays them as fiat per asset.
+  It does not prove that transaction processing calculates or saves those rates and price steps.
 - **The transaction-invoice visual spec answers the waiting buy row itself.**
   `e2e/transaction-invoice.spec.ts` fulfils `GET /v1/transaction/detail` with a synthetic CHF
   `WaitingForPayment` buy, signs in with an unsigned client-side session token, and answers
@@ -431,6 +449,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   verification. A green run proves the notice replaces the app and shows the API error after
   a failed activation. It does not prove that the API marks a deleted address that way, that
   it rejects or accepts a real reactivation, or that a successful activation opens the app.
+- **The late refund-error case holds delivery of a real API response.**
+  `e2e-stack/specs/transactions.spec.ts` intercepts the guest refund request, fetches the real API
+  response with `route.fetch()` and delivers that response only after leaving the refund screen.
+  A green run proves that a late real refund error is not shown after navigation. It does not prove
+  the API's natural latency or the behavior of a late successful response.
 - **Full-stack screen-sync regressions hold delivery of real API responses.**
   `e2e-stack/specs/screen-sync.spec.ts` intercepts `GET /v2/kyc/file/:id` and
   `GET /v1/dashboard/financial/latest`, calls `route.fetch()` against the real API, then

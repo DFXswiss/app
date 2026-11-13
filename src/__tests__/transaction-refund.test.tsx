@@ -420,7 +420,7 @@ jest.mock('src/util/client-error', () => ({
 import { Utils } from '@dfx.swiss/react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
-import TransactionScreen from '../screens/transaction.screen';
+import TransactionScreen, { TransactionRefund } from '../screens/transaction.screen';
 
 const COUNTRY_CH = { symbol: 'CH', name: 'Switzerland' };
 const COUNTRY_DE = { symbol: 'DE', name: 'Germany' };
@@ -697,6 +697,99 @@ describe('TransactionRefund fetchRefund', () => {
     await waitFor(() => {
       expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
     });
+  });
+
+  it.each(['guest', 'logged-in'])('does not schedule a refetch after unmount for %s', async (path) => {
+    jest.useFakeTimers();
+    let resolveRefund!: (value: ReturnType<typeof makeRefund>) => void;
+    const loader = path === 'guest' ? mockGetGuestRefund : mockGetTransactionRefund;
+    loader.mockReturnValue(
+      new Promise<ReturnType<typeof makeRefund>>((resolve) => {
+        resolveRefund = resolve;
+      }),
+    );
+    const { unmount } = renderRefund(path === 'guest' ? GUEST_REFUND_PATH : '/tx/T123/refund');
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(1), {
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    unmount();
+
+    await act(async () => {
+      resolveRefund(makeRefund({ expiryDate: new Date(Date.now() + 1000).toISOString() }));
+      await Promise.resolve();
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(loader).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['guest', 'logged-in'])('does not report a refund failure after unmount for %s', async (path) => {
+    let rejectRefund!: (error: unknown) => void;
+    const loader = path === 'guest' ? mockGetGuestRefund : mockGetTransactionRefund;
+    loader.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectRefund = reject;
+      }),
+    );
+    const setError = jest.fn();
+    const router = createMemoryRouter([{ path: '/:id/:secret?', element: <TransactionRefund setError={setError} /> }], {
+      initialEntries: [path === 'guest' ? `/T123/${ACTION_SECRET}` : '/T123'],
+    });
+    const { unmount } = render(<RouterProvider router={router} />);
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(1));
+    unmount();
+
+    await act(async () => {
+      rejectRefund({ message: 'late failure' });
+      await Promise.resolve();
+    });
+
+    expect(setError).not.toHaveBeenCalled();
+  });
+
+  it('keeps the newer refund response when an earlier request resolves late', async () => {
+    jest.useFakeTimers();
+    const nextSecret = 'cd'.repeat(32);
+    let resolveFirst!: (value: ReturnType<typeof makeRefund>) => void;
+    let resolveSecond!: (value: ReturnType<typeof makeRefund>) => void;
+    mockGetGuestRefund
+      .mockReturnValueOnce(
+        new Promise<ReturnType<typeof makeRefund>>((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<ReturnType<typeof makeRefund>>((resolve) => {
+          resolveSecond = resolve;
+        }),
+      );
+    const router = createMemoryRouter([{ path: '/:id/:secret', element: <TransactionRefund setError={jest.fn()} /> }], {
+      initialEntries: [`/T123/${ACTION_SECRET}`],
+    });
+    render(<RouterProvider router={router} />);
+    await waitFor(() => expect(mockGetGuestRefund).toHaveBeenCalledTimes(1), {
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    await act(async () => {
+      await router.navigate(`/T123/${nextSecret}`);
+    });
+    expect(mockGetGuestRefund).toHaveBeenCalledTimes(2);
+    expect(mockGetGuestRefund).toHaveBeenNthCalledWith(2, 'T123', nextSecret);
+
+    await act(async () => {
+      resolveSecond(makeRefund({ refundAmount: 97 }));
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('row-Refund amount')).toHaveTextContent('97 EUR');
+
+    await act(async () => {
+      resolveFirst(makeRefund({ refundAmount: 90, expiryDate: new Date(Date.now() + 1000).toISOString() }));
+      await Promise.resolve();
+      jest.advanceTimersByTime(1000);
+    });
+    expect(screen.getByTestId('row-Refund amount')).toHaveTextContent('97 EUR');
+    expect(screen.getByTestId('row-Refund amount')).not.toHaveTextContent('90 EUR');
+    expect(mockGetGuestRefund).toHaveBeenCalledTimes(2);
   });
 
   it('clears the pending refetch timeout on unmount', async () => {
@@ -1335,6 +1428,54 @@ describe('TransactionRefund rendered view', () => {
 });
 
 describe('TransactionRefund logged-in list path', () => {
+  it('does not submit a guest refund if the transaction id disappears', async () => {
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ inputPaymentMethod: 'Card' }));
+    const router = createMemoryRouter(
+      [{ path: '/:secret?/:id?', element: <TransactionRefund setError={jest.fn()} /> }],
+      { initialEntries: [`/${ACTION_SECRET}/T123`] },
+    );
+    render(<RouterProvider router={router} />);
+    await waitForRefundFormLoaded();
+    await act(async () => {
+      await router.navigate(`/${ACTION_SECRET}`);
+    });
+    await waitForSubmitEnabled('Confirm refund');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }));
+    });
+    expect(mockSetGuestRefund).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('does not submit when authentication disappears after loading refund details', async () => {
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ inputPaymentMethod: 'Card' }));
+    const router = createMemoryRouter(
+      [{ path: '/:id/:secret?', element: <TransactionRefund setError={jest.fn()} /> }],
+      { initialEntries: [`/T123/${ACTION_SECRET}`] },
+    );
+    render(<RouterProvider router={router} />);
+    await waitForRefundFormLoaded();
+    mockIsLoggedIn = false;
+    await act(async () => {
+      await router.navigate('/T123');
+    });
+    await waitForSubmitEnabled('Confirm refund');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }));
+    });
+    expect(mockSetGuestRefund).not.toHaveBeenCalled();
+    expect(mockSetTransactionRefundTarget).not.toHaveBeenCalled();
+  });
+
+  it('does not fetch refund details when the transaction has no numeric id', async () => {
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ id: undefined }));
+    renderRefund('/tx/T123/refund');
+    await waitFor(() => expect(mockGetTransactionByUid).toHaveBeenCalledWith('T123'));
+    await act(() => Promise.resolve());
+    expect(mockGetTransactionRefund).not.toHaveBeenCalled();
+    expect(mockGetGuestRefund).not.toHaveBeenCalled();
+  });
+
   it('loads and submits via JWT APIs on /tx/T123/refund without secret', async () => {
     mockIsLoggedIn = true;
     mockGetTransactionByUid.mockResolvedValue(

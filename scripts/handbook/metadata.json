@@ -31,6 +31,14 @@
     "title": "Transaktion zuordnen",
     "description": "Zuweisungs-Formular für nicht zugeordnete Banküberweisungen: Liste, Vorauswahl bei genau einem Ziel und deaktivierter Button bei mehreren Zielen."
   },
+  "transaction-sell-rate": {
+    "title": "Verkaufskurs einer Transaktion",
+    "description": "Abgeschlossener Verkauf mit aufgeklapptem Wechselkurs, Basiskurs und Gebühren in der Transaktionsansicht. Wechselkurs und Basiskurs stehen als Fiat pro Asset, zum Beispiel 48.075 EUR/DSC; die Formel lautet Output amount = (Input amount - Total fee) × Base rate."
+  },
+  "transaction-sell-rate-before": {
+    "title": "Verkaufskurs einer Transaktion (frühere Anzeige)",
+    "description": "Derselbe abgeschlossene Verkauf, wie ihn die Transaktionsansicht vor der Korrektur zeigte: Wechselkurs und Basiskurs standen als Asset pro Fiat (0.020801 DSC/EUR statt 48.075 EUR/DSC), und die Erklärung zog die Gebühren in DSC vom EUR-Betrag ab. Das Bild dient nur dem Vergleich mit der aktuellen Anzeige unter „Verkaufskurs einer Transaktion“."
+  },
   "transaction-invoice": {
     "title": "Rechnung bei offenem Kauf",
     "description": "Transaktionsliste mit einem Bankkauf, der auf die Zahlung wartet: Aufgeklappt zeigt die Zeile den Button „Open invoice“ („Rechnung öffnen“); „Open receipt“ („Bestätigung öffnen“) erscheint erst nach Abschluss des Kaufs."
