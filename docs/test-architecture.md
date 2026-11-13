@@ -292,10 +292,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   from `global.setup.ts`), or EUR. It also does not prove that the IBAN in the document is the
   one the quote showed: every quote in this environment uses the collection account and stores
   no bank selection.
+- **The exchange-rate unit test replaces the SDK and presentation components.**
+  `src/__tests__/exchange-rate.test.tsx` supplies a formatter and renders component-library controls
+  as plain elements. A green run does not prove the real SDK formatting or production controls.
+- **The sell-rate-steps visual spec supplies a synthetic quote.**
+  `e2e/sell-rate-steps.spec.ts` uses an unsigned synthetic session and replaces user, startup, sell
+  quote, payment info and address-check responses. A green run does not prove authentication, real
+  price steps or API fees.
 - **The transaction-sell-rate visual spec supplies a synthetic completed sale.**
   `e2e/transaction-sell-rate.spec.ts` replaces `GET /v1/transaction/single`, startup lookups,
   `/v1/setting/infoBanner`, `/v1/transaction/unassigned`, and `/v2/user` and uses an unsigned session token. It shows the expanded rate for that fixture. It does not prove that
-  the API returns those values or that login and transaction processing work.
+  the API returns those values or that login and transaction processing work. The list variant also
+  answers `GET /v1/transaction/detail` with the synthetic completed sale.
 - **The transaction-list unit test replaces the SDK and component library.**
   `src/__tests__/transaction-list-txinfo.test.tsx` replaces `@dfx.swiss/react` and implements
   `Utils.formatAmountCrypto` locally as `String(Number(n.toPrecision(5)))`; the components are
@@ -307,7 +315,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   return. It does not prove that the real `StyledDropdown` displays them.
 - **The completed sell rate full-stack case writes its starting row with SQL.**
   `e2e-stack/specs/transactions.spec.ts` sets `inputAmount`, `outputAmount`, `inputReferenceAmount`,
-  `inputReferenceAmountMinusFee`, `outputAssetId` and `priceSteps` on a `buy_fiat` row. A green run
+  `inputReferenceAmountMinusFee`, `outputAssetId`, `priceSteps`, `percentFee`, `totalFeeAmount`
+  and `blockchainFee` on a `buy_fiat` row; the detail and list cases both use this starting state. A green run
   proves that the API returns the saved rate fields and the screen displays them as fiat per asset.
   It does not prove that transaction processing calculates or saves those rates and price steps.
 - **The transaction-invoice visual spec answers the waiting buy row itself.**

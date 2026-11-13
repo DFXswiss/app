@@ -1086,6 +1086,21 @@ function displayRate(value: number, from: string, to: string, sell: boolean) {
     : { value, from, to, inverted: false };
 }
 
+function displayFee(value: number, tx: DetailTransaction, percentage?: number): string {
+  const original = `${value} ${tx.inputAsset}`;
+  const percent = percentage == null ? '' : `, ${(percentage * 100).toFixed(2)}%`;
+  const rate = tx.exchangeRate;
+  if (tx.type !== TransactionType.SELL || rate == null || !Number.isFinite(rate) || rate <= 0) {
+    return percentage == null ? original : `${original} (${(percentage * 100).toFixed(2)}%)`;
+  }
+  const amount = value / rate;
+  const cents = amount * 100;
+  const tolerance = Number.EPSILON * Math.max(1, Math.abs(cents)) * 4;
+  const rounded = amount < 0.01 ? Math.round(cents) : Math.ceil(cents - tolerance);
+  const formatted = (rounded / 100).toFixed(2);
+  return `${formatted} ${tx.outputAsset} (${original}${percent})`;
+}
+
 export function TxInfo({ tx, showUserDetails }: TxInfoProps): JSX.Element {
   const { translate } = useSettingsContext();
   const { toString } = useBlockchain();
@@ -1143,45 +1158,45 @@ export function TxInfo({ tx, showUserDetails }: TxInfoProps): JSX.Element {
   tx.fees?.total != null &&
     rateItems.push({
       label: translate('screens/payment', 'Total fee'),
-      text: `${tx.fees.total} ${tx.inputAsset}`,
+      text: displayFee(tx.fees.total, tx),
     });
   tx.fees?.dfx != null &&
     rateItems.push({
       label: translate('screens/payment', 'DFX fee'),
-      text: `${tx.fees.dfx} ${tx.inputAsset} (${(tx.fees.rate * 100).toFixed(2)}%)`,
+      text: displayFee(tx.fees.dfx, tx, tx.fees.rate),
     });
   tx.fees?.platform != null &&
     tx.fees.platform > 0 &&
     rateItems.push({
       label: translate('screens/payment', 'Platform fee'),
-      text: `${tx.fees.platform} ${tx.inputAsset}`,
+      text: displayFee(tx.fees.platform, tx),
     });
   tx.fees?.network != null &&
     rateItems.push({
       label: translate('screens/payment', 'Network fee'),
-      text: `${tx.fees.network} ${tx.inputAsset}`,
+      text: displayFee(tx.fees.network, tx),
     });
   tx.fees?.bankFixed != null &&
     rateItems.push({
       label: translate('screens/payment', 'Bank fee (fixed)'),
-      text: `${tx.fees.bankFixed} ${tx.inputAsset}`,
+      text: displayFee(tx.fees.bankFixed, tx),
     });
   tx.fees?.bankVariable != null &&
     rateItems.push({
       label: translate('screens/payment', 'Bank fee (percent)'),
-      text: `${tx.fees.bankVariable} ${tx.inputAsset}`,
+      text: displayFee(tx.fees.bankVariable, tx),
     });
   tx.fees?.bank != null &&
     tx.fees?.bankFixed == null &&
     tx.fees?.bankVariable == null &&
     rateItems.push({
       label: translate('screens/payment', 'Bank fee'),
-      text: `${tx.fees.bank} ${tx.inputAsset}`,
+      text: displayFee(tx.fees.bank, tx),
     });
   tx?.fees?.networkStart &&
     rateItems.push({
       label: translate('screens/payment', 'Network start fee'),
-      text: `${tx?.fees?.networkStart} ${tx.inputAsset}`,
+      text: displayFee(tx.fees.networkStart, tx),
     });
 
   return (

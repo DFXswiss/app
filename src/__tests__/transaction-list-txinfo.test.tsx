@@ -1401,6 +1401,129 @@ describe('TxInfo sell rates', () => {
     expect(screen.getByTestId('expandable-info')).toHaveTextContent(explanation);
   });
 
+  it('converts sell fees to fiat while retaining asset values and the DFX percentage', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            rate: 0.020801,
+            exchangeRate: 0.020124,
+            fees: {
+              total: 0.00097582,
+              dfx: 0.00089702,
+              rate: 0.0199,
+              platform: 0.0003,
+              network: 0.000078823,
+              bankFixed: 0,
+              bankVariable: 0,
+              networkStart: 0.0001,
+            },
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Total fee')).toHaveTextContent('0.05 EUR (0.00097582 DSC)');
+    expect(screen.getByTestId('expansion-DFX fee')).toHaveTextContent('0.05 EUR (0.00089702 DSC, 1.99%)');
+    expect(screen.getByTestId('expansion-Platform fee')).toHaveTextContent('0.02 EUR (0.0003 DSC)');
+    expect(screen.getByTestId('expansion-Network fee')).toHaveTextContent('0.00 EUR (0.000078823 DSC)');
+    expect(screen.getByTestId('expansion-Bank fee (fixed)')).toHaveTextContent('0.00 EUR (0 DSC)');
+    expect(screen.getByTestId('expansion-Bank fee (percent)')).toHaveTextContent('0.00 EUR (0 DSC)');
+    expect(screen.getByTestId('expansion-Network start fee')).toHaveTextContent('0.00 EUR (0.0001 DSC)');
+  });
+
+  it.each([
+    [0.004, '0.00 EUR'],
+    [0.006, '0.01 EUR'],
+    [0.0201, '0.03 EUR'],
+    [0.03, '0.03 EUR'],
+    [1000.03, '1000.03 EUR'],
+  ])('rounds fiat fee %s as %s', (fee, expected) => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            rate: 1,
+            exchangeRate: 1,
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            fees: { total: fee },
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Total fee')).toHaveTextContent(expected);
+  });
+
+  it.each([
+    ['Sell', undefined],
+    ['Sell', 0],
+    ['Sell', Infinity],
+    ['Buy', 1],
+    ['Swap', 1],
+  ])('keeps original fees for %s with rate %s', (type, exchangeRate) => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type,
+            rate: 1,
+            exchangeRate,
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            fees: { total: 0.03, dfx: 0.02, rate: 0.0199 },
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Total fee')).toHaveTextContent('0.03 DSC');
+    expect(screen.getByTestId('expansion-DFX fee')).toHaveTextContent('0.02 DSC (1.99%)');
+  });
+
+  it('does not round an exact cent up because of floating-point error', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            inputAsset: 'ZCHF',
+            outputAsset: 'CHF',
+            rate: 0.7,
+            exchangeRate: 0.7,
+            fees: { total: 0.021 },
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Total fee')).toHaveTextContent('0.03 CHF (0.021 ZCHF)');
+  });
+
+  it('converts the combined bank fee when fixed and variable fees are absent', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            rate: 1,
+            exchangeRate: 1,
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            fees: { bank: 0.0201 },
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Bank fee')).toHaveTextContent('0.03 EUR (0.0201 DSC)');
+  });
+
   it('inverts rates and price steps for a sell still processing', () => {
     render(
       <TxInfo

@@ -212,7 +212,7 @@ function trackPaymentInfosResponses(
     if (!url.includes(pathIncludes)) return;
     if (res.request().method() !== 'PUT') return;
     const body = await res.text().catch(() => '');
-    box.last = { status: res.status(), body: body.slice(0, 500) };
+    box.last = { status: res.status(), body };
   });
   return box;
 }
@@ -859,6 +859,33 @@ test.describe('Sell + Swap e2e', () => {
       await expect(
         page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
       ).toBeVisible({ timeout: 15000 });
+    }
+  });
+
+  test('/sell payment info displays price steps in the base rate direction', async ({ page }) => {
+    test.setTimeout(90000);
+    const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-ui-price-steps');
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    expect(outcome.kind).toBe('payment_info');
+    await expect.poll(() => paymentInfos.last?.status).toBe(200);
+    const payload = JSON.parse(paymentInfos.last!.body) as {
+      priceSteps: { from: string; to: string; price: number; source: string }[];
+    };
+    expect(payload.priceSteps.length).toBeGreaterThan(0);
+    const rate = page.getByText(/CHF\/ETH/).first();
+    await expect(rate).toBeVisible();
+    await rate.click();
+    await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+    for (const step of payload.priceSteps) {
+      expect(Number.isFinite(step.price) && step.price !== 0).toBe(true);
+      const prefix = `${step.from} to ${step.to} at `;
+      const line = page
+        .locator('div')
+        .filter({ hasText: prefix })
+        .filter({ hasText: ` on ${step.source}` })
+        .last();
+      await expect(line).toContainText(`${step.to}/${step.from}`);
+      await expect(line).not.toContainText(`${step.from}/${step.to}`);
     }
   });
 

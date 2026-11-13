@@ -34,7 +34,7 @@ const COMPLETED_SELL = {
   feeAsset: null,
   fees: {
     total: 0.00097582,
-    dfx: 0.000597,
+    dfx: 0.00089702,
     rate: 0.0199,
     platform: 0.0003,
     network: 0.000078823,
@@ -107,6 +107,11 @@ async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: st
       return;
     }
 
+    if (request.method() === 'GET' && path === '/v1/transaction/detail') {
+      await fulfillJson(route, [COMPLETED_SELL]);
+      return;
+    }
+
     if (request.method() === 'GET' && path === '/v1/transaction/unassigned') {
       await fulfillJson(route, []);
       return;
@@ -152,14 +157,29 @@ async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: st
 test.describe('Completed sell exchange rate', () => {
   test.use({ timezoneId: 'Europe/Zurich' });
 
+  test('shows the expanded sell in the transaction list', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const { unexpectedRequests } = await installSyntheticApi(page);
+    await page.goto(`/tx?session=${jwt()}`);
+    const sellRow = page.getByText('Completed', { exact: true });
+    await expect(sellRow).toBeVisible();
+    await sellRow.click();
+    await page.getByText('48.075 EUR/DSC', { exact: true }).click();
+    await expect(page.getByText('0.05 EUR (0.00097582 DSC)', { exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot('tx-sell-rate-02-list-expanded.png', { fullPage: true });
+    expect(unexpectedRequests).toEqual([]);
+  });
+
   test('shows the expanded sell rate', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     const { unexpectedRequests } = await installSyntheticApi(page);
     await page.goto(`/tx/T-synthetic-sell-rate?session=${jwt()}`);
-    await page.waitForLoadState('networkidle');
-    await page.getByText('48.075 EUR/DSC', { exact: true }).click();
+    const rate = page.getByText('48.075 EUR/DSC', { exact: true });
+    await expect(rate).toBeVisible();
+    await rate.click();
     await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
     await expect(page.getByText('49.692 EUR/DSC', { exact: true })).toBeVisible();
+    await expect(page.getByText('0.05 EUR (0.00097582 DSC)', { exact: true })).toBeVisible();
     await expect(page.getByText(/DSC to USD at 55\.661 USD\/DSC/)).toBeVisible();
     await expect(page).toHaveScreenshot('tx-sell-rate-01-expanded.png', { fullPage: true });
     expect(unexpectedRequests).toEqual([]);
