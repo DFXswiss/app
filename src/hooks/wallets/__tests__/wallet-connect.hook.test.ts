@@ -13,6 +13,7 @@ const mockReadContract = jest.fn();
 const mockSimulateContract = jest.fn();
 const mockWriteContract = jest.fn();
 const mockProviderOn = jest.fn();
+const mockProviderRequest = jest.fn();
 let mockIsMobile = false;
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -62,7 +63,10 @@ import { UserRejectedError } from '../../../util/user-rejection';
 import { useWalletConnect } from '../wallet-connect.hook';
 
 const ADDRESS = '0x1234567890123456789012345678901234567890';
-const connector = { id: 'walletConnect', getProvider: () => Promise.resolve({ events: { on: mockProviderOn } }) };
+const connector = {
+  id: 'walletConnect',
+  getProvider: () => Promise.resolve({ events: { on: mockProviderOn }, request: mockProviderRequest }),
+};
 
 const listing = (id: string, desktop: string, mobile: string) => ({
   id,
@@ -88,6 +92,8 @@ beforeEach(() => {
   mockConnect.mockResolvedValue({ accounts: [ADDRESS] });
   mockDisconnect.mockResolvedValue(undefined);
   mockReconnect.mockResolvedValue([]);
+  // the wallet does not know the chain, so the switch goes on through wagmi
+  mockProviderRequest.mockRejectedValue(Object.assign(new Error('Unrecognized chain ID.'), { code: 4902 }));
   fetchMock = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ listings: {} }) });
   (global as any).fetch = fetchMock;
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -251,7 +257,53 @@ describe('requestChangeToBlockchain', () => {
     expect(mockSwitchChain).not.toHaveBeenCalled();
   });
 
-  it('switches the chain and gives the wallet time to follow', async () => {
+  it('switches the chain in the wallet and gives the wallet time to follow', async () => {
+    mockProviderRequest.mockResolvedValue(null);
+    const { result } = await setup();
+    const timeout = jest.spyOn(global, 'setTimeout').mockImplementation(((callback: () => void) => {
+      callback();
+      return 0;
+    }) as unknown as typeof setTimeout);
+
+    await expect(result.current.requestChangeToBlockchain(Blockchain.POLYGON)).resolves.toBeUndefined();
+
+    expect(mockProviderRequest).toHaveBeenCalledWith({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: '0x89' }],
+    });
+    expect(mockSwitchChain).not.toHaveBeenCalled();
+    expect(timeout).toHaveBeenCalledWith(expect.any(Function), 5000);
+  });
+
+  // wagmi's connector would take these as a failure, as their message does not say "user rejected", and ask to add
+  // the chain instead
+  it.each([
+    ['the WalletConnect code', 5000],
+    ['the EIP-1193 code', 4001],
+  ])('cancels without asking wagmi when the wallet rejects the switch with %s', async (_case, code) => {
+    mockProviderRequest.mockRejectedValue(Object.assign(new Error('Request denied.'), { code }));
+    const { result } = await setup();
+
+    const change = result.current.requestChangeToBlockchain(Blockchain.POLYGON);
+    await expect(change).rejects.toBeInstanceOf(UserRejectedError);
+    await expect(change).rejects.toHaveProperty('code', 4001);
+    expect(mockSwitchChain).not.toHaveBeenCalled();
+  });
+
+  it('leaves a switch the wallet rejects without any value to wagmi', async () => {
+    mockProviderRequest.mockRejectedValue(undefined);
+    mockSwitchChain.mockResolvedValue(undefined);
+    const { result } = await setup();
+    jest.spyOn(global, 'setTimeout').mockImplementation(((callback: () => void) => {
+      callback();
+      return 0;
+    }) as unknown as typeof setTimeout);
+
+    await expect(result.current.requestChangeToBlockchain(Blockchain.POLYGON)).resolves.toBeUndefined();
+    expect(mockSwitchChain).toHaveBeenCalledWith({ id: 'config' }, { chainId: 137, connector });
+  });
+
+  it('switches through wagmi when the wallet fails the switch otherwise', async () => {
     mockSwitchChain.mockResolvedValue(undefined);
     const { result } = await setup();
     const timeout = jest.spyOn(global, 'setTimeout').mockImplementation(((callback: () => void) => {

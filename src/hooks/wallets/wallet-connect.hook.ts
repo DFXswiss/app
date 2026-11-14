@@ -17,7 +17,7 @@ import {
 import BigNumber from 'bignumber.js';
 import { useEffect, useMemo, useState } from 'react';
 import { isMobile } from 'react-device-detect';
-import { parseEther, parseUnits, UserRejectedRequestError } from 'viem';
+import { numberToHex, parseEther, parseUnits, UserRejectedRequestError } from 'viem';
 import ERC20_ABI from '../../static/erc20.abi.json';
 import { hasUserRejectedCode, USER_REJECTED_CODE, UserRejectedError } from '../../util/user-rejection';
 import { config, WALLET_CONNECT_PROJECT_ID } from '../../wagmi.config';
@@ -148,7 +148,10 @@ export function useWalletConnect(): WalletConnectInterface {
 
     try {
       if (getAccount(config).chainId !== chainId) {
-        await switchChain(config, { chainId: chainId as any, connector: getWalletConnectConnector() });
+        const connector = getWalletConnectConnector();
+        if (!(await switchInWallet(connector, chainId))) {
+          await switchChain(config, { chainId: chainId as any, connector });
+        }
         await new Promise((resolve) => setTimeout(resolve, 5000)); // delay to allow chain switch in wallet
       }
     } catch (error) {
@@ -164,6 +167,24 @@ export function useWalletConnect(): WalletConnectInterface {
       if (isRejection) throw new UserRejectedError();
 
       throw new Error(typeof message === 'string' && message ? message : 'An unexpected error occurred.');
+    }
+  }
+
+  // Asks the wallet itself first, because wagmi's connector recognises a rejected switch only by its message and
+  // otherwise asks the wallet to add the chain. The wallet's code decides a cancel; any other failure is left to wagmi,
+  // which also adds a chain the wallet does not know. Returns whether the wallet switched.
+  async function switchInWallet(connector: Connector, chainId: number): Promise<boolean> {
+    const provider = (await connector.getProvider()) as {
+      request: (args: { method: string; params: unknown[] }) => Promise<unknown>;
+    };
+
+    try {
+      await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: numberToHex(chainId) }] });
+      return true;
+    } catch (error) {
+      const { code } = (error ?? {}) as { code?: unknown };
+      if (code === USER_REJECTED_CODE || code === WALLET_CONNECT_REJECTED_CODE) throw new UserRejectedError();
+      return false;
     }
   }
 

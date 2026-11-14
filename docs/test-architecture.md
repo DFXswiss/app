@@ -751,14 +751,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   chain mapping, the SDK's enum values, the real poll timing, the detection of a wallet app by its user agent, or that a page reload
   happens.
 - **The WalletConnect hook test replaces the wagmi actions and the wallet list.**
-  `src/hooks/wallets/__tests__/wallet-connect.hook.test.ts` replaces `@wagmi/core`, the wagmi config,
+  `src/hooks/wallets/__tests__/wallet-connect.hook.test.ts` replaces `@wagmi/core`, the wagmi config, the
+  WalletConnect connector and its provider (whose `request` answers the chain switch as each test decides),
   `global.fetch` for the WalletConnect wallet list, the app's web3 hook with a fixed chain-id mapping and device
   detection, `@dfx.swiss/react` with copies of its `AssetType` and `Blockchain` values, silences `console.warn`,
   and replaces `setTimeout` so the wait after a chain switch ends at once;
   it keeps the real viem, whose mock installs Node's `TextEncoder` and `TextDecoder` from `util` on the jsdom
   global, which has none. A green run proves which wagmi actions the hook calls and how it maps their results and
-  errors. It does not prove that a WalletConnect session is established, that a wallet answers or rejects that
-  way, that the wallet list API returns that JSON, the chain-id mapping, the SDK's enum values, the real wait after
+  errors. It does not prove that a WalletConnect session is established, that the real connector's provider
+  forwards the switch to the wallet, that a wallet answers or rejects that way, that the wallet list API returns that JSON, the chain-id mapping, the SDK's enum values, the real wait after
   a switch, or that viem encodes and decodes with the browser's own `TextEncoder` and `TextDecoder` as it does with
   Node's.
 
