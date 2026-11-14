@@ -409,6 +409,10 @@ export interface CreateSupportIssueOptions {
   reason?: string;
   name?: string;
   message?: string;
+  /** Base64 data URL (`data:<type>;base64,<data>`) attached to the customer message this call creates. */
+  file?: string;
+  /** The value is the suffix of the stored support file name; required when `file` is set. */
+  fileName?: string;
 }
 
 export interface CreateSupportIssueResult {
@@ -1376,6 +1380,8 @@ export async function createSupportIssue(
       reason: options.reason ?? 'Other',
       name: options.name ?? `E2E issue ${uniqueTag(options.tag)}`,
       message: options.message ?? 'E2E support message',
+      file: options.file,
+      fileName: options.fileName,
     },
     { jwt },
   );

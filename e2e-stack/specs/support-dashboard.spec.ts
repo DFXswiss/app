@@ -4,7 +4,8 @@
  *   /support/dashboard/issue/:id, /support/user/:id, /notes, /templates
  *
  * Covers role denial for plain customers, screen-specific render assertions, and write paths
- * (create issue, update state, staff reply, notes, templates) verified in Postgres.
+ * (create issue, update state, staff reply, notes, templates, transfer of a support attachment into
+ * the KYC file) verified in Postgres.
  */
 
 import type { Page } from '@playwright/test';
@@ -34,6 +35,9 @@ const STAFF_ROUTES = [
 
 /** Required denial coverage from the task brief (plus the rest for completeness). */
 const EXPLICIT_DENIAL_ROUTES = ['/support/dashboard', '/notes', '/templates', '/support/user/1'] as const;
+
+const MINIMAL_PDF_BASE64 =
+  'JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAzMDAgMTQ0XSA+PgplbmRvYmoKdHJhaWxlcgo8PCAvU2l6ZSA0IC9Sb290IDEgMCBSID4+CjsKJSVFT0YK';
 
 async function waitForPath(page: Page, expected: string, message: string, timeout = 15000): Promise<void> {
   await expect.poll(() => normPath(new URL(page.url()).pathname), { message, timeout }).toBe(normPath(expected));
@@ -332,6 +336,71 @@ test.describe('Support dashboard (staff)', () => {
     );
     expect(keyboardReplyRow.issueId).toBe(issueId);
     expect(keyboardReplyRow.message).toBe(staffReplyKeyboard);
+  });
+
+  test('/support/dashboard/issue/:id transfers an umlaut-named attachment into the KYC file', async ({ page }) => {
+    const { jwt } = await loginAs('Compliance');
+    const customer = await createUser({ tag: 'supdash-kyc-cust', language: 'EN' });
+    const attachmentName = 'Gesellschafterliste Zürich Ä.pdf';
+    const seeded = await createSupportIssue(customer.jwt, {
+      tag: 'supdash-kyc-seed',
+      type: 'GenericIssue',
+      name: 'Umlaut attachment transfer seed',
+      message: 'Customer uploaded the company shareholder list.',
+      file: `data:application/pdf;base64,${MINIMAL_PDF_BASE64}`,
+      fileName: attachmentName,
+    });
+    const issueId = required(seeded.supportIssueId, 'createSupportIssue must return the issue id');
+    const messageId = required(seeded.messageId, 'createSupportIssue must return the attachment message id');
+
+    await openScreen(page, `/support/dashboard/issue/${issueId}`, jwt);
+
+    const messagesPanel = page.locator('div.bg-white.rounded-lg.shadow-sm.p-4').filter({
+      has: page.getByRole('heading', { name: /Messages/ }),
+    });
+    const seededMessage = 'Customer uploaded the company shareholder list.';
+    await expect(messagesPanel.getByText(seededMessage)).toBeVisible({ timeout: 15000 });
+    const attachmentButton = page.getByRole('button', {
+      name: new RegExp(`${attachmentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
+    });
+    await expect(attachmentButton).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Transfer to KYC file', exact: true }).click();
+    await expect(page.getByPlaceholder('Document title')).toBeVisible();
+    await page.getByPlaceholder('Document title').fill('Gesellschafterliste');
+    await messagesPanel.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(messagesPanel.getByText(/^In KYC file:/)).toBeVisible({ timeout: 20000 });
+    await expect(messagesPanel.getByRole('button', { name: 'Transfer to KYC file', exact: true })).toHaveCount(0);
+
+    const message = await waitForRow<{
+      kycFileId: number | null;
+      kycFileName: string | null;
+      fileUrl: string | null;
+      kycUserDataId: number | null;
+    }>(
+      `SELECT "kycFileId" AS "kycFileId", k.name AS "kycFileName", m."fileUrl" AS "fileUrl",
+              k."userDataId" AS "kycUserDataId"
+       FROM support_message m
+       LEFT JOIN kyc_file k ON k.id = m."kycFileId"
+       WHERE m.id = $1 AND m."kycFileId" IS NOT NULL`,
+      [messageId],
+      20000,
+    );
+    expect(message.kycFileId, 'the attachment must be linked to a real kyc_file row').toBeTruthy();
+    expect(message.kycFileName).toMatch(/^\d{8}_\d{6}-gesellschafterliste-\d+\.pdf$/);
+    expect(message.fileUrl).toContain(encodeURIComponent(attachmentName));
+    expect(message.kycUserDataId, 'the KYC file must belong to the seeded customer').toBe(customer.userDataId);
+
+    const thread = await apiGet<{
+      messages: { id: number; fileName?: string; kycFileId?: number; kycFileName?: string }[];
+    }>(`support/issue/${seeded.uid}`, { jwt });
+    const transferred = required(
+      thread.messages.find((m) => m.id === messageId),
+      'the real issue thread must still contain the attachment message',
+    );
+    expect(transferred.fileName?.endsWith(attachmentName)).toBe(true);
+    expect(transferred.kycFileId).toBe(message.kycFileId);
+    expect(transferred.kycFileName).toBe(message.kycFileName);
   });
 
   test('/support/user/:id loads the customer email for staff', async ({ page }) => {
