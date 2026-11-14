@@ -28,6 +28,7 @@ import {
   testWallet,
   waitForRow,
 } from './fixtures';
+import { injectWallet, recordAuthAndErrorReports, USER_REJECTION, walletAnswers } from './fixtures/injected-wallet';
 import { cleanupCreatedData, createUser, e2eMail } from './fixtures/factories';
 
 /** Parse a 6-digit verification code from a notification row (VerificationMail / EmailVerification). */
@@ -101,79 +102,41 @@ async function completeMail2faOnPage(page: Page, userDataId: number): Promise<vo
   );
 }
 
-type WalletAnswer = { result: unknown } | { error: { code: number; message: string; data?: unknown } };
-
 /**
- * Installs an injected EIP-1193 wallet in the page, which stands in for the wallet extension (an external provider).
- * The test process gives each answer. A rejection is thrown as a plain object, the way injected wallets reject, not
- * as an Error. Returns the methods the page called, in order.
+ * Installs `script` as an init script that puts an injected Solana or Tron wallet on `window`, which stands in for the
+ * wallet extension (an external provider), then opens the wallet selection at `path` and clicks the tile whose
+ * image matches `tile`. Returns the sign-in and client-error POSTs the page sends.
  */
-async function injectWallet(
+async function openInjectedWallet(
   page: Page,
-  answer: (method: string, params: unknown[]) => WalletAnswer | Promise<WalletAnswer>,
+  script: () => void,
+  tile: string,
+  path = '/login/wallet',
 ): Promise<string[]> {
-  const calls: string[] = [];
-  await page.exposeFunction('e2eWalletAnswer', async (method: string, params: unknown[]) => {
-    calls.push(method);
-    return answer(method, params ?? []);
-  });
-  await page.addInitScript(() => {
-    const answerFor = (window as unknown as { e2eWalletAnswer: (m: string, p: unknown[]) => Promise<WalletAnswer> })
-      .e2eWalletAnswer;
-    (window as unknown as { ethereum: unknown }).ethereum = {
-      isMetaMask: true,
-      request: async ({ method, params }: { method: string; params?: unknown[] }) => {
-        const reply = await answerFor(method, params ?? []);
-        if ('error' in reply) throw reply.error;
-        return reply.result;
-      },
-      on: () => undefined,
-      removeListener: () => undefined,
-    };
-  });
-  return calls;
-}
+  await page.addInitScript(script);
+  const sent = recordAuthAndErrorReports(page);
 
-/** The answers of a wallet on Ethereum that holds `wallet`; `requestAccounts` and `sign` decide the user's choice. */
-function walletAnswers(
-  wallet: { address: string; privateKey: string },
-  choice: { connected: () => boolean; requestAccounts: () => WalletAnswer; sign?: () => WalletAnswer | undefined },
-): (method: string, params: unknown[]) => Promise<WalletAnswer> {
-  return async (method, params) => {
-    switch (method) {
-      case 'eth_accounts':
-        return { result: choice.connected() ? [wallet.address] : [] };
-      case 'eth_chainId':
-        return { result: '0x1' };
-      case 'net_version':
-        return { result: '1' };
-      case 'eth_requestAccounts':
-        return choice.requestAccounts();
-      case 'personal_sign': {
-        const refusal = choice.sign?.();
-        if (refusal) return refusal;
-        const data = String(params[0]);
-        const message = ethers.utils.isHexString(data) ? ethers.utils.arrayify(data) : data;
-        return { result: await new ethers.Wallet(wallet.privateKey).signMessage(message) };
-      }
-      default:
-        return { error: { code: 4200, message: `Unsupported method ${method}` } };
-    }
-  };
-}
-
-/** Records the sign-in and client-error POSTs the page sends. */
-function recordAuthAndErrorReports(page: Page): string[] {
-  const sent: string[] = [];
-  page.on('request', (request) => {
-    const { pathname } = new URL(request.url());
-    if (request.method() === 'POST' && /\/v1\/(auth|log\/clientError)$/.test(pathname)) sent.push(pathname);
-  });
+  await page.goto(path);
+  await page.waitForLoadState('networkidle');
+  await page.locator(`img[src*="${tile}"]`).click();
   return sent;
 }
 
-// The rejection MetaMask sends when the user closes the connection request: a plain object with code and data.
-const USER_REJECTION = { code: 4001, message: 'User rejected the request.', data: { cause: 'rejectAllApprovals' } };
+/** The page is back at the wallet selection, shows no error and sent no sign-in and no client-error report. */
+async function expectCancelledAtSelection(
+  page: Page,
+  tile: string,
+  sent: string[],
+  path = '/login/wallet',
+): Promise<void> {
+  await expect(page.locator(`img[src*="${tile}"]`)).toBeVisible({ timeout: 20000 });
+  await expect(page.getByText('Connection failed!')).toHaveCount(0);
+  await page.waitForTimeout(2000);
+  await expect(page.locator(`img[src*="${tile}"]`)).toBeVisible();
+  await expect(page.getByText('Connection failed!')).toHaveCount(0);
+  expect(sent).toEqual([]);
+  expect(normPath(new URL(page.url()).pathname)).toBe(normPath(new URL(path, 'http://x').pathname));
+}
 
 test.describe.configure({ mode: 'serial' });
 
@@ -583,6 +546,189 @@ test.describe('Auth area e2e', () => {
     const response = await report;
     expect(response.ok()).toBe(true);
     expect(JSON.parse(response.request().postData() ?? '{}').message).toContain('Internal JSON-RPC error.');
+    expect(sent).toEqual(['/v1/log/clientError']);
+  });
+
+  test('a cancelled Phantom connection returns to the wallet selection without a report', async ({ page }) => {
+    test.setTimeout(90000);
+
+    // Phantom rejects a cancelled connect with code 4001; the Solana wallet adapter keeps it as `error`.
+    const sent = await openInjectedWallet(
+      page,
+      () => {
+        (window as unknown as { phantom: unknown }).phantom = {
+          solana: {
+            isPhantom: true,
+            isConnected: false,
+            publicKey: null,
+            connect: () => Promise.reject({ code: 4001, message: 'User rejected the request.' }),
+            disconnect: () => Promise.resolve(),
+            on: () => undefined,
+            off: () => undefined,
+            removeListener: () => undefined,
+          },
+        };
+      },
+      'phantom',
+    );
+
+    await expectCancelledAtSelection(page, 'phantom', sent);
+  });
+
+  test('a failing Phantom connection still shows the error and reports it', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const report = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/v1/log/clientError'),
+      { timeout: 20000 },
+    );
+    const sent = await openInjectedWallet(
+      page,
+      () => {
+        (window as unknown as { phantom: unknown }).phantom = {
+          solana: {
+            isPhantom: true,
+            isConnected: false,
+            publicKey: null,
+            connect: () => Promise.reject({ code: -32603, message: 'Phantom could not connect.' }),
+            disconnect: () => Promise.resolve(),
+            on: () => undefined,
+            off: () => undefined,
+            removeListener: () => undefined,
+          },
+        };
+      },
+      'phantom',
+    );
+
+    await expect(page.getByText('Connection failed!')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('Phantom could not connect.')).toBeVisible();
+    expect((await report).ok()).toBe(true);
+    expect(sent).toEqual(['/v1/log/clientError']);
+  });
+
+  test('a cancelled TronLink connection returns to the wallet selection without a report', async ({ page }) => {
+    test.setTimeout(90000);
+
+    // Older TronLink protocol (window.tronLink): the wallet answers a cancel with code 4001, and the adapter keeps only
+    // its own message "The user rejected connection." without the code.
+    const sent = await openInjectedWallet(
+      page,
+      () => {
+        (window as unknown as { tronLink: unknown }).tronLink = {
+          ready: false,
+          tronWeb: { defaultAddress: { base58: false } },
+          request: async ({ method }: { method: string }) =>
+            method === 'tron_requestAccounts' ? { code: 4001, message: 'User rejected' } : null,
+        };
+      },
+      'tronlink',
+    );
+
+    await expectCancelledAtSelection(page, 'tronlink', sent);
+  });
+
+  test('a cancelled TronLink connection on the new protocol returns to the wallet selection', async ({ page }) => {
+    test.setTimeout(90000);
+
+    // New TronLink protocol (window.tron): the wallet rejects with code 4001, which the adapter keeps as `error`.
+    const sent = await openInjectedWallet(
+      page,
+      () => {
+        (window as unknown as { tron: unknown }).tron = {
+          isTronLink: true,
+          request: async ({ method }: { method: string }) => {
+            if (method === 'eth_requestAccounts') throw { code: 4001, message: 'User rejected the request.' };
+            return null;
+          },
+          on: () => undefined,
+          removeListener: () => undefined,
+        };
+      },
+      'tronlink',
+    );
+
+    await expectCancelledAtSelection(page, 'tronlink', sent);
+  });
+
+  test('a cancelled Trust (Solana) connection returns to the wallet selection without a report', async ({ page }) => {
+    test.setTimeout(90000);
+
+    // Trust rejects a cancelled connect with code 4001; the Solana wallet adapter keeps it as `error`.
+    const sent = await openInjectedWallet(
+      page,
+      () => {
+        (window as unknown as { trustwallet: unknown }).trustwallet = {
+          solana: {
+            isTrust: true,
+            isConnected: false,
+            publicKey: null,
+            connect: () => Promise.reject({ code: 4001, message: 'User rejected the request.' }),
+            disconnect: () => Promise.resolve(),
+            on: () => undefined,
+            off: () => undefined,
+            removeListener: () => undefined,
+          },
+        };
+      },
+      'trust',
+    );
+
+    await expectCancelledAtSelection(page, 'trust', sent);
+  });
+
+  test('a cancelled Trust (Tron) connection returns to the Tron wallet selection without a report', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+
+    // The Trust Tron adapter answers code 4001 with only its own message "The user rejected connection.".
+    const sent = await openInjectedWallet(
+      page,
+      () => {
+        (window as unknown as { trustwallet: unknown }).trustwallet = {
+          tronLink: {
+            ready: false,
+            tronWeb: { defaultAddress: { base58: false } },
+            request: async ({ method }: { method: string }) =>
+              method === 'tron_requestAccounts' ? { code: 4001, message: 'User rejected' } : null,
+          },
+        };
+      },
+      'trust',
+      '/?mode=tron-wallets',
+    );
+
+    await expectCancelledAtSelection(page, 'trust', sent, '/?mode=tron-wallets');
+  });
+
+  test('a TronLink connection the wallet refuses for another reason still shows the error and reports it', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+
+    const report = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/v1/log/clientError'),
+      { timeout: 20000 },
+    );
+    // code 4000: a connection request of the same page is still open in the wallet
+    const sent = await openInjectedWallet(
+      page,
+      () => {
+        (window as unknown as { tronLink: unknown }).tronLink = {
+          ready: false,
+          tronWeb: { defaultAddress: { base58: false } },
+          request: async ({ method }: { method: string }) =>
+            method === 'tron_requestAccounts' ? { code: 4000, message: 'Request pending' } : null,
+        };
+      },
+      'tronlink',
+    );
+
+    await expect(page.getByText('Connection failed!')).toBeVisible({ timeout: 20000 });
+    expect((await report).ok()).toBe(true);
     expect(sent).toEqual(['/v1/log/clientError']);
   });
 

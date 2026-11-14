@@ -15,7 +15,17 @@
 
 import type { Page, Response } from '@playwright/test';
 import { ethers } from 'ethers';
-import { expect, gotoWithSession, normPath, openScreen, queryRows, test, waitForRow, withDb } from './fixtures';
+import {
+  expect,
+  gotoWithSession,
+  normPath,
+  openScreen,
+  queryRows,
+  test,
+  testWallet,
+  waitForRow,
+  withDb,
+} from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -25,6 +35,7 @@ import {
   e2eMail,
   TEST_IBAN,
 } from './fixtures/factories';
+import { injectWallet, recordAuthAndErrorReports, type WalletAnswer, walletAnswers } from './fixtures/injected-wallet';
 
 // Wallet-index isolation: factories.ts's createUser() derives its wallet index from an
 // in-process counter starting at FACTORY_WALLET_INDEX_BASE (100) unless `walletIndex` is
@@ -311,6 +322,73 @@ async function setupSwapFullUiFlow(
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
 
   return { user, paymentInfos };
+}
+
+/**
+ * Logs in through an injected MetaMask wallet (the wallet extension is an external provider), which makes it the
+ * active wallet, and opens the sell form with ETH → CHF and a bank account filled in until the payment information is
+ * shown. The wallet answers `wallet_switchEthereumChain` with `switchChain` and `eth_sendTransaction` with
+ * `sendTransaction`. Returns the wallet methods the page called.
+ */
+async function openSellWithInjectedWallet(
+  page: Page,
+  tag: string,
+  switchChain: () => WalletAnswer,
+  sendTransaction?: () => WalletAnswer,
+): Promise<string[]> {
+  const walletIndex = nextWalletIndex();
+  const user = await createUser({ walletIndex, tag, kycLevel: 30, completePersonalData: true, language: 'EN' });
+  await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Sell wallet BA' });
+  const wallet = testWallet(walletIndex);
+  const calls = await injectWallet(
+    page,
+    walletAnswers(wallet, {
+      connected: () => true,
+      requestAccounts: () => ({ result: [wallet.address] }),
+      switchChain,
+      sendTransaction,
+    }),
+  );
+
+  await page.goto('/login?blockchain=Ethereum');
+  await page.locator('img[src*="cryptowallet"]').click({ timeout: 15000 });
+  await page.locator('img[src*="metamask"]').click();
+  await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+
+  const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
+  await page.goto('/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1');
+  await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
+  const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+  const apiDetail = paymentInfos.last
+    ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
+    : 'no PUT paymentInfos response captured';
+  expect(outcome.kind, `${outcome.detail}; ${apiDetail}`).toBe('payment_info');
+  return calls;
+}
+
+/**
+ * Clicks "Complete transaction in your wallet" while the wallet cancels `method` (the chain switch or the
+ * transaction), and checks that the form stays without an error, a completion or a client-error report.
+ */
+async function expectCancelledSwitchKeepsForm(
+  page: Page,
+  calls: string[],
+  path: string,
+  method = 'wallet_switchEthereumChain',
+): Promise<void> {
+  const sent = recordAuthAndErrorReports(page);
+  const complete = page.getByRole('button', { name: 'Complete transaction in your wallet' });
+  await expect(complete).toBeEnabled({ timeout: 15000 });
+  await complete.click();
+
+  await expect.poll(() => calls.includes(method), { timeout: 15000 }).toBe(true);
+  await page.waitForTimeout(2000);
+  await expect(page.getByText(/Transaction failed/)).toHaveCount(0);
+  await expect(page.getByText(/Nice! You are all set!/)).toHaveCount(0);
+  await expect(complete).toBeEnabled();
+  expect(sent).toEqual([]);
+  expect(normPath(new URL(page.url()).pathname)).toBe(path);
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -860,6 +938,41 @@ test.describe('Sell + Swap e2e', () => {
         page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
       ).toBeVisible({ timeout: 15000 });
     }
+  });
+
+  test('/sell: a chain switch cancelled in the wallet keeps the user on the form without an error', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+    const calls = await openSellWithInjectedWallet(page, 'sell-wallet-cancel', () => ({
+      error: { code: 4001, message: 'User rejected the request.' },
+    }));
+
+    await expectCancelledSwitchKeepsForm(page, calls, '/sell');
+  });
+
+  test('/sell: a transaction cancelled in the wallet keeps the user on the form without an error', async ({ page }) => {
+    test.setTimeout(120000);
+    // MetaMask's rejection of a transaction: a plain object with code 4001 and data, which web3 used to strip
+    const calls = await openSellWithInjectedWallet(
+      page,
+      'sell-wallet-tx-cancel',
+      () => ({ result: null }),
+      () => ({ error: { code: 4001, message: 'User rejected the request.', data: { location: 'confirmation' } } }),
+    );
+
+    await expectCancelledSwitchKeepsForm(page, calls, '/sell', 'eth_sendTransaction');
+  });
+
+  test('/sell: a chain switch that fails in the wallet still shows that the transaction failed', async ({ page }) => {
+    test.setTimeout(120000);
+    const calls = await openSellWithInjectedWallet(page, 'sell-wallet-fail', () => ({
+      error: { code: -32603, message: 'Internal JSON-RPC error.' },
+    }));
+
+    await page.getByRole('button', { name: 'Complete transaction in your wallet' }).click({ timeout: 15000 });
+    await expect.poll(() => calls.includes('wallet_switchEthereumChain'), { timeout: 15000 }).toBe(true);
+    await expect(page.getByText(/Transaction failed\. Click Retry/)).toBeVisible({ timeout: 15000 });
   });
 
   test('/sell: native form submit completes the transaction', async ({ page }) => {
