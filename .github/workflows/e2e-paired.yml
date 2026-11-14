@@ -524,7 +524,7 @@ jobs:
     needs: [resolve, run]
     if: always() && github.event_name != 'schedule' && needs.resolve.outputs.valid == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 130
     environment: e2e-pairing
     permissions:
       contents: read
@@ -629,7 +629,7 @@ jobs:
     environment: e2e-pairing
     permissions:
       contents: read
-    timeout-minutes: 15
+    timeout-minutes: 130
     steps:
       - name: Check out trusted pairing tooling
         uses: actions/checkout@v4

@@ -38,6 +38,10 @@ function repositoryRoot() {
 
 const root = repositoryRoot();
 
+const RERUN_POLL_TIMEOUT_MINUTES = Number(
+  read('.github/e2e-pairing/cli.mjs').match(/const RERUN_POLL_TIMEOUT_MS = (\d+) \* 60_000;/)?.[1],
+);
+
 function read(relativePath) {
   return fs.readFileSync(new URL(relativePath, root), 'utf8');
 }
@@ -61,6 +65,7 @@ function step(workflow, name) {
 
 test('paired resolve receives the action and previous head, and privileged jobs use the environment', () => {
   const workflow = read('.github/workflows/e2e-paired.yml');
+  assert.equal(RERUN_POLL_TIMEOUT_MINUTES, 60, 'the rerun poll deadline is 60 minutes');
   const resolveStep = step(workflow, 'Resolve pair and review gates');
   assert.match(resolveStep, /EVENT_ACTION: \$\{\{ steps\.side\.outputs\.action \}\}/);
   assert.match(
@@ -74,7 +79,13 @@ test('paired resolve receives the action and previous head, and privileged jobs 
   }
   assert.match(job(workflow, 'resolve'), /private-key: \$\{\{ secrets\.E2E_PAIR_APP_PRIVATE_KEY \}\}/);
   assert.match(job(workflow, 'publish'), /private-key: \$\{\{ secrets\.E2E_PAIR_APP_PRIVATE_KEY \}\}/);
-  assert.match(job(workflow, 'publish'), /timeout-minutes: 75/);
+  for (const name of ['publish', 'reconcile']) {
+    const timeout = Number(job(workflow, name).match(/timeout-minutes: (\d+)/)?.[1]);
+    assert.ok(
+      timeout > 2 * RERUN_POLL_TIMEOUT_MINUTES,
+      `${name} timeout (${timeout} minutes) must exceed twice the ${RERUN_POLL_TIMEOUT_MINUTES}-minute rerun poll timeout`,
+    );
+  }
 });
 
 test('pairing unit tests enforce full coverage in PR CI', () => {
@@ -186,7 +197,7 @@ test('a schedule reconciles paired pull requests without running the paired stac
   assert.match(reconcile, /runs-on: ubuntu-latest/);
   assert.match(reconcile, /environment: e2e-pairing/);
   assert.match(reconcile, /permissions:\n      contents: read/);
-  assert.match(reconcile, /timeout-minutes: 15/);
+  assert.match(reconcile, /timeout-minutes: 130/);
   assert.match(reconcile, /ref: \$\{\{ github\.workflow_sha \}\}/);
   assert.match(reconcile, /uses: actions\/setup-node@v4/);
   assert.match(reconcile, /node-version: '24'/);

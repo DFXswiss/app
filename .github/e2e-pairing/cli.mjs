@@ -32,7 +32,7 @@ const DEFAULT_REVIEW_GATE_SCRIPT = new URL('./review-gate.py', import.meta.url);
 const SHA_RE = /^[0-9a-f]{40}$/;
 const PULL_FILES_LIMIT = 3000;
 const RERUN_POLL_INTERVAL_MS = 30_000;
-const RERUN_POLL_TIMEOUT_MS = 30 * 60_000;
+const RERUN_POLL_TIMEOUT_MS = 60 * 60_000;
 
 function requirePositiveInteger(value, label) {
   const number = Number(value);
@@ -744,7 +744,7 @@ async function invalidateOpenPair(client, result, env, { rerun = true } = {}) {
   }
 }
 
-export async function finalizeResolution(client, result, env, deps, { rerun = true } = {}) {
+export async function finalizeResolution(client, result, env, deps, { rerun = true, rerunReviewPending = false } = {}) {
   if (result.already_handled) {
     deps.writeOutputs(outputValues(result), env);
     deps.log(`Pair already handled: ${result.reason || 'no action needed'}`);
@@ -767,7 +767,7 @@ export async function finalizeResolution(client, result, env, deps, { rerun = tr
       await rerunOpenSides(client, result);
     }
   }
-  await postResolutionState(client, result, env);
+  await postResolutionState(client, result, env, { rerunReviewPending });
   const outputs = outputValues(result);
   deps.writeOutputs(outputs, env);
   deps.log(
@@ -929,7 +929,7 @@ async function rerunOpenSides(client, result) {
   }
 }
 
-async function postResolutionState(client, result, env, { rerun = true } = {}) {
+async function postResolutionState(client, result, env, { rerun = true, rerunReviewPending = false } = {}) {
   if (!result.paired || result.valid) {
     return;
   }
@@ -939,9 +939,23 @@ async function postResolutionState(client, result, env, { rerun = true } = {}) {
     description: result.reason || (result.review_pending ? 'review gate not satisfied' : 'pair invalid'),
     targetUrl: statusTargetUrl(env),
   });
-  if (rerun && !result.review_pending) {
+  if (rerun && (!result.review_pending || rerunReviewPending)) {
     await rerunOpenSides(client, result);
   }
+}
+
+// A review-gate rejection may have replaced an earlier successful status.
+// Rerun only when the App has already spoken about an open head; a first
+// review comment must keep the original pending-only behaviour.
+async function hasAppStatusOnOpenSide(client, result, env) {
+  const creatorLogin = `${env.E2E_PAIR_APP_SLUG || ''}[bot]`;
+  for (const side of attestableSides(result)) {
+    const statuses = await client.paginate(`/repos/${side.repo}/commits/${side.sha}/statuses?per_page=100`);
+    if (selectAttestedStatus(statuses, { context: STATUS_CONTEXT, creatorLogin })) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // The chatty trigger paths (review comments, pairing dispatches) only skip a
@@ -985,6 +999,7 @@ async function resolveCommand(client, env, deps, reviewGate) {
   let result = await resolvePair({ client, startRepo, startPr, reviewGate });
   let closedCompanionFailed = false;
   let openPairInvalidated = false;
+  let rerunReviewPending = false;
   if (env.EVENT_NAME === 'repository_dispatch') {
     closedCompanionFailed = await failClosedStartCompanion(client, result, env, deps, startRepo, startPr, { repend: true });
     // failOpenCompanion has just proven mutuality from both current heads.
@@ -1007,6 +1022,8 @@ async function resolveCommand(client, env, deps, reviewGate) {
       // current open pair once. A proven active run was skipped above.
       await invalidateOpenPair(client, result, env);
       openPairInvalidated = true;
+    } else if (result.review_pending) {
+      rerunReviewPending = await hasAppStatusOnOpenSide(client, result, env);
     }
   }
   if (env.EVENT_NAME === 'pull_request_target' && env.EVENT_ACTION === 'closed' && result.valid) {
@@ -1031,7 +1048,7 @@ async function resolveCommand(client, env, deps, reviewGate) {
     result.already_handled = true;
     return finalizeResolution(client, result, env, deps);
   }
-  return finalizeResolution(client, result, env, deps, { rerun: !openPairInvalidated });
+  return finalizeResolution(client, result, env, deps, { rerun: !openPairInvalidated, rerunReviewPending });
 }
 
 async function publishCommand(client, env, deps, reviewGate) {

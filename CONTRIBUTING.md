@@ -494,7 +494,7 @@ the coordinator, which re-resolves and replaces the App status on the app head
 (`pending` or `failure`), so the app-side check then fails. The local
 `Full-stack E2E` job accepts only a terminal `success`; a `pending` running
 marker is not an attestation. The coordinator polls the local run every 30
-seconds for at most 30 minutes after posting the result, then reruns its
+seconds for at most 60 minutes after posting the result, then reruns its
 `Full-stack E2E` job once the run has completed. If the deadline passes, it
 warns and leaves the coordinator status posted. The local check never falls
 back to an older success and never matches by wildcard. The result is therefore

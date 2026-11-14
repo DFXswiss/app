@@ -776,6 +776,69 @@ test('resolve turns review-gate misses into pending and does not rerun', async (
   assert.equal(fake.reruns().length, 0);
 });
 
+test('comments rerun both local jobs when a deleted or edited review follows an App status', async () => {
+  for (const [name, action, statusRepo] of [
+    ['deleted review', 'deleted', APP_REPO],
+    ['removed marker', 'edited', BACKEND_REPO],
+  ]) {
+    const appStatuses = statusRepo === APP_REPO ? [status({ description: pairDescription() })] : [];
+    const backendStatuses = statusRepo === BACKEND_REPO ? [status({ description: pairDescription() })] : [];
+    const fake = new FakeGitHub({
+      ...openPairWithLocalRuns(),
+      [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: appStatuses,
+      [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: backendStatuses,
+      [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+      [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+    });
+    const { deps: injected, writes } = deps(fake, {
+      reviewGate: async ({ repo }) => ({ ok: repo !== BACKEND_REPO, reasons: ['review comment removed'] }),
+    });
+    assert.equal(
+      await main(['resolve'], {
+        ...injected,
+        env: { ...injected.env, ...resolveEnv(), EVENT_NAME: 'issue_comment', EVENT_ACTION: action },
+      }),
+      0,
+      name,
+    );
+    assert.equal(writes[0][0].review_pending, 'true', name);
+    const posted = fake.statusPosts();
+    assert.equal(posted.length, 2, name);
+    assert.equal(posted.every((post) => post.body.state === 'pending'), true, name);
+    assert.equal(
+      posted.every((post) => /review gate not satisfied/.test(post.body.description)),
+      true,
+      name,
+    );
+    assert.equal(fake.reruns().length, 2, name);
+  }
+});
+
+test('a first review comment on a never-attested pair posts pending without rerunning', async () => {
+  const fake = new FakeGitHub({
+    ...openPairWithLocalRuns(),
+    [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [],
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+  });
+  const { deps: injected, writes } = deps(fake, {
+    env: { E2E_PAIR_APP_SLUG: '' },
+    reviewGate: async ({ repo }) => ({ ok: repo !== BACKEND_REPO, reasons: ['second review comment missing'] }),
+  });
+  assert.equal(
+    await main(['resolve'], {
+      ...injected,
+      env: { ...injected.env, ...resolveEnv(), EVENT_NAME: 'issue_comment', EVENT_ACTION: 'created' },
+    }),
+    0,
+  );
+  assert.equal(writes[0][0].review_pending, 'true');
+  assert.equal(fake.statusPosts().length, 2);
+  assert.equal(fake.statusPosts().every((post) => post.body.state === 'pending'), true);
+  assert.equal(fake.reruns().length, 0);
+});
+
 test('resolve posts failure and reruns for a non-review invalid pair', async () => {
   const fake = new FakeGitHub({});
   const { deps: injected, writes } = deps(fake);
@@ -2357,6 +2420,37 @@ test('rerunLocalWorkflow warns and stops after the wait deadline', async () => {
   );
   assert.deepEqual(sleeps, [30_000, 30_000]);
   assert.match(warnings[0], /still queued after 1 minutes/);
+});
+
+test('rerunLocalWorkflow waits up to the default 60-minute deadline', async () => {
+  let clock = 0;
+  const sleeps = [];
+  const warnings = [];
+  const client = {
+    async paginateList() {
+      return [{ id: 10, status: 'queued', event: 'pull_request', head_sha: APP_SHA, path: '.github/workflows/pr.yml' }];
+    },
+    async getOptional() {
+      return { status: 200, data: { status: 'queued' } };
+    },
+    async postRerun() {
+      assert.fail('must not rerun before the run completes');
+    },
+  };
+  assert.equal(
+    await rerunLocalWorkflow(client, APP_REPO, APP_SHA, {
+      sleep: async (milliseconds) => {
+        sleeps.push(milliseconds);
+        clock += milliseconds;
+      },
+      now: () => clock,
+      warn: (message) => warnings.push(message),
+    }),
+    false,
+  );
+  assert.equal(sleeps.length, 120);
+  assert.equal(sleeps.every((milliseconds) => milliseconds === 30_000), true);
+  assert.match(warnings[0], /still queued after 60 minutes/);
 });
 
 test('rerunLocalWorkflow has a bounded poll count when the clock stalls', async () => {

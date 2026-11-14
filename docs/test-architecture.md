@@ -131,7 +131,7 @@ exact heads. When the backend head moves, the backend notifier dispatches to
 the coordinator, which re-resolves and replaces the App status on the app head
 (`pending` or `failure`), so the app-side check then fails. A `pending` running
 marker is not an attestation. The coordinator polls that local run every 30
-seconds for at most 30 minutes after posting the result, then reruns its
+seconds for at most 60 minutes after posting the result, then reruns its
 `Full-stack E2E` job once the run has completed. After the deadline it warns
 without replacing the posted status. It never falls back to an older success
 and never matches by wildcard, so it verifies one shared run rather than
