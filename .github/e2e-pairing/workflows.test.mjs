@@ -226,6 +226,12 @@ test('review-comment deletion and marker removal re-evaluate the pair from event
 });
 
 test('paired docs describe reconcile reruns and stale running markers', () => {
+  for (const relativePath of ['CONTRIBUTING.md', 'e2e-stack/README.md', 'docs/test-architecture.md', 'REVIEW.md']) {
+    const text = read(relativePath);
+    assert.match(text, /reconciles\s+every\s+open\s+paired\s+pull\s+request\s+in\s+both/, relativePath);
+    assert.match(text, /on\s+any\s+base/, relativePath);
+    assert.match(text, /repairs\s+divergent\s+and\s+stale\s+pending\s+statuses/, relativePath);
+  }
   for (const relativePath of ['CONTRIBUTING.md', 'e2e-stack/README.md', 'docs/test-architecture.md']) {
     const text = read(relativePath);
     assert.match(text, /reruns\s+the\s+local\s+required\s+`Full-stack\s+E2E`\s+jobs/, relativePath);
@@ -234,4 +240,18 @@ test('paired docs describe reconcile reruns and stale running markers', () => {
   const stackReadme = read('e2e-stack/README.md');
   assert.match(stackReadme, /local\s+job\s+verifies\s+the\s+newest\s+App\s+status/);
   assert.doesNotMatch(stackReadme, /waits\s+for\s+the\s+shared\s+coordinator's\s+status/);
+});
+
+test('docs exclude paired PRs from the standard CI time target and keep the E2E table exact', () => {
+  const contributing = read('CONTRIBUTING.md').replace(/\s+/g, ' ');
+  assert.match(contributing, /A standard PR into `develop` \(no `ci:full` and no active pair\) must finish CI in under 10 minutes wall-clock/);
+
+  const architecture = read('docs/test-architecture.md');
+  assert.match(architecture, /every process-gated job except Scorechain is off during the run/);
+  const layers = architecture
+    .split('## The layers this repository owns')[1]
+    .split('\n\n')
+    .find((block) => block.startsWith('|'));
+  const table = layers.split('\n').filter((line) => line.startsWith('|'));
+  assert.equal(new Set(table.map((line) => line.length)).size, 1);
 });

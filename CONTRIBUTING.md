@@ -264,11 +264,12 @@ full suite, as do PRs into `main`, a bare `workflow_dispatch`, unsafe path
 characters, test/build infrastructure, and deleting or renaming files under
 `src/` or `functions/`. Lint, Markdown formatting (`format:md:check`),
 `build:dev` and `widget:dev` always run in full when the job runs. A standard
-PR into `develop` (no `ci:full`) must finish CI in under 10 minutes wall-clock;
-the full-stack E2E job is an in-job no-op unless `ci:full` is set or the PR is
-paired. Full-stack E2E is called from PR CI after Build and test succeed, so it
-cannot start while unit tests are still queued. Full runs (`ci:full`, PRs into
-`main`, a bare `workflow_dispatch`, and paired runs) may take longer.
+PR into `develop` (no `ci:full` and no active pair) must finish CI in under 10
+minutes wall-clock; the full-stack E2E job is an in-job no-op unless `ci:full`
+is set or the PR is paired. Full-stack E2E is called from PR CI after Build and
+test succeed, so it cannot start while unit tests are still queued. Full runs
+(`ci:full`, PRs into `main`, a bare `workflow_dispatch`, and paired runs) may
+take longer.
 
 #### Coverage
 
@@ -510,12 +511,13 @@ cancel unconditionally. If both pull requests are open, merge order is free.
 After one side merges, the remaining side resolves against that side's merge
 commit and is re-run and re-attested. If a side is closed without merging, the
 pair fails closed. A pair whose both sides are already merged is not run.
-The coordinator also reconciles every open paired pull request every 30
-minutes, which catches a backend retarget to a branch other than
-`develop`/`main` and any lost notification. After an invalidation it also
-reruns the local required `Full-stack E2E` jobs, and it replaces a running
-marker whose shared run ended without a result with a terminal `failure`, then
-reruns those local jobs so a later trigger can start a new shared run.
+The coordinator also reconciles every open paired pull request in both
+repositories every 30 minutes, on any base, and repairs divergent and stale
+pending statuses. It catches a retarget away from `develop`/`main` and any lost
+notification. After an invalidation it also reruns the local required
+`Full-stack E2E` jobs, and it replaces a running marker whose shared run ended
+without a result with a terminal `failure`, then reruns those local jobs so a
+later trigger can start a new shared run.
 
 Administrators provision the GitHub App on `DFXswiss/app` and
 `DFXswiss/backend` with commit-status read/write, Actions read/write, Contents

@@ -201,13 +201,14 @@ nothing is run. A green paired run proves that the exact app and backend heads
 started together against a real Postgres database and passed the full suite and
 route gate. It does not prove external providers, money movement, the migration
 chain, or a future merge result.
-The coordinator also reconciles every open paired pull request every 30
-minutes, which catches a backend retarget to a branch other than
-`develop`/`main` and any lost notification. After it invalidates a pair, it also
-reruns the local required `Full-stack E2E` jobs so branch protection cannot keep
-seeing their previous green result. A running marker whose shared run ended
-without a result is replaced with a terminal `failure`, and the local jobs are
-rerun so a later trigger can start a new shared run.
+The coordinator also reconciles every open paired pull request in both
+repositories every 30 minutes, on any base, and repairs divergent and stale
+pending statuses. It catches a retarget away from `develop`/`main` and any lost
+notification. After it invalidates a pair, it also reruns the local required
+`Full-stack E2E` jobs so branch protection cannot keep seeing their previous
+green result. A running marker whose shared run ended without a result is
+replaced with a terminal `failure`, and the local jobs are rerun so a later
+trigger can start a new shared run.
 
 Administrators install the pairing GitHub App on both repositories with commit
 status read/write, Actions read/write, Contents read/write, Pull requests read,

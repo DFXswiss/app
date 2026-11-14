@@ -42,9 +42,10 @@ Reject the pull request when any of these is true:
   identity from `.github/e2e-pairing/guard-identities.json`; a merged companion
   is matched through its merge commit, and a companion closed without merge is
   a failure.
-  The coordinator also reconciles every open paired pull request every 30
-  minutes, which catches a backend retarget to a branch other than
-  `develop`/`main` and any lost notification.
+  The coordinator also reconciles every open paired pull request in both
+  repositories every 30 minutes, on any base, and repairs divergent and stale
+  pending statuses. It catches a retarget away from `develop`/`main` and any
+  lost notification.
 - The test offered as coverage of the function replaces the screen, the
   visitor's action, the session, the router, the navigation, this service's
   API, or this service's database.

@@ -10,12 +10,12 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 ## The layers this repository owns
 
-| Layer              | Location                        | What it proves                                                               | What it cannot prove                                                  | Runs in CI                                                                                                                                               |
-| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                       | drafts run (forks may wait as `action_required`); suite full / related / none                                                                            |
-| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query          | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                                                                        |
-| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job except Scorechain is off | drafts run (mode=none without ci:full or a pair); paired: local mode=paired-attested, stack once in the coordinator; else ci:full / main / bare dispatch |
-| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                              | no                                                                                                                                                       |
+| Layer              | Location                        | What it proves                                                               | What it cannot prove                                                                 | Runs in CI                                                                                                                                               |
+| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                                      | drafts run (forks may wait as `action_required`); suite full / related / none                                                                            |
+| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query                         | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                                                                        |
+| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job except Scorechain is off during the run | drafts run (mode=none without ci:full or a pair); paired: local mode=paired-attested, stack once in the coordinator; else ci:full / main / bare dispatch |
+| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                                             | no                                                                                                                                                       |
 
 A develop app/backend pull request that declares a pair runs the same stack once in the trusted
 coordinator instead of starting it in either repository's local job; a release pull request into
@@ -152,12 +152,13 @@ that the exact app and backend heads started together against a real Postgres
 database and passed the full suite, including the route gate. It does not prove
 external-provider behavior, money movement, the migration chain, or that the
 pull requests will merge without conflicts.
-The coordinator also reconciles every open paired pull request every 30
-minutes, which catches a backend retarget to a branch other than
-`develop`/`main` and any lost notification. After an invalidation it also
-reruns the local required `Full-stack E2E` jobs, and it replaces a running
-marker whose shared run ended without a result with a terminal `failure`, then
-reruns those local jobs so a later trigger can start a new shared run.
+The coordinator also reconciles every open paired pull request in both
+repositories every 30 minutes, on any base, and repairs divergent and stale
+pending statuses. It catches a retarget away from `develop`/`main` and any lost
+notification. After an invalidation it also reruns the local required
+`Full-stack E2E` jobs, and it replaces a running marker whose shared run ended
+without a result with a terminal `failure`, then reruns those local jobs so a
+later trigger can start a new shared run.
 
 Administrators install the pairing GitHub App on both repositories with commit
 status read/write, Actions read/write, Contents read/write, Pull requests read,
