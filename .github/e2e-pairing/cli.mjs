@@ -76,6 +76,22 @@ function parseStatusPair(status) {
   }
 }
 
+function newestStatusPair(statuses, creatorLogin) {
+  let remaining = statuses;
+  while (remaining.length > 0) {
+    const newest = selectAttestedStatus(remaining, { context: STATUS_CONTEXT, creatorLogin });
+    if (newest === null) {
+      return null;
+    }
+    const pair = parseStatusPair(newest);
+    if (pair !== null) {
+      return pair;
+    }
+    remaining = remaining.filter((status) => status !== newest);
+  }
+  return null;
+}
+
 function isRunningMarker(status) {
   if (!isPullObject(status) || typeof status.description !== 'string') {
     return false;
@@ -787,10 +803,12 @@ export async function failClosedAfterError(client, env, deps, startRepo, startPr
   try {
     const startPull = await getPullOrNull(client, startRepo, startPr);
     const startSha = pullHeadSha(startPull);
-    if (startPull?.state === 'open' && SHA_RE.test(startSha)) {
+    if (startPull?.state === 'open') {
       collectHead(startRepo, startPull);
-      const newest = await newestAppStatus(startRepo, startSha);
-      const pair = parseStatusPair(newest);
+    }
+    if (SHA_RE.test(startSha)) {
+      const statuses = await client.paginate(`/repos/${startRepo}/commits/${startSha}/statuses?per_page=100`);
+      const pair = newestStatusPair(statuses, creatorLogin);
       if (pair !== null) {
         const companionRepo = otherRepository(startRepo);
         const companionPr = startRepo === APP_REPO ? pair.backend_pr : pair.app_pr;
@@ -1237,6 +1255,10 @@ function isStalePendingStatus(status, now) {
   return age !== null && age > STALE_PENDING_MS;
 }
 
+function isStaleNonRunningPending(status, now) {
+  return status?.state === 'pending' && !isRunningMarker(status) && isStalePendingStatus(status, now);
+}
+
 function isReviewGatePendingStatus(status) {
   return typeof status.description === 'string' && status.description.startsWith('review gate not satisfied');
 }
@@ -1252,10 +1274,23 @@ function pairHandleKey(result) {
 async function companionStatusAgrees(client, result, repo, status, creatorLogin) {
   const companion = openSides(result).find((side) => side.repo !== repo);
   if (!companion) {
-    return true;
+    return { agrees: true, newest: null };
   }
   const newest = await newestHeadStatus(client, companion.repo, companion.sha, creatorLogin);
-  return newest !== null && newest.state === status.state && statusMatchesPair(newest, result);
+  return {
+    agrees: newest !== null && newest.state === status.state && statusMatchesPair(newest, result),
+    newest,
+  };
+}
+
+async function failStalePendingEvaluation(client, result, env, deps, label) {
+  await postOnOpenSides(client, result, {
+    state: 'failure',
+    description: 'pair evaluation did not finish',
+    targetUrl: statusTargetUrl(env),
+  });
+  await rerunOpenSides(client, result);
+  deps.log(`reconcile ${label}: pending evaluation was stale, failed it and reran local jobs`);
 }
 
 // A scheduled sweep only repairs statuses that a lost notification left behind.
@@ -1285,8 +1320,7 @@ async function reconcilePull(client, env, deps, slug, repo, pr, reviewGate, hand
     return false;
   }
   const isRunning = isRunningMarker(newest);
-  const isStalePending =
-    newest.state === 'pending' && !isRunning && isStalePendingStatus(newest, deps.now);
+  const isStalePending = isStaleNonRunningPending(newest, deps.now);
   if (newest.state !== 'success' && !isRunning && !isStalePending) {
     return false;
   }
@@ -1310,13 +1344,7 @@ async function reconcilePull(client, env, deps, slug, repo, pr, reviewGate, hand
   if (result.valid) {
     if (isStalePending) {
       markHandled();
-      await postOnOpenSides(client, result, {
-        state: 'failure',
-        description: 'pair evaluation did not finish',
-        targetUrl: statusTargetUrl(env),
-      });
-      await rerunOpenSides(client, result);
-      deps.log(`reconcile ${repositoryLabel(repo)}#${pr}: pending evaluation was stale, failed it and reran local jobs`);
+      await failStalePendingEvaluation(client, result, env, deps, `${repositoryLabel(repo)}#${pr}`);
       return true;
     }
     if (isRunning) {
@@ -1344,16 +1372,29 @@ async function reconcilePull(client, env, deps, slug, repo, pr, reviewGate, hand
       deps.log(`reconcile ${repositoryLabel(repo)}#${pr}: stale head or pair, invalidated`);
       return true;
     }
-    if (!(await companionStatusAgrees(client, result, repo, newest, creatorLogin))) {
+    const companion = await companionStatusAgrees(client, result, repo, newest, creatorLogin);
+    if (!companion.agrees) {
       markHandled();
-      await invalidateOpenPair(client, result, env);
-      deps.log(`reconcile ${repositoryLabel(repo)}#${pr}: companion status diverged, invalidated`);
+      if (isStaleNonRunningPending(companion.newest, deps.now)) {
+        await failStalePendingEvaluation(client, result, env, deps, `${repositoryLabel(repo)}#${pr}`);
+      } else {
+        await invalidateOpenPair(client, result, env);
+        deps.log(`reconcile ${repositoryLabel(repo)}#${pr}: companion status diverged, invalidated`);
+      }
       return true;
     }
     deps.log(`reconcile ${repositoryLabel(repo)}#${pr}: pair is valid, no status change`);
     return false;
   }
-  if (isStalePending && result.review_pending && isReviewGatePendingStatus(newest)) {
+  const companion =
+    result.review_pending && statusMatchesPair(newest, result)
+      ? await companionStatusAgrees(client, result, repo, newest, creatorLogin)
+      : { agrees: true, newest: null };
+  if (
+    result.review_pending &&
+    ((isStalePending && isReviewGatePendingStatus(newest)) ||
+      (isStaleNonRunningPending(companion.newest, deps.now) && isReviewGatePendingStatus(companion.newest)))
+  ) {
     deps.log(`reconcile ${repositoryLabel(repo)}#${pr}: review gate is still not satisfied, left pending marker unchanged`);
     return false;
   }
