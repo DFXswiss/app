@@ -101,6 +101,80 @@ async function completeMail2faOnPage(page: Page, userDataId: number): Promise<vo
   );
 }
 
+type WalletAnswer = { result: unknown } | { error: { code: number; message: string; data?: unknown } };
+
+/**
+ * Installs an injected EIP-1193 wallet in the page, which stands in for the wallet extension (an external provider).
+ * The test process gives each answer. A rejection is thrown as a plain object, the way injected wallets reject, not
+ * as an Error. Returns the methods the page called, in order.
+ */
+async function injectWallet(
+  page: Page,
+  answer: (method: string, params: unknown[]) => WalletAnswer | Promise<WalletAnswer>,
+): Promise<string[]> {
+  const calls: string[] = [];
+  await page.exposeFunction('e2eWalletAnswer', async (method: string, params: unknown[]) => {
+    calls.push(method);
+    return answer(method, params ?? []);
+  });
+  await page.addInitScript(() => {
+    const answerFor = (window as unknown as { e2eWalletAnswer: (m: string, p: unknown[]) => Promise<WalletAnswer> })
+      .e2eWalletAnswer;
+    (window as unknown as { ethereum: unknown }).ethereum = {
+      isMetaMask: true,
+      request: async ({ method, params }: { method: string; params?: unknown[] }) => {
+        const reply = await answerFor(method, params ?? []);
+        if ('error' in reply) throw reply.error;
+        return reply.result;
+      },
+      on: () => undefined,
+      removeListener: () => undefined,
+    };
+  });
+  return calls;
+}
+
+/** The answers of a wallet on Ethereum that holds `wallet`; `requestAccounts` and `sign` decide the user's choice. */
+function walletAnswers(
+  wallet: { address: string; privateKey: string },
+  choice: { connected: () => boolean; requestAccounts: () => WalletAnswer; sign?: () => WalletAnswer | undefined },
+): (method: string, params: unknown[]) => Promise<WalletAnswer> {
+  return async (method, params) => {
+    switch (method) {
+      case 'eth_accounts':
+        return { result: choice.connected() ? [wallet.address] : [] };
+      case 'eth_chainId':
+        return { result: '0x1' };
+      case 'net_version':
+        return { result: '1' };
+      case 'eth_requestAccounts':
+        return choice.requestAccounts();
+      case 'personal_sign': {
+        const refusal = choice.sign?.();
+        if (refusal) return refusal;
+        const data = String(params[0]);
+        const message = ethers.utils.isHexString(data) ? ethers.utils.arrayify(data) : data;
+        return { result: await new ethers.Wallet(wallet.privateKey).signMessage(message) };
+      }
+      default:
+        return { error: { code: 4200, message: `Unsupported method ${method}` } };
+    }
+  };
+}
+
+/** Records the sign-in and client-error POSTs the page sends. */
+function recordAuthAndErrorReports(page: Page): string[] {
+  const sent: string[] = [];
+  page.on('request', (request) => {
+    const { pathname } = new URL(request.url());
+    if (request.method() === 'POST' && /\/v1\/(auth|log\/clientError)$/.test(pathname)) sent.push(pathname);
+  });
+  return sent;
+}
+
+// The rejection MetaMask sends when the user closes the connection request: a plain object with code and data.
+const USER_REJECTION = { code: 4001, message: 'User rejected the request.', data: { cause: 'rejectAllApprovals' } };
+
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Auth area e2e', () => {
@@ -397,6 +471,119 @@ test.describe('Auth area e2e', () => {
         timeout: 20000,
       })
       .toBeTruthy();
+  });
+
+  // ---------------------------------------------------------------------------
+  // /login — injected wallet (MetaMask) cancel and failure
+  // ---------------------------------------------------------------------------
+
+  test('a cancelled injected-wallet connection returns to the wallet selection, and a retry logs in', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+
+    // Dedicated index so the user row below can only come from the retry.
+    const wallet = testWallet(54);
+    let accept = false;
+    const calls = await injectWallet(
+      page,
+      walletAnswers(wallet, {
+        connected: () => accept,
+        requestAccounts: () => (accept ? { result: [wallet.address] } : { error: USER_REJECTION }),
+      }),
+    );
+    const sent = recordAuthAndErrorReports(page);
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="metamask"]').click();
+
+    await expect.poll(() => calls.includes('eth_requestAccounts'), { timeout: 20000 }).toBe(true);
+    await expect(page.locator('img[src*="metamask"]')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('Please confirm the connection in your MetaMask.')).toHaveCount(0);
+    await expect(page.getByText('Connection failed!')).toHaveCount(0);
+    await expect(page.getByText('User rejected the request.')).toHaveCount(0);
+    await page.waitForTimeout(2000);
+    expect(sent).toEqual([]);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/login');
+    expect(
+      await queryOne<{ id: number }>('SELECT id FROM "user" WHERE LOWER(address) = LOWER($1)', [wallet.address]),
+    ).toBeUndefined();
+
+    accept = true;
+    await page.locator('img[src*="metamask"]').click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+    const user = await waitForRow<{ id: number }>('SELECT id FROM "user" WHERE LOWER(address) = LOWER($1)', [
+      wallet.address,
+    ]);
+    expect(user.id).toBeGreaterThan(0);
+    expect(sent).toEqual(['/v1/auth']);
+  });
+
+  test('a cancelled injected-wallet login signature returns to the wallet selection without a report', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet(55);
+    const calls = await injectWallet(
+      page,
+      walletAnswers(wallet, {
+        connected: () => true,
+        requestAccounts: () => ({ result: [wallet.address] }),
+        sign: () => ({
+          error: { code: 4001, message: 'User rejected the request.', data: { location: 'confirmation' } },
+        }),
+      }),
+    );
+    const sent = recordAuthAndErrorReports(page);
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="metamask"]').click();
+
+    await expect.poll(() => calls.includes('personal_sign'), { timeout: 20000 }).toBe(true);
+    await expect(page.locator('img[src*="metamask"]')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('Connection failed!')).toHaveCount(0);
+    await expect(page.getByText('User rejected the request.')).toHaveCount(0);
+    await page.waitForTimeout(2000);
+    expect(sent).toEqual([]);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/login');
+  });
+
+  test('a failing injected-wallet connection still shows the error and reports it', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet(56);
+    await injectWallet(
+      page,
+      walletAnswers(wallet, {
+        connected: () => false,
+        requestAccounts: () => ({ error: { code: -32603, message: 'Internal JSON-RPC error.' } }),
+      }),
+    );
+    const sent = recordAuthAndErrorReports(page);
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+    await page.locator('img[src*="cryptowallet"]').click();
+
+    const report = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/v1/log/clientError'),
+      { timeout: 20000 },
+    );
+    await page.locator('img[src*="metamask"]').click();
+
+    await expect(page.getByText('Connection failed!')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('Internal JSON-RPC error.')).toBeVisible();
+    const response = await report;
+    expect(response.ok()).toBe(true);
+    expect(JSON.parse(response.request().postData() ?? '{}').message).toContain('Internal JSON-RPC error.');
+    expect(sent).toEqual(['/v1/log/clientError']);
   });
 
   // ---------------------------------------------------------------------------
