@@ -271,6 +271,10 @@
     "title": "KYC Wallet-Hinweis",
     "description": "Die KYC-Seite, wenn die verbundene Wallet nicht die Adresse aus dem Link ist. Der Hinweis nennt die verlangte Adresse und bietet Abmelden. Einwilligung und Ident starten nicht."
   },
+  "wallet-cancel": {
+    "title": "Abbruch im Wallet",
+    "description": "Bricht der Benutzer das Verbinden oder die Login-Signatur im Wallet ab (EIP-1193-Code 4001), endet der Vorgang ohne Fehlermeldung und ohne Fehlerbericht wieder bei der Wallet-Auswahl, und ein neuer Versuch ist möglich. Das gilt für injizierte EVM-Wallets, WalletConnect, Phantom, Trust und TronLink. Varianten: abgebrochene Verbindung zurück bei der Wallet-Auswahl, und zum Vergleich eine vom Wallet fehlgeschlagene Verbindung, die weiterhin \"Connection failed!\" mit der Meldung des Wallets zeigt."
+  },
   "docs": {
     "docs/EIP7702-Implementierungsplan.md": {
       "title": "EIP-7702 Implementierungsplan"

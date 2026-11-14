@@ -688,7 +688,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `LikelyReturn` for a real address, or that the API returns that quote.
 - **The wallet rejection unit test answers for the wallets and their SDKs.**
   `src/__tests__/connect-wallet-rejection.test.tsx` renders the real connect components, wallet hooks,
-  `ConnectBase` and `ConnectError` with the real web3 and viem, but replaces the injected EIP-1193 provider
+  `ConnectBase` and `ConnectError` with the real web3 and viem (its mock installs Node's `TextEncoder` and
+  `TextDecoder` from `util` on the jsdom global, which has none), but replaces the injected EIP-1193 provider
   with an object that rejects the way an injected wallet does, `@wagmi/core` with functions that throw the real
   viem `UserRejectedRequestError` with a fixed connected account and one WalletConnect connector, the wagmi
   config with a placeholder project id, and the Solana and Tron wallet adapters with objects that throw the real
@@ -702,8 +703,27 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   other failures on the same paths are still shown and reported. It does not prove that a real wallet,
   extension or app rejects with exactly that shape or code, that the real reporter sends the report, that the
   wallet list loads, that a real WalletConnect connector or session is used, the chain mapping, the signature
-  encoding, the wallet and mobile detection, the SDK's enum values, that the checksum is computed, or that a
+  encoding, the wallet and mobile detection, the SDK's enum values, that the checksum is computed, that viem
+  encodes and decodes with the browser's own `TextEncoder` and `TextDecoder` as it does with Node's, or that a
   real login completes.
+- **The wallet cancel full-stack cases replace the wallet extension with an injected wallet.** In
+  `e2e-stack/specs/auth.spec.ts`, the three MetaMask cases on `/login` install `window.ethereum` with
+  `addInitScript`: an EIP-1193 object marked `isMetaMask` whose answers come from the test process, which
+  rejects with a plain object (code 4001 with MetaMask's `data` for a cancel, code -32603 for a failure),
+  answers Ethereum (`0x1`) as the chain, and signs the login message with the dedicated test wallet's key.
+  A green run proves, through the real frontend, API and Postgres, that a cancelled connection and a
+  cancelled login signature return to the wallet selection with no error and no `POST /v1/log/clientError`
+  or `POST /v1/auth`, that a retry signs in and creates the user row, and that a failing wallet still shows
+  "Connection failed!" and is reported to the API. It does not prove that a real wallet extension rejects
+  with exactly that shape or code, or the other wallets of the change (WalletConnect, Phantom, Trust,
+  TronLink), which have no wallet the harness can answer for.
+- **The wallet cancel visual spec answers the wallet and the API itself.** `e2e/wallet-cancel.spec.ts`
+  installs an in-page injected wallet that rejects the account request (code 4001 with data, and code
+  -32603), fulfils the bootstrap GETs and answers `POST /v1/log/clientError` with 201. Unmatched `/v1/**` and
+  `/v2/**` calls get `501`. A green run proves how the login page renders the cancelled connection (back at
+  the wallet selection, no report) and the failed one ("Connection failed!" with the wallet's message, one
+  report). It does not prove that a real wallet rejects that way, that the API returns real bootstrap data,
+  or that the real client-error endpoint receives the report.
 - **The MetaMask rejection hook test replaces the injected provider.**
   `src/hooks/wallets/__tests__/metamask-rejection.hook.test.ts` runs `useMetaMask` against the real web3 with
   an in-memory EIP-1193 provider (and a legacy `sendAsync` provider) that answers or rejects each method, and
@@ -726,9 +746,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `global.fetch` for the WalletConnect wallet list, the app's web3 hook with a fixed chain-id mapping and device
   detection, `@dfx.swiss/react` with copies of its `AssetType` and `Blockchain` values, silences `console.warn`,
   and replaces `setTimeout` so the wait after a chain switch ends at once;
-  it keeps the real viem. A green run proves which wagmi actions the hook calls and how it maps their results and
+  it keeps the real viem, whose mock installs Node's `TextEncoder` and `TextDecoder` from `util` on the jsdom
+  global, which has none. A green run proves which wagmi actions the hook calls and how it maps their results and
   errors. It does not prove that a WalletConnect session is established, that a wallet answers or rejects that
-  way, that the wallet list API returns that JSON, the chain-id mapping, the SDK's enum values, or the real wait after a switch.
+  way, that the wallet list API returns that JSON, the chain-id mapping, the SDK's enum values, the real wait after
+  a switch, or that viem encodes and decodes with the browser's own `TextEncoder` and `TextDecoder` as it does with
+  Node's.
 
 ## Known gaps
 
