@@ -59,7 +59,8 @@ export function useWalletConnect(): WalletConnectInterface {
 
   useEffect(() => {
     getWallets().then(setWallets);
-    reconnect();
+    // restores a session of an earlier visit; without it the user connects again, so a failure only gets logged
+    reconnect().catch((error) => console.warn('Failed to reconnect WalletConnect:', error.message));
   }, []);
 
   function getWalletConnectConnector(): Connector {
@@ -69,8 +70,8 @@ export function useWalletConnect(): WalletConnectInterface {
   }
 
   async function getWallets(): Promise<DeepWallet[]> {
-    return fetch(`https://explorer-api.walletconnect.com/v3/wallets?projectId=${WALLET_CONNECT_PROJECT_ID}`).then(
-      async (response) => {
+    return fetch(`https://explorer-api.walletconnect.com/v3/wallets?projectId=${WALLET_CONNECT_PROJECT_ID}`)
+      .then(async (response) => {
         if (!response.ok) {
           throw new Error(response.statusText);
         }
@@ -85,8 +86,7 @@ export function useWalletConnect(): WalletConnectInterface {
             imageUrl: w.image_url.md,
           }))
           .filter((w) => w.deepLink);
-      },
-    )
+      })
       .catch((error) => {
         console.warn('Failed to fetch WalletConnect wallets:', error.message);
         return []; // Return empty array on error for local development

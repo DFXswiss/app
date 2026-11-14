@@ -230,10 +230,12 @@ describe('requestChangeToBlockchain', () => {
     await expect(setup().requestChangeToBlockchain(Blockchain.ETHEREUM)).rejects.toBeInstanceOf(AbortError);
   });
 
-  it('fails reading the code of an empty failure of the switch', async () => {
+  it('fails with a generic error when the switch fails without any value', async () => {
     ethereum.request.mockRejectedValue(undefined);
 
-    await expect(setup().requestChangeToBlockchain(Blockchain.ETHEREUM)).rejects.toBeInstanceOf(TypeError);
+    const change = setup().requestChangeToBlockchain(Blockchain.ETHEREUM);
+    await expect(change).rejects.not.toBeInstanceOf(TypeError);
+    await expect(change).rejects.toThrow('An unexpected error occurred.');
   });
 
   it('passes on an empty failure to add the chain', async () => {

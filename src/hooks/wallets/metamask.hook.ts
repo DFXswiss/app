@@ -425,8 +425,8 @@ export function useMetaMask(): MetaMaskInterface {
     }
   }
 
-  function handleError(e: MetaMaskError): never {
-    switch (e.code) {
+  function handleError(e: MetaMaskError | undefined): never {
+    switch (e?.code) {
       // carries the code, which the transaction screens check to keep the user on the form
       case USER_REJECTED_CODE:
         throw new UserRejectedError();
@@ -435,7 +435,8 @@ export function useMetaMask(): MetaMaskInterface {
         throw new TranslatedError('There is already a request pending. Please confirm it in your MetaMask and retry.');
     }
 
-    throw e;
+    // a wallet may reject without any value
+    throw e ?? new Error('An unexpected error occurred.');
   }
 
   return useMemo(

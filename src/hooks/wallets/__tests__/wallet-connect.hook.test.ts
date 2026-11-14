@@ -158,6 +158,17 @@ describe('reconnect on mount', () => {
 
     expect(mockReconnect).not.toHaveBeenCalled();
   });
+
+  it('logs a failed reconnect instead of leaving it unhandled', async () => {
+    mockGetAccount.mockReturnValue({ isDisconnected: true });
+    mockReconnect.mockRejectedValue(new Error('Relay unreachable'));
+
+    await setup();
+
+    await waitFor(() =>
+      expect(console.warn).toHaveBeenCalledWith('Failed to reconnect WalletConnect:', 'Relay unreachable'),
+    );
+  });
 });
 
 describe('connect', () => {
