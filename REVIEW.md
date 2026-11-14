@@ -36,7 +36,7 @@ Reject the pull request when any of these is true:
   (`pair app#<A>@<app head> backend#<B>@<backend head> run <run id>`); a
   7-character prefix is not an attestation. Only a terminal `success` attests;
   a `pending` running marker is not an attestation. The coordinator polls for up
-  to 30 minutes and then reruns that local `Full-stack E2E` job after it posts
+  to 60 minutes and then reruns that local `Full-stack E2E` job after it posts
   the result. Each
   repository's review state is checked with its own guard pin and the guard
   identity from `.github/e2e-pairing/guard-identities.json`; a merged companion

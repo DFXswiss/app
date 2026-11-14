@@ -823,6 +823,30 @@ test('a first review comment on a never-attested pair posts pending without reru
     [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
   });
   const { deps: injected, writes } = deps(fake, {
+    reviewGate: async ({ repo }) => ({ ok: repo !== BACKEND_REPO, reasons: ['second review comment missing'] }),
+  });
+  assert.equal(
+    await main(['resolve'], {
+      ...injected,
+      env: { ...injected.env, ...resolveEnv(), EVENT_NAME: 'issue_comment', EVENT_ACTION: 'created' },
+    }),
+    0,
+  );
+  assert.equal(writes[0][0].review_pending, 'true');
+  assert.equal(fake.statusPosts().length, 2);
+  assert.equal(fake.statusPosts().every((post) => post.body.state === 'pending'), true);
+  assert.equal(fake.reruns().length, 0);
+});
+
+test('an empty app slug ignores the normal bot status and does not rerun a pending review', async () => {
+  const fake = new FakeGitHub({
+    ...openPairWithLocalRuns(),
+    [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+  });
+  const { deps: injected, writes } = deps(fake, {
     env: { E2E_PAIR_APP_SLUG: '' },
     reviewGate: async ({ repo }) => ({ ok: repo !== BACKEND_REPO, reasons: ['second review comment missing'] }),
   });
