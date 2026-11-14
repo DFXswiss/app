@@ -1,5 +1,5 @@
 import { AbortError } from '../abort-error';
-import { hasUserRejectedCode, isTronUserRejection, USER_REJECTED_CODE, UserRejectedError } from '../user-rejection';
+import { hasUserRejectedCode, isTronConnectRejection, USER_REJECTED_CODE, UserRejectedError } from '../user-rejection';
 
 describe('UserRejectedError', () => {
   it('is an abort that carries the EIP-1193 rejection code', () => {
@@ -43,19 +43,19 @@ describe('hasUserRejectedCode', () => {
   });
 });
 
-describe('isTronUserRejection', () => {
+describe('isTronConnectRejection', () => {
   it('recognises the code the adapter keeps', () => {
-    expect(isTronUserRejection(Object.assign(new Error('Rejected'), { error: { code: 4001 } }))).toBe(true);
+    expect(isTronConnectRejection(Object.assign(new Error('Rejected'), { error: { code: 4001 } }))).toBe(true);
   });
 
   it('recognises the message the adapter puts on a rejected connection', () => {
-    expect(isTronUserRejection(new Error('The user rejected connection.'))).toBe(true);
+    expect(isTronConnectRejection(new Error('The user rejected connection.'))).toBe(true);
   });
 
   it.each([
     ['another message', new Error('Cannot connect wallet.')],
     ['the message on a plain object', { message: 'The user rejected connection.' }],
   ])('does not recognise %s', (_case, error) => {
-    expect(isTronUserRejection(error)).toBe(false);
+    expect(isTronConnectRejection(error)).toBe(false);
   });
 });

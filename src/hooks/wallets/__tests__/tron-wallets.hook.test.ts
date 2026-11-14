@@ -329,6 +329,14 @@ describe.each([
 
       await expect(setup().signMessage('TronAddress', 'message')).rejects.toThrow('Signing rejected');
     });
+
+    it('does not treat the connect rejection message as a cancel when signing', async () => {
+      adapter.signMessage.mockRejectedValue(new Error('The user rejected connection.'));
+
+      const signing = setup().signMessage('TronAddress', 'message');
+      await expect(signing).rejects.not.toBeInstanceOf(UserRejectedError);
+      await expect(signing).rejects.toThrow('The user rejected connection.');
+    });
   });
 
   describe('createTransaction', () => {
@@ -367,6 +375,14 @@ describe.each([
       const transaction = setup().createTransaction(amount, { type: AssetType.COIN } as Asset, 'from', 'to');
       await expect(transaction).rejects.toBeInstanceOf(UserRejectedError);
       await expect(transaction).rejects.toHaveProperty('code', 4001);
+    });
+
+    it('does not treat the connect rejection message as a cancel in a transaction', async () => {
+      adapter.signTransaction.mockRejectedValue(new Error('The user rejected connection.'));
+
+      const transaction = setup().createTransaction(amount, { type: AssetType.COIN } as Asset, 'from', 'to');
+      await expect(transaction).rejects.not.toBeInstanceOf(UserRejectedError);
+      await expect(transaction).rejects.toThrow('The user rejected connection.');
     });
 
     it('rethrows the transaction error message', async () => {

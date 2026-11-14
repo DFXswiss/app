@@ -4,7 +4,7 @@ import { TronLinkAdapter, isInTronLinkApp, supportTronLink } from '@tronweb3/tro
 import BigNumber from 'bignumber.js';
 import { useMemo } from 'react';
 import { AbortError } from '../../util/abort-error';
-import { isTronUserRejection, UserRejectedError } from '../../util/user-rejection';
+import { hasUserRejectedCode, isTronConnectRejection, UserRejectedError } from '../../util/user-rejection';
 import { delay } from '../../util/utils';
 import { useTron } from '../tron.hook';
 
@@ -58,6 +58,8 @@ export function useTronLinkTrx(): TronLinkInterface {
         throw new AbortError('Forwarded to TronLink app');
       }
 
+      if (isTronConnectRejection(error)) throw new UserRejectedError();
+
       handleError(error);
     }
 
@@ -94,7 +96,7 @@ export function useTronLinkTrx(): TronLinkInterface {
   }
 
   function handleError(error: unknown): never {
-    if (isTronUserRejection(error)) throw new UserRejectedError();
+    if (hasUserRejectedCode(error)) throw new UserRejectedError();
 
     throw new Error((error as Error).message || 'An unexpected error occurred.');
   }

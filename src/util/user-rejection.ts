@@ -33,6 +33,8 @@ export function hasUserRejectedCode(error: unknown): boolean {
   return false;
 }
 
-export function isTronUserRejection(error: unknown): boolean {
+// Only for the catch of a Tron connect: the adapters put that message on nothing else, and a sign or transaction error
+// with the same text is not a cancel.
+export function isTronConnectRejection(error: unknown): boolean {
   return hasUserRejectedCode(error) || (error instanceof Error && error.message === TRON_CONNECTION_REJECTED);
 }
