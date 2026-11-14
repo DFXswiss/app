@@ -188,8 +188,9 @@ export function useMetaMask(): MetaMaskInterface {
         method: 'wallet_addEthereumChain',
         params: [chain],
       })
-      .catch((e: MetaMaskError) => {
-        if (e?.code === USER_REJECTED_CODE) handleError(e);
+      .catch((e: MetaMaskError | undefined) => {
+        // a cancel ends without an error, a rejection without any value gets a generic one
+        if (!e || e.code === USER_REJECTED_CODE) handleError(e);
 
         throw e;
       });

@@ -708,7 +708,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   real login completes.
 - **The wallet cancel full-stack cases replace the wallet extension with an injected wallet.** In
   `e2e-stack/specs/auth.spec.ts`, the three MetaMask cases on `/login` install `window.ethereum` with
-  `addInitScript`: an EIP-1193 object marked `isMetaMask` whose answers come from the test process, which
+  `addInitScript`: an EIP-1193 object marked `isMetaMask` whose answers come from the test process through
+  `page.exposeFunction`, which
   rejects with a plain object (code 4001 with MetaMask's `data` for a cancel, code -32603 for a failure),
   answers Ethereum (`0x1`) as the chain, and signs the login message with the dedicated test wallet's key.
   A green run proves, through the real frontend, API and Postgres, that a cancelled connection and a

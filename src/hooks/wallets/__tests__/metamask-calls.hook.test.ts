@@ -238,11 +238,13 @@ describe('requestChangeToBlockchain', () => {
     await expect(change).rejects.toThrow('An unexpected error occurred.');
   });
 
-  it('passes on an empty failure to add the chain', async () => {
+  it('fails with a generic error when adding the chain fails without any value', async () => {
     ethereum.request.mockRejectedValueOnce({ code: 4902, message: 'Unrecognized chain ID.' });
     ethereum.request.mockRejectedValueOnce(undefined);
 
-    await expect(setup().requestChangeToBlockchain(Blockchain.ETHEREUM)).rejects.toBeUndefined();
+    await expect(setup().requestChangeToBlockchain(Blockchain.ETHEREUM)).rejects.toThrow(
+      'An unexpected error occurred.',
+    );
   });
 });
 
