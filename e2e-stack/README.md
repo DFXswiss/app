@@ -212,11 +212,11 @@ green result. A running marker whose shared run ended without a result is
 replaced with a terminal `failure`, and the local jobs are rerun so a later
 trigger can start a new shared run.
 Reconcile leaves a stale review-gate pending only when every open head carries
-that marker; otherwise it posts `pending`, reruns both local jobs, and publishes
-the gate result. A close-path inspection error and an internal review-gate error
-are failures, never review-pending verdicts. The resolve job sets up Node 24
-before any CLI step, and a final cleanup step fails closed after an earlier
-failure before the CLI runs.
+that marker; otherwise it posts `pending`, reruns the local jobs of the open
+sides, and publishes the gate result. A close-path inspection error and an
+internal review-gate error are failures, never review-pending verdicts. The
+resolve job sets up Node 24 before any CLI step, and a final cleanup step fails
+closed after an earlier failure before the CLI runs.
 
 Administrators install the pairing GitHub App on both repositories with commit
 status read/write, Actions read/write, Contents read/write, Pull requests read,

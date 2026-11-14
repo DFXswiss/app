@@ -181,13 +181,46 @@ class ReviewGateTests(unittest.TestCase):
             setattr(review, name, saved)
 
         review.review_rules_bound = lambda api, repo, base_sha: None
-        ok, reasons = self.gate.evaluate(APP_REPO, 12, HEAD, "token", "github-actions[bot]")
-        self.assertEqual((ok, reasons), (False, ["review rules unavailable"]))
+        with self.assertRaisesRegex(RuntimeError, "review rules unavailable"):
+            self.gate.evaluate(APP_REPO, 12, HEAD, "token", "github-actions[bot]")
 
         review.review_rules_bound = lambda api, repo, base_sha: {}
         review._head_committed_at = lambda api, repo, head: None
-        ok, reasons = self.gate.evaluate(APP_REPO, 12, HEAD, "token", "github-actions[bot]")
-        self.assertEqual((ok, reasons), (False, ["review commit time unavailable"]))
+        with self.assertRaisesRegex(RuntimeError, "review commit time unavailable"):
+            self.gate.evaluate(APP_REPO, 12, HEAD, "token", "github-actions[bot]")
+
+    def test_main_marks_review_gate_availability_failures_as_errors(self):
+        review = sys.modules["agent_cli.a38_review"]
+        review.review_rules_bound = lambda api, repo, base_sha: None
+        output = io.StringIO()
+        with mock.patch.dict(self.gate.os.environ, {"GH_TOKEN": "token"}, clear=True), mock.patch.object(
+            self.gate,
+            "GitHubApi",
+            lambda token: FakeApi(token),
+        ), mock.patch.object(
+            self.gate, "guard_login_for", return_value="github-actions[bot]"
+        ), redirect_stdout(output):
+            self.assertEqual(self.gate.main(["--repo", APP_REPO, "--pr", "12", "--head", HEAD]), 0)
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {"ok": False, "error": True, "reasons": ["review gate error: review rules unavailable"]},
+        )
+
+        review.review_rules_bound = lambda api, repo, base_sha: {}
+        review._head_committed_at = lambda api, repo, head: None
+        output = io.StringIO()
+        with mock.patch.dict(self.gate.os.environ, {"GH_TOKEN": "token"}, clear=True), mock.patch.object(
+            self.gate,
+            "GitHubApi",
+            lambda token: FakeApi(token),
+        ), mock.patch.object(
+            self.gate, "guard_login_for", return_value="github-actions[bot]"
+        ), redirect_stdout(output):
+            self.assertEqual(self.gate.main(["--repo", APP_REPO, "--pr", "12", "--head", HEAD]), 0)
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {"ok": False, "error": True, "reasons": ["review gate error: review commit time unavailable"]},
+        )
 
     def test_selection_failures_and_missing_comment(self):
         review = sys.modules["agent_cli.a38_review"]

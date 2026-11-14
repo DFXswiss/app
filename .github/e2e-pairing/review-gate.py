@@ -70,10 +70,10 @@ def _selected_review_head_reasons(api, repo: str, head: str, snap, comments) -> 
         raise RuntimeError("review gate helper unavailable")
     rules_bound = a38_review.review_rules_bound(api, repo, snap.base_sha)
     if rules_bound is None:
-        return ["review rules unavailable"]
+        raise RuntimeError("review rules unavailable")
     committed_at = a38_review._head_committed_at(api, repo, head)
     if committed_at is None:
-        return ["review commit time unavailable"]
+        raise RuntimeError("review commit time unavailable")
     guard_user_id, _login = api.resolve_own_user()
     covered, unread = a38_review._covering_review_heads(
         api,
