@@ -672,6 +672,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   answer shows no banner.
   A green run does not prove what the real Scorechain returns for an address, or that the API stays
   within its 15-second bound against the real provider.
+- **The full-stack harness stores support and KYC blobs in memory, not in object storage.** With `ENVIRONMENT=loc`, the API's
+  storage factory returns `MockStorageService` (`e2e-stack/compose.yml` has no object-storage service).
+  `e2e-stack/specs/support-dashboard.spec.ts` transfers an umlaut-named support attachment into the KYC
+  file through the real screen, API and Postgres, and verifies the resulting `kyc_file` row and message
+  link. A green run proves that path and its naming; it proves neither the object-storage PUT of the support
+  attachment nor the object-storage PUT of the KYC copy with the percent-encoded `originalFileName`
+  metadata header, which is the transport that failed before backend#6162. Production object storage is not
+  only S3/MinIO: the backend storage factory can also write to Azure Blob Storage (`STORAGE_WRITE_MODE=azure`).
 - **The sell address check visuals answer the API themselves.** `e2e/sell-address-check.spec.ts` uses a synthetic
   unsigned JWT and fulfils the sell bootstrap calls and `GET /v1/sell/address-check` with `LikelyReturn` and
   `Ok`. It also answers `PUT /v1/sell/paymentInfos` (and `PUT /v1/sell/quote`) with a synthetic quote so the

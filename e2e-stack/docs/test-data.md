@@ -167,12 +167,12 @@ the "level 50 but no limit granted" case instead.
 
 ### `createSupportIssue(jwt, options?)`
 
-|                   |                                                                                       |
-| ----------------- | ------------------------------------------------------------------------------------- |
-| **Path**          | API `POST /v1/support/issue`                                                          |
-| **Returns**       | `{ supportIssueId, uid, messageId? }`                                                 |
-| **Options**       | `type` (default `GenericIssue`), `reason` (default `Other`), `name`, `message`, `tag` |
-| **Preconditions** | User must have **mail** (factory sets it if missing)                                  |
+|                   |                                                                                                                                                                                                                                              |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Path**          | API `POST /v1/support/issue`                                                                                                                                                                                                                 |
+| **Returns**       | `{ supportIssueId, uid, messageId? }`                                                                                                                                                                                                        |
+| **Options**       | `type` (default `GenericIssue`), `reason` (default `Other`), `name`, `message`, `tag`, `file` (base64 data URL attached to the customer message the call creates), `fileName` (required with `file`; suffix of the stored support file name) |
+| **Preconditions** | User must have **mail** (factory sets it if missing)                                                                                                                                                                                         |
 
 ### `createPaymentLink(jwt, options?)`
 
