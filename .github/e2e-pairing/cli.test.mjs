@@ -8,6 +8,7 @@ import {
   applyReviewGate,
   defaultReviewGate,
   defaultWriteOutputs,
+  failClosedAfterError,
   finalizeResolution,
   inspectPair,
   main,
@@ -175,6 +176,26 @@ function openPairWithLocalRuns(extra = {}) {
     ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, jobId: 101, path: '.github/workflows/pr.yml@refs/pull/12/merge', runName: 'Build / Full-stack E2E' }),
     ...localRunRoutes({ repo: BACKEND_REPO, sha: BACKEND_SHA, runId: 20, jobId: 201, path: '.github/workflows/api-pr.yaml@refs/pull/34/merge' }),
     ...extra,
+  };
+}
+
+function openPairResult({ appMerged = false, backendMerged = false, startRepo = APP_REPO } = {}) {
+  return {
+    app_pr: 12,
+    app_sha: APP_SHA,
+    backend_pr: 34,
+    backend_sha: BACKEND_SHA,
+    app_merged: appMerged,
+    backend_merged: backendMerged,
+    app_pull: { state: appMerged ? 'closed' : 'open', merged: appMerged },
+    backend_pull: { state: backendMerged ? 'closed' : 'open', merged: backendMerged },
+    app_effective: { ok: true },
+    backend_effective: { ok: true },
+    mutual: true,
+    valid: true,
+    paired: true,
+    start_repo: startRepo,
+    start_pr: startRepo === APP_REPO ? 12 : 34,
   };
 }
 
@@ -381,10 +402,216 @@ test('invalidate on a push rethrows a truncated current-pair file list', async (
     }),
     1,
   );
-  assert.match(errors[0], /truncated/);
+  assert.equal(errors.some((message) => /truncated/.test(message)), true);
   assert.equal(logs.some((message) => /could not be inspected/.test(message)), false);
   assert.equal(fake.statusPosts().length, 0);
   assert.equal(fake.reruns().length, 0);
+});
+
+test('a truncated backend dispatch fails closed on an attested app head and reruns it', async () => {
+  const fake = new FakeGitHub({
+    'GET /repos/DFXswiss/backend/pulls/34': backendPull(34, { changedFiles: 2 }),
+    'GET /repos/DFXswiss/backend/pulls/34/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'modified' }],
+    'GET /repos/DFXswiss/app/pulls/12': appPull(),
+    [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+    ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, path: '.github/workflows/pr.yml' }),
+    ...localRunRoutes({ repo: BACKEND_REPO, sha: BACKEND_SHA, runId: 20, path: '.github/workflows/api-pr.yaml' }),
+  });
+  const { deps: injected, errors } = deps(fake);
+  const code = await main(['resolve'], {
+    ...injected,
+    env: {
+      ...injected.env,
+      ...resolveEnv(),
+      EVENT_NAME: 'repository_dispatch',
+      START_REPO: BACKEND_REPO,
+      START_PR: '34',
+    },
+  });
+  assert.equal(code, 1);
+  assert.equal(errors.some((message) => /truncated/.test(message)), true);
+  const posted = fake.statusPosts().filter((post) => post.body.state === 'failure');
+  assert.equal(posted.some((post) => post.key === `POST /repos/DFXswiss/app/statuses/${APP_SHA}`), true);
+  assert.equal(
+    posted.every((post) => /^pair could not be verified: .*truncated/.test(post.body.description)),
+    true,
+  );
+  assert.equal(
+    fake.reruns().some((call) => call.key === 'POST /repos/DFXswiss/app/actions/jobs/101/rerun'),
+    true,
+  );
+});
+
+test('invalidate fails closed on an inspection error and reports the open attested heads', async () => {
+  const fake = new FakeGitHub({
+    'GET /repos/DFXswiss/app/pulls/12': appPull(),
+    'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': new Error('inspection exploded'),
+    'GET /repos/DFXswiss/backend/pulls/34': backendPull(),
+    [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, path: '.github/workflows/pr.yml' }),
+  });
+  const { deps: injected, errors } = deps(fake);
+  assert.equal(
+    await main(['invalidate'], {
+      ...injected,
+      env: { ...injected.env, START_REPO: APP_REPO, START_PR: '12', RUN_URL },
+    }),
+    1,
+  );
+  assert.equal(errors.some((message) => /inspection exploded/.test(message)), true);
+  const posted = fake.statusPosts();
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0].key, `POST /repos/DFXswiss/app/statuses/${APP_SHA}`);
+  assert.equal(posted[0].body.state, 'failure');
+  assert.equal(
+    fake.reruns().some((call) => call.key === 'POST /repos/DFXswiss/app/actions/jobs/101/rerun'),
+    true,
+  );
+});
+
+test('the fail-closed helper still rethrows the original error when its own lookup fails', async () => {
+  const lookup = new FakeGitHub({
+    'GET /repos/DFXswiss/app/pulls/12': new Error('pull offline'),
+  });
+  const { deps: lookupDeps, errors: lookupErrors } = deps(lookup);
+  assert.equal(await main(['resolve'], { ...lookupDeps, env: { ...lookupDeps.env, ...resolveEnv() } }), 1);
+  assert.match(lookupErrors[0], /fail-closed status lookup failed: Error: pull offline/);
+  assert.match(lookupErrors.at(-1), /pull offline/);
+
+  const cleanup = new FakeGitHub({
+    ...validPairRoutes({ backend: backendPull(34, { changedFiles: 2 }) }),
+    [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: new Error('post offline'),
+  });
+  const { deps: cleanupDeps, errors: cleanupErrors } = deps(cleanup);
+  assert.equal(await main(['resolve'], { ...cleanupDeps, env: { ...cleanupDeps.env, ...resolveEnv() } }), 1);
+  assert.match(cleanupErrors[0], /fail-closed cleanup failed: Error: post offline/);
+  assert.match(cleanupErrors.at(-1), /truncated/);
+});
+
+test('the fail-closed helper skips starts it cannot prove are open', async () => {
+  const cases = [
+    ['missing start', {}],
+    ['closed start', { 'GET /repos/DFXswiss/app/pulls/12': appPull(12, { state: 'closed', merged: false }) }],
+    ['invalid start head', { 'GET /repos/DFXswiss/app/pulls/12': appPull(12, { sha: 'bad' }) }],
+  ];
+  for (const [name, routes] of cases) {
+    const fake = new FakeGitHub(routes);
+    const { GitHubClient } = await import('./github.mjs');
+    const client = new GitHubClient({ token: 't', fetchImpl: fake.fetch.bind(fake) });
+    const original = new Error('original failure');
+    await assert.rejects(
+      () =>
+        failClosedAfterError(client, { E2E_PAIR_APP_SLUG: SLUG, RUN_URL }, { error: () => {} }, APP_REPO, 12, original),
+      (error) => error === original,
+      name,
+    );
+    assert.equal(fake.calls.length, 1, name);
+  }
+
+  // A throwable without a message still yields a readable failure reason.
+  await assert.rejects(
+    () => failClosedAfterError({}, { RUN_URL }, { error: () => {} }, 'unsupported/repo', 12, 'plain failure'),
+    (error) => error === 'plain failure',
+  );
+
+  const noSlug = new FakeGitHub({
+    'GET /repos/DFXswiss/app/pulls/12': appPull(),
+    [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
+  });
+  const { GitHubClient } = await import('./github.mjs');
+  const original = new Error('original failure');
+  await assert.rejects(
+    () =>
+      failClosedAfterError(
+        new GitHubClient({ token: 't', fetchImpl: noSlug.fetch.bind(noSlug) }),
+        { RUN_URL },
+        { error: () => {} },
+        APP_REPO,
+        12,
+        original,
+      ),
+    (error) => error === original,
+  );
+  assert.equal(noSlug.statusPosts().length, 0);
+
+  const fromBackend = new FakeGitHub({
+    'GET /repos/DFXswiss/backend/pulls/34': backendPull(),
+    'GET /repos/DFXswiss/app/pulls/12': appPull(),
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
+    [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 1 },
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 2 },
+    ...localRunRoutes({ repo: BACKEND_REPO, sha: BACKEND_SHA, runId: 20, path: '.github/workflows/api-pr.yaml' }),
+    ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, path: '.github/workflows/pr.yml' }),
+  });
+  await assert.rejects(
+    () =>
+      failClosedAfterError(
+        new GitHubClient({ token: 't', fetchImpl: fromBackend.fetch.bind(fromBackend) }),
+        { E2E_PAIR_APP_SLUG: SLUG, RUN_URL },
+        { error: () => {} },
+        BACKEND_REPO,
+        34,
+        original,
+      ),
+    (error) => error === original,
+  );
+  assert.equal(fromBackend.statusPosts().length, 2);
+});
+
+test('the fail-closed helper collects only heads with an actionable App status', async () => {
+  const companionCases = [
+    // inspectPair throws on the truncated start file list before it reads the
+    // companion, so every companion read below belongs to the helper.
+    ['no status', [], 0, 0],
+    ['unparseable pair', [status({ state: 'pending', description: 'pair re-evaluation pending' })], 0, 1],
+    ['failure status', [status({ state: 'failure', description: pairDescription() })], 1, 0],
+    ['pending status', [status({ state: 'pending', description: pairDescription() })], 1, 1],
+    ['success status', [status({ description: pairDescription() })], 1, 1],
+    ['error status', [status({ state: 'error', description: pairDescription() })], 1, 0],
+    ['closed companion', [status({ description: pairDescription() })], 1, 1],
+    ['invalid companion head', [status({ description: pairDescription() })], 1, 1],
+    ['missing companion', [status({ description: pairDescription() })], 1, 1],
+    ['generic pending', [status({ state: 'pending', description: 'pair re-evaluation pending' })], 0, 1],
+  ];
+  const companionPulls = {
+    'closed companion': backendPull(34, { state: 'closed', merged: false }),
+    'invalid companion head': backendPull(34, { sha: 'bad' }),
+    'missing companion': { status: 404 },
+  };
+  for (const [name, appStatuses, companionReads, postedCount] of companionCases) {
+    const fake = new FakeGitHub({
+      'GET /repos/DFXswiss/app/pulls/12': appPull(12, { changedFiles: 2 }),
+      'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'modified' }],
+      'GET /repos/DFXswiss/backend/pulls/34': companionPulls[name] || backendPull(34),
+      [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: appStatuses,
+      [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+      [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+      ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, path: '.github/workflows/pr.yml' }),
+    });
+    const { deps: injected, errors } = deps(fake);
+    assert.equal(
+      await main(['invalidate'], {
+        ...injected,
+        env: { ...injected.env, START_REPO: APP_REPO, START_PR: '12', RUN_URL },
+      }),
+      1,
+      name,
+    );
+    assert.equal(
+      fake.calls.filter((call) => call.key === 'GET /repos/DFXswiss/backend/pulls/34').length,
+      companionReads,
+      name,
+    );
+    assert.equal(fake.statusPosts().length, postedCount, name);
+    assert.match(errors.at(-1), /truncated/, name);
+  }
 });
 
 test('close validation still yields to a closed non-develop start', async () => {
@@ -730,6 +957,16 @@ test('applyReviewGate checks each open side and skips a settled result', async (
   const nullGate = await applyReviewGate({ ...invalid, valid: true }, { reviewGate: async () => null });
   assert.match(nullGate.reason, /review gate failed/);
 
+  const threw = await applyReviewGate({ ...invalid, valid: true }, {
+    reviewGate: async ({ repo }) => {
+      throw repo === APP_REPO ? 'plain failure' : new Error('backend broke');
+    },
+  });
+  assert.equal(threw.valid, false);
+  assert.equal(threw.review_pending, false);
+  assert.match(threw.reason, /review gate error: plain failure/);
+  assert.match(threw.reason, /review gate error: backend broke/);
+
   const resolved = await resolvePair({ client, startRepo: APP_REPO, startPr: 12, reviewGate: async () => ({ ok: true, reasons: [] }) });
   assert.equal(resolved.valid, true);
 });
@@ -774,6 +1011,37 @@ test('resolve turns review-gate misses into pending and does not rerun', async (
   assert.equal(posted[0].body.state, 'pending');
   assert.equal(posted[0].body.description, 'review gate not satisfied: DFXswiss/backend#34: second review comment missing');
   assert.equal(fake.reruns().length, 0);
+});
+
+test('a throwing review gate posts failure on every open head and reruns both local jobs', async () => {
+  const fake = new FakeGitHub({
+    ...openPairWithLocalRuns(),
+    [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+  });
+  const { deps: injected, writes } = deps(fake, {
+    reviewGate: async ({ repo }) => {
+      throw new Error(`${repo} gate exploded`);
+    },
+  });
+  assert.equal(await main(['resolve'], { ...injected, env: { ...injected.env, ...resolveEnv() } }), 0);
+  assert.equal(writes[0][0].review_pending, 'false');
+  assert.match(writes[0][0].reason, /review gate error: DFXswiss\/app gate exploded/);
+  const posted = fake.statusPosts();
+  assert.equal(posted.length, 2);
+  assert.equal(posted.every((post) => post.body.state === 'failure'), true);
+  assert.equal(
+    posted.every((post) => /review gate error:/.test(post.body.description)),
+    true,
+  );
+  assert.deepEqual(
+    fake.reruns().map((call) => call.key).sort(),
+    [
+      'POST /repos/DFXswiss/app/actions/jobs/101/rerun',
+      'POST /repos/DFXswiss/backend/actions/jobs/201/rerun',
+    ],
+  );
 });
 
 test('comments rerun both local jobs when a deleted or edited review follows an App status', async () => {
@@ -883,7 +1151,7 @@ test('resolve rejects a missing target URL for a partially open pair', async () 
     await main(['resolve'], { ...partialDeps, env: { ...partialDeps.env, ...resolveEnv(), RUN_URL: '', GITHUB_RUN_ID: '' } }),
     1,
   );
-  assert.match(partialErrors[0], /status target URL unavailable/);
+  assert.equal(partialErrors.some((message) => /status target URL unavailable/.test(message)), true);
 });
 
 test('post-resolution failure tolerates a pair with no open side', async () => {
@@ -1099,7 +1367,7 @@ test('a dispatch cancels a previous run even without the current run id', async 
   const fake = new FakeGitHub({
     ...openPairWithLocalRuns(),
     [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
-    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
     [`GET /repos/DFXswiss/backend/commits/${PREVIOUS_BACKEND_SHA}/statuses?per_page=100`]: [
       status({ state: 'pending', description: runningFor(APP_SHA, PREVIOUS_BACKEND_SHA, 88), creator: BOT }),
     ],
@@ -1280,7 +1548,7 @@ test('comments skip a valid newest success and publish nothing', async () => {
     [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
     [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
     [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
-    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
   });
   const { deps: injected, writes, logs } = deps(fake);
   const code = await main(['resolve'], { ...injected, env: { ...injected.env, ...resolveEnv(), EVENT_NAME: 'issue_comment' } });
@@ -1296,7 +1564,7 @@ test('comments skip a newest running marker only while its run is active', async
     [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
     [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
     [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ state: 'pending', description: runningDescription(88) })],
-    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [status({ state: 'pending', description: runningDescription(88) })],
     'GET /repos/DFXswiss/app/actions/runs/88': run('queued'),
   });
   const { deps: activeDeps, writes: activeWrites } = deps(active);
@@ -1306,7 +1574,7 @@ test('comments skip a newest running marker only while its run is active', async
   const inactive = new FakeGitHub({
     ...validPairRoutes(),
     [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ state: 'pending', description: runningDescription(88) })],
-    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [status({ state: 'pending', description: runningDescription(88) })],
     'GET /repos/DFXswiss/app/actions/runs/88': run('completed'),
     [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
     [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
@@ -1329,7 +1597,7 @@ test('comments treat malformed pending markers and missing run responses as no r
     const fake = new FakeGitHub({
       ...openPairWithLocalRuns(),
       [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [marker],
-      [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+      [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [marker],
       [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
       [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
       ...extra,
@@ -1338,12 +1606,111 @@ test('comments treat malformed pending markers and missing run responses as no r
     const code = await main(['resolve'], { ...injected, env: { ...injected.env, ...resolveEnv(), EVENT_NAME: 'issue_comment' } });
     if (name === 'invalid run object') {
       assert.equal(code, 1, name);
-      assert.match(errors[0], /is not an object/, name);
+      assert.equal(errors.some((message) => /is not an object/.test(message)), true, name);
     } else {
       assert.equal(code, 0, name);
       assert.equal(writes[0][0].valid, 'true', name);
     }
   }
+});
+
+test('pair evaluation skips only when every open head agrees', async () => {
+  const pair = openPairResult();
+  const client = (appStatuses, backendStatuses, runs = {}) => ({
+    async paginate(url) {
+      return url.includes(`/commits/${APP_SHA}/statuses`) ? appStatuses : backendStatuses;
+    },
+    async getOptional(url) {
+      return { status: 200, data: { status: runs[url] || 'in_progress' } };
+    },
+  });
+
+  assert.equal(
+    await pairEvaluationSkipped(client([status({ description: pairDescription() })], []), pair, { E2E_PAIR_APP_SLUG: SLUG }),
+    false,
+  );
+  assert.equal(
+    await pairEvaluationSkipped(
+      client([status({ description: pairDescription() })], [status({ description: pairDescription() })]),
+      pair,
+      { E2E_PAIR_APP_SLUG: SLUG },
+    ),
+    true,
+  );
+  assert.equal(
+    await pairEvaluationSkipped(
+      client(
+        [status({ state: 'pending', description: runningDescription(88) })],
+        [status({ state: 'pending', description: runningDescription(88) })],
+      ),
+      pair,
+      { E2E_PAIR_APP_SLUG: SLUG },
+    ),
+    true,
+  );
+  assert.equal(
+    await pairEvaluationSkipped(
+      client(
+        [status({ state: 'pending', description: runningDescription(88) })],
+        [status({ state: 'pending', description: runningDescription(88) })],
+        { '/repos/DFXswiss/app/actions/runs/88': 'completed' },
+      ),
+      pair,
+      { E2E_PAIR_APP_SLUG: SLUG },
+    ),
+    false,
+  );
+  assert.equal(
+    await pairEvaluationSkipped(
+      client(
+        [status({ state: 'pending', description: runningDescription(88) })],
+        [status({ state: 'pending', description: runningDescription(89) })],
+      ),
+      pair,
+      { E2E_PAIR_APP_SLUG: SLUG },
+    ),
+    false,
+  );
+  // A pending status that names the pair with `run` (not `running`) cannot be
+  // proven active and must not skip.
+  assert.equal(
+    await pairEvaluationSkipped(
+      client(
+        [status({ state: 'pending', description: pairDescription() })],
+        [status({ state: 'pending', description: pairDescription() })],
+      ),
+      pair,
+      { E2E_PAIR_APP_SLUG: SLUG },
+    ),
+    false,
+  );
+  assert.equal(
+    await pairEvaluationSkipped(
+      client([status({ description: pairDescription() })], [status({ state: 'pending', description: runningDescription(88) })]),
+      pair,
+      { E2E_PAIR_APP_SLUG: SLUG },
+    ),
+    false,
+  );
+  assert.equal(
+    await pairEvaluationSkipped(
+      client([status({ description: pairDescription() })], []),
+      openPairResult({ backendMerged: true }),
+      { E2E_PAIR_APP_SLUG: SLUG },
+    ),
+    true,
+  );
+  assert.equal(
+    await pairEvaluationSkipped(
+      client(
+        [status({ description: pairDescription() })],
+        [status({ description: `pair app#12@${APP_SHA} backend#34@${'f'.repeat(40)} run 77` })],
+      ),
+      pair,
+      { E2E_PAIR_APP_SLUG: SLUG },
+    ),
+    false,
+  );
 });
 
 test('pair evaluation ignores invalid heads and non-marker status shapes', async () => {
@@ -1354,39 +1721,68 @@ test('pair evaluation ignores invalid heads and non-marker status shapes', async
       return [];
     },
   };
-  const pair = { app_pr: 12, app_sha: APP_SHA, backend_pr: 34, backend_sha: BACKEND_SHA };
+  const pair = openPairResult();
+  const noOpenSides = openPairResult({ appMerged: true, backendMerged: true });
+  assert.equal(await pairEvaluationSkipped(client, noOpenSides, { E2E_PAIR_APP_SLUG: SLUG }), false);
+  assert.equal(calls, 0);
   assert.equal(await pairEvaluationSkipped(client, { ...pair, app_sha: 'bad' }, { E2E_PAIR_APP_SLUG: SLUG }), false);
   assert.equal(await pairEvaluationSkipped(client, { ...pair, backend_sha: 'bad' }, { E2E_PAIR_APP_SLUG: SLUG }), false);
+  assert.equal(calls, 0);
   assert.equal(await pairEvaluationSkipped(client, { ...pair, app_sha: '' }, { E2E_PAIR_APP_SLUG: SLUG }), false);
   assert.equal(await pairEvaluationSkipped(client, { ...pair, backend_sha: '' }, { E2E_PAIR_APP_SLUG: SLUG }), false);
-  assert.equal(calls, 0);
 
   const statusClient = {
     async paginate(url) {
       if (url.includes(APP_SHA)) {
         return [null, { description: 1 }];
       }
-      return [];
+      return [status({ description: pairDescription() })];
     },
   };
   assert.equal(await pairEvaluationSkipped(statusClient, pair, { E2E_PAIR_APP_SLUG: SLUG }), false);
   const failed = {
     async paginate(url) {
-      return url.includes(APP_SHA) ? [status({ state: 'failure', description: pairDescription() })] : [];
+      return url.includes(APP_SHA)
+        ? [status({ state: 'failure', description: pairDescription() })]
+        : [status({ description: pairDescription() })];
     },
   };
   assert.equal(await pairEvaluationSkipped(failed, pair, { E2E_PAIR_APP_SLUG: SLUG }), false);
   const malformed = {
     async paginate(url) {
-      return url.includes(APP_SHA) ? [status({ state: 'pending', description: pairDescription() })] : [];
+      return url.includes(APP_SHA)
+        ? [status({ state: 'pending', description: pairDescription() })]
+        : [status({ state: 'pending', description: pairDescription() })];
     },
   };
   assert.equal(await pairEvaluationSkipped(malformed, pair, { E2E_PAIR_APP_SLUG: SLUG }), false);
   await assert.rejects(() => pairEvaluationSkipped(client, pair, { E2E_PAIR_APP_SLUG: '' }), /slug unavailable/);
 });
 
+test('pair evaluation uses the repository from the environment for its run lookup', async () => {
+  const pair = openPairResult();
+  const requested = [];
+  const client = {
+    async paginate() {
+      return [status({ state: 'pending', description: runningDescription(88) })];
+    },
+    async getOptional(url) {
+      requested.push(url);
+      return { status: 200, data: { status: 'in_progress' } };
+    },
+  };
+  assert.equal(
+    await pairEvaluationSkipped(client, pair, { E2E_PAIR_APP_SLUG: SLUG, GITHUB_REPOSITORY: 'DFXswiss/e2e-runner' }),
+    true,
+  );
+  assert.equal(requested[0], '/repos/DFXswiss/e2e-runner/actions/runs/88');
+
+  const fallback = { ...client, getOptional: async (url) => ({ status: 200, data: { status: 'in_progress', url } }) };
+  assert.equal(await pairEvaluationSkipped(fallback, pair, { E2E_PAIR_APP_SLUG: SLUG }), true);
+});
+
 test('pair evaluation proceeds when the newest app status has no usable description', async () => {
-  const pair = { app_pr: 12, app_sha: APP_SHA, backend_pr: 34, backend_sha: BACKEND_SHA };
+  const pair = openPairResult();
   for (const description of [undefined, 1]) {
     const requested = [];
     const client = {
@@ -1396,7 +1792,7 @@ test('pair evaluation proceeds when the newest app status has no usable descript
       },
     };
     assert.equal(await pairEvaluationSkipped(client, pair, { E2E_PAIR_APP_SLUG: SLUG }), false);
-    assert.equal(requested.length, 2);
+    assert.equal(requested.length, 1);
   }
 });
 
@@ -1671,14 +2067,14 @@ test('push cancellation requires a pairing slug', async () => {
   const fake = new FakeGitHub(openPairWithLocalRuns());
   const { deps: injected, errors } = deps(fake, { env: { E2E_PAIR_APP_SLUG: '' } });
   assert.equal(await main(['resolve'], { ...injected, env: { ...injected.env, E2E_PAIR_APP_SLUG: '', ...resolveEnv(), EVENT_NAME: 'pull_request_target', EVENT_ACTION: 'synchronize', PREVIOUS_SHA } }), 1);
-  assert.match(errors[0], /pairing app slug unavailable/);
+  assert.equal(errors.some((message) => /pairing app slug unavailable/.test(message)), true);
 });
 
 test('a dispatch skips a pair whose newest exact status is already successful', async () => {
   const fake = new FakeGitHub({
     ...openPairWithLocalRuns(),
     [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
-    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
     [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
     [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
   });
@@ -1721,7 +2117,7 @@ test('comments do not fall back to an older success and fail closed on lookup er
   const fake = new FakeGitHub({
     ...validPairRoutes(),
     [`GET /repos/DFXswiss/app/commits/${APP_SHA}/statuses?per_page=100`]: [olderSuccess, newerFailure],
-    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [],
+    [`GET /repos/DFXswiss/backend/commits/${BACKEND_SHA}/statuses?per_page=100`]: [status({ description: pairDescription() })],
     [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
     [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
     ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, path: '.github/workflows/pr.yml' }),
@@ -1737,12 +2133,12 @@ test('comments do not fall back to an older success and fail closed on lookup er
   });
   const { deps: brokenDeps, errors } = deps(broken);
   assert.equal(await main(['resolve'], { ...brokenDeps, env: { ...brokenDeps.env, ...resolveEnv(), EVENT_NAME: 'issue_comment' } }), 1);
-  assert.match(errors[0], /could not prove the pair has no result yet/);
+  assert.equal(errors.some((message) => /could not prove the pair has no result yet/.test(message)), true);
 
   const noSlug = new FakeGitHub(validPairRoutes());
   const { deps: noSlugDeps, errors: noSlugErrors } = deps(noSlug, { env: { E2E_PAIR_APP_SLUG: '' } });
   assert.equal(await main(['resolve'], { ...noSlugDeps, env: { ...noSlugDeps.env, E2E_PAIR_APP_SLUG: '', ...resolveEnv(), EVENT_NAME: 'issue_comment' } }), 1);
-  assert.match(noSlugErrors[0], /pairing app slug unavailable/);
+  assert.equal(noSlugErrors.some((message) => /pairing app slug unavailable/.test(message)), true);
 });
 
 test('comments restart when a newer generic pending supersedes an exact success', async () => {
@@ -1763,7 +2159,7 @@ test('comments restart when a newer generic pending supersedes an exact success'
     ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, path: '.github/workflows/pr.yml' }),
     ...localRunRoutes({ repo: BACKEND_REPO, sha: BACKEND_SHA, runId: 20, path: '.github/workflows/api-pr.yaml' }),
   };
-  const pair = { app_pr: 12, app_sha: APP_SHA, backend_pr: 34, backend_sha: BACKEND_SHA };
+  const pair = openPairResult();
   const client = {
     async paginate(url) {
       return url.includes(`/commits/${APP_SHA}/statuses`) ? appStatuses : [];
@@ -2176,7 +2572,7 @@ test('invalidate on a push skips current invalidation for an unpaired result', a
       ...injected,
       env: { ...injected.env, START_REPO: 'other/repo', START_PR: '12', RUN_URL },
     }),
-    0,
+    1,
   );
 });
 
@@ -2198,7 +2594,7 @@ test('invalidate on a push rejects a missing target URL', async () => {
   const fake = new FakeGitHub(validPairRoutes());
   const { deps: injected, errors } = deps(fake);
   assert.equal(await main(['invalidate'], { ...injected, env: { ...injected.env, START_REPO: APP_REPO, START_PR: '12', RUN_URL: '' } }), 1);
-  assert.match(errors[0], /status target URL unavailable/);
+  assert.equal(errors.some((message) => /status target URL unavailable/.test(message)), true);
 });
 
 test('invalidate previous companion rejects a missing target URL', async () => {
@@ -2219,14 +2615,14 @@ test('invalidate previous companion rejects a missing target URL', async () => {
   assert.match(errors[0], /status target URL unavailable/);
 });
 
-test('invalidate tolerates an uninspectable current pair and missing previous companion', async () => {
+test('invalidate fails closed when the current pair cannot be inspected', async () => {
   const fake = new FakeGitHub({
     'GET /repos/DFXswiss/app/pulls/12': new Error('offline'),
     [`GET /repos/DFXswiss/app/contents/e2e-companion.json?ref=${PREVIOUS_SHA}`]: { status: 404 },
   });
-  const { deps: injected, logs } = deps(fake);
-  assert.equal(await main(['invalidate'], { ...injected, env: { ...injected.env, START_REPO: APP_REPO, START_PR: '12', PREVIOUS_SHA, RUN_URL } }), 0);
-  assert.match(logs[0], /could not be inspected/);
+  const { deps: injected, errors } = deps(fake);
+  assert.equal(await main(['invalidate'], { ...injected, env: { ...injected.env, START_REPO: APP_REPO, START_PR: '12', PREVIOUS_SHA, RUN_URL } }), 1);
+  assert.equal(errors.some((message) => /offline/.test(message)), true);
 });
 
 test('invalidate marks a changed previous companion pending and reruns it', async () => {
@@ -2752,13 +3148,21 @@ test('unknown commands and missing token fail loudly without leaking the token',
   const { deps: noToken } = deps(fake, { env: { GH_TOKEN: '' } });
   assert.equal(await main(['resolve'], { ...noToken, env: { GH_TOKEN: '' } }), 1);
 
-  const { deps: thrownDeps, errors: thrownErrors } = deps(new FakeGitHub(validPairRoutes()), {
+  const thrownFake = new FakeGitHub({
+    ...openPairWithLocalRuns(),
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+  });
+  const { deps: thrownDeps } = deps(thrownFake, {
     reviewGate: async () => {
       throw 'plain failure';
     },
   });
-  assert.equal(await main(['resolve'], { ...thrownDeps, env: { ...thrownDeps.env, ...resolveEnv() } }), 1);
-  assert.match(thrownErrors[0], /plain failure/);
+  assert.equal(await main(['resolve'], { ...thrownDeps, env: { ...thrownDeps.env, ...resolveEnv() } }), 0);
+  assert.equal(
+    thrownFake.statusPosts().filter((post) => /review gate error: plain failure/.test(post.body.description)).length,
+    2,
+  );
 
   const { deps: bareDeps } = deps(fake);
   assert.equal(

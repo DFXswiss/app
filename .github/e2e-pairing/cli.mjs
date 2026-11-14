@@ -319,41 +319,31 @@ function invalidateResult(result, reason, { reviewPending = false } = {}) {
   return result;
 }
 
-async function newestPairStatus(client, { appPr, appSha, backendPr, backendSha, creatorLogin }) {
-  if (!SHA_RE.test(appSha || '') || !SHA_RE.test(backendSha || '')) {
+// Every open head has to agree. A head without a status is not a skip: the
+// pair may only be left untouched when the App has spoken on all of them.
+async function newestPairStatus(client, pair, sides) {
+  const expected = {
+    app_pr: pair.appPr,
+    app_sha: pair.appSha,
+    backend_pr: pair.backendPr,
+    backend_sha: pair.backendSha,
+  };
+  if (sides.some((side) => !SHA_RE.test(side.sha))) {
     return null;
   }
-  const namesPair = (status) => {
-    const parsed = parseStatusPair(status);
-    if (parsed === null) {
-      return false;
-    }
-    return (
-      parsed.app_pr === Number(appPr) &&
-      parsed.app_sha === appSha &&
-      parsed.backend_pr === Number(backendPr) &&
-      parsed.backend_sha === backendSha
-    );
-  };
-  const heads = new Map([
-    [APP_REPO, appSha],
-    [BACKEND_REPO, backendSha],
-  ]);
-  const pages = await Promise.all(
-    [...heads].map(([repo, sha]) => client.paginate(`/repos/${repo}/commits/${sha}/statuses?per_page=100`)),
-  );
-  const newestByHead = [];
-  for (const statuses of pages) {
-    const newest = selectAttestedStatus(statuses, { context: STATUS_CONTEXT, creatorLogin });
-    if (!newest) {
-      continue;
-    }
-    if (!namesPair(newest)) {
+  const newest = [];
+  for (const side of sides) {
+    const statuses = await client.paginate(`/repos/${side.repo}/commits/${side.sha}/statuses?per_page=100`);
+    const status = selectAttestedStatus(statuses, {
+      context: STATUS_CONTEXT,
+      creatorLogin: pair.creatorLogin,
+    });
+    if (!status || !statusMatchesPair(status, expected)) {
       return null;
     }
-    newestByHead.push(newest);
+    newest.push(status);
   }
-  return selectAttestedStatus(newestByHead, { context: STATUS_CONTEXT, creatorLogin });
+  return newest;
 }
 
 async function workflowRunStatus(client, repo, runId) {
@@ -373,11 +363,16 @@ export async function runIsActive(client, repo, runId) {
 }
 
 // A chatty trigger must not start a second shared run for an exact pair that
-// already has a valid success or whose recorded run is still active.
+// already has a valid success or whose recorded run is still active. Every
+// open head has to agree; one missing or conflicting status re-evaluates.
 export async function pairEvaluationSkipped(client, result, env) {
   const slug = env.E2E_PAIR_APP_SLUG || '';
   if (!slug) {
     throw new PairingError('pairing app slug unavailable');
+  }
+  const sides = attestableSides(result);
+  if (sides.length === 0) {
+    return false;
   }
   const pair = {
     appPr: result.app_pr,
@@ -386,23 +381,31 @@ export async function pairEvaluationSkipped(client, result, env) {
     backendSha: result.backend_sha,
     creatorLogin: `${slug}[bot]`,
   };
-  const newest = await newestPairStatus(client, pair);
+  const newest = await newestPairStatus(client, pair, sides);
   if (!newest) {
     return false;
   }
-  if (verifyPairAttestation(newest, pair).ok) {
+  if (newest.every((status) => verifyPairAttestation(status, pair).ok)) {
     return true;
   }
-  if (newest.state !== 'pending') {
+  if (!newest.every((status) => status.state === 'pending')) {
     return false;
   }
-  let running;
-  try {
-    running = parseRunningDescription(newest.description);
-  } catch {
-    return false;
+  let runId = null;
+  for (const status of newest) {
+    let running;
+    try {
+      running = parseRunningDescription(status.description);
+    } catch {
+      return false;
+    }
+    if (runId === null) {
+      runId = running.run_id;
+    } else if (running.run_id !== runId) {
+      return false;
+    }
   }
-  return runIsActive(client, env.GITHUB_REPOSITORY || APP_REPO, running.run_id);
+  return runIsActive(client, env.GITHUB_REPOSITORY || APP_REPO, runId);
 }
 
 // Only a pushed head supersedes an in-progress run: an app synchronize event or
@@ -615,15 +618,25 @@ export async function applyReviewGate(result, { reviewGate }) {
     return result;
   }
   const failures = [];
+  let reviewPending = true;
   for (const side of openSides(result)) {
-    const gate = await reviewGate({ repo: side.repo, pr: side.pr, head: side.sha });
+    let gate;
+    try {
+      gate = await reviewGate({ repo: side.repo, pr: side.pr, head: side.sha });
+    } catch (error) {
+      // A gate that could not run is a failure, never a pending review. An
+      // older success must not stay the newest status on an open head.
+      reviewPending = false;
+      failures.push(`${side.repo}#${side.pr}: review gate error: ${error?.message || error}`);
+      continue;
+    }
     if (!gate || gate.ok !== true) {
       const reasons = Array.isArray(gate?.reasons) && gate.reasons.length > 0 ? gate.reasons : ['review gate failed'];
       failures.push(`${side.repo}#${side.pr}: ${reasons.join('; ')}`);
     }
   }
   if (failures.length > 0) {
-    return invalidateResult(result, `review gate not satisfied: ${failures.join(' | ')}`, { reviewPending: true });
+    return invalidateResult(result, `review gate not satisfied: ${failures.join(' | ')}`, { reviewPending });
   }
   return result;
 }
@@ -742,6 +755,59 @@ async function invalidateOpenPair(client, result, env, { rerun = true } = {}) {
   if (rerun) {
     await rerunOpenSides(client, result);
   }
+}
+
+// An error before a new status is posted must not leave an older App success
+// as the newest status. Best-effort cleanup reports what can still be proven
+// from fresh reads, then the original error is rethrown so the job fails.
+export async function failClosedAfterError(client, env, deps, startRepo, startPr, error) {
+  const creatorLogin = `${env.E2E_PAIR_APP_SLUG || ''}[bot]`;
+  const reason = `pair could not be verified: ${error?.message || error}`;
+  const heads = new Map();
+  const collectHead = (repo, pull) => {
+    const sha = pullHeadSha(pull);
+    if (pull?.state === 'open' && SHA_RE.test(sha)) {
+      heads.set(`${repo}@${sha}`, { repo, sha });
+    }
+  };
+  const newestAppStatus = async (repo, sha) => {
+    const statuses = await client.paginate(`/repos/${repo}/commits/${sha}/statuses?per_page=100`);
+    return selectAttestedStatus(statuses, { context: STATUS_CONTEXT, creatorLogin });
+  };
+  try {
+    const startPull = await getPullOrNull(client, startRepo, startPr);
+    const startSha = pullHeadSha(startPull);
+    if (startPull?.state === 'open' && SHA_RE.test(startSha)) {
+      collectHead(startRepo, startPull);
+      const newest = await newestAppStatus(startRepo, startSha);
+      const pair = parseStatusPair(newest);
+      if (pair !== null) {
+        const companionRepo = otherRepository(startRepo);
+        const companionPr = startRepo === APP_REPO ? pair.backend_pr : pair.app_pr;
+        collectHead(companionRepo, await getPullOrNull(client, companionRepo, companionPr));
+      }
+    }
+  } catch (lookupError) {
+    deps.error(`::error::fail-closed status lookup failed: ${String(lookupError)}`);
+  }
+  for (const head of heads.values()) {
+    try {
+      const newest = await newestAppStatus(head.repo, head.sha);
+      if (newest === null || (newest.state !== 'success' && newest.state !== 'pending')) {
+        continue;
+      }
+      await client.postStatus(head.repo, head.sha, {
+        state: 'failure',
+        context: STATUS_CONTEXT,
+        description: truncateStatusDescription(reason),
+        targetUrl: statusTargetUrl(env),
+      });
+      await rerunLocalWorkflow(client, head.repo, head.sha);
+    } catch (lookupError) {
+      deps.error(`::error::fail-closed cleanup failed: ${String(lookupError)}`);
+    }
+  }
+  throw error;
 }
 
 export async function finalizeResolution(client, result, env, deps, { rerun = true, rerunReviewPending = false } = {}) {
@@ -996,6 +1062,14 @@ async function failClosedStartCompanion(client, result, env, deps, startRepo, st
 async function resolveCommand(client, env, deps, reviewGate) {
   const startRepo = env.START_REPO;
   const startPr = requirePositiveInteger(env.START_PR, 'START_PR');
+  try {
+    return await resolveValidatedCommand(client, env, deps, reviewGate, startRepo, startPr);
+  } catch (error) {
+    return failClosedAfterError(client, env, deps, startRepo, startPr, error);
+  }
+}
+
+async function resolveValidatedCommand(client, env, deps, reviewGate, startRepo, startPr) {
   let result = await resolvePair({ client, startRepo, startPr, reviewGate });
   let closedCompanionFailed = false;
   let openPairInvalidated = false;
@@ -1120,10 +1194,7 @@ async function invalidateCommand(client, env, deps) {
   try {
     current = await inspectPair({ client, startRepo, startPr });
   } catch (error) {
-    if (error?.code === 'pull-files-truncated') {
-      throw error;
-    }
-    deps.log(`current pair could not be inspected during invalidation: ${error.message}`);
+    return failClosedAfterError(client, env, deps, startRepo, startPr, error);
   }
   await invalidateOpenPair(client, current, env);
   await invalidatePreviousCompanion(client, env, deps, startRepo, startPr, current);
