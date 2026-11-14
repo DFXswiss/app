@@ -138,10 +138,89 @@ This harness checks function, not appearance. Draft pull requests run the
 job after Build and test. GitHub may hold fork runs as `action_required`.
 Ready does not start CI. After a fresh A38 enforce pass, `dfx pr guard`
 approves those waiting initial runs. A develop PR
-without `ci:full` records `mode=none` and does
+without `ci:full` and without a pair records `mode=none` and does
 not bring the stack up. There is no selected/partial mode: `ci:full`, PRs
 into `main`, and a bare `workflow_dispatch` (empty `base_ref`) force a full
-run. Both suites exist side by side and serve different purposes.
+run. A develop pull request that declares a pair instead records
+`mode=paired-attested`; the local job verifies the newest App status, and the
+coordinator reruns the local job once the shared run posts its result. A release
+pull request into `main` always runs the full stack. Both
+suites exist side by side and serve different purposes.
+
+## Paired app and backend pull requests
+
+The app repository hosts the trusted coordinator in
+[`.github/workflows/e2e-paired.yml`](../.github/workflows/e2e-paired.yml). It
+uses `e2e-companion.json` in the root of each repository to pair one app pull
+request with one backend pull request. The file is active only when that pull
+request's own diff changes it, including `added`, `modified`, `renamed`,
+`copied`, and `changed` rows; `removed` and `unchanged` are inactive. Both files
+must name each other and both pull requests must target `develop`. Every open side must carry
+its own repository's complete A38 review state at its exact head before the
+coordinator runs any pull-request code. Each repository is checked with its
+own pinned A38 checkout and the guard identity from
+`.github/e2e-pairing/guard-identities.json`.
+
+The coordinator runs once on an ephemeral GitHub-hosted `ubuntu-latest`
+runner. Resolve and publish are privileged jobs that use a dedicated GitHub
+App token on both repositories. Execution is a separate job with only
+`contents: read`; it checks out both exact heads, verifies each unmerged head
+against `refs/pull/<n>/head`, uses the backend deploy key only in the single
+fetch step that removes it before any PR code runs, and then runs the same
+stack steps as this workflow. Before the run, the App posts `pending` on every
+open head with a description naming both full heads and the run:
+`pair app#<A>@<app head> backend#<B>@<backend head> running <run id>`. Each
+head must be exactly 40 lowercase hex characters, so a 7-character prefix never
+matches. The attestation replaces `running` with `run`; the full description
+stays under GitHub's 140-character limit. The app-side `verify-attestation`
+runs in the app's `pull_request` workflow without a token for the private
+backend repository. It binds the exact app head, the app pull request, the
+backend pull request number, and the newest App status on that app head; it
+cannot read the backend head. The backend side (DFXswiss/backend#6154,
+`scripts/e2e-pairing` `verify-attestation`) binds both exact heads. When the
+backend head moves, the backend notifier dispatches to the coordinator, which
+re-resolves and replaces the App status on the app head (`pending` or
+`failure`), so the app-side check then fails. A `pending` running marker is not
+an attestation. The coordinator polls that local run every 30 seconds for at
+most 60 minutes after posting the result, then reruns its `Full-stack E2E` job
+once the run has completed. After the deadline it warns without replacing the
+posted status. It never falls back to an older success and never matches by
+wildcard, so no second stack is started. A develop pull request that declares a
+pair also takes precedence over `ci:full`: the local stack scope checks the pair
+first and records `mode=paired-attested`.
+
+A push to either side posts `pending`, reruns the local jobs, and invalidates
+the old result. Review comments do not cancel a running shared run. A backend
+`repository_dispatch` takes the same invalidation path, using its `before` head
+as a hint to find the previous companion at that SHA. The coordinator cancels
+a run only after the re-resolved heads prove that a head of the pair moved.
+Merge order is free: a merged companion is resolved through its merge commit,
+and the remaining open side is re-run and re-attested. A companion closed
+without merge posts `failure` on the open companion. If both sides are merged,
+nothing is run. A green paired run proves that the exact app and backend heads
+started together against a real Postgres database and passed the full suite and
+route gate. It does not prove external providers, money movement, the migration
+chain, or a future merge result.
+The coordinator also reconciles every open paired pull request in both
+repositories every 30 minutes, on any base, and repairs divergent and stale
+pending statuses. It catches a retarget away from `develop`/`main` and any lost
+notification. After it invalidates a pair, it also reruns the local required
+`Full-stack E2E` jobs so branch protection cannot keep seeing their previous
+green result. A running marker whose shared run ended without a result is
+replaced with a terminal `failure`, and the local jobs are rerun so a later
+trigger can start a new shared run.
+
+Administrators install the pairing GitHub App on both repositories with commit
+status read/write, Actions read/write, Contents read/write, Pull requests read,
+Issues read, and Metadata read. Both repositories set `E2E_PAIR_APP_CLIENT_ID`
+and `E2E_PAIR_APP_SLUG` as variables. The private key is **not** a repository
+secret: in `DFXswiss/app`, create the GitHub Actions environment `e2e-pairing`
+with a deployment-branch policy limited to `develop`, and store
+`E2E_PAIR_APP_PRIVATE_KEY` as an environment secret there. The `resolve` and
+`publish` jobs declare `environment: e2e-pairing`, so no pull-request workflow
+— including a same-repository pull request that edits a workflow — can read it.
+No `A38_GUARD_APP_SLUG` variable is used; the guard identity is the committed
+per-repository map.
 
 ## Relationship with the API repository
 

@@ -69,6 +69,14 @@ jobs:
       - name: Install packages
         run: npm ci
 
+      # Pure decision logic and the CLI's injected-fetch tests. No stack, no
+      # network: these protect the pairing contract that both repositories use.
+      - name: Run pairing unit tests
+        run: node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-include='.github/e2e-pairing/*.mjs' --test-coverage-exclude='.github/e2e-pairing/*.test.mjs' ".github/e2e-pairing/*.test.mjs"
+
+      - name: Run review-gate unit tests
+        run: python3 -m unittest discover -s .github/e2e-pairing -p 'test_*.py'
+
       - name: Run linter
         run: npm run lint
 
@@ -268,7 +276,12 @@ jobs:
     name: Full-stack E2E
     needs: [build]
     uses: ./.github/workflows/e2e-stack.yml
+    permissions:
+      contents: read
+      statuses: read
+      pull-requests: read
     with:
+      called: true
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
       base_ref: ${{ github.base_ref || inputs.base_ref }}
       full: ${{ (github.event_name == 'pull_request' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) || (github.event_name != 'pull_request' && (inputs.base_ref == '' || inputs.base_ref == 'main')) }}

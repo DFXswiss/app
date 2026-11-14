@@ -16,10 +16,12 @@
 # inside the job). That is what keeps a standard develop PR under 10 minutes.
 # PRs into main, a bare workflow_dispatch, and the ci:full label run the full
 # suite. PR CI passes the boolean `full` (derived from base branch and labels);
-# the workflow_call path only reads that input. Fork pull requests also take
-# mode=none: they do not receive repository secrets, so E2E_API_CHECKOUT_KEY is
-# empty and Checkout API would fail as "repository not found". The probe is the
-# secret, not github.head_ref
+# the workflow_call path only reads that input. A PR whose own diff activates
+# e2e-companion.json takes mode=paired-attested instead: it waits for the
+# coordinator's commit status on its exact head and never starts a second stack.
+# Fork pull requests otherwise take mode=none: they do not receive repository
+# secrets, so E2E_API_CHECKOUT_KEY is empty and Checkout API would fail as
+# "repository not found". The probe is the secret, not github.head_ref
 # (that name is fork-spoofable). There is no job-level draft skip. API
 # checkout, bootstrap resolution, and harness tsc run only when mode != none.
 # There is no selected/partial spec mapping in this repository.
@@ -48,6 +50,11 @@ on:
         description: Git ref of the companion API to build against
         required: false
         type: string
+      called:
+        description: Set by pr.yml when this workflow is invoked as a reusable workflow
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       api_ref:
@@ -65,8 +72,10 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+  statuses: read
 
-# workflow_call (PR path) and workflow_dispatch (manual) must not share a
+# The reusable pr.yml path and a manual workflow_dispatch must not share a
 # cancel group. Include event_name so a dispatch cannot cancel the nested
 # required check.
 concurrency:
@@ -80,17 +89,91 @@ jobs:
     timeout-minutes: 45
     steps:
       # Event-only: no checkout. Develop PRs without ci:full stop here.
-      # Modes are only full and none; there is no selected/partial spec
-      # mapping in this repository.
+      # Modes are full, none and paired-attested; there is no selected/partial
+      # spec mapping in this repository.
       - name: Determine e2e scope
         id: scope
         env:
           EVENT_NAME: ${{ github.event_name }}
+          CALLED: ${{ inputs.called }}
           BASE: ${{ github.base_ref || inputs.base_ref }}
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           FULL: ${{ inputs.full }}
+          PR_NUMBER: ${{ inputs.pr_number }}
           HAS_API_KEY: ${{ secrets.E2E_API_CHECKOUT_KEY != '' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          # A paired PR runs exactly once in the trusted coordinator. Detect its
+          # companion before the secret probe: a fork PR must also wait for the
+          # attestation instead of recording a passing mode=none. Pairing is only
+          # valid against develop: read the real base when the caller did not
+          # provide it, and let every other base fall through to full/none. Only
+          # the API reads the PR; no PR code is checked out or executed here.
+          # A workflow_dispatch that names a pull request is the same local
+          # check as the workflow_call path and must also defer to the shared
+          # attestation instead of starting a second stack.
+          if [ -n "${PR_NUMBER:-}" ]; then
+            if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              echo '::error::e2e scope received a non-numeric pull request number.'
+              exit 1
+            fi
+            BASE_SHA="${EVENT_BASE_SHA:-}"
+            if [ -z "${BASE:-}" ] || [ -z "${BASE_SHA}" ]; then
+              if ! base_fields="$(gh api "repos/DFXswiss/app/pulls/${PR_NUMBER}" --jq '[.base.ref, .base.sha] | @tsv')"; then
+                echo '::error::could not read the pull request base.'
+                exit 1
+              fi
+              IFS=$'\t' read -r resolved_base resolved_sha <<< "$base_fields"
+              if [ -z "${BASE:-}" ]; then
+                BASE="$resolved_base"
+              fi
+              if [ -z "${BASE_SHA}" ]; then
+                BASE_SHA="$resolved_sha"
+              fi
+              if [ -z "${BASE:-}" ]; then
+                echo '::error::could not read the pull request base branch.'
+                exit 1
+              fi
+            fi
+            if ! [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo '::error::could not read the pull request base commit.'
+              exit 1
+            fi
+            echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+            paired=false
+            rc=0
+            if [ "$BASE" = 'develop' ]; then
+              changed_files=$(gh api "repos/DFXswiss/app/pulls/${PR_NUMBER}" \
+                --jq '.changed_files | if type == "number" and . >= 0 and . == floor then tostring else "invalid" end') || rc=$?
+              if (( rc != 0 )); then
+                echo "::error::could not read the pull request changed-file count (exit $rc)."
+                exit 1
+              fi
+              if ! [[ "$changed_files" =~ ^[0-9]+$ ]]; then
+                echo '::error::pull request changed-file count is not a non-negative integer.'
+                exit 1
+              fi
+              file_fields=$(gh api --paginate --slurp \
+                "repos/DFXswiss/app/pulls/${PR_NUMBER}/files?per_page=100" \
+                --jq 'add // [] | [length, any(.filename == "e2e-companion.json" and (.status != "removed" and .status != "unchanged"))] | @tsv') || rc=$?
+              if (( rc != 0 )); then
+                echo "::error::could not read the pull request file list for paired E2E scope (exit $rc)."
+                exit 1
+              fi
+              IFS=$'\t' read -r file_count paired <<< "$file_fields"
+              if (( file_count >= 3000 || file_count < changed_files )); then
+                echo "::error::pull request file list is truncated (${file_count} of ${changed_files} changed files); refusing to decide paired E2E scope."
+                exit 1
+              fi
+            fi
+            if [ "$paired" = 'true' ]; then
+              echo 'Paired run: e2e-companion.json is active on a develop PR; waiting for the shared attestation.'
+              echo "mode=paired-attested" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
 
           # Fork PRs never receive repository secrets. Probe the secret, not
           # github.head_ref (that name is fork-spoofable).
@@ -101,7 +184,9 @@ jobs:
           fi
 
           # Caller (PR CI) already decided full vs none after unit tests passed.
-          if [ "$EVENT_NAME" = 'workflow_call' ]; then
+          # A reusable workflow sees the caller's event_name, so the explicit
+          # `called` input identifies the pr.yml path.
+          if [ "$CALLED" = 'true' ]; then
             if [ "$FULL" = 'true' ]; then
               echo 'Full run: caller requested a full stack.'
               echo "mode=full" >> "$GITHUB_OUTPUT"
@@ -144,8 +229,30 @@ jobs:
           echo 'E2E skipped: add the ci:full label to run the stack.'
           echo "mode=none" >> "$GITHUB_OUTPUT"
 
+      # The local check consumes a status, not PR head code. Load only the
+      # pull request's base-commit verifier so a pull request cannot rewrite the
+      # check that decides whether its own attestation is acceptable, and a
+      # merge to develop during the run cannot add code to that check.
+      - name: Check out trusted pairing tooling
+        if: steps.scope.outputs.mode == 'paired-attested'
+        uses: actions/checkout@v4
+        with:
+          repository: DFXswiss/app
+          ref: ${{ steps.scope.outputs.base_sha }}
+          path: trusted-e2e-pairing
+          persist-credentials: false
+
+      - name: Verify paired attestation
+        if: steps.scope.outputs.mode == 'paired-attested'
+        env:
+          APP_PR: ${{ inputs.pr_number }}
+          APP_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          E2E_PAIR_APP_SLUG: ${{ vars.E2E_PAIR_APP_SLUG }}
+          GH_TOKEN: ${{ github.token }}
+        run: node trusted-e2e-pairing/.github/e2e-pairing/cli.mjs verify-attestation
+
       - name: Checkout services
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && steps.scope.outputs.mode != 'paired-attested'
         uses: actions/checkout@v4
 
       # GITHUB_TOKEN of this public repository cannot read the private API
@@ -155,7 +262,7 @@ jobs:
       # Playwright step can take the documented no-stack path instead of
       # failing at checkout with "repository not found".
       - name: Detect API checkout credential
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && steps.scope.outputs.mode != 'paired-attested'
         id: api_cred
         env:
           KEY: ${{ secrets.E2E_API_CHECKOUT_KEY }}
@@ -169,7 +276,7 @@ jobs:
           fi
 
       - name: Checkout API
-        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
+        if: steps.scope.outputs.mode != 'none' && steps.scope.outputs.mode != 'paired-attested' && steps.api_cred.outputs.available == 'yes'
         uses: actions/checkout@v4
         with:
           repository: DFXswiss/backend
@@ -186,7 +293,7 @@ jobs:
       # this step is skipped. It also refuses to bootstrap from a pull request that is no longer
       # open, so it cannot quietly re-arm later and build a years-old revision.
       - name: Resolve the API revision to build
-        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
+        if: steps.scope.outputs.mode != 'none' && steps.scope.outputs.mode != 'paired-attested' && steps.api_cred.outputs.available == 'yes'
         id: api_source
         env:
           API_REF: ${{ inputs.api_ref }}
@@ -222,7 +329,7 @@ jobs:
           fi
 
       - name: Check out the API revision that carries the guard
-        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes' && steps.api_source.outputs.bootstrap == 'true'
+        if: steps.scope.outputs.mode != 'none' && steps.scope.outputs.mode != 'paired-attested' && steps.api_cred.outputs.available == 'yes' && steps.api_source.outputs.bootstrap == 'true'
         uses: actions/checkout@v4
         with:
           repository: DFXswiss/backend
@@ -232,7 +339,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
+        if: steps.scope.outputs.mode != 'none' && steps.scope.outputs.mode != 'paired-attested' && steps.api_cred.outputs.available == 'yes'
         uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -246,7 +353,7 @@ jobs:
       # so nothing else in CI type-checks it. Doing it here costs under a minute and fails on a
       # type error before the run spends eight on Docker.
       - name: Type-check the harness
-        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
+        if: steps.scope.outputs.mode != 'none' && steps.scope.outputs.mode != 'paired-attested' && steps.api_cred.outputs.available == 'yes'
         working-directory: e2e-stack
         run: |
           npm ci
@@ -259,7 +366,7 @@ jobs:
       # artifacts from the still-present named volumes / tests container, and
       # only then tear down in a final always() step.
       - name: Bring stack up
-        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
+        if: steps.scope.outputs.mode != 'none' && steps.scope.outputs.mode != 'paired-attested' && steps.api_cred.outputs.available == 'yes'
         run: E2E_API_REPO=$GITHUB_WORKSPACE/api-repo bash e2e-stack/scripts/up.sh
 
       - name: Run Playwright tests
@@ -275,6 +382,12 @@ jobs:
         run: |
           set -euo pipefail
           case "$MODE" in
+            paired-attested)
+              # The separate Verify paired attestation step is the whole check.
+              # No stack command runs in this mode.
+              echo 'Paired run verified by attestation; no local stack started.'
+              exit 0
+              ;;
             none)
               echo 'E2E skipped: add the ci:full label to run the stack (or target main / dispatch).'
               exit 0
@@ -303,7 +416,7 @@ jobs:
           esac
 
       - name: Collect test artifacts
-        if: always() && steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
+        if: always() && steps.scope.outputs.mode != 'none' && steps.scope.outputs.mode != 'paired-attested' && steps.api_cred.outputs.available == 'yes'
         run: |
           mkdir -p e2e-stack-artifacts
           # Named volumes back these paths inside the tests container. Bind mounts
@@ -316,7 +429,7 @@ jobs:
             || true
 
       - name: Upload test artifacts
-        if: always() && steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
+        if: always() && steps.scope.outputs.mode != 'none' && steps.scope.outputs.mode != 'paired-attested' && steps.api_cred.outputs.available == 'yes'
         uses: actions/upload-artifact@v4
         with:
           name: e2e-stack-report
@@ -325,5 +438,5 @@ jobs:
           if-no-files-found: warn
 
       - name: Tear down stack
-        if: always() && steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
+        if: always() && steps.scope.outputs.mode != 'none' && steps.scope.outputs.mode != 'paired-attested' && steps.api_cred.outputs.available == 'yes'
         run: bash e2e-stack/scripts/down.sh

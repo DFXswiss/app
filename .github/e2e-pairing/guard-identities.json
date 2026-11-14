@@ -1,0 +1,4 @@
+{
+  "DFXswiss/app": "github-actions[bot]",
+  "DFXswiss/backend": "dfxswiss-pr-guard[bot]"
+}
