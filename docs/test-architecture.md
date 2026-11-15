@@ -712,20 +712,22 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   rejects with a plain object (code 4001 with MetaMask's `data` for a cancel, code -32603 for a failure),
   answers Ethereum (`0x1`) as the chain, fixed fee data (`eth_gasPrice`, `eth_maxPriorityFeePerGas`,
   `eth_estimateGas`, `eth_getTransactionCount`, `eth_getBlockByNumber`) instead of a chain node, answers
-  `wallet_switchEthereumChain` and `eth_sendTransaction` as the test decides, and signs the login message with
-  the dedicated test wallet's key. `e2e-stack/specs/auth.spec.ts` uses it for three MetaMask cases on `/login`,
-  and installs in-page objects for Phantom (`window.phantom.solana`), Trust (`window.trustwallet.solana` and
-  `window.trustwallet.tronLink`) and TronLink (`window.tronLink`, older protocol, and `window.tron`, newer
-  protocol) that reject the connection with code 4001, or with another code for the failure cases.
-  `e2e-stack/specs/sell-swap.spec.ts` logs in through the injected MetaMask and lets it reject the chain switch
-  or the transaction of "Complete transaction in your wallet" on `/sell`. A green run proves, through the real
+  `wallet_switchEthereumChain`, `wallet_addEthereumChain` and `eth_sendTransaction` as the test decides, and
+  signs the login message with the dedicated test wallet's key. `e2e-stack/specs/auth.spec.ts` uses it for three
+  MetaMask cases on `/login`, and installs in-page objects for Phantom (`window.phantom.solana`), Trust
+  (`window.trustwallet.solana` and `window.trustwallet.tronLink`) and TronLink (`window.tronLink`, older
+  protocol, and `window.tron`, newer protocol) that reject the connection with code 4001, or with another code
+  for the failure cases. `e2e-stack/specs/sell-swap.spec.ts` logs in through the injected MetaMask and lets it
+  reject the chain switch, the request to add an unknown chain (after code 4902 for the switch), or the
+  transaction of "Complete transaction in your wallet" on `/sell`. A green run proves, through the real
   frontend, API and Postgres, that a cancelled connection in each of those wallets and a cancelled MetaMask
   login signature return to the wallet selection with no error and no `POST /v1/log/clientError` or
-  `POST /v1/auth`, that a retry signs in and creates the user row, that a cancelled chain switch or transaction
-  keeps the user on the sell form without "Transaction failed", and that a failing wallet still shows its
-  error and is reported to the API. It does not prove that a real wallet extension or app rejects with exactly
-  those shapes and codes, that a transaction reaches a chain, a signature or transaction cancel in the Solana
-  and Tron wallets, the swap screen, or WalletConnect, whose relay the harness network cannot reach.
+  `POST /v1/auth`, that a retry signs in and creates the user row, that a cancelled chain switch, add-chain request or
+  transaction keeps the user on the sell form without "Transaction failed", and that a failing wallet still
+  shows its error and is reported to the API. It does not prove that a real wallet extension or app rejects with
+  exactly those shapes and codes, or answers an unknown chain with 4902 before the add-chain request, that a
+  transaction reaches a chain, a signature or transaction cancel in the Solana and Tron wallets, the swap
+  screen, or WalletConnect, whose relay the harness network cannot reach.
 - **The wallet cancel visual spec answers the wallet and the API itself.** `e2e/wallet-cancel.spec.ts`
   installs an in-page injected wallet and fulfils the bootstrap GETs; `POST /v1/log/clientError` is answered
   with 201 and recorded. For the login page the wallet rejects the account request (code 4001 with data, and
