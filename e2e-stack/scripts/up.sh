@@ -3,30 +3,115 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-if [[ -z "${E2E_API_IMAGE:-}" ]]; then
-  # Default: backend repo checked out as sibling directory "api" next to "app".
-  # Relative paths resolve from the app repository root so caller cwd does not matter.
-  api_repo_raw="${E2E_API_REPO:-../api}"
+api_repo=''
+if [[ -n "${E2E_API_REPO:-}" ]]; then
+  api_repo_raw="$E2E_API_REPO"
   if [[ "$api_repo_raw" = /* ]]; then
     api_repo="$api_repo_raw"
   else
     if api_repo="$(cd "$STACK_DIR/.." && cd "$api_repo_raw" 2>/dev/null && pwd)"; then
       :
     else
+      # Keep a stable missing-path value so a prebuilt image can continue in strict mode; with no
+      # image the normal missing-repository error below reports this path.
       api_repo="$(cd "$STACK_DIR/.." && pwd)/${api_repo_raw}"
     fi
   fi
+elif [[ -d "$STACK_DIR/../../api-repo" ]]; then
+  # Backend's E2E workflow checks out the API and this harness as sibling repositories and
+  # supplies a prebuilt API image. Resolve that checkout even though no local image build runs.
+  api_repo="$(cd "$STACK_DIR/../../api-repo" && pwd)"
+elif current_repo="$(git rev-parse --show-toplevel 2>/dev/null)" && \
+  [[ -f "$current_repo/src/subdomains/generic/kyc/services/kyc.service.ts" ]]; then
+  api_repo="$current_repo"
+else
+  # Local default: backend repository checked out as sibling directory "api" next to "app".
+  if [[ -d "$STACK_DIR/../../api" ]]; then
+    api_repo="$(cd "$STACK_DIR/../../api" && pwd)"
+  else
+    api_repo="$STACK_DIR/../../api"
+  fi
+fi
 
-  if [[ ! -d "$api_repo" ]]; then
-    log_error "API image not set and API repository not found."
-    log_error "Either check out the backend repo as a sibling directory named 'api' next to 'app',"
-    log_error "or set E2E_API_IMAGE to a pre-built image tag (e.g. export E2E_API_IMAGE=dfx-api:e2e)."
-    log_error "Looked for: ${api_repo} (override with E2E_API_REPO)."
+api_source_commit=''
+api_guard_state='strict'
+if [[ -d "$api_repo" ]] && git -C "$api_repo" rev-parse --git-dir >/dev/null 2>&1 && \
+  [[ -f "$api_repo/src/subdomains/generic/kyc/services/kyc.service.ts" ]]; then
+  api_dirty="$(git -C "$api_repo" status --porcelain --untracked-files=all)"
+  if [[ -n "$api_dirty" ]]; then
+    log_error "API checkout is dirty; refusing to classify or build source that /version cannot identify."
+    log_error "Commit or remove the local changes, then retry."
     exit 1
   fi
 
-  log_info "Building API image dfx-api:e2e from ${api_repo} ..."
-  docker build -t dfx-api:e2e --build-arg GIT_COMMIT=e2e-stack "$api_repo"
+  api_source_commit="$(git -C "$api_repo" rev-parse HEAD)"
+  api_source_ref=''
+  api_origin_url="$(git -C "$api_repo" remote get-url origin 2>/dev/null || true)"
+  case "$api_origin_url" in
+    git@github.com:DFXswiss/backend.git|ssh://git@github.com/DFXswiss/backend.git|https://github.com/DFXswiss/backend.git|https://github.com/DFXswiss/backend)
+      api_head_commit="$(git -C "$api_repo" rev-parse HEAD)"
+      api_develop_commit="$(git -C "$api_repo" rev-parse --verify 'refs/remotes/origin/develop^{commit}' 2>/dev/null || true)"
+      if [[ -n "$api_develop_commit" && "$api_head_commit" == "$api_develop_commit" ]]; then
+        api_source_ref='develop'
+      fi
+      ;;
+  esac
+  api_shallow="$(git -C "$api_repo" rev-parse --is-shallow-repository)"
+  api_kyc_service="$api_repo/src/subdomains/generic/kyc/services/kyc.service.ts"
+  owner_guard_signature='const isOwner = jwt?.account === kycFile.userData.id'
+  if ! command -v grep >/dev/null 2>&1; then
+    log_error "grep is required to classify the KYC owner guard."
+    exit 1
+  fi
+  guard_in_source=false
+  guard_probe_status=0
+  grep -Fq "$owner_guard_signature" "$api_kyc_service" || guard_probe_status=$?
+  if [[ "$guard_probe_status" -eq 0 ]]; then
+    guard_in_source=true
+  elif [[ "$guard_probe_status" -ne 1 ]]; then
+    log_error "Failed to read API KYC service while checking the owner guard (grep exit ${guard_probe_status})."
+    exit 1
+  fi
+
+  # Only the immutable old-image control and a full-history checkout exactly at the canonical
+  # origin/develop tip that has never carried the guard may XFAIL. Fast-path the control, guarded
+  # source and unknown refs; only pre-guard develop needs a history scan to detect a later removal.
+  legacy_source=false
+  if [[ "$api_source_commit" == '37e5a1583a312f018c254c5868b5cc9da55c1a30' ]]; then
+    legacy_source=true
+  elif [[ "$guard_in_source" == 'false' && "$api_source_ref" == 'develop' && "$api_shallow" == 'false' ]]; then
+    guard_in_history=false
+    if git -C "$api_repo" merge-base --is-ancestor 6d97f35413efc12c04629bcb8484c45e0900b8fb "$api_source_commit"; then
+      guard_in_history=true
+    else
+      guard_history_commit="$(git -C "$api_repo" log -1 --format=%H -S "$owner_guard_signature" -- src/subdomains/generic/kyc/services/kyc.service.ts)"
+      if [[ -n "$guard_history_commit" ]]; then
+        guard_in_history=true
+      fi
+    fi
+    if [[ "$guard_in_history" == 'false' ]]; then
+      legacy_source=true
+    fi
+  fi
+  if [[ "$legacy_source" == 'true' ]]; then
+    api_guard_state='legacy-develop'
+  fi
+
+  log_info "API source ${api_source_commit} (${api_source_ref:-detached}); KYC owner-guard state: ${api_guard_state}."
+elif [[ -z "${E2E_API_IMAGE:-}" ]]; then
+  log_error "API image not set and API repository not found."
+  log_error "Either check out the backend repo as a sibling directory named 'api' next to 'app',"
+  log_error "or set E2E_API_REPO to a backend checkout."
+  log_error "Looked for: ${api_repo:-not found}."
+  exit 1
+else
+  log_warn "No API source checkout available for provenance; KYC authorization checks will be strict."
+fi
+
+if [[ -z "${E2E_API_IMAGE:-}" ]]; then
+  api_commit="$api_source_commit"
+  log_info "Building API image dfx-api:e2e from ${api_repo} at ${api_commit} ..."
+  docker build -t dfx-api:e2e --build-arg GIT_COMMIT="$api_commit" "$api_repo"
   # Export so the probe below (and compose.yml's ${E2E_API_IMAGE}) always see a concrete tag,
   # matching the image we just built — same default as when the caller sets E2E_API_IMAGE.
   export E2E_API_IMAGE=dfx-api:e2e
@@ -87,6 +172,8 @@ if [[ -f "$STACK_DIR/.env" ]]; then
   printf '\n' >> "$generated_env"
 fi
 printf 'E2E_API_IMAGE=%s\n' "$E2E_API_IMAGE" >> "$generated_env"
+printf 'E2E_API_SOURCE_COMMIT=%s\n' "$api_source_commit" >> "$generated_env"
+printf 'E2E_KYC_FILE_GUARD_STATE=%s\n' "$api_guard_state" >> "$generated_env"
 # Same reasoning for the frontend and widget images: every later compose call must resolve
 # them to the tags decided here, prebuilt or locally built.
 printf 'E2E_FRONTEND_IMAGE=%s\n' "$E2E_FRONTEND_IMAGE" >> "$generated_env"
