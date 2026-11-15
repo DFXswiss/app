@@ -511,10 +511,11 @@ cancel a running shared run. A backend `repository_dispatch` follows the same
 invalidation path as an app push, using the dispatch's `before` head as a hint
 to find the previous companion at that SHA. A run is cancelled only after the
 re-resolved heads prove that a head of the pair moved; a dispatch does not
-cancel unconditionally. If both pull requests are open, merge order is free.
-After one side merges, the remaining side resolves against that side's merge
-commit and is re-run and re-attested. If a side is closed without merging, the
-pair fails closed. A pair whose both sides are already merged is not run.
+cancel unconditionally. If both pull requests are open, merge order is free for
+merges into `develop`: after one side merges into `develop`, the remaining side
+resolves against that side's merge commit and is re-run and re-attested. A side
+closed without merging, or merged into `main` or any other base, fails the pair
+closed. A pair whose both sides are already merged is not run.
 The coordinator also reconciles every open paired pull request in both
 repositories every 30 minutes, on any base, and repairs divergent and stale
 pending statuses. It catches a retarget away from `develop` and any lost

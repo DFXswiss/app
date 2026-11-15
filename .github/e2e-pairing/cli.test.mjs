@@ -3128,6 +3128,94 @@ test('publish posts the exact description on open heads and reruns local jobs', 
   assert.match(logs.at(-1), /published success/);
 });
 
+test('publish re-reads both pulls and supersedes a changed side before posting', async () => {
+  const cases = [
+    ['closed', response(appPull(12, { state: 'closed', merged: false }))],
+    ['deleted', response(null, 404)],
+    ['moved head', response(appPull(12, { sha: OTHER_APP_SHA }))],
+    ['retargeted', response(appPull(12, { base: 'main' }))],
+    ['missing base', response({ ...appPull(), base: null })],
+  ];
+  for (const [name, freshApp] of cases) {
+    const fake = new FakeGitHub({
+      ...openPairWithLocalRuns(),
+      [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+      [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+    });
+    const originalFetch = fake.fetch.bind(fake);
+    let appReads = 0;
+    fake.fetch = async (url, options = {}) => {
+      if (FakeGitHub.key(url, options.method || 'GET') === 'GET /repos/DFXswiss/app/pulls/12') {
+        appReads += 1;
+        if (appReads > 1) {
+          return freshApp;
+        }
+      }
+      return originalFetch(url, options);
+    };
+    const { deps: injected, logs } = deps(fake);
+    const code = await main(['publish'], {
+      ...injected,
+      env: {
+        ...injected.env,
+        APP_PR: '12',
+        APP_SHA,
+        BACKEND_PR: '34',
+        BACKEND_SHA,
+        MUTUAL: 'true',
+        RUN_RESULT: 'success',
+        RUN_ID: '77',
+        RUN_URL,
+      },
+    });
+    assert.equal(code, 0, name);
+    assert.equal(appReads, 2, name);
+    assert.equal(fake.statusPosts().length, 0, name);
+    assert.equal(fake.reruns().length, 0, name);
+    assert.match(logs.at(-1), /superseded: a pull request changed before the result was published/, name);
+  }
+});
+
+test('publish supersedes when a merged side is no longer merged before posting', async () => {
+  const mergedBackend = backendPull(34, { state: 'closed', merged: true });
+  const fake = new FakeGitHub({
+    ...validPairRoutes({ backend: mergedBackend }),
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+  });
+  const originalFetch = fake.fetch.bind(fake);
+  let backendReads = 0;
+  fake.fetch = async (url, options = {}) => {
+    if (FakeGitHub.key(url, options.method || 'GET') === 'GET /repos/DFXswiss/backend/pulls/34') {
+      backendReads += 1;
+      if (backendReads > 1) {
+        return response(backendPull(34, { state: 'closed', merged: false }));
+      }
+    }
+    return originalFetch(url, options);
+  };
+  const { deps: injected, logs } = deps(fake);
+  const code = await main(['publish'], {
+    ...injected,
+    env: {
+      ...injected.env,
+      APP_PR: '12',
+      APP_SHA,
+      BACKEND_PR: '34',
+      BACKEND_SHA: MERGE_SHA,
+      BACKEND_MERGED: 'true',
+      MUTUAL: 'true',
+      RUN_RESULT: 'success',
+      RUN_ID: '77',
+      RUN_URL,
+    },
+  });
+  assert.equal(code, 0);
+  assert.equal(backendReads, 2);
+  assert.equal(fake.statusPosts().length, 0);
+  assert.equal(fake.reruns().length, 0);
+  assert.match(logs.at(-1), /superseded: a pull request changed before the result was published/);
+});
+
 test('publish resolves from the starting repository with an explicit or fallback START_PR', async () => {
   for (const [startRepo, expectedStartPr, startPr = ''] of [[APP_REPO, '12'], [BACKEND_REPO, '34'], [BACKEND_REPO, '34', '34']]) {
     const fake = new FakeGitHub({
@@ -3267,6 +3355,32 @@ test('invalidate on close posts failure to the open mutual companion only when b
   assert.equal(posted[0].body.description, 'companion closed without merge');
   assert.equal(fake.reruns().length, 1);
   assert.match(logs.join('\n'), /failed open companion backend#34/);
+});
+
+test('invalidate fails a companion when the merged event flag is false on a fresh develop pull', async () => {
+  const closedApp = appPull(12, { state: 'closed', merged: false });
+  const fake = new FakeGitHub({
+    ...validPairRoutes({ app: closedApp }),
+    [`GET /repos/DFXswiss/app/contents/e2e-companion.json?ref=${APP_SHA}`]: content(companion(BACKEND_REPO, 34)),
+    [`GET /repos/DFXswiss/backend/contents/e2e-companion.json?ref=${BACKEND_SHA}`]: content(companion(APP_REPO, 12)),
+    ...backendStatuses(BACKEND_SHA, [status({ description: pairDescription() })]),
+    ...localRunRoutes({ repo: BACKEND_REPO, sha: BACKEND_SHA, runId: 20, path: '.github/workflows/api-pr.yaml' }),
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 1 },
+  });
+  const { deps: injected, logs } = deps(fake);
+  const code = await main(['invalidate'], {
+    ...injected,
+    env: { ...injected.env, START_REPO: APP_REPO, START_PR: '12', CLOSED: 'true', MERGED: 'true', RUN_URL },
+  });
+  assert.equal(code, 0);
+  const posted = fake.statusPosts();
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0].key, `POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`);
+  assert.equal(posted[0].body.state, 'failure');
+  assert.equal(posted[0].body.description, 'companion closed without merge');
+  assert.equal(fake.reruns().length, 1);
+  assert.match(logs.join('\n'), /failed open companion backend#34/);
+  assert.doesNotMatch(logs.join('\n'), /no invalidation/);
 });
 
 test('invalidate on close does nothing without a valid mutual open companion', async () => {
@@ -5612,4 +5726,18 @@ test('invalidate on a merged start tolerates a missing pull response', async () 
   );
   assert.equal(noBase.statusPosts().length, 0);
   assert.doesNotMatch(logs.join('\n'), /no invalidation/);
+
+  const reopened = new FakeGitHub({
+    'GET /repos/DFXswiss/app/pulls/12': appPull(12, { state: 'open', merged: true }),
+  });
+  const { deps: reopenedDeps, logs: reopenedLogs } = deps(reopened);
+  assert.equal(
+    await main(['invalidate'], {
+      ...reopenedDeps,
+      env: { ...reopenedDeps.env, START_REPO: APP_REPO, START_PR: '12', CLOSED: 'true', MERGED: 'true' },
+    }),
+    0,
+  );
+  assert.equal(reopened.statusPosts().length, 0);
+  assert.doesNotMatch(reopenedLogs.join('\n'), /no invalidation/);
 });

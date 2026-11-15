@@ -173,6 +173,16 @@ function attestableSides(result) {
   return open.filter((side) => side.repo === result.start_repo && side.pr === result.start_pr);
 }
 
+function pullStillMatchesFreshPublish(pull, side) {
+  if (!pull || pull.state !== side.pull.state) {
+    return false;
+  }
+  if (side.pull.state !== 'open') {
+    return pull.merged === true;
+  }
+  return pullHeadSha(pull) === side.sha && pull.base?.ref === 'develop';
+}
+
 async function getPullOrNull(client, repo, number) {
   const response = await client.getOptional(`/repos/${repo}/pulls/${number}`);
   if (response.status === 404) {
@@ -1328,6 +1338,15 @@ async function publishCommand(client, env, deps, reviewGate) {
   if (!targetUrl) {
     throw new PairingError('run URL unavailable');
   }
+  const sides = sideList(fresh);
+  const current = [];
+  for (const side of sides) {
+    current.push(await getPullOrNull(client, side.repo, side.pr));
+  }
+  if (!sides.every((side, index) => pullStillMatchesFreshPublish(current[index], side))) {
+    deps.log('superseded: a pull request changed before the result was published');
+    return 0;
+  }
   const open = attestableSides(fresh);
   for (const side of open) {
     await client.postStatus(side.repo, side.sha, {
@@ -1350,11 +1369,17 @@ async function invalidateCommand(client, env, deps) {
       if (boolValue(env.MERGED)) {
         otherRepository(startRepo);
         const mergedPull = await getPullOrNull(client, startRepo, startPr);
-        if (mergedPull && mergedPull.base?.ref === 'develop') {
+        if (
+          mergedPull?.state === 'closed' &&
+          mergedPull.merged === true &&
+          mergedPull.base?.ref === 'develop'
+        ) {
           deps.log('closed companion merged: no invalidation');
           return 0;
         }
-        await failOpenCompanion(client, env, deps, startRepo, startPr, { allowMergedElsewhere: true });
+        await failOpenCompanion(client, env, deps, startRepo, startPr, {
+          allowMergedElsewhere: mergedPull?.merged === true,
+        });
         return 0;
       }
       otherRepository(startRepo);
