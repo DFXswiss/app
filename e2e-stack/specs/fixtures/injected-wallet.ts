@@ -39,8 +39,8 @@ export async function injectWallet(
 }
 
 /**
- * The answers of a wallet on Ethereum that holds `wallet`; `requestAccounts`, `sign`, `switchChain` and
- * `sendTransaction` decide the user's choice.
+ * The answers of a wallet on Ethereum that holds `wallet`; `requestAccounts`, `sign`, `switchChain`, `addChain`
+ * and `sendTransaction` decide the user's choice.
  */
 export function walletAnswers(
   wallet: { address: string; privateKey: string },
@@ -49,6 +49,7 @@ export function walletAnswers(
     requestAccounts: () => WalletAnswer;
     sign?: () => WalletAnswer | undefined;
     switchChain?: () => WalletAnswer;
+    addChain?: () => WalletAnswer;
     sendTransaction?: () => WalletAnswer;
   },
 ): (method: string, params: unknown[]) => Promise<WalletAnswer> {
@@ -64,6 +65,8 @@ export function walletAnswers(
         return choice.requestAccounts();
       case 'wallet_switchEthereumChain':
         return choice.switchChain?.() ?? { result: null };
+      case 'wallet_addEthereumChain':
+        return choice.addChain?.() ?? { result: null };
       // web3 asks the wallet for the fee data before it hands over a transaction; there is no chain behind it
       case 'eth_gasPrice':
       case 'eth_maxPriorityFeePerGas':

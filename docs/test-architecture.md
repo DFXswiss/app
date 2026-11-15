@@ -727,12 +727,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   those shapes and codes, that a transaction reaches a chain, a signature or transaction cancel in the Solana
   and Tron wallets, the swap screen, or WalletConnect, whose relay the harness network cannot reach.
 - **The wallet cancel visual spec answers the wallet and the API itself.** `e2e/wallet-cancel.spec.ts`
-  installs an in-page injected wallet that rejects the account request (code 4001 with data, and code
-  -32603), fulfils the bootstrap GETs and answers `POST /v1/log/clientError` with 201. Unmatched `/v1/**` and
-  `/v2/**` calls get `501`. A green run proves how the login page renders the cancelled connection (back at
-  the wallet selection, no report) and the failed one ("Connection failed!" with the wallet's message, one
-  report). It does not prove that a real wallet rejects that way, that the API returns real bootstrap data,
-  or that the real client-error endpoint receives the report.
+  installs an in-page injected wallet and fulfils the bootstrap GETs; `POST /v1/log/clientError` is answered
+  with 201 and recorded. For the login page the wallet rejects the account request (code 4001 with data, and
+  code -32603). For the sell form it signs any message with a fixed signature, the sign message and the sign-in
+  are answered with a synthetic message and an unsigned JWT, the address check, the quote, the payment
+  information, the bank-account update and `GET /v2/user` are answered with synthetic data, and the wallet
+  accepts the chain switch, answers fixed fee data and rejects `eth_sendTransaction` (code 4001 with data, and
+  code -32603). Unmatched `/v1/**` and `/v2/**` calls get `501`. A green run proves how the login page renders
+  the cancelled connection (back at the wallet selection, no report) and the failed one ("Connection failed!"
+  with the wallet's message, one report), and how the sell form renders a cancelled transaction (form kept, no
+  error, no report) and a failed one ("Transaction failed"). It does not prove that a real wallet rejects that
+  way, production auth, that the API returns real bootstrap data or that quote, or that the real client-error
+  endpoint receives the report.
 - **The MetaMask rejection hook test replaces the injected provider.**
   `src/hooks/wallets/__tests__/metamask-rejection.hook.test.ts` runs `useMetaMask` against the real web3 with
   an in-memory EIP-1193 provider (and a legacy `sendAsync` provider) that answers or rejects each method, and
@@ -750,6 +756,24 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and how it treats their answers. It does not prove that web3 or a real wallet behaves like those objects, the
   chain mapping, the SDK's enum values, the real poll timing, the detection of a wallet app by its user agent, or that a page reload
   happens.
+- **The Solana wallet hook test replaces the wallet adapters and the Solana hook.**
+  `src/hooks/wallets/__tests__/solana-wallets.hook.test.ts` runs `usePhantom` and `useTrustSol` against
+  hand-written Phantom and Trust adapter objects that answer or reject `connect`, `signMessage` and
+  `signTransaction`, a replaced `useSolana` (transaction building and broadcast), a replaced `delay`,
+  `ethers.encodeBase58` and
+  `@dfx.swiss/react` with a copy of its `AssetType` values. A green run proves how the hooks map the adapters'
+  results and errors, including the 4001 code kept as the adapter's `error`. It does not prove that the real
+  adapters or wallets answer with those shapes, that a message is signed, or that a transaction is built or
+  broadcast.
+- **The Tron wallet hook test replaces the wallet adapters and the Tron hook.**
+  `src/hooks/wallets/__tests__/tron-wallets.hook.test.ts` runs `useTronLinkTrx` and `useTrustTrx` against
+  hand-written TronLink and Trust adapter objects that answer or reject `connect`, `signMessage` and
+  `signTransaction`, replaced wallet and mobile detection, a replaced `useTron` (transaction building and
+  broadcast), a replaced `delay`, and `@dfx.swiss/react` with a copy of its `AssetType` values. A green run proves
+  how the hooks map the adapters' results and errors, including the adapters' connect message "The user rejected
+  connection." only on connect. It does not prove that the real adapters or wallets answer with those shapes or
+  that text, the detection of the extension or app, that a message is signed, or that a transaction is built or
+  broadcast.
 - **The WalletConnect hook test replaces the wagmi actions and the wallet list.**
   `src/hooks/wallets/__tests__/wallet-connect.hook.test.ts` replaces `@wagmi/core`, the wagmi config, the
   WalletConnect connector and its provider (whose `request` answers the chain switch as each test decides),

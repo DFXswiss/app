@@ -327,14 +327,15 @@ async function setupSwapFullUiFlow(
 /**
  * Logs in through an injected MetaMask wallet (the wallet extension is an external provider), which makes it the
  * active wallet, and opens the sell form with ETH → CHF and a bank account filled in until the payment information is
- * shown. The wallet answers `wallet_switchEthereumChain` with `switchChain` and `eth_sendTransaction` with
- * `sendTransaction`. Returns the wallet methods the page called.
+ * shown. The wallet answers `wallet_switchEthereumChain` with `switchChain`, `wallet_addEthereumChain` with
+ * `addChain` and `eth_sendTransaction` with `sendTransaction`. Returns the wallet methods the page called.
  */
 async function openSellWithInjectedWallet(
   page: Page,
   tag: string,
   switchChain: () => WalletAnswer,
   sendTransaction?: () => WalletAnswer,
+  addChain?: () => WalletAnswer,
 ): Promise<string[]> {
   const walletIndex = nextWalletIndex();
   const user = await createUser({ walletIndex, tag, kycLevel: 30, completePersonalData: true, language: 'EN' });
@@ -346,6 +347,7 @@ async function openSellWithInjectedWallet(
       connected: () => true,
       requestAccounts: () => ({ result: [wallet.address] }),
       switchChain,
+      addChain,
       sendTransaction,
     }),
   );
@@ -972,6 +974,35 @@ test.describe('Sell + Swap e2e', () => {
 
     await page.getByRole('button', { name: 'Complete transaction in your wallet' }).click({ timeout: 15000 });
     await expect.poll(() => calls.includes('wallet_switchEthereumChain'), { timeout: 15000 }).toBe(true);
+    await expect(page.getByText(/Transaction failed\. Click Retry/)).toBeVisible({ timeout: 15000 });
+  });
+
+  test('/sell: adding the chain cancelled in the wallet keeps the user on the form without an error', async ({ page }) => {
+    test.setTimeout(120000);
+    // the wallet does not know the chain (4902), so the app asks to add it, which the user cancels
+    const calls = await openSellWithInjectedWallet(
+      page,
+      'sell-wallet-add-chain-cancel',
+      () => ({ error: { code: 4902, message: 'Unrecognized chain ID.' } }),
+      undefined,
+      () => ({ error: { code: 4001, message: 'User rejected the request.' } }),
+    );
+
+    await expectCancelledSwitchKeepsForm(page, calls, '/sell', 'wallet_addEthereumChain');
+  });
+
+  test('/sell: adding the chain that fails in the wallet still shows that the transaction failed', async ({ page }) => {
+    test.setTimeout(120000);
+    const calls = await openSellWithInjectedWallet(
+      page,
+      'sell-wallet-add-chain-fail',
+      () => ({ error: { code: 4902, message: 'Unrecognized chain ID.' } }),
+      undefined,
+      () => ({ error: { code: -32602, message: 'Invalid chain parameters.' } }),
+    );
+
+    await page.getByRole('button', { name: 'Complete transaction in your wallet' }).click({ timeout: 15000 });
+    await expect.poll(() => calls.includes('wallet_addEthereumChain'), { timeout: 15000 }).toBe(true);
     await expect(page.getByText(/Transaction failed\. Click Retry/)).toBeVisible({ timeout: 15000 });
   });
 
