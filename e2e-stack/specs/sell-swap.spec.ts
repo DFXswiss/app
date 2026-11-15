@@ -356,10 +356,12 @@ async function openSellWithInjectedWallet(
   await page.locator('img[src*="cryptowallet"]').click({ timeout: 15000 });
   await page.locator('img[src*="metamask"]').click();
   await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+  // the login finishes loading the session on /buy; opening /sell before that can leave the form loading
+  await page.waitForLoadState('networkidle');
 
   const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
   await page.goto('/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1');
-  await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
   const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
   const apiDetail = paymentInfos.last
