@@ -541,6 +541,7 @@ export async function inspectPair({ client, startRepo, startPr }) {
     valid: false,
     reason: '',
     review_pending: false,
+    start_companion_inactive: false,
     start_repo: startRepo,
     start_pr: startNumber,
   };
@@ -551,6 +552,9 @@ export async function inspectPair({ client, startRepo, startPr }) {
   setSide(result, startRepo, startPull);
   const startFiles = await pullFiles(client, startRepo, startNumber, startPull);
   if (!isCompanionActive(startFiles)) {
+    if (startPull.state === 'open') {
+      result.start_companion_inactive = true;
+    }
     return invalidateResult(result, `${COMPANION_PATH} is not active for ${startRepo}#${startNumber}`);
   }
   result.paired = true;
@@ -1143,16 +1147,53 @@ async function evaluateChattyTrigger(client, result, env, deps) {
   }
 }
 
-// A closed-unmerged dispatch must fail the mutual open companion. The same
-// close on the app side is handled by the invalidation step of that event.
+// A closed-unmerged start on a resolve trigger must fail the mutual open
+// companion. The same close on the app side is handled by the invalidation step
+// of that event.
 async function failClosedStartCompanion(client, result, env, deps, startRepo, startPr, options = {}) {
-  // The dispatch names the backend PR. Read its state again so a stale event
+  // The trigger names the start PR. Read its state again so a stale event
   // payload cannot decide this.
   const fresh = await getPullOrNull(client, startRepo, startPr);
   if (!fresh || fresh.state !== 'closed' || fresh.merged === true) {
     return false;
   }
   return failOpenCompanion(client, env, deps, startRepo, startPr, options);
+}
+
+async function failInactiveCompanionStatus(client, env, deps, repo, sha, newest) {
+  if (newest === null || (newest.state !== 'success' && newest.state !== 'pending')) {
+    return false;
+  }
+  const targetUrl = statusTargetUrl(env);
+  if (!targetUrl) {
+    throw new PairingError('status target URL unavailable');
+  }
+  await client.postStatus(repo, sha, {
+    state: 'failure',
+    context: STATUS_CONTEXT,
+    description: `${COMPANION_PATH} is not active in this pull request`,
+    targetUrl,
+  });
+  await rerunLocalWorkflow(client, repo, sha);
+  deps.log(`failed inactive companion status for ${repositoryLabel(repo)}@${sha}`);
+  return true;
+}
+
+async function failInactiveStartCompanion(client, env, deps, result) {
+  if (result.paired || result.start_companion_inactive !== true) {
+    return false;
+  }
+  const pull = result.start_repo === APP_REPO ? result.app_pull : result.backend_pull;
+  const sha = pullHeadSha(pull);
+  if (!SHA_RE.test(sha)) {
+    return false;
+  }
+  const slug = env.E2E_PAIR_APP_SLUG || '';
+  if (!slug) {
+    throw new PairingError('pairing app slug unavailable');
+  }
+  const newest = await newestHeadStatus(client, result.start_repo, sha, `${slug}[bot]`);
+  return failInactiveCompanionStatus(client, env, deps, result.start_repo, sha, newest);
 }
 
 async function resolveCommand(client, env, deps, reviewGate) {
@@ -1184,13 +1225,18 @@ async function resolveValidatedCommand(client, env, deps, reviewGate, startRepo,
   let closedCompanionFailed = false;
   let openPairInvalidated = false;
   let rerunReviewPending = false;
-  if (env.EVENT_NAME === 'repository_dispatch') {
+  if (
+    env.EVENT_NAME === 'repository_dispatch' ||
+    env.EVENT_NAME === 'issue_comment' ||
+    env.EVENT_NAME === 'workflow_dispatch'
+  ) {
     closedCompanionFailed = Boolean(
       await failClosedStartCompanion(client, result, env, deps, startRepo, startPr, { repend: true }),
     );
     // failOpenCompanion has just proven mutuality from both current heads.
     result.mutual = result.mutual || closedCompanionFailed;
   }
+  await failInactiveStartCompanion(client, env, deps, result);
   result = await reopenAfterCompanionMerge(client, result, reviewGate);
   if (env.EVENT_NAME === 'repository_dispatch' || env.EVENT_NAME === 'pull_request_target') {
     await cancelSupersededRuns(client, result, env);
@@ -1313,6 +1359,7 @@ async function invalidateCommand(client, env, deps) {
     }
 
     const current = await inspectPair({ client, startRepo, startPr });
+    await failInactiveStartCompanion(client, env, deps, current);
     await invalidateOpenPair(client, current, env);
     await invalidatePreviousCompanion(client, env, deps, startRepo, startPr, current);
     return 0;
@@ -1403,15 +1450,16 @@ async function reconcilePull(client, env, deps, slug, repo, pr, reviewGate, hand
     return false;
   }
   const files = await pullFiles(client, repo, pr, pull);
-  if (!isCompanionActive(files)) {
-    return false;
-  }
   const head = pullHeadSha(pull);
   if (!SHA_RE.test(head)) {
     throw new PairingError(`${repo}#${pr} head is invalid`);
   }
   const creatorLogin = `${slug}[bot]`;
   const newest = await newestHeadStatus(client, repo, head, creatorLogin);
+  if (!isCompanionActive(files)) {
+    await failInactiveCompanionStatus(client, env, deps, repo, head, newest);
+    return false;
+  }
   if (!newest) {
     return false;
   }

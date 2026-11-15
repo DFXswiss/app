@@ -252,6 +252,30 @@ test('inspectPair starts from the backend and reads the same pair', async () => 
   assert.equal(result.backend_pr, 34);
 });
 
+test('inspectPair marks an open start whose companion file is inactive', async () => {
+  const { GitHubClient } = await import('./github.mjs');
+  const fake = new FakeGitHub(
+    validPairRoutes({ appFiles: [{ filename: 'e2e-companion.json', status: 'unchanged' }] }),
+  );
+  const result = await inspectPair({
+    client: new GitHubClient({ token: 't', fetchImpl: fake.fetch.bind(fake) }),
+    startRepo: APP_REPO,
+    startPr: 12,
+  });
+  assert.equal(result.paired, false);
+  assert.equal(result.start_companion_inactive, true);
+  assert.match(result.reason, /is not active/);
+
+  const closed = new FakeGitHub(validPairRoutes({ app: appPull(12, { state: 'closed' }), appFiles: [] }));
+  const closedResult = await inspectPair({
+    client: new GitHubClient({ token: 't', fetchImpl: closed.fetch.bind(closed) }),
+    startRepo: APP_REPO,
+    startPr: 12,
+  });
+  assert.equal(closedResult.paired, false);
+  assert.equal(closedResult.start_companion_inactive, false);
+});
+
 test('inspectPair rejects bad inputs and non-object pull responses', async () => {
   const { GitHubClient } = await import('./github.mjs');
   const fake = new FakeGitHub({ 'GET /repos/DFXswiss/app/pulls/12': [] });
@@ -2307,6 +2331,64 @@ test('dispatch closed handling does nothing for a merged, open or missing start'
     });
     assert.equal(code, 0, name);
   }
+});
+
+test('comments and manual dispatches fail the open companion of a closed-unmerged app', async () => {
+  for (const eventName of ['issue_comment', 'workflow_dispatch']) {
+    const closedApp = appPull(12, { state: 'closed', merged: false });
+    const fake = new FakeGitHub({
+      ...validPairRoutes({ app: closedApp }),
+      ...backendStatuses(BACKEND_SHA, [status({ description: pairDescription() })]),
+      ...localRunRoutes({
+        repo: BACKEND_REPO,
+        sha: BACKEND_SHA,
+        runId: 20,
+        jobId: 201,
+        path: '.github/workflows/api-pr.yaml',
+      }),
+      [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 1 },
+    });
+    const { deps: injected, writes } = deps(fake);
+    assert.equal(
+      await main(['resolve'], {
+        ...injected,
+        env: { ...injected.env, ...resolveEnv(), EVENT_NAME: eventName, START_REPO: APP_REPO, START_PR: '12' },
+      }),
+      0,
+      eventName,
+    );
+    assert.equal(writes[0][0].reason, 'companion closed without merge', eventName);
+    const posted = fake.statusPosts();
+    assert.deepEqual(
+      posted.map((post) => `${post.key} ${post.body.state} ${post.body.description}`),
+      [
+        `POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA} pending pair re-evaluation pending`,
+        `POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA} failure companion closed without merge`,
+      ],
+      eventName,
+    );
+    assert.deepEqual(
+      fake.reruns().map((call) => call.key),
+      ['POST /repos/DFXswiss/backend/actions/jobs/201/rerun'],
+      eventName,
+    );
+  }
+
+  const noFile = new FakeGitHub({
+    ...validPairRoutes({ app: appPull(12, { state: 'closed', merged: false }), appFiles: [] }),
+    ...backendStatuses(BACKEND_SHA, [status({ description: pairDescription() })]),
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 1 },
+  });
+  const { deps: noFileDeps, writes: noFileWrites } = deps(noFile);
+  assert.equal(
+    await main(['resolve'], {
+      ...noFileDeps,
+      env: { ...noFileDeps.env, ...resolveEnv(), EVENT_NAME: 'issue_comment', START_REPO: APP_REPO, START_PR: '12' },
+    }),
+    0,
+  );
+  assert.equal(noFileWrites[0][0].reason, 'e2e-companion.json is not active for DFXswiss/app#12');
+  assert.equal(noFile.statusPosts().length, 0);
 });
 
 test('comments skip a valid newest success and publish nothing', async () => {
@@ -4467,11 +4549,12 @@ test('reconcile skips an app pull request without an active companion', async ()
     ...openPulls([12]),
     'GET /repos/DFXswiss/app/pulls/12': appPull(12),
     'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [{ filename: 'README.md', status: 'modified' }],
+    ...appStatuses(APP_SHA, []),
   });
   const { deps: injected } = deps(fake);
   assert.equal(await main(['reconcile'], { ...injected, env: reconcileEnv() }), 0);
   assert.equal(fake.statusPosts().length, 0);
-  assert.equal(fake.calls.some((call) => call.key.includes('/statuses')), false);
+  assert.equal(fake.reruns().length, 0);
 
   const closed = new FakeGitHub({
     ...openPulls([appPull(12, { state: 'closed' })]),
@@ -4480,6 +4563,197 @@ test('reconcile skips an app pull request without an active companion', async ()
   const { deps: closedDeps } = deps(closed);
   assert.equal(await main(['reconcile'], { ...closedDeps, env: reconcileEnv() }), 0);
   assert.equal(closed.statusPosts().length, 0);
+});
+
+test('reconcile fails an App success when the companion is no longer active', async () => {
+  const inactive = new FakeGitHub({
+    ...openPulls([12]),
+    'GET /repos/DFXswiss/app/pulls/12': appPull(12),
+    'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'removed' }],
+    ...appStatuses(APP_SHA, [status({ description: pairDescription() })]),
+    ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, jobId: 101, path: '.github/workflows/pr.yml' }),
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+  });
+  const { deps: inactiveDeps, logs } = deps(inactive);
+  assert.equal(await main(['reconcile'], { ...inactiveDeps, env: reconcileEnv() }), 0);
+  assert.deepEqual(
+    inactive.statusPosts().map((post) => `${post.key} ${post.body.state} ${post.body.description}`),
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA} failure e2e-companion.json is not active in this pull request`],
+  );
+  assert.deepEqual(
+    inactive.reruns().map((call) => call.key),
+    ['POST /repos/DFXswiss/app/actions/jobs/101/rerun'],
+  );
+  assert.match(logs.join('\n'), /failed inactive companion status/);
+
+  const pending = new FakeGitHub({
+    ...openPulls([12]),
+    'GET /repos/DFXswiss/app/pulls/12': appPull(12),
+    'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'unchanged' }],
+    ...appStatuses(APP_SHA, [status({ state: 'pending', description: pairDescription() })]),
+    ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, jobId: 101, path: '.github/workflows/pr.yml' }),
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+  });
+  const { deps: pendingDeps } = deps(pending);
+  assert.equal(await main(['reconcile'], { ...pendingDeps, env: reconcileEnv() }), 0);
+  assert.equal(pending.statusPosts().length, 1);
+  assert.equal(pending.statusPosts()[0].body.state, 'failure');
+  assert.equal(pending.reruns().length, 1);
+
+  for (const state of ['failure', 'error']) {
+    const terminal = new FakeGitHub({
+      ...openPulls([12]),
+      'GET /repos/DFXswiss/app/pulls/12': appPull(12),
+      'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'removed' }],
+      ...appStatuses(APP_SHA, [status({ state, description: pairDescription() })]),
+    });
+    const { deps: terminalDeps } = deps(terminal);
+    assert.equal(await main(['reconcile'], { ...terminalDeps, env: reconcileEnv() }), 0, state);
+    assert.equal(terminal.statusPosts().length, 0, state);
+    assert.equal(terminal.reruns().length, 0, state);
+  }
+
+  const noStatus = new FakeGitHub({
+    ...openPulls([12]),
+    'GET /repos/DFXswiss/app/pulls/12': appPull(12),
+    'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [],
+    ...appStatuses(APP_SHA, []),
+  });
+  const { deps: noStatusDeps } = deps(noStatus);
+  assert.equal(await main(['reconcile'], { ...noStatusDeps, env: reconcileEnv() }), 0);
+  assert.equal(noStatus.statusPosts().length, 0);
+  assert.equal(noStatus.reruns().length, 0);
+});
+
+test('resolve and push invalidation fail an App success when the companion is inactive', async () => {
+  const missingSlug = new FakeGitHub({
+    'GET /repos/DFXswiss/app/pulls/12': appPull(12),
+    'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [],
+    ...appStatuses(APP_SHA, [status({ description: pairDescription() })]),
+  });
+  const { deps: missingSlugDeps, errors: missingSlugErrors } = deps(missingSlug, { env: { E2E_PAIR_APP_SLUG: '' } });
+  assert.equal(
+    await main(['resolve'], {
+      ...missingSlugDeps,
+      env: { ...missingSlugDeps.env, E2E_PAIR_APP_SLUG: '', ...resolveEnv(), START_REPO: APP_REPO, START_PR: '12' },
+    }),
+    1,
+  );
+  assert.match(missingSlugErrors.at(-1), /pairing app slug unavailable/);
+
+  for (const [name, command, extraEnv] of [
+    ['resolve', 'resolve', { EVENT_NAME: 'workflow_dispatch' }],
+    ['push invalidation', 'invalidate', { EVENT_NAME: 'pull_request_target', ACTION: 'synchronize' }],
+  ]) {
+    const fake = new FakeGitHub({
+      'GET /repos/DFXswiss/app/pulls/12': appPull(12),
+      'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [{ filename: 'e2e-companion.json', status: 'removed' }],
+      ...appStatuses(APP_SHA, [status({ description: pairDescription() })]),
+      ...localRunRoutes({ repo: APP_REPO, sha: APP_SHA, runId: 10, jobId: 101, path: '.github/workflows/pr.yml' }),
+      [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    });
+    const { deps: injected, writes } = deps(fake);
+    assert.equal(
+      await main([command], {
+        ...injected,
+        env: { ...injected.env, ...resolveEnv(), START_REPO: APP_REPO, START_PR: '12', ...extraEnv },
+      }),
+      0,
+      name,
+    );
+    if (command === 'resolve') {
+      assert.equal(writes[0][0].paired, 'false', name);
+    }
+    assert.deepEqual(
+      fake.statusPosts().map((post) => `${post.body.state} ${post.body.description}`),
+      ['failure e2e-companion.json is not active in this pull request'],
+      name,
+    );
+    assert.deepEqual(
+      fake.reruns().map((call) => call.key),
+      ['POST /repos/DFXswiss/app/actions/jobs/101/rerun'],
+      name,
+    );
+
+    const noStatus = new FakeGitHub({
+      'GET /repos/DFXswiss/app/pulls/12': appPull(12),
+      'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [],
+      ...appStatuses(APP_SHA, []),
+    });
+    const { deps: noStatusDeps } = deps(noStatus);
+    assert.equal(
+      await main([command], {
+        ...noStatusDeps,
+        env: { ...noStatusDeps.env, ...resolveEnv(), START_REPO: APP_REPO, START_PR: '12', ...extraEnv },
+      }),
+      0,
+      `${name} without status`,
+    );
+    assert.equal(noStatus.statusPosts().length, 0, name);
+    assert.equal(noStatus.reruns().length, 0, name);
+  }
+
+  const invalidHead = new FakeGitHub({
+    'GET /repos/DFXswiss/app/pulls/12': appPull(12, { sha: 'bad' }),
+    'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [],
+  });
+  const { deps: invalidHeadDeps } = deps(invalidHead);
+  assert.equal(
+    await main(['resolve'], {
+      ...invalidHeadDeps,
+      env: { ...invalidHeadDeps.env, ...resolveEnv(), EVENT_NAME: 'workflow_dispatch', START_REPO: APP_REPO, START_PR: '12' },
+    }),
+    0,
+  );
+  assert.equal(invalidHead.statusPosts().length, 0);
+
+  const noTarget = new FakeGitHub({
+    'GET /repos/DFXswiss/app/pulls/12': appPull(12),
+    'GET /repos/DFXswiss/app/pulls/12/files?per_page=100': [],
+    ...appStatuses(APP_SHA, [status({ description: pairDescription() })]),
+  });
+  const { deps: noTargetDeps, errors: noTargetErrors } = deps(noTarget);
+  assert.equal(
+    await main(['resolve'], {
+      ...noTargetDeps,
+      env: {
+        ...noTargetDeps.env,
+        ...resolveEnv(),
+        EVENT_NAME: 'workflow_dispatch',
+        START_REPO: APP_REPO,
+        START_PR: '12',
+        RUN_URL: '',
+        GITHUB_SERVER_URL: '',
+        GITHUB_RUN_ID: '',
+      },
+    }),
+    1,
+  );
+  assert.match(noTargetErrors.at(-1), /status target URL unavailable/);
+
+  const backendStart = new FakeGitHub({
+    'GET /repos/DFXswiss/backend/pulls/34': backendPull(34),
+    'GET /repos/DFXswiss/backend/pulls/34/files?per_page=100': [],
+    ...backendStatuses(BACKEND_SHA, [status({ description: pairDescription() })]),
+    ...localRunRoutes({
+      repo: BACKEND_REPO,
+      sha: BACKEND_SHA,
+      runId: 20,
+      jobId: 201,
+      path: '.github/workflows/api-pr.yaml',
+    }),
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 1 },
+  });
+  const { deps: backendStartDeps } = deps(backendStart);
+  assert.equal(
+    await main(['resolve'], {
+      ...backendStartDeps,
+      env: { ...backendStartDeps.env, ...resolveEnv(), EVENT_NAME: 'workflow_dispatch', START_REPO: BACKEND_REPO, START_PR: '34' },
+    }),
+    0,
+  );
+  assert.equal(backendStart.statusPosts().length, 1);
+  assert.equal(backendStart.reruns().length, 1);
 });
 
 test('reconcile skips a pull request whose newest status is terminal', async () => {

@@ -121,11 +121,14 @@ jobs:
               exit 1
             fi
             BASE_SHA="${EVENT_BASE_SHA:-}"
+            BASE_SUPPLIED="${BASE:-}"
+            api_base_read=false
             if [ -z "${BASE:-}" ] || [ -z "${BASE_SHA}" ]; then
               if ! base_fields="$(gh api "repos/DFXswiss/app/pulls/${PR_NUMBER}" --jq '[.base.ref, .base.sha] | @tsv')"; then
                 echo '::error::could not read the pull request base.'
                 exit 1
               fi
+              api_base_read=true
               IFS=$'\t' read -r resolved_base resolved_sha <<< "$base_fields"
               if [ -z "${BASE:-}" ]; then
                 BASE="$resolved_base"
@@ -137,6 +140,10 @@ jobs:
                 echo '::error::could not read the pull request base branch.'
                 exit 1
               fi
+            fi
+            if [ "$api_base_read" = 'true' ] && [ -n "$BASE_SUPPLIED" ] && [ "$resolved_base" != "$BASE_SUPPLIED" ]; then
+              echo '::error::the supplied base does not match the pull request base.'
+              exit 1
             fi
             if ! [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
               echo '::error::could not read the pull request base commit.'

@@ -199,6 +199,13 @@ test('stack scope only enters paired mode for a develop pull request', () => {
   assert.match(scope, /file_count >= 3000/);
   assert.match(scope, /file_count < changed_files/);
   assert.match(scope, /refusing to decide paired E2E scope/);
+  assert.match(scope, /BASE_SUPPLIED="\$\{BASE:-\}"/);
+  assert.match(scope, /\[ "\$resolved_base" != "\$BASE_SUPPLIED" \]/);
+  assert.match(scope, /::error::the supplied base does not match the pull request base\./);
+  assert.ok(
+    scope.indexOf('[ "$resolved_base" != "$BASE_SUPPLIED" ]') > fetchBase,
+    'the supplied base is compared with the API-resolved base',
+  );
 });
 
 test('the local verifier is checked out at the pull request base commit', () => {

@@ -37,19 +37,18 @@ Reject the pull request when any of these is true:
   7-character prefix is not an attestation. Only a terminal `success` attests;
   a `pending` running marker is not an attestation. The coordinator polls for up
   to 60 minutes and then reruns that local `Full-stack E2E` job after it posts
-  the result. Each
-  repository's review state is checked with its own guard pin and the guard
-  identity from `.github/e2e-pairing/guard-identities.json`; a companion merged
-  into `develop` is matched through its merge commit; a companion closed
-  without merge, or merged into `main` or any other base, is a failure.
-  The coordinator also reconciles every open paired pull request in both
-  repositories every 30 minutes, on any base, and repairs divergent and stale
-  pending statuses. It catches a retarget away from `develop` and any
-  lost notification. A stale review-gate pending stays only when every open head
-  carries it; otherwise reconcile invalidates and reruns both local jobs. A
-  close-path inspection error and an internal review-gate error are failures,
-  never review-pending verdicts, and the resolve job fails closed before the CLI
-  runs, after setting up Node 24.
+  the result. Each repository's review state is checked with its own guard pin
+  and the guard identity from `.github/e2e-pairing/guard-identities.json`; a
+  companion merged into `develop` is matched through its merge commit; a
+  companion closed without merge, or merged into `main` or any other base, is a
+  failure. The coordinator also reconciles every open paired pull request in
+  both repositories every 30 minutes, on any base, and repairs divergent and
+  stale pending statuses. It catches a retarget away from `develop` and any lost
+  notification. A stale review-gate pending stays only when every open head
+  carries it; otherwise reconcile invalidates and reruns the local jobs of the
+  open sides. A close-path inspection error and an internal review-gate error
+  are failures, never review-pending verdicts, and the resolve job fails closed
+  before the CLI runs, after setting up Node 24.
 - The test offered as coverage of the function replaces the screen, the
   visitor's action, the session, the router, the navigation, this service's
   API, or this service's database.
