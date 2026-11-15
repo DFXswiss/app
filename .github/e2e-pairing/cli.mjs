@@ -552,6 +552,7 @@ export async function inspectPair({ client, startRepo, startPr }) {
     reason: '',
     review_pending: false,
     start_companion_inactive: false,
+    companion_inactive: false,
     start_repo: startRepo,
     start_pr: startNumber,
   };
@@ -631,6 +632,9 @@ export async function inspectPair({ client, startRepo, startPr }) {
     throw error;
   }
   if (!isCompanionActive(companionFiles)) {
+    if (companionPull.state === 'open') {
+      result.companion_inactive = true;
+    }
     return invalidateResult(result, `${COMPANION_PATH} is not active for ${companionRepo}#${companionPr}`);
   }
   if (!companionEffective.ok) {
@@ -1170,8 +1174,12 @@ async function failClosedStartCompanion(client, result, env, deps, startRepo, st
   return failOpenCompanion(client, env, deps, startRepo, startPr, options);
 }
 
-async function failInactiveCompanionStatus(client, env, deps, repo, sha, newest) {
+async function failInactiveCompanionStatus(client, env, deps, repo, sha, newest, failedHeads = null) {
   if (newest === null || (newest.state !== 'success' && newest.state !== 'pending')) {
+    return false;
+  }
+  const head = `${repo}@${sha}`;
+  if (failedHeads !== null && failedHeads.has(head)) {
     return false;
   }
   const targetUrl = statusTargetUrl(env);
@@ -1185,11 +1193,14 @@ async function failInactiveCompanionStatus(client, env, deps, repo, sha, newest)
     targetUrl,
   });
   await rerunLocalWorkflow(client, repo, sha);
+  if (failedHeads !== null) {
+    failedHeads.add(head);
+  }
   deps.log(`failed inactive companion status for ${repositoryLabel(repo)}@${sha}`);
   return true;
 }
 
-async function failInactiveStartCompanion(client, env, deps, result) {
+async function failInactiveStartCompanion(client, env, deps, result, failedHeads = null) {
   if (result.paired || result.start_companion_inactive !== true) {
     return false;
   }
@@ -1203,7 +1214,29 @@ async function failInactiveStartCompanion(client, env, deps, result) {
     throw new PairingError('pairing app slug unavailable');
   }
   const newest = await newestHeadStatus(client, result.start_repo, sha, `${slug}[bot]`);
-  return failInactiveCompanionStatus(client, env, deps, result.start_repo, sha, newest);
+  return failInactiveCompanionStatus(client, env, deps, result.start_repo, sha, newest, failedHeads);
+}
+
+async function failInactiveCompanionSide(client, env, deps, result, failedHeads = null) {
+  if (result.companion_inactive !== true) {
+    return false;
+  }
+  const companionRepo = result.start_repo === APP_REPO ? BACKEND_REPO : APP_REPO;
+  const pull = companionRepo === APP_REPO ? result.app_pull : result.backend_pull;
+  const sha = pullHeadSha(pull);
+  if (!SHA_RE.test(sha)) {
+    return false;
+  }
+  const slug = env.E2E_PAIR_APP_SLUG || '';
+  if (!slug) {
+    throw new PairingError('pairing app slug unavailable');
+  }
+  const newest = await newestHeadStatus(client, companionRepo, sha, `${slug}[bot]`);
+  const pair = parseStatusPair(newest);
+  if (pair === null || pair.app_pr !== Number(result.app_pr) || pair.backend_pr !== Number(result.backend_pr)) {
+    return false;
+  }
+  return failInactiveCompanionStatus(client, env, deps, companionRepo, sha, newest, failedHeads);
 }
 
 async function resolveCommand(client, env, deps, reviewGate) {
@@ -1246,11 +1279,14 @@ async function resolveValidatedCommand(client, env, deps, reviewGate, startRepo,
     // failOpenCompanion has just proven mutuality from both current heads.
     result.mutual = result.mutual || closedCompanionFailed;
   }
-  await failInactiveStartCompanion(client, env, deps, result);
+  const failedInactiveHeads = new Set();
+  await failInactiveStartCompanion(client, env, deps, result, failedInactiveHeads);
+  await failInactiveCompanionSide(client, env, deps, result, failedInactiveHeads);
   const initialStart = `${result.start_repo}#${result.start_pr}`;
   result = await reopenAfterCompanionMerge(client, result, reviewGate);
   if (`${result.start_repo}#${result.start_pr}` !== initialStart) {
-    await failInactiveStartCompanion(client, env, deps, result);
+    await failInactiveStartCompanion(client, env, deps, result, failedInactiveHeads);
+    await failInactiveCompanionSide(client, env, deps, result, failedInactiveHeads);
   }
   if (env.EVENT_NAME === 'repository_dispatch' || env.EVENT_NAME === 'pull_request_target') {
     await cancelSupersededRuns(client, result, env);
@@ -1389,6 +1425,7 @@ async function invalidateCommand(client, env, deps) {
 
     const current = await inspectPair({ client, startRepo, startPr });
     await failInactiveStartCompanion(client, env, deps, current);
+    await failInactiveCompanionSide(client, env, deps, current);
     await invalidateOpenPair(client, current, env);
     await invalidatePreviousCompanion(client, env, deps, startRepo, startPr, current);
     return 0;
