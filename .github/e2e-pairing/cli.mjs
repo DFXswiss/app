@@ -1237,7 +1237,11 @@ async function resolveValidatedCommand(client, env, deps, reviewGate, startRepo,
     result.mutual = result.mutual || closedCompanionFailed;
   }
   await failInactiveStartCompanion(client, env, deps, result);
+  const initialStart = `${result.start_repo}#${result.start_pr}`;
   result = await reopenAfterCompanionMerge(client, result, reviewGate);
+  if (`${result.start_repo}#${result.start_pr}` !== initialStart) {
+    await failInactiveStartCompanion(client, env, deps, result);
+  }
   if (env.EVENT_NAME === 'repository_dispatch' || env.EVENT_NAME === 'pull_request_target') {
     await cancelSupersededRuns(client, result, env);
   }

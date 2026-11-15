@@ -3391,6 +3391,37 @@ test('resolve reopens from the open backend when the app companion merged', asyn
   );
 });
 
+test('a merged app close fails an inactive reopened backend companion once', async () => {
+  const mergedApp = appPull(12, { state: 'closed', merged: true });
+  const fake = new FakeGitHub({
+    ...validPairRoutes({
+      app: mergedApp,
+      backendFiles: [{ filename: 'e2e-companion.json', status: 'unchanged' }],
+    }),
+    ...backendStatuses(BACKEND_SHA, [status({ description: pairDescription() })]),
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 1 },
+    ...localRunRoutes({ repo: BACKEND_REPO, sha: BACKEND_SHA, runId: 20, jobId: 201, path: '.github/workflows/api-pr.yaml' }),
+  });
+  const { deps: injected, writes } = deps(fake);
+  assert.equal(
+    await main(['resolve'], {
+      ...injected,
+      env: { ...injected.env, ...resolveEnv(), EVENT_NAME: 'pull_request_target', EVENT_ACTION: 'closed' },
+    }),
+    0,
+  );
+  assert.deepEqual(
+    fake.statusPosts().map((post) => `${post.key} ${post.body.state} ${post.body.description}`),
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA} failure e2e-companion.json is not active in this pull request`],
+  );
+  assert.deepEqual(
+    fake.reruns().map((call) => call.key),
+    ['POST /repos/DFXswiss/backend/actions/jobs/201/rerun'],
+  );
+  assert.equal(writes[0][0].valid, 'false');
+  assert.equal(writes[0][0].paired, 'false');
+});
+
 test('a merged app close reruns a review-pending backend that already has an App status', async () => {
   const mergedApp = appPull(12, { state: 'closed', merged: true });
   const fake = new FakeGitHub({
