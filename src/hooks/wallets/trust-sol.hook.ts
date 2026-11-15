@@ -4,6 +4,7 @@ import { TrustWalletAdapter } from '@solana/wallet-adapter-trust';
 import BigNumber from 'bignumber.js';
 import { encodeBase58 } from 'ethers';
 import { useMemo } from 'react';
+import { hasUserRejectedCode, UserRejectedError } from '../../util/user-rejection';
 import { useSolana } from '../solana.hook';
 
 export interface TrustInterface {
@@ -67,6 +68,9 @@ export function useTrustSol(): TrustInterface {
   }
 
   function handleError(error: unknown): never {
+    // the adapter keeps the wallet's own error, which carries the EIP-1193 code
+    if (hasUserRejectedCode(error)) throw new UserRejectedError();
+
     throw new Error((error as Error).message || 'An unexpected error occurred.');
   }
 

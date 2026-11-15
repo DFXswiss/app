@@ -271,6 +271,10 @@
     "title": "KYC Wallet-Hinweis",
     "description": "Die KYC-Seite, wenn die verbundene Wallet nicht die Adresse aus dem Link ist. Der Hinweis nennt die verlangte Adresse und bietet Abmelden. Einwilligung und Ident starten nicht."
   },
+  "wallet-cancel": {
+    "title": "Abbruch im Wallet",
+    "description": "Bricht der Benutzer im Wallet ab (EIP-1193-Code 4001), endet der Vorgang ohne Fehlermeldung und ohne Fehlerbericht: beim Verbinden wieder bei der Wallet-Auswahl, beim Verkauf im Formular, wo ein neuer Versuch möglich ist. Varianten: abgebrochene Verbindung zurück bei der Wallet-Auswahl; eine vom Wallet fehlgeschlagene Verbindung, die weiterhin \"Connection failed!\" mit der Meldung des Wallets zeigt; eine im Wallet abgebrochene Verkaufstransaktion, nach der das Formular ohne Fehler stehen bleibt; eine vom Wallet fehlgeschlagene Verkaufstransaktion, die weiterhin \"Transaction failed\" zeigt."
+  },
   "docs": {
     "docs/EIP7702-Implementierungsplan.md": {
       "title": "EIP-7702 Implementierungsplan"

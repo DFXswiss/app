@@ -686,6 +686,108 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   sell form shows its normal exchange rate and payment information. A green run proves how the sell page renders
   the banner and its absence for those answers. It does not prove production auth, that the API answers
   `LikelyReturn` for a real address, or that the API returns that quote.
+- **The wallet rejection unit test answers for the wallets and their SDKs.**
+  `src/__tests__/connect-wallet-rejection.test.tsx` renders the real connect components, wallet hooks,
+  `ConnectBase` and `ConnectError` with the real web3 and viem (its mock installs Node's `TextEncoder` and
+  `TextDecoder` from `util` on the jsdom global, which has none), but replaces the injected EIP-1193 provider
+  with an object that rejects the way an injected wallet does, `@wagmi/core` with functions that throw the real
+  viem `UserRejectedRequestError` with a fixed connected account and one WalletConnect connector, the wagmi
+  config with a placeholder project id, and the Solana and Tron wallet adapters with objects that throw the real
+  adapter error classes. The wallet context, `@dfx.swiss/react` with its session contexts and copies of its
+  `AssetType` and `Blockchain` values, translation, styled controls, `SignHint` and the client-error reporter
+  are replaced as well; the app's web3 hook has a fixed chain mapping, the Solana and
+  Tron hooks are empty, `ethers.encodeBase58` returns a placeholder, device detection and the Tron wallet and
+  in-app detection are fixed, `global.fetch` rejects the WalletConnect wallet list, `console.warn` is silenced,
+  and web3's address checksum, which jsdom's `Uint8Array` breaks, returns the address unchanged. A green run
+  proves that a cancel shaped that way shows and reports nothing and goes back to the wallet selection, and that
+  other failures on the same paths are still shown and reported. It does not prove that a real wallet,
+  extension or app rejects with exactly that shape or code, that the real reporter sends the report, that the
+  wallet list loads, that a real WalletConnect connector or session is used, the chain mapping, the signature
+  encoding, the wallet and mobile detection, the SDK's enum values, that the checksum is computed, that viem
+  encodes and decodes with the browser's own `TextEncoder` and `TextDecoder` as it does with Node's, or that a
+  real login completes.
+- **The wallet cancel full-stack cases replace the wallet extensions with injected wallets.**
+  `e2e-stack/specs/fixtures/injected-wallet.ts` installs `window.ethereum` with `addInitScript`: an EIP-1193
+  object marked `isMetaMask` whose answers come from the test process through `page.exposeFunction`, which
+  rejects with a plain object (code 4001 with MetaMask's `data` for a cancel, code -32603 for a failure),
+  answers Ethereum (`0x1`) as the chain, fixed fee data (`eth_gasPrice`, `eth_maxPriorityFeePerGas`,
+  `eth_estimateGas`, `eth_getTransactionCount`, `eth_getBlockByNumber`) instead of a chain node, answers
+  `wallet_switchEthereumChain`, `wallet_addEthereumChain` and `eth_sendTransaction` as the test decides, and
+  signs the login message with the dedicated test wallet's key. `e2e-stack/specs/auth.spec.ts` uses it for three
+  MetaMask cases on `/login`, and installs in-page objects for Phantom (`window.phantom.solana`), Trust
+  (`window.trustwallet.solana` and `window.trustwallet.tronLink`) and TronLink (`window.tronLink`, older
+  protocol, and `window.tron`, newer protocol) that reject the connection with code 4001, or with another code
+  for the failure cases. `e2e-stack/specs/sell-swap.spec.ts` logs in through the injected MetaMask and lets it
+  reject the chain switch, the request to add an unknown chain (after code 4902 for the switch), or the
+  transaction of "Complete transaction in your wallet" on `/sell`. A green run proves, through the real
+  frontend, API and Postgres, that a cancelled connection in each of those wallets and a cancelled MetaMask
+  login signature return to the wallet selection with no error and no `POST /v1/log/clientError` or
+  `POST /v1/auth`, that a retry signs in and creates the user row, that a cancelled chain switch, add-chain request or
+  transaction keeps the user on the sell form without "Transaction failed", and that a failing wallet still
+  shows its error and is reported to the API. It does not prove that a real wallet extension or app rejects with
+  exactly those shapes and codes, or answers an unknown chain with 4902 before the add-chain request, that a
+  transaction reaches a chain, a signature or transaction cancel in the Solana and Tron wallets, the swap
+  screen, or WalletConnect, whose relay the harness network cannot reach.
+- **The wallet cancel visual spec answers the wallet and the API itself.** `e2e/wallet-cancel.spec.ts`
+  installs an in-page injected wallet and fulfils the bootstrap GETs; `POST /v1/log/clientError` is answered
+  with 201 and recorded. For the login page the wallet rejects the account request (code 4001 with data, and
+  code -32603). For the sell form it signs any message with a fixed signature, the sign message and the sign-in
+  are answered with a synthetic message and an unsigned JWT, the address check, the quote, the payment
+  information, the bank-account update and `GET /v2/user` are answered with synthetic data, and the wallet
+  accepts the chain switch, answers fixed fee data and rejects `eth_sendTransaction` (code 4001 with data, and
+  code -32603). Unmatched `/v1/**` and `/v2/**` calls get `501`. A green run proves how the login page renders
+  the cancelled connection (back at the wallet selection, no report) and the failed one ("Connection failed!"
+  with the wallet's message, one report), and how the sell form renders a cancelled transaction (form kept, no
+  error, no report) and a failed one ("Transaction failed"). It does not prove that a real wallet rejects that
+  way, production auth, that the API returns real bootstrap data or that quote, or that the real client-error
+  endpoint receives the report.
+- **The MetaMask rejection hook test replaces the injected provider.**
+  `src/hooks/wallets/__tests__/metamask-rejection.hook.test.ts` runs `useMetaMask` against the real web3 with
+  an in-memory EIP-1193 provider (and a legacy `sendAsync` provider) that answers or rejects each method, and
+  replaces web3's address checksum, which jsdom's `Uint8Array` breaks, the app's web3 hook with a fixed chain
+  mapping, device detection, and `@dfx.swiss/react` with copies of its `AssetType` and `Blockchain` values. A green run proves that web3 keeps the EIP-1193 code of a rejection that is not
+  an Error, while other failures keep the message web3 builds for them. It does not prove that a real wallet
+  rejects with that shape, the chain mapping, the SDK's enum values, that the checksum is computed, or that a transaction reaches a
+  chain.
+- **The MetaMask calls hook test replaces web3 and the injected provider.**
+  `src/hooks/wallets/__tests__/metamask-calls.hook.test.ts` runs `useMetaMask` against a hand-written web3
+  object, an in-memory `window.ethereum`, a replaced `timeout`, `window.location`, `navigator.userAgent` and
+  device detection, the app's web3 hook with a placeholder chain mapping, `@dfx.swiss/react` with copies of its
+  `AssetType` and `Blockchain` values, and a `setTimeout` that fires at once
+  so the two-minute status poll ends immediately. A green run proves which web3 and wallet calls the hook makes
+  and how it treats their answers. It does not prove that web3 or a real wallet behaves like those objects, the
+  chain mapping, the SDK's enum values, the real poll timing, the detection of a wallet app by its user agent, or that a page reload
+  happens.
+- **The Solana wallet hook test replaces the wallet adapters and the Solana hook.**
+  `src/hooks/wallets/__tests__/solana-wallets.hook.test.ts` runs `usePhantom` and `useTrustSol` against
+  hand-written Phantom and Trust adapter objects that answer or reject `connect`, `signMessage` and
+  `signTransaction`, a replaced `useSolana` (transaction building and broadcast), a replaced `delay`,
+  `ethers.encodeBase58` and
+  `@dfx.swiss/react` with a copy of its `AssetType` values. A green run proves how the hooks map the adapters'
+  results and errors, including the 4001 code kept as the adapter's `error`. It does not prove that the real
+  adapters or wallets answer with those shapes, that a message is signed, or that a transaction is built or
+  broadcast.
+- **The Tron wallet hook test replaces the wallet adapters and the Tron hook.**
+  `src/hooks/wallets/__tests__/tron-wallets.hook.test.ts` runs `useTronLinkTrx` and `useTrustTrx` against
+  hand-written TronLink and Trust adapter objects that answer or reject `connect`, `signMessage` and
+  `signTransaction`, replaced wallet and mobile detection, a replaced `useTron` (transaction building and
+  broadcast), a replaced `delay`, and `@dfx.swiss/react` with a copy of its `AssetType` values. A green run proves
+  how the hooks map the adapters' results and errors, including the adapters' connect message "The user rejected
+  connection." only on connect. It does not prove that the real adapters or wallets answer with those shapes or
+  that text, the detection of the extension or app, that a message is signed, or that a transaction is built or
+  broadcast.
+- **The WalletConnect hook test replaces the wagmi actions and the wallet list.**
+  `src/hooks/wallets/__tests__/wallet-connect.hook.test.ts` replaces `@wagmi/core`, the wagmi config, the
+  WalletConnect connector and its provider (whose `request` answers the chain switch as each test decides),
+  `global.fetch` for the WalletConnect wallet list, the app's web3 hook with a fixed chain-id mapping and device
+  detection, `@dfx.swiss/react` with copies of its `AssetType` and `Blockchain` values, silences `console.warn`,
+  and replaces `setTimeout` so the wait after a chain switch ends at once;
+  it keeps the real viem, whose mock installs Node's `TextEncoder` and `TextDecoder` from `util` on the jsdom
+  global, which has none. A green run proves which wagmi actions the hook calls and how it maps their results and
+  errors. It does not prove that a WalletConnect session is established, that the real connector's provider
+  forwards the switch to the wallet, that a wallet answers or rejects that way, that the wallet list API returns that JSON, the chain-id mapping, the SDK's enum values, the real wait after
+  a switch, or that viem encodes and decodes with the browser's own `TextEncoder` and `TextDecoder` as it does with
+  Node's.
 
 ## Known gaps
 
