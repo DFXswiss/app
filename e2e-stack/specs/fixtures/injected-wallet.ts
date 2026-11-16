@@ -15,26 +15,55 @@ export type WalletAnswer = { result: unknown } | { error: { code: number; messag
 export async function injectWallet(
   page: Page,
   answer: (method: string, params: unknown[]) => WalletAnswer | Promise<WalletAnswer>,
+  options?: { injectAfterLoadMs?: number; requestThrows?: boolean },
 ): Promise<string[]> {
   const calls: string[] = [];
   await page.exposeFunction('e2eWalletAnswer', async (method: string, params: unknown[]) => {
     calls.push(method);
     return answer(method, params ?? []);
   });
-  await page.addInitScript(() => {
-    const answerFor = (window as unknown as { e2eWalletAnswer: (m: string, p: unknown[]) => Promise<WalletAnswer> })
-      .e2eWalletAnswer;
-    (window as unknown as { ethereum: unknown }).ethereum = {
-      isMetaMask: true,
-      request: async ({ method, params }: { method: string; params?: unknown[] }) => {
-        const reply = await answerFor(method, params ?? []);
-        if ('error' in reply) throw reply.error;
-        return reply.result;
-      },
-      on: () => undefined,
-      removeListener: () => undefined,
+  const install: { injectAfterLoadMs?: number; requestThrows?: boolean } = {};
+  if (options && typeof options.injectAfterLoadMs === 'number') install.injectAfterLoadMs = options.injectAfterLoadMs;
+  if (options && options.requestThrows === true) install.requestThrows = true;
+  await page.addInitScript((config: { injectAfterLoadMs?: number; requestThrows?: boolean }) => {
+    const place = () => {
+      const answerFor = (window as unknown as { e2eWalletAnswer: (m: string, p: unknown[]) => Promise<WalletAnswer> })
+        .e2eWalletAnswer;
+      const provider: {
+        isMetaMask: boolean;
+        on: () => undefined;
+        removeListener: () => undefined;
+        request?: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+      } = {
+        isMetaMask: true,
+        on: () => undefined,
+        removeListener: () => undefined,
+      };
+      if (config.requestThrows === true) {
+        Object.defineProperty(provider, 'request', {
+          configurable: true,
+          get() {
+            throw new Error('request unavailable');
+          },
+        });
+      } else {
+        provider.request = async ({ method, params }: { method: string; params?: unknown[] }) => {
+          const reply = await answerFor(method, params ?? []);
+          if ('error' in reply) throw reply.error;
+          return reply.result;
+        };
+      }
+      (window as unknown as { ethereum: unknown }).ethereum = provider;
     };
-  });
+    const delayMs = config.injectAfterLoadMs;
+    if (typeof delayMs === 'number') {
+      window.addEventListener('load', () => {
+        window.setTimeout(place, delayMs);
+      });
+    } else {
+      place();
+    }
+  }, install);
   return calls;
 }
 

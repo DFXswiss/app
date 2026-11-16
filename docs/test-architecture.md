@@ -713,8 +713,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   answers Ethereum (`0x1`) as the chain, fixed fee data (`eth_gasPrice`, `eth_maxPriorityFeePerGas`,
   `eth_estimateGas`, `eth_getTransactionCount`, `eth_getBlockByNumber`) instead of a chain node, answers
   `wallet_switchEthereumChain`, `wallet_addEthereumChain` and `eth_sendTransaction` as the test decides, and
-  signs the login message with the dedicated test wallet's key. `e2e-stack/specs/auth.spec.ts` uses it for three
-  MetaMask cases on `/login`, and installs in-page objects for Phantom (`window.phantom.solana`), Trust
+  signs the login message with the dedicated test wallet's key. The same helper can install that object only
+  after the page `load` event plus a short delay, or install an `isMetaMask` object whose `request` getter
+  throws. `e2e-stack/specs/auth.spec.ts` uses it for five MetaMask cases on `/login` (cancelled connection,
+  cancelled login signature, failing connection, wallet injected after load, and a `request` getter that
+  throws), and installs in-page objects for Phantom (`window.phantom.solana`), Trust
   (`window.trustwallet.solana` and `window.trustwallet.tronLink`) and TronLink (`window.tronLink`, older
   protocol, and `window.tron`, newer protocol) that reject the connection with code 4001, or with another code
   for the failure cases. `e2e-stack/specs/sell-swap.spec.ts` logs in through the injected MetaMask and lets it
@@ -722,12 +725,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   transaction of "Complete transaction in your wallet" on `/sell`. A green run proves, through the real
   frontend, API and Postgres, that a cancelled connection in each of those wallets and a cancelled MetaMask
   login signature return to the wallet selection with no error and no `POST /v1/log/clientError` or
-  `POST /v1/auth`, that a retry signs in and creates the user row, that a cancelled chain switch, add-chain request or
+  `POST /v1/auth`, that a retry signs in and creates the user row, that a wallet injected after the page has
+  loaded still signs in and creates the user row, that a provider whose `request` cannot be read shows the
+  missing-wallet hint instead of `Provider not set or invalid`, that a cancelled chain switch, add-chain request or
   transaction keeps the user on the sell form without "Transaction failed", and that a failing wallet still
   shows its error and is reported to the API. It does not prove that a real wallet extension or app rejects with
-  exactly those shapes and codes, or answers an unknown chain with 4902 before the add-chain request, that a
-  transaction reaches a chain, a signature or transaction cancel in the Solana and Tron wallets, the swap
-  screen, or WalletConnect, whose relay the harness network cannot reach.
+  exactly those shapes and codes, appears only after page load, or throws when `request` is read, or answers
+  an unknown chain with 4902 before the add-chain request, that a transaction reaches a chain, a signature or
+  transaction cancel in the Solana and Tron wallets, the swap screen, or WalletConnect, whose relay the
+  harness network cannot reach.
 - **The wallet cancel visual spec answers the wallet and the API itself.** `e2e/wallet-cancel.spec.ts`
   installs an in-page injected wallet and fulfils the bootstrap GETs; `POST /v1/log/clientError` is answered
   with 201 and recorded. For the login page the wallet rejects the account request (code 4001 with data, and
@@ -741,20 +747,32 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   error, no report) and a failed one ("Transaction failed"). It does not prove that a real wallet rejects that
   way, production auth, that the API returns real bootstrap data or that quote, or that the real client-error
   endpoint receives the report.
+- **The missing-provider visual spec answers the API itself and installs a provider whose `request` throws.**
+  `e2e/wallet-missing-provider.spec.ts` opens `/login?blockchain=Ethereum&lang=en`, installs `window.ethereum`
+  with `isMetaMask: true` whose `request` getter throws, and fulfils the bootstrap GETs (`/v1/language`,
+  `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`, `/v1/setting/infoBanner`). `POST /v1/log/clientError`
+  is answered with 201. Unmatched `/v1/**` and `/v2/**` calls get `501`. A green run proves the login page
+  renders "Connection failed!" and the missing-wallet hint. It does not prove that a real wallet extension
+  throws when `request` is read, or that a login succeeds.
 - **The MetaMask rejection hook test replaces the injected provider.**
   `src/hooks/wallets/__tests__/metamask-rejection.hook.test.ts` runs `useMetaMask` against the real web3 with
-  an in-memory EIP-1193 provider (and a legacy `sendAsync` provider) that answers or rejects each method, and
-  replaces web3's address checksum, which jsdom's `Uint8Array` breaks, the app's web3 hook with a fixed chain
-  mapping, device detection, and `@dfx.swiss/react` with copies of its `AssetType` and `Blockchain` values. A green run proves that web3 keeps the EIP-1193 code of a rejection that is not
-  an Error, while other failures keep the message web3 builds for them. It does not prove that a real wallet
-  rejects with that shape, the chain mapping, the SDK's enum values, that the checksum is computed, or that a transaction reaches a
-  chain.
+  an in-memory EIP-1193 provider that answers or rejects each method, including a provider installed only
+  after the hook exists, a missing provider, a throwing `window.ethereum` or `request` getter, and a plain
+  `{ code: 4001 }` rejection. It replaces web3's address checksum, which jsdom's `Uint8Array` breaks, the
+  app's web3 hook with a fixed chain mapping, device detection, and `@dfx.swiss/react` with copies of its
+  `AssetType` and `Blockchain` values. A green run proves that the hook reads the injected provider when the
+  request is sent, that a missing provider becomes the missing-wallet hint, and that web3 keeps the EIP-1193
+  code of a rejection that is not an Error, while other failures keep the message web3 builds for them. It
+  does not prove that a real wallet rejects with that shape, the chain mapping, the SDK's enum values, that
+  the checksum is computed, or that a transaction reaches a chain.
 - **The MetaMask calls hook test replaces web3 and the injected provider.**
   `src/hooks/wallets/__tests__/metamask-calls.hook.test.ts` runs `useMetaMask` against a hand-written web3
   object, an in-memory `window.ethereum`, a replaced `timeout`, `window.location`, `navigator.userAgent` and
   device detection, the app's web3 hook with a placeholder chain mapping, `@dfx.swiss/react` with copies of its
   `AssetType` and `Blockchain` values, and a `setTimeout` that fires at once
-  so the two-minute status poll ends immediately. A green run proves which web3 and wallet calls the hook makes
+  so the two-minute status poll ends immediately. Payment tests replace `window.ethereum` after the send and
+  check that the receipt or calls-status request still reaches the provider captured when the payment
+  started. `register()` still reports the current account when reading `.on` throws. A green run proves which web3 and wallet calls the hook makes
   and how it treats their answers. It does not prove that web3 or a real wallet behaves like those objects, the
   chain mapping, the SDK's enum values, the real poll timing, the detection of a wallet app by its user agent, or that a page reload
   happens.

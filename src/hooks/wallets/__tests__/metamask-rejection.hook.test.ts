@@ -1,6 +1,7 @@
-// useMetaMask against the real web3 and a replaced injected provider: a request the user rejected in the wallet keeps
-// its EIP-1193 code through web3, which rewrites a rejection that is not an Error but carries data into a new Error
-// without the code. Other failures reach the caller exactly as before.
+// useMetaMask against the real web3 and a replaced injected provider. Web3 only sees the hook's request adapter, which
+// reads window.ethereum when the request is sent. A rejection that is not an Error but carries EIP-1193 code 4001 is
+// turned into an Error that keeps the code; web3 would otherwise rewrite it and drop the code. Other failures reach
+// the caller exactly as before. A missing provider fails with the missing-wallet hint.
 
 jest.mock('@dfx.swiss/react', () => ({
   AssetType: { COIN: 'Coin', TOKEN: 'Token' },
@@ -26,6 +27,7 @@ import { TranslatedError } from '../../../util/translated-error';
 import { useMetaMask } from '../metamask.hook';
 
 const ADDRESS = '0x1234567890123456789012345678901234567890';
+const MISSING_WALLET = 'No wallet found. Please check your wallet extension or set one up, then reload this page.';
 
 type Handler = (params?: unknown) => Promise<unknown>;
 
@@ -188,15 +190,74 @@ describe('provider passed to web3', () => {
     await expect(setup().requestAccount()).resolves.toBe(ADDRESS);
   });
 
-  it('leaves a legacy provider without request to web3', async () => {
-    const legacy = {
-      sendAsync: jest.fn((payload: { id: number }, callback: (e: unknown, r: unknown) => void) =>
-        callback(null, { jsonrpc: '2.0', id: payload.id, result: [ADDRESS] }),
-      ),
-    };
-    (Web3 as any).givenProvider = legacy;
+  it('still connects when reading on throws', async () => {
+    const provider = createProvider();
+    Object.defineProperty(provider, 'on', {
+      configurable: true,
+      get() {
+        throw new TypeError('proxy');
+      },
+    });
+    useProvider(provider);
+    const hook = setup();
+    const onAccountChanged = jest.fn();
+    const onBlockchainChanged = jest.fn();
 
-    await expect(setup().getAccount()).resolves.toBe(ADDRESS);
-    expect(legacy.sendAsync).toHaveBeenCalled();
+    expect(() => hook.register(onAccountChanged, onBlockchainChanged)).not.toThrow();
+    await expect(hook.getAccount()).resolves.toBe(ADDRESS);
+    await expect(hook.requestAccount()).resolves.toBe(ADDRESS);
+  });
+});
+
+describe('provider read at request time', () => {
+  it('uses a wallet injected after the hook was created', async () => {
+    delete (window as any).ethereum;
+    const hook = setup();
+    (window as any).ethereum = createProvider();
+
+    await expect(hook.getAccount()).resolves.toBe(ADDRESS);
+    await expect(hook.requestAccount()).resolves.toBe(ADDRESS);
+  });
+
+  it('fails with the hint when no wallet is injected', async () => {
+    delete (window as any).ethereum;
+    const hook = setup();
+
+    await expect(hook.getAccount()).rejects.toThrow(MISSING_WALLET);
+    const request = hook.requestAccount();
+    await expect(request).rejects.toBeInstanceOf(TranslatedError);
+    await expect(request).rejects.toThrow(MISSING_WALLET);
+  });
+
+  it('fails with the hint when the provider has no request', async () => {
+    useProvider({ isMetaMask: true, on: jest.fn() });
+
+    const request = setup().requestAccount();
+    await expect(request).rejects.toBeInstanceOf(TranslatedError);
+    await expect(request).rejects.toThrow(MISSING_WALLET);
+  });
+
+  it('fails with the hint when reading the provider throws', async () => {
+    Object.defineProperty(window, 'ethereum', {
+      configurable: true,
+      get() {
+        throw new Error('unavailable');
+      },
+    });
+
+    await expect(setup().requestAccount()).rejects.toThrow(MISSING_WALLET);
+  });
+
+  it('fails with the hint when reading request throws', async () => {
+    const provider = { isMetaMask: true, on: jest.fn() };
+    Object.defineProperty(provider, 'request', {
+      configurable: true,
+      get() {
+        throw new Error('request unavailable');
+      },
+    });
+    useProvider(provider);
+
+    await expect(setup().requestAccount()).rejects.toThrow(MISSING_WALLET);
   });
 });

@@ -13,6 +13,9 @@ import { USER_REJECTED_CODE, UserRejectedError } from '../../util/user-rejection
 import { timeout } from '../../util/utils';
 import { useWeb3 } from '../web3.hook';
 
+const PROVIDER_MISSING_HINT =
+  'No wallet found. Please check your wallet extension or set one up, then reload this page.';
+
 export enum WalletType {
   RABBY = 'Rabby',
   META_MASK = 'MetaMask',
@@ -72,36 +75,106 @@ interface MetaMaskError {
   message: string;
 }
 
-// web3 rewrites a rejection that is not an Error but carries data into a new Error, with the data appended to the
-// message and without the code. Injected wallets reject that way, so a cancel would no longer be recognised as one.
-// web3 only uses request and on of an EIP-1193 provider, so it gets a plain object that passes both on.
-function keepUserRejection(provider: any): any {
-  if (typeof provider?.request !== 'function') return provider;
+// Wallet JSON-RPC results are untyped. Callers that need a field narrow the value themselves.
+interface WalletRpc {
+  request?: (args: { method: string; params?: unknown; id?: number }) => Promise<any>;
+  on?: (...args: unknown[]) => void;
+  isMetaMask?: boolean;
+  isRabby?: boolean;
+  isCoinbaseWallet?: boolean;
+  isTrust?: boolean;
+}
 
+type UsableProvider = WalletRpc & {
+  request: (args: { method: string; params?: unknown; id?: number }) => Promise<any>;
+};
+
+interface PaymasterCapabilities {
+  [chain: string]: { paymasterService?: { supported?: boolean } } | undefined;
+}
+
+function ethereum(): WalletRpc | undefined {
+  return (window as unknown as { ethereum?: WalletRpc }).ethereum;
+}
+
+// A throwing getter is the same as no wallet: the provider cannot be used for this request.
+function usableProvider(getProvider: () => WalletRpc | undefined): UsableProvider | undefined {
+  try {
+    const provider = getProvider();
+    if (!provider || typeof provider.request !== 'function') return undefined;
+    return provider as UsableProvider;
+  } catch {
+    return undefined;
+  }
+}
+
+function requireProvider(): UsableProvider {
+  const provider = usableProvider(ethereum);
+  if (!provider) throw new TranslatedError(PROVIDER_MISSING_HINT);
+  return provider;
+}
+
+// Direct wallet RPCs (switch chain, watch asset, typed data) keep the previous crash when nothing is injected.
+function injected(): UsableProvider {
+  return ethereum() as UsableProvider;
+}
+
+// web3 drops the code when it rewrites a rejection that is not an Error, so a plain EIP-1193 cancel would no
+// longer be recognised. An Error, and anything that is not code 4001, is returned unchanged.
+function rejectionKeepingUserCode(error: unknown): unknown {
+  const isPlainUserRejection =
+    !(error instanceof Error) && error != null && (error as { code?: unknown }).code === USER_REJECTED_CODE;
+  if (!isPlainUserRejection) return error;
+  return Object.assign(new Error((error as { message: string }).message), error);
+}
+
+// One stable EIP-1193 object. Web3 only sees this; each call reads the injected wallet at that moment.
+function eip1193Adapter(getProvider: () => WalletRpc | undefined): {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  on: (...args: unknown[]) => void;
+} {
   return {
-    request: (args: unknown) =>
-      provider.request(args).catch((e: MetaMaskError) => {
-        const isPlainRejection = !(e instanceof Error) && e?.code === USER_REJECTED_CODE;
-        throw isPlainRejection ? Object.assign(new Error(e.message), e) : e;
-      }),
-    on: (...args: unknown[]) => provider.on?.(...args),
+    async request(args: { method: string; params?: unknown[] }): Promise<unknown> {
+      const provider = usableProvider(getProvider);
+      if (!provider) throw new TranslatedError(PROVIDER_MISSING_HINT);
+      try {
+        return await provider.request(args);
+      } catch (error: unknown) {
+        throw rejectionKeepingUserCode(error);
+      }
+    },
+    on(...args: unknown[]): void {
+      try {
+        const provider = getProvider();
+        if (typeof provider?.on === 'function') provider.on(...args);
+      } catch {
+        // Web3 subscribes at construction. A throwing `.on` must not reject that.
+      }
+    },
   };
 }
 
-export function useMetaMask(): MetaMaskInterface {
-  const web3 = useMemo(() => {
-    try {
-      return new Web3(keepUserRejection(Web3.givenProvider));
-    } catch {
-      // conflicting wallet extensions may inject a provider proxy that throws on access
-      return new Web3();
-    }
-  }, []);
-  const { toBlockchain, toChainHex, toChainObject } = useWeb3();
-
-  function ethereum() {
-    return (window as any).ethereum;
+function listen<T>(event: string, handler: (value: T) => void): void {
+  try {
+    const provider = ethereum();
+    if (typeof provider?.on === 'function') provider.on(event, handler);
+  } catch {
+    // Some wallet proxies throw when `.on` is read. register() still finishes.
   }
+}
+
+function paymasterSupported(capabilities: unknown, chainId: number): boolean {
+  const known = capabilities as PaymasterCapabilities | null | undefined;
+  const chainHex = `0x${chainId.toString(16)}`;
+  return known?.[chainHex]?.paymasterService?.supported === true;
+}
+
+export function useMetaMask(): MetaMaskInterface {
+  const web3 = useMemo(
+    () => new Web3(eip1193Adapter(ethereum) as unknown as ConstructorParameters<typeof Web3>[0]),
+    [],
+  );
+  const { toBlockchain, toChainHex, toChainObject } = useWeb3();
 
   function isInstalled(): boolean {
     const eth = ethereum();
@@ -131,10 +204,10 @@ export function useMetaMask(): MetaMaskInterface {
     web3.eth.getChainId((_err, chainId) => {
       onBlockchainChanged(toBlockchain(chainId));
     });
-    ethereum()?.on('accountsChanged', (accounts: string[]) => {
+    listen('accountsChanged', (accounts: string[]) => {
       onAccountChanged(verifyAccount(accounts));
     });
-    ethereum()?.on('chainChanged', (chainId: string) => {
+    listen('chainChanged', (chainId: string) => {
       onBlockchainChanged(toBlockchain(chainId));
     });
   }
@@ -154,7 +227,7 @@ export function useMetaMask(): MetaMaskInterface {
       const accounts = await web3.eth.requestAccounts();
       return verifyAccount(accounts);
     } catch (e) {
-      handleError(e as MetaMaskError);
+      handleError(e);
     }
   }
 
@@ -168,7 +241,7 @@ export function useMetaMask(): MetaMaskInterface {
     const chainId = toChainHex(blockchain);
     if (!chainId) return;
 
-    return ethereum()
+    return injected()
       .request({ method: 'wallet_switchEthereumChain', params: [{ chainId }] })
       .catch((e: MetaMaskError) => {
         // 4902 chain is not yet added to MetaMask, therefore add chainId to MetaMask
@@ -183,7 +256,7 @@ export function useMetaMask(): MetaMaskInterface {
   async function requestAddChainId(blockchain: Blockchain): Promise<void> {
     const chain = toChainObject(blockchain);
 
-    return ethereum()
+    return injected()
       .request({
         method: 'wallet_addEthereumChain',
         params: [chain],
@@ -209,12 +282,12 @@ export function useMetaMask(): MetaMaskInterface {
       await requestChangeToBlockchain(asset.blockchain);
       return false;
     }
-    const tokenContract = createContract(asset.chainId);
+    const tokenContract = createContract(asset.chainId, web3);
 
     const symbol = await tokenContract.methods.symbol().call();
     const decimals = await tokenContract.methods.decimals().call();
 
-    return ethereum().request({
+    return injected().request({
       method: 'wallet_watchAsset',
       params: {
         type: 'ERC20',
@@ -251,7 +324,7 @@ export function useMetaMask(): MetaMaskInterface {
         return web3.eth.getBalance(address).then((balance) => ({ asset, amount: toUsableNumber(balance).toNumber() }));
       }
 
-      const tokenContract = createContract(asset.chainId);
+      const tokenContract = createContract(asset.chainId, web3);
       const decimals = await tokenContract.methods.decimals().call();
       return await tokenContract.methods
         .balanceOf(address)
@@ -271,19 +344,23 @@ export function useMetaMask(): MetaMaskInterface {
     to: string,
     config?: { isWeiAmount?: boolean; gasPrice?: number },
   ): Promise<string> {
+    const provider = requireProvider();
+    // Receipt polls stay on the wallet that accepted the transaction.
+    const client = new Web3(eip1193Adapter(() => provider) as unknown as ConstructorParameters<typeof Web3>[0]);
+
     if (asset.type === AssetType.COIN) {
       const transactionData: TransactionConfig = {
         from,
         to,
-        value: config?.isWeiAmount ? amount.toString() : web3.utils.toWei(amount.toString(), 'ether'),
+        value: config?.isWeiAmount ? amount.toString() : client.utils.toWei(amount.toString(), 'ether'),
         maxPriorityFeePerGas: null as any,
         maxFeePerGas: null as any,
         gasPrice: config?.gasPrice,
       };
 
-      return web3.eth.sendTransaction(transactionData).then((value) => value.transactionHash);
+      return client.eth.sendTransaction(transactionData).then((value) => value.transactionHash);
     } else {
-      const tokenContract = createContract(asset.chainId);
+      const tokenContract = createContract(asset.chainId, client);
 
       let adjustedAmount = amount.toString();
       if (!config?.isWeiAmount) {
@@ -298,8 +375,8 @@ export function useMetaMask(): MetaMaskInterface {
     }
   }
 
-  function createContract(chainId?: string): Contract {
-    return new web3.eth.Contract(ERC20_ABI as any, chainId);
+  function createContract(chainId: string | undefined, client: Web3): Contract {
+    return new client.eth.Contract(ERC20_ABI as unknown as ConstructorParameters<typeof Contract>[0], chainId);
   }
 
   /**
@@ -310,13 +387,16 @@ export function useMetaMask(): MetaMaskInterface {
       const account = await getAccount();
       if (!account) return false;
 
-      const capabilities = await ethereum().request({
-        method: 'wallet_getCapabilities',
-        params: [account],
-      });
+      const provider = usableProvider(ethereum);
+      if (!provider) return false;
 
-      const chainHex = `0x${chainId.toString(16)}`;
-      return capabilities?.[chainHex]?.paymasterService?.supported === true;
+      return paymasterSupported(
+        await provider.request({
+          method: 'wallet_getCapabilities',
+          params: [account],
+        }),
+        chainId,
+      );
     } catch {
       return false;
     }
@@ -325,13 +405,13 @@ export function useMetaMask(): MetaMaskInterface {
   /**
    * Wait for wallet_sendCalls transaction to be confirmed
    */
-  async function waitForCallsStatus(callsId: string): Promise<string> {
+  async function waitForCallsStatus(callsId: string, provider: UsableProvider): Promise<string> {
     const maxAttempts = 120; // 2 minutes
     for (let i = 0; i < maxAttempts; i++) {
-      const status = await ethereum().request({
+      const status = (await provider.request({
         method: 'wallet_getCallsStatus',
         params: [callsId],
-      });
+      })) as { status: string; receipts: { transactionHash: string }[] };
 
       if (status.status === 'CONFIRMED') {
         return status.receipts[0].transactionHash;
@@ -355,10 +435,10 @@ export function useMetaMask(): MetaMaskInterface {
       if (!account) throw new Error('No account connected');
 
       // Sign the typed data using eth_signTypedData_v4
-      const signature = await ethereum().request({
+      const signature = (await injected().request({
         method: 'eth_signTypedData_v4',
         params: [account, JSON.stringify(authData.typedData)],
-      });
+      })) as string;
 
       // Parse signature into r, s, v components
       const r = signature.slice(0, 66);
@@ -377,7 +457,7 @@ export function useMetaMask(): MetaMaskInterface {
         yParity,
       };
     } catch (e) {
-      return handleError(e as MetaMaskError);
+      return handleError(e);
     }
   }
 
@@ -386,13 +466,18 @@ export function useMetaMask(): MetaMaskInterface {
    */
   async function sendCallsWithPaymaster(calls: Eip5792Call[], paymasterUrl: string, chainId: number): Promise<string> {
     try {
+      const provider = requireProvider();
       const account = await getAccount();
       if (!account) throw new Error('No account connected');
 
       const chainHex = `0x${chainId.toString(16)}`;
-
-      // Check if wallet supports paymaster
-      const supported = await supportsEip5792Paymaster(chainId);
+      const supported = paymasterSupported(
+        await provider.request({
+          method: 'wallet_getCapabilities',
+          params: [account],
+        }),
+        chainId,
+      );
       if (!supported) {
         throw new TranslatedError(
           'Your wallet does not support gasless transactions. Please update MetaMask to v12.20+ and enable Smart Account.',
@@ -400,7 +485,7 @@ export function useMetaMask(): MetaMaskInterface {
       }
 
       // Send calls with paymaster capability
-      const result = await ethereum().request({
+      const result = (await provider.request({
         method: 'wallet_sendCalls',
         params: [
           {
@@ -417,17 +502,20 @@ export function useMetaMask(): MetaMaskInterface {
             },
           },
         ],
-      });
+      })) as { id?: string };
 
-      // Wait for transaction confirmation
-      return await waitForCallsStatus(result.id ?? result);
+      // A wallet may return the calls id as a string.
+      return await waitForCallsStatus((result.id ?? result) as string, provider);
     } catch (e) {
-      return handleError(e as MetaMaskError);
+      return handleError(e);
     }
   }
 
-  function handleError(e: MetaMaskError | undefined): never {
-    switch (e?.code) {
+  function handleError(e: unknown): never {
+    if (e instanceof TranslatedError) throw e;
+
+    const error = e as MetaMaskError | undefined;
+    switch (error?.code) {
       // carries the code, which the transaction screens check to keep the user on the form
       case USER_REJECTED_CODE:
         throw new UserRejectedError();
@@ -437,7 +525,7 @@ export function useMetaMask(): MetaMaskInterface {
     }
 
     // a wallet may reject without any value
-    throw e ?? new Error('An unexpected error occurred.');
+    throw error ?? new Error('An unexpected error occurred.');
   }
 
   return useMemo(

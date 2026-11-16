@@ -549,6 +549,64 @@ test.describe('Auth area e2e', () => {
     expect(sent).toEqual(['/v1/log/clientError']);
   });
 
+  test('an injected wallet that appears after the app has loaded logs in', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet(57);
+    await injectWallet(
+      page,
+      walletAnswers(wallet, {
+        connected: () => true,
+        requestAccounts: () => ({ result: [wallet.address] }),
+      }),
+      { injectAfterLoadMs: 500 },
+    );
+    const sent = recordAuthAndErrorReports(page);
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+    // The init script installs window.ethereum only after load plus a short delay.
+    await page.waitForFunction(
+      () => typeof (window as unknown as { ethereum?: { request?: unknown } }).ethereum?.request === 'function',
+    );
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="metamask"]').click();
+
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+    const user = await waitForRow<{ id: number }>('SELECT id FROM "user" WHERE LOWER(address) = LOWER($1)', [
+      wallet.address,
+    ]);
+    expect(user.id).toBeGreaterThan(0);
+    expect(sent).toEqual(['/v1/auth']);
+  });
+
+  test('an injected wallet whose request cannot be read shows the missing-wallet hint', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const wallet = testWallet(58);
+    await injectWallet(
+      page,
+      walletAnswers(wallet, {
+        connected: () => false,
+        requestAccounts: () => ({ result: [wallet.address] }),
+      }),
+      { requestThrows: true },
+    );
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="metamask"]').click();
+
+    await expect(page.getByText('Connection failed!', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(
+      page.getByText('No wallet found. Please check your wallet extension or set one up, then reload this page.', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.getByText('Provider not set or invalid')).toHaveCount(0);
+  });
+
   test('a cancelled Phantom connection returns to the wallet selection without a report', async ({ page }) => {
     test.setTimeout(90000);
 
