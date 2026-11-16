@@ -70,6 +70,15 @@ API sits on". Any call that reaches out without going through that wrapper is th
 mock's scope. Which calls those are, and how many, is a property of the API and not verifiable from this
 repository.
 
+On this network the name of an outside host does not resolve, because the network has no route out.
+`e2e-stack/compose.yml` sets the resolver options `timeout:1` and `attempts:1` for the API container
+(`dns_opt`): the resolver waits one second for an unanswered query and does not retry it, instead of the
+default of five seconds and two attempts. Node's `dns.lookup()` runs on libuv's thread pool, four threads
+by default, and also resolves the database host when a new Postgres connection opens, so lookups that wait
+the default time hold up requests that need the database. The gateway URLs in `e2e-stack/env/api.env` point at
+`localhost` and are refused at once; the option does not change them. A green run does not show how the API
+behaves when an outside provider answers slowly.
+
 The details — the factories and the states that are deliberately not achievable — are in
 `e2e-stack/README.md` and `e2e-stack/docs/test-data.md`.
 

@@ -43,6 +43,11 @@ services:
     # kind of crash this harness exists to catch. scripts/up.sh refuses such an image instead.
     networks:
       - sandbox
+    # An outside host name does not resolve on the internal network. The resolver waits 5 s per unanswered
+    # query by default, and waiting dns.lookup() calls hold the threads Node also needs for the database host.
+    dns_opt:
+      - timeout:1
+      - attempts:1
     depends_on:
       db:
         condition: service_healthy
