@@ -160,7 +160,7 @@ test.describe('Completed sell exchange rate', () => {
   test.use({ timezoneId: 'Europe/Zurich' });
 
   test('shows the expanded sell in the transaction list', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.setViewportSize({ width: 1280, height: 1250 });
     const { unexpectedRequests } = await installSyntheticApi(page);
     await page.goto(`/tx?session=${jwt()}`);
     const sellRow = page.getByText('Completed', { exact: true });
