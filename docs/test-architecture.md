@@ -639,6 +639,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   wallet list answers late, that the error text appears, and that the page requests no
   `/paymentLink/payment`. It does not prove that the API returns this merchant info or this wallet list, or answers an
   unknown route with this `404`.
+- **The payment-link MetaMask picture answers the payment request and the wallet itself.**
+  `e2e/payment-link-metamask.spec.ts` opens `/pl` with invoice parameters and fulfils
+  `GET /v1/paymentLink/payment` with a synthetic quoted pay request (one Ethereum transfer amount),
+  `GET /v1/paymentLink/standard` with an empty list, the callback with `409`, and the bootstrap
+  `**/v1/**` and `**/v2/**` calls; it leaves `GET /v1/lnurlp/wait/<payment>` open. A user agent that
+  names MetaMask makes the app treat the page as the MetaMask in-app browser, and an in-page EIP-1193
+  object rejects `eth_requestAccounts` with code -32603 and `Already processing unlock. Please wait.`.
+  A green run proves that the payment screen then shows the hint to confirm or close the pending
+  request instead of that text. It does not prove that the API returns this pay request, that a real
+  MetaMask in-app browser sends exactly this rejection, or that a payment completes. The full-stack
+  harness cannot cover this path: it cannot build a quoted pay request, because the quote needs live
+  transfer amounts that are not available under `ENVIRONMENT=loc`.
 - **The payment-link stack spec answers the place API itself for the SPAR merchant.**
   `e2e-stack/specs/payment-links.spec.ts` fulfils that same SPAR-Switzerland place URL with one
   synthetic SPAR shop, and answers every other place URL with HTTP 500, while the rest of that

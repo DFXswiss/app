@@ -966,7 +966,8 @@
     "Show Bank Frick IBAN": "Afficher l'IBAN Bank Frick",
     "Show available IBAN": "Afficher l'IBAN disponible",
     "The requested personal IBAN is not available for your account. Please switch back or contact support.": "L'IBAN personnel demandé n'est pas disponible pour votre compte. Veuillez revenir en arrière ou contacter le support.",
-    "Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.": "Votre nouvel IBAN Bank Frick nécessite le niveau KYC 50 - nous affichons donc votre IBAN existant à la place."
+    "Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.": "Votre nouvel IBAN Bank Frick nécessite le niveau KYC 50 - nous affichons donc votre IBAN existant à la place.",
+    "Please confirm or close the pending request in your wallet.": "Veuillez confirmer ou fermer la demande en attente dans votre portefeuille."
   },
   "screens/iban": {
     "Your Bank Accounts": "Vos comptes bancaires",

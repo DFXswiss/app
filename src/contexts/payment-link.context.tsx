@@ -37,6 +37,7 @@ import { usePolling } from 'src/hooks/polling';
 import { useSessionStore } from 'src/hooks/session-store.hook';
 import { Evm } from 'src/util/evm';
 import { Lnurl } from 'src/util/lnurl';
+import { mapWalletErrorMessage } from 'src/util/pending-wallet-request';
 import { fetchJson, url } from 'src/util/utils';
 import { useAppParams } from '../hooks/app-params.hook';
 import { Timer, useCountdown } from '../hooks/countdown.hook';
@@ -459,7 +460,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
       });
     } catch (e) {
       const error = e as Error;
-      setMetaMaskError(error.message);
+      setMetaMaskError(mapWalletErrorMessage(error.message));
     } finally {
       setIsLoadingMetaMask(false);
     }
@@ -520,7 +521,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
       );
     } catch (e) {
       const error = e as Error;
-      setMetaMaskError(error.message);
+      setMetaMaskError(mapWalletErrorMessage(error.message));
     } finally {
       setIsMetaMaskPaying(false);
     }
