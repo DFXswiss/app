@@ -554,14 +554,19 @@ test.describe('Auth area e2e', () => {
   }) => {
     test.setTimeout(90000);
 
-    // MetaMask answers a second account request while the first is still open with code -32002
+    // MetaMask answers a second account request while the first is still open with code -32002; the data on the
+    // rejection is what web3 would otherwise append to the message
     const wallet = testWallet(58);
     await injectWallet(
       page,
       walletAnswers(wallet, {
         connected: () => false,
         requestAccounts: () => ({
-          error: { code: -32002, message: 'Already processing eth_requestAccounts. Please wait.' },
+          error: {
+            code: -32002,
+            message: 'Already processing eth_requestAccounts. Please wait.',
+            data: { origin: 'http://localhost' },
+          },
         }),
       }),
     );

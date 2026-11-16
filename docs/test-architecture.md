@@ -821,14 +821,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `wallet_addEthereumChain` and `eth_sendTransaction` as the test decides, and signs the login message with the
   dedicated test wallet's key. `e2e-stack/specs/auth.spec.ts` uses it for five MetaMask cases on `/login`, two of
   them rejecting the account request as still pending (code -32603 with `Already processing unlock. Please wait.`,
-  and code -32002 with `Already processing eth_requestAccounts. Please wait.`), and installs in-page objects for
-  Phantom (`window.phantom.solana`), Trust (`window.trustwallet.solana` and `window.trustwallet.tronLink`) and
-  TronLink (`window.tronLink`, older protocol, and `window.tron`, newer protocol) that reject the connection with
-  code 4001, or with another code for the failure cases, including a Phantom connect rejected with
-  `Already processing connect. Please wait.`. `e2e-stack/specs/sell-swap.spec.ts` logs in through the injected
-  MetaMask and lets it reject the chain switch, the request to add an unknown chain (after code 4902 for the
-  switch), or the transaction of "Complete transaction in your wallet" on `/sell`. A green run proves, through the
-  real frontend, API and Postgres, that a cancelled connection in each of those wallets and a cancelled MetaMask
+  and code -32002 with `Already processing eth_requestAccounts. Please wait.` and data), and installs in-page
+  objects for Phantom (`window.phantom.solana`), Trust (`window.trustwallet.solana` and
+  `window.trustwallet.tronLink`) and TronLink (`window.tronLink`, older protocol, and `window.tron`, newer protocol)
+  that reject the connection with code 4001, or with another code for the failure cases, including a Phantom connect
+  rejected with `Already processing connect. Please wait.`. `e2e-stack/specs/sell-swap.spec.ts` logs in through the
+  injected MetaMask and lets it reject the chain switch, the request to add an unknown chain (after code 4902 for
+  the switch), or the transaction of "Complete transaction in your wallet" on `/sell`. A green run proves, through
+  the real frontend, API and Postgres, that a cancelled connection in each of those wallets and a cancelled MetaMask
   login signature return to the wallet selection with no error and no `POST /v1/log/clientError` or `POST /v1/auth`,
   that a connection the wallet is still processing shows the hint to confirm or close the pending request and
   reports exactly that hint, that a retry signs in and creates the user row, that a cancelled chain switch,
