@@ -18,6 +18,13 @@ import PasskeyWalletHistory, { PasskeyHistory } from './passkey-wallet-history';
 
 const TOAST_DURATION_MS = 4000;
 
+// One automatic Bitcoin link per key ring, shared by every desk in this tab.
+// A wallet refresh keeps the ring; a new sign-in replaces it.
+const bitcoinLinksStarted = new WeakSet<object>();
+
+type ShownReceive =
+  { family: ReceiveFamily; label: string; address: string } | { family: ReceiveFamily; label: string; error: string };
+
 export interface PasskeyDeskProps {
   balance?: { chf: number; eur: number };
   assets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
@@ -210,7 +217,7 @@ export default function PasskeyDesk({
     setBusy(true);
     setNote(undefined);
     let generation = sheetGeneration.current;
-    const isCurrent = () => generation === sheetGeneration.current;
+    const isCurrent = () => generation === sheetGeneration.current && sameSession(getOpenPasskey(), session);
     try {
       const result = action(createWalletClient(), session, isCurrent);
       generation = sheetGeneration.current;
@@ -235,8 +242,10 @@ export default function PasskeyDesk({
   }
 
   function replaceWallet(wallet: PasskeyWallet, session: OpenPasskey): void {
-    const latest = liveSession(session);
-    if (latest) setOpenPasskey({ ...latest, wallet });
+    // The open session outlives this desk. A mounted sibling reads the update.
+    const latest = getOpenPasskey();
+    if (!latest || !sameSession(latest, session)) return;
+    setOpenPasskey({ ...latest, wallet });
   }
 
   async function refreshWallet(
@@ -306,20 +315,18 @@ export default function PasskeyDesk({
     });
   }
 
-  const unlocked = open !== undefined && canUseKeys(open);
   const addresses = open?.wallet?.addresses ?? [];
   const sessionWallet = open?.wallet;
-  const bitcoinLinkStarted = useRef(false);
 
   useEffect(() => {
-    if (bitcoinLinkStarted.current) return;
     if (busy || busyRef.current) return;
-    if (!unlocked) return;
+    if (!open || !canUseKeys(open)) return;
     if (sessionWallet === undefined) return;
     if (addresses.some((address) => address.family === 'Bitcoin')) return;
-    bitcoinLinkStarted.current = true;
+    if (bitcoinLinksStarted.has(open.keys)) return;
+    bitcoinLinksStarted.add(open.keys);
     void onLink(0, false);
-  }, [busy, unlocked, sessionWallet, addresses, onLink]);
+  }, [busy, open, sessionWallet, addresses, onLink]);
 
   if (!open?.wallet) return <StyledVerticalStack gap={2} center />;
 
@@ -390,14 +397,17 @@ export default function PasskeyDesk({
     spark: t('Lightning (Spark)'),
   };
   const sessionKeys = expanded && canUseKeys(open) ? open.keys : undefined;
-  const receiveRows =
+  const receiveRows: ShownReceive[] =
     sessionKeys === undefined
       ? []
-      : (['evm', 'bitcoin', 'spark'] as const).map((family) => ({
-          family,
-          label: receiveLabel[family],
-          address: receiveAddress(sessionKeys, family),
-        }));
+      : (['evm', 'bitcoin', 'spark'] as const).map((family): ShownReceive => {
+          const label = receiveLabel[family];
+          try {
+            return { family, label, address: receiveAddress(sessionKeys, family) };
+          } catch (caught) {
+            return { family, label, error: t(passkeyMessage(caught)) };
+          }
+        });
 
   return (
     <main className="mx-auto w-full max-w-[560px] pb-10 text-left text-dfxBlue-800">
@@ -444,14 +454,18 @@ export default function PasskeyDesk({
             <ul>
               {receiveRows.map((row) => (
                 <li
-                  key={`${row.family}:${row.address}`}
+                  key={`${row.family}:${'address' in row ? row.address : row.error}`}
                   className="flex min-h-[58px] items-center justify-between gap-2 px-4 py-2"
                 >
                   <div className="min-w-0">
                     <b>{row.label}</b>
-                    <p className="truncate font-mono text-sm [font-feature-settings:'calt'_0]" title={row.address}>
-                      {row.address.slice(0, 10)}…{row.address.slice(-8)}
-                    </p>
+                    {'address' in row ? (
+                      <p className="truncate font-mono text-sm [font-feature-settings:'calt'_0]" title={row.address}>
+                        {row.address.slice(0, 10)}…{row.address.slice(-8)}
+                      </p>
+                    ) : (
+                      <p className="text-sm">{row.error}</p>
+                    )}
                     {row.family === 'bitcoin' && !bitcoin && (
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <p className="text-sm">{t('Not connected yet')}</p>
@@ -465,13 +479,15 @@ export default function PasskeyDesk({
                       </div>
                     )}
                   </div>
-                  <button
-                    className={button}
-                    aria-label={`${t('Copy address')} ${row.label}`}
-                    onClick={() => void copyAddress(row.address)}
-                  >
-                    ⧉
-                  </button>
+                  {'address' in row && (
+                    <button
+                      className={button}
+                      aria-label={`${t('Copy address')} ${row.label}`}
+                      onClick={() => void copyAddress(row.address)}
+                    >
+                      ⧉
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

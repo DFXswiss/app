@@ -273,6 +273,58 @@ describe('useClipboard', () => {
       expect(copyToClipboardMock).toHaveBeenCalledWith('test text');
       expect(result.current.isCopying).toBe(false);
     });
+
+    it('keeps isCopying true until 500 ms after the second copy', () => {
+      copyToClipboardMock.mockReturnValue(true);
+      const { result } = renderHook(() => useClipboard());
+
+      act(() => {
+        result.current.copy('first');
+      });
+      expect(result.current.isCopying).toBe(true);
+
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+      act(() => {
+        result.current.copy('second');
+      });
+      expect(result.current.isCopying).toBe(true);
+
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(result.current.isCopying).toBe(true);
+
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+      expect(result.current.isCopying).toBe(false);
+    });
+
+    it('does not update state when unmounted before the copied timer ends', () => {
+      copyToClipboardMock.mockReturnValue(true);
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        const pendingBefore = jest.getTimerCount();
+        const { result, unmount } = renderHook(() => useClipboard());
+
+        act(() => {
+          result.current.copy('first');
+        });
+        expect(result.current.isCopying).toBe(true);
+        expect(jest.getTimerCount()).toBe(pendingBefore + 1);
+
+        unmount();
+        expect(jest.getTimerCount()).toBe(pendingBefore);
+        act(() => {
+          jest.advanceTimersByTime(500);
+        });
+        expect(consoleError).not.toHaveBeenCalled();
+      } finally {
+        consoleError.mockRestore();
+      }
+    });
   });
 
   describe('when navigator.clipboard has no writeText', () => {

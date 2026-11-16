@@ -818,7 +818,7 @@ describe('ConnectPasskey', () => {
     expect(settings).toHaveFocus();
   });
 
-  it.each(['wallet', 'credential', 'token', 'missing', 'unmount'] as const)(
+  it.each(['wallet', 'credential', 'token', 'missing'] as const)(
     'does not apply a late refresh after a %s change',
     async (change) => {
       const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
@@ -830,7 +830,7 @@ describe('ConnectPasskey', () => {
             finish = resolve;
           }),
       );
-      const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+      render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
       fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
       fireEvent.click(screen.getByRole('button', { name: 'Reload data' }));
       const next = {
@@ -842,13 +842,33 @@ describe('ConnectPasskey', () => {
           credentialId: change === 'credential' ? 'other-credential' : session.wallet.credentialId,
         },
       };
-      if (change === 'unmount') view.unmount();
-      else act(() => setOpenPasskey(change === 'missing' ? undefined : next));
+      act(() => setOpenPasskey(change === 'missing' ? undefined : next));
       const before = passkeySession.getOpenPasskey();
       await act(async () => finish([{ ...session.wallet, backupSeenDate: 'old-result' }]));
       expect(passkeySession.getOpenPasskey()).toBe(before);
     },
   );
+
+  it('applies a late refresh to the same session after the desk unmounts', async () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    let finish: (value: unknown) => void = () => undefined;
+    mockWallets.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reload data' }));
+    view.unmount();
+    await act(async () => finish([{ ...session.wallet, backupSeenDate: 'old-result' }]));
+    const open = passkeySession.getOpenPasskey();
+    expect(open?.wallet?.backupSeenDate).toBe('old-result');
+    expect(open?.wallet?.id).toBe(session.wallet.id);
+    expect(open?.accessToken).toBe(session.accessToken);
+  });
 
   it('does not show a verification result after the session changes during verification', async () => {
     const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
@@ -1732,6 +1752,239 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
     expect(screen.getByRole('alert')).toHaveTextContent('wiped');
     expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+  });
+
+  it('does not show a late Bitcoin link success in the session that replaced it', async () => {
+    const sessionA = authResult('unlocked', ring(SEED), false) as unknown as OpenPasskey;
+    const sessionB = {
+      ...authResult('unlocked', ring(OTHER)),
+      accessToken: 'other-token',
+    } as unknown as OpenPasskey;
+    sessionB.wallet = { ...sessionB.wallet, id: 8, credentialId: 'other-cred' };
+    let resolveLink: (value: { address: { family: string; address: string } }) => void = () => undefined;
+    mockLink.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveLink = resolve;
+        }),
+    );
+    mockWallets.mockRejectedValueOnce(new Error('wallet refresh failed'));
+    setOpenPasskey(sessionA);
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(1));
+    act(() => setOpenPasskey(sessionB));
+    await act(async () => {
+      resolveLink({ address: { family: 'Bitcoin', address: 'bc1qfroma' } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(mockWallets).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByText(/Linked/)).not.toBeInTheDocument();
+    expect(screen.queryByText('wallet refresh failed')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(passkeySession.getOpenPasskey()).toBe(sessionB);
+    expect(sessionB.wallet.id).toBe(8);
+    expect(mockLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show a late Bitcoin link failure in the session that replaced it', async () => {
+    const sessionA = authResult('unlocked', ring(SEED), false) as unknown as OpenPasskey;
+    const sessionB = {
+      ...authResult('unlocked', ring(OTHER)),
+      accessToken: 'other-token',
+    } as unknown as OpenPasskey;
+    sessionB.wallet = { ...sessionB.wallet, id: 8, credentialId: 'other-cred' };
+    let rejectLink: (reason: Error) => void = () => undefined;
+    mockLink.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectLink = reject;
+        }),
+    );
+    setOpenPasskey(sessionA);
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(1));
+    act(() => setOpenPasskey(sessionB));
+    await act(async () => {
+      rejectLink(new Error('link from a'));
+      await Promise.resolve();
+    });
+    expect(screen.queryByText('link from a')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(passkeySession.getOpenPasskey()).toBe(sessionB);
+    expect(mockLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores the linked Bitcoin address after the desk unmounts', async () => {
+    const session = authResult('unlocked', ring(SEED), false) as unknown as OpenPasskey;
+    const refreshed = {
+      ...session.wallet,
+      addresses: [
+        ...session.wallet.addresses,
+        { ...session.wallet.addresses[0], family: 'Bitcoin' as const, address: 'bc1qafterunmount' },
+      ],
+    };
+    let resolveLink: (value: { address: { family: string; address: string } }) => void = () => undefined;
+    mockLink.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveLink = resolve;
+        }),
+    );
+    let resolveWallets: (value: unknown[]) => void = () => undefined;
+    mockWallets.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveWallets = resolve;
+        }),
+    );
+    setOpenPasskey(session);
+    const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(1));
+    view.unmount();
+    await act(async () => {
+      resolveLink({ address: { family: 'Bitcoin', address: 'bc1qafterunmount' } });
+    });
+    await waitFor(() => expect(mockWallets).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      resolveWallets([refreshed]);
+    });
+    const open = passkeySession.getOpenPasskey();
+    expect(open?.wallet?.addresses).toEqual(
+      expect.arrayContaining([expect.objectContaining({ family: 'Bitcoin', address: 'bc1qafterunmount' })]),
+    );
+    expect(open?.wallet?.id).toBe(session.wallet.id);
+    expect(open?.accessToken).toBe(session.accessToken);
+  });
+
+  it('does not write a finished Bitcoin link onto the session that replaced it', async () => {
+    const sessionA = authResult('unlocked', ring(SEED), false) as unknown as OpenPasskey;
+    const sessionB = {
+      ...authResult('unlocked', ring(OTHER)),
+      accessToken: 'other-token',
+    } as unknown as OpenPasskey;
+    sessionB.wallet = { ...sessionB.wallet, id: 8, credentialId: 'other-cred' };
+    const refreshedA = {
+      ...sessionA.wallet,
+      addresses: [
+        ...sessionA.wallet.addresses,
+        { ...sessionA.wallet.addresses[0], family: 'Bitcoin' as const, address: 'bc1qfroma' },
+      ],
+    };
+    let resolveLink: (value: { address: { family: string; address: string } }) => void = () => undefined;
+    mockLink.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveLink = resolve;
+        }),
+    );
+    let resolveWallets: (value: unknown[]) => void = () => undefined;
+    mockWallets.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveWallets = resolve;
+        }),
+    );
+    setOpenPasskey(sessionA);
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(1));
+    act(() => setOpenPasskey(sessionB));
+    await act(async () => {
+      resolveLink({ address: { family: 'Bitcoin', address: 'bc1qfroma' } });
+    });
+    await waitFor(() => expect(mockWallets).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      resolveWallets([refreshedA]);
+    });
+    expect(passkeySession.getOpenPasskey()).toBe(sessionB);
+    expect(sessionB.wallet.addresses.some((item) => item.address === 'bc1qfroma')).toBe(false);
+    expect(screen.queryByText(/Linked/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(mockLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('links bitcoin once when two desks share one session', async () => {
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys, false) as unknown as OpenPasskey;
+    mockLink.mockResolvedValue({ address: { family: 'Bitcoin', address: 'bc1qlogin' } });
+    mockWallets.mockResolvedValue([session.wallet]);
+    setOpenPasskey(session);
+    render(
+      <div>
+        <PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />
+        <PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />
+      </div>,
+    );
+    expect(mockLink).toHaveBeenCalledTimes(1);
+    expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('links bitcoin again when a replaced session brings its own key ring', async () => {
+    const keysA = ring(SEED);
+    const keysB = ring(OTHER);
+    const sessionA = authResult('unlocked', keysA, false) as unknown as OpenPasskey;
+    const sessionB = {
+      ...authResult('unlocked', keysB, false),
+      accessToken: 'other-token',
+    } as unknown as OpenPasskey;
+    sessionB.wallet = { ...sessionB.wallet, id: 9, credentialId: 'other-cred' };
+    let releaseA: (value: { address: { family: string; address: string } }) => void = () => undefined;
+    mockLink.mockResolvedValue({ address: { family: 'Bitcoin', address: 'bc1qlogin' } });
+    mockLink.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseA = resolve;
+        }),
+    );
+    mockWallets.mockResolvedValue([sessionA.wallet, sessionB.wallet]);
+    setOpenPasskey(sessionA);
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    expect(mockLink).toHaveBeenCalledTimes(1);
+    expect(mockLink).toHaveBeenLastCalledWith('bitcoin', 'token', keysA, 0);
+    act(() => setOpenPasskey(sessionB));
+    expect(mockLink).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      releaseA({ address: { family: 'Bitcoin', address: 'bc1qlogin' } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(2));
+    expect(mockLink).toHaveBeenLastCalledWith('bitcoin', 'other-token', keysB, 0);
+  });
+
+  it('shows a derivation error on the failed family and addresses on the others', () => {
+    const keys = {
+      evm: () => {
+        throw new Error('evm failed');
+      },
+      bitcoinAddress: () => ({ address: BITCOIN_RECEIVE }),
+      sparkIdentity: () => {
+        throw new Error('spark failed');
+      },
+      wipe: jest.fn(),
+    };
+    setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+    const rows = addressRows();
+    expect(rows).toHaveLength(3);
+    expect(within(rows[0]).getByText('Ethereum & EVM')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('evm failed')).toBeInTheDocument();
+    expect(within(rows[0]).queryByRole('button', { name: 'Copy address Ethereum & EVM' })).not.toBeInTheDocument();
+    expect(within(rows[1]).getByTitle(BITCOIN_RECEIVE)).toBeInTheDocument();
+    expect(within(rows[1]).getByRole('button', { name: 'Copy address Bitcoin' })).toBeInTheDocument();
+    expect(within(rows[2]).getByText('Lightning (Spark)')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('spark failed')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
   });
 
   it('shows an empty derived address without inventing a value', () => {

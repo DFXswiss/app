@@ -1,5 +1,5 @@
 import copy from 'copy-to-clipboard';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface ClipboardInterface {
   isCopying: boolean;
@@ -8,9 +8,21 @@ interface ClipboardInterface {
 
 export function useClipboard(): ClipboardInterface {
   const [isCopying, setIsCopying] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current !== undefined) clearTimeout(copiedTimer.current);
+    };
+  }, []);
+
   function markCopied(): void {
+    if (copiedTimer.current !== undefined) clearTimeout(copiedTimer.current);
     setIsCopying(true);
-    setTimeout(() => setIsCopying(false), 500);
+    copiedTimer.current = setTimeout(() => {
+      setIsCopying(false);
+      copiedTimer.current = undefined;
+    }, 500);
   }
 
   function fallbackCopy(text: string): boolean {
