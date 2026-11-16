@@ -101,27 +101,36 @@ describe('ExchangeRate fees and explanations', () => {
     ).toBeInTheDocument();
   });
 
-  it('displays asset formatting, asset fees and the substituted sell explanation', () => {
-    render(
-      <ExchangeRate
-        {...defaults}
-        type={'Sell' as never}
-        from={{ name: 'BTC', blockchain: 'Bitcoin' } as never}
-        feeCurrency={{ name: 'BTC', blockchain: 'Bitcoin' } as never}
-      />,
-    );
-    expect(screen.getByText('2.3457 BTC/USD')).toBeInTheDocument();
-    expect(screen.getByText('1.2346 BTC/USD')).toBeInTheDocument();
-    expect(screen.getByText('2 BTC (2.00%)')).toBeInTheDocument();
+  it('displays fiat fees and the substituted sell explanation', () => {
+    render(<ExchangeRate {...defaults} type={'Sell' as never} to={{ name: 'BTC', blockchain: 'Bitcoin' } as never} />);
+    expect(screen.getByText('2.345678 EUR/BTC')).toBeInTheDocument();
+    expect(screen.getByText('1.234567 EUR/BTC')).toBeInTheDocument();
+    expect(screen.getByText('2 EUR (2.00%)')).toBeInTheDocument();
     expect(screen.getByText('Bank fee', { exact: true })).toBeInTheDocument();
-    expect(screen.getByText('3 BTC')).toBeInTheDocument();
+    expect(screen.getByText('3 EUR')).toBeInTheDocument();
     expect(screen.queryByText('Network start fee')).not.toBeInTheDocument();
     expect(screen.queryByText('Platform fee')).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        'The output amount is computed as the input amount times the base rate minus the DFX fee, bank fee and the network fee. That is, 8 BTC = 10 USD × 1.2346 BTC/USD - 2 BTC - 3 BTC - 1 BTC.',
+        'The output amount is computed as the input amount times the base rate minus the DFX fee, bank fee and the network fee. That is, 8 EUR = 10 BTC × 1.234567 EUR/BTC - 2 EUR - 3 EUR - 1 EUR.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('displays asset formatting and asset fees without a bank fee for a swap', () => {
+    render(
+      <ExchangeRate
+        {...defaults}
+        type={'Swap' as never}
+        from={{ name: 'BTC', blockchain: 'Bitcoin' } as never}
+        to={{ name: 'ETH', blockchain: 'Ethereum' } as never}
+        feeCurrency={{ name: 'BTC', blockchain: 'Bitcoin' } as never}
+      />,
+    );
+    expect(screen.getByText('2.3457 BTC/ETH')).toBeInTheDocument();
+    expect(screen.getByText('1.2346 BTC/ETH')).toBeInTheDocument();
+    expect(screen.getByText('2 BTC (2.00%)')).toBeInTheDocument();
+    expect(screen.queryByText('Bank fee', { exact: true })).not.toBeInTheDocument();
   });
 
   it.each(['Buy', 'Sell', 'Swap'])('handles bank fee combinations for %s', (type) => {

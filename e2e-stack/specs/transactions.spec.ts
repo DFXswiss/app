@@ -60,7 +60,7 @@ test('empty transaction list shows "No transactions found"', async ({ page }) =>
   await expect(page.getByText('No transactions found', { exact: true })).toBeVisible();
 });
 
-test('completed sell detail displays fiat per asset for the rate and price step', async ({ page }) => {
+test('completed sell detail displays fiat per asset for the rate and price steps', async ({ page }) => {
   const user = await createUser({ tag: 'tx-sell-rate', kycLevel: 30, completePersonalData: true });
   const tx = await createTransaction({
     state: 'completed_sell',
@@ -69,41 +69,44 @@ test('completed sell detail displays fiat per asset for the rate and price step'
     userId: user.userId,
     userDataId: user.userDataId,
     jwt: user.jwt,
-    amount: 1,
+    amount: 2,
   });
   const eur = required(
     await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'EUR' LIMIT 1`),
     'EUR must exist',
   );
   await queryRows(
-    `UPDATE buy_fiat SET "inputAmount" = 1, "outputAmount" = 50, "inputReferenceAmount" = 1,
-       "inputReferenceAmountMinusFee" = 0.999, "outputAssetId" = $1, "priceSteps" = $2,
-       "percentFee" = 0.02, "totalFeeAmount" = 0.001, "blockchainFee" = 0.0002 WHERE id = $3`,
+    `UPDATE buy_fiat SET "inputAmount" = 2, "outputAmount" = 100.01, "inputReferenceAmount" = 2,
+       "inputReferenceAmountMinusFee" = 1.9982, "outputAssetId" = $1, "priceSteps" = $2,
+       "percentFee" = 0.0008, "totalFeeAmount" = 0.0018, "blockchainFee" = 0.0002 WHERE id = $3`,
     [
       eur.id,
       JSON.stringify([
-        { source: 'Synthetic', from: 'ETH', to: 'EUR', price: 0.025, timestamp: '2026-10-22T13:29:00.687Z' },
+        { source: 'Synthetic', from: 'ETH', to: 'USD', price: 0.0185, timestamp: '2026-10-22T13:29:00.687Z' },
+        { source: 'Synthetic', from: 'USD', to: 'EUR', price: 1.08, timestamp: '2026-10-22T13:25:03.871Z' },
       ]),
       tx.buyFiatId,
     ],
   );
 
   await openScreen(page, `/tx/${tx.uid}`, user.jwt);
-  await page.getByText('50 EUR/ETH', { exact: true }).first().click();
+  await page.getByText('50.005 EUR/ETH', { exact: true }).first().click();
   await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
-  // Base rate: 0.999 / 50 = 0.01998 ETH/EUR; each fiat fee is rounded up to cents.
-  await expect(page.getByText('0.06 EUR (0.001 ETH)', { exact: true })).toBeVisible();
-  await expect(page.getByText('0.05 EUR (0.0008 ETH, 2.00%)', { exact: true })).toBeVisible();
+  // Base rate: 1.9982 / 100.01 rounds to 0.01998 ETH/EUR; fiat fees are rounded up to cents.
+  await expect(page.getByText('0.10 EUR (0.0018 ETH)', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.09 EUR (0.0016 ETH, 0.08%)', { exact: true })).toBeVisible();
 
   await expect(
     page.getByText('Output amount = (Input amount - Total fee) × Base rate.', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText('50 EUR/ETH', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('50 EUR/ETH', { exact: true })).toHaveCount(1);
+  await expect(page.getByText('50.005 EUR/ETH', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('50.005 EUR/ETH', { exact: true })).toHaveCount(1);
   await expect(page.getByText('50.05 EUR/ETH', { exact: true })).toBeVisible();
-  await expect(page.getByText('0.02 ETH/EUR', { exact: true })).toHaveCount(0);
-  await expect(page.getByText(/ETH to EUR at 40 EUR\/ETH/)).toBeVisible();
-  await expect(page.getByText(/ETH to EUR at 0.025 ETH\/EUR/)).toHaveCount(0);
+  await expect(page.getByText('0.019998 ETH/EUR', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/ETH to USD at 54\.054 USD\/ETH/)).toBeVisible();
+  await expect(page.getByText(/USD to EUR at 0\.92593 EUR\/USD/)).toBeVisible();
+  await expect(page.getByText(/ETH to USD at 0\.0185 ETH\/USD/)).toHaveCount(0);
+  await expect(page.getByText(/USD to EUR at 1\.08 USD\/EUR/)).toHaveCount(0);
 });
 
 test('completed sell in the list displays fiat rates and fees', async ({ page }) => {
@@ -115,36 +118,41 @@ test('completed sell in the list displays fiat rates and fees', async ({ page })
     userId: user.userId,
     userDataId: user.userDataId,
     jwt: user.jwt,
-    amount: 1,
+    amount: 2,
   });
   const eur = required(
     await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'EUR' LIMIT 1`),
     'EUR must exist',
   );
   await queryRows(
-    `UPDATE buy_fiat SET "inputAmount" = 1, "outputAmount" = 50, "inputReferenceAmount" = 1,
-       "inputReferenceAmountMinusFee" = 0.999, "outputAssetId" = $1, "priceSteps" = $2,
-       "percentFee" = 0.02, "totalFeeAmount" = 0.001, "blockchainFee" = 0.0002 WHERE id = $3`,
+    `UPDATE buy_fiat SET "inputAmount" = 2, "outputAmount" = 100.01, "inputReferenceAmount" = 2,
+       "inputReferenceAmountMinusFee" = 1.9982, "outputAssetId" = $1, "priceSteps" = $2,
+       "percentFee" = 0.0008, "totalFeeAmount" = 0.0018, "blockchainFee" = 0.0002 WHERE id = $3`,
     [
       eur.id,
       JSON.stringify([
-        { source: 'Synthetic', from: 'ETH', to: 'EUR', price: 0.025, timestamp: '2026-10-22T13:29:00.687Z' },
+        { source: 'Synthetic', from: 'ETH', to: 'USD', price: 0.0185, timestamp: '2026-10-22T13:29:00.687Z' },
+        { source: 'Synthetic', from: 'USD', to: 'EUR', price: 1.08, timestamp: '2026-10-22T13:25:03.871Z' },
       ]),
       tx.buyFiatId,
     ],
   );
   await openScreen(page, '/tx', user.jwt);
   await page.getByText('Completed', { exact: true }).first().click();
-  await page.getByText('50 EUR/ETH', { exact: true }).first().click();
+  await page.getByText('50.005 EUR/ETH', { exact: true }).first().click();
   await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
-  await expect(page.getByText('50 EUR/ETH', { exact: true })).toHaveCount(1);
+  await expect(page.getByText('50.005 EUR/ETH', { exact: true })).toHaveCount(1);
   await expect(page.getByText('50.05 EUR/ETH', { exact: true })).toBeVisible();
-  await expect(page.getByText(/ETH to EUR at 40 EUR\/ETH/)).toBeVisible();
+  await expect(page.getByText(/ETH to USD at 54\.054 USD\/ETH/)).toBeVisible();
+  await expect(page.getByText(/USD to EUR at 0\.92593 EUR\/USD/)).toBeVisible();
+  await expect(page.getByText(/ETH to USD at 0\.0185 ETH\/USD/)).toHaveCount(0);
+  await expect(page.getByText(/USD to EUR at 1\.08 USD\/EUR/)).toHaveCount(0);
   await expect(
     page.getByText('Output amount = (Input amount - Total fee) × Base rate.', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText('0.06 EUR (0.001 ETH)', { exact: true })).toBeVisible();
-  await expect(page.getByText('0.02 ETH/EUR', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('0.10 EUR (0.0018 ETH)', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.09 EUR (0.0016 ETH, 0.08%)', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.019998 ETH/EUR', { exact: true })).toHaveCount(0);
 });
 
 test('transaction list shows buy and sell rows with expected labels and amounts', async ({ page }) => {

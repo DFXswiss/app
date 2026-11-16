@@ -16,7 +16,7 @@ function jwt(): string {
     user: 1,
     address: ADDRESS,
     role: 'User',
-    blockchains: ['Ethereum'],
+    blockchains: ['Polygon'],
     exp: Math.floor(Date.now() / 1000) + 3600,
   })}.synthetic`;
 }
@@ -46,12 +46,14 @@ const EUR_FIAT = {
 const DSC_ASSET = {
   id: 1,
   name: 'DSC',
-  uniqueName: 'Ethereum/DSC',
-  description: 'Ethereum',
-  type: 'Coin',
+  chainId: '0x5d4e735784293a0a8d37761ad93c13a0dd35c7e7',
+  explorerUrl: 'https://polygonscan.com/token/0x5d4e735784293a0a8d37761ad93c13a0dd35c7e7',
+  uniqueName: 'Polygon/DSC',
+  description: 'Denario Silver Coin',
+  type: 'Token',
   category: 'Public',
   dexName: 'DSC',
-  feeTier: 'Tier0',
+  feeTier: 'Tier2',
   comingSoon: false,
   buyable: true,
   sellable: true,
@@ -59,9 +61,10 @@ const DSC_ASSET = {
   cardSellable: false,
   instantBuyable: false,
   instantSellable: false,
-  blockchain: 'Ethereum',
-  decimals: 18,
+  blockchain: 'Polygon',
+  decimals: 8,
   sortOrder: 0,
+  limits: { minVolume: 0.01, maxVolume: 100 },
 };
 
 const SELL_FEES = {
@@ -81,7 +84,7 @@ const SYNTHETIC_SELL = {
   routeId: 1,
   timestamp: '2026-11-11T10:00:00.000Z',
   depositAddress: '0x2222222222222222222222222222222222222222',
-  blockchain: 'Ethereum',
+  blockchain: 'Polygon',
   fees: SELL_FEES,
   minVolume: 0.01,
   maxVolume: 100,
@@ -166,7 +169,7 @@ async function installSellRoutes(page: Page, addressCheckResult: 'LikelyReturn' 
         address: ADDRESS,
         wallet: 'DFX',
         explorerUrl: 'https://example.invalid',
-        blockchains: ['Ethereum'],
+        blockchains: ['Polygon'],
         isCustody: false,
       };
       return json(route, {
