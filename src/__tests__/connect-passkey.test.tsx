@@ -1685,6 +1685,41 @@ describe('ConnectPasskey', () => {
     expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
   });
 
+  it('closes the receive dialog when the open session changes', () => {
+    const first = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    const secondKeys = { ...ring(OTHER), bitcoinAddress: () => ({ address: 'tb1qanotherreceive' }) };
+    const second = { ...authResult('unlocked', secondKeys), accessToken: 'other-token' } as unknown as OpenPasskey;
+    setOpenPasskey(first);
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bitcoin' }));
+    expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent(BITCOIN_RECEIVE);
+    act(() => setOpenPasskey(second));
+    expect(screen.queryByRole('dialog', { name: 'Receive' })).not.toBeInTheDocument();
+    expect(screen.queryByText(BITCOIN_RECEIVE)).not.toBeInTheDocument();
+  });
+
+  it('keeps an open dialog when the same session is updated', () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+    act(() => setOpenPasskey({ ...session }));
+    expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
+  });
+
+  it('closes settings when the open session changes', () => {
+    const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+    setOpenPasskey(session);
+    render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    const other = { ...authResult('unlocked', ring(OTHER)), accessToken: 'other-token' } as unknown as OpenPasskey;
+    act(() => setOpenPasskey(other));
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+  });
+
   it('does not render an address when key derivation throws', () => {
     const keys = {
       evm: () => {
@@ -2461,6 +2496,8 @@ describe('ConnectPasskey', () => {
         wallet: { ...open.wallet, credentialId: '' },
       });
     });
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     mockExport.mockResolvedValueOnce(['one', 'two']);
     fireEvent.click(screen.getByRole('button', { name: /Export recovery phrase/ }));
     expect(await screen.findByTestId('passkey-recovery-words')).toHaveTextContent('one');
@@ -2993,6 +3030,30 @@ describe('ConnectPasskey', () => {
     await waitFor(() => expect(passkeySession.getOpenPasskey()).toBe(result));
     expect(mockLogout).not.toHaveBeenCalled();
     expect(keys.wipe).not.toHaveBeenCalled();
+  });
+
+  it('does not replace a session that opened while the sign-in was running', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    const keys = ring(SEED);
+    const result = authResult('unlocked', keys);
+    const other = { ...authResult('unlocked', ring(OTHER)), accessToken: 'other-token' } as unknown as OpenPasskey;
+    let resolveLogin: (value: typeof result) => void = () => undefined;
+    mockLogin.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveLogin = resolve;
+        }),
+    );
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    expect(mockLogin).toHaveBeenCalledTimes(1);
+    act(() => setOpenPasskey(other));
+    await act(async () => {
+      resolveLogin(result);
+      await Promise.resolve();
+    });
+    expect(passkeySession.getOpenPasskey()).toBe(other);
+    expect(keys.wipe).toHaveBeenCalledTimes(1);
   });
 
   it.each(['locked', 'seed-mismatch'] as const)(

@@ -137,8 +137,8 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     }, 1200);
   }
 
-  async function remember(result: AuthResult): Promise<void> {
-    if (abandonedRef.current) {
+  async function remember(result: AuthResult, initialSession: AuthResult | undefined): Promise<void> {
+    if (abandonedRef.current || getOpenPasskey() !== initialSession) {
       result.keys?.wipe();
       return;
     }
@@ -177,15 +177,19 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     setView('error');
   }
 
-  async function run(nextEntry: CeremonyEntry, action: () => Promise<void>): Promise<void> {
+  async function run(
+    nextEntry: CeremonyEntry,
+    action: (initialSession: AuthResult | undefined) => Promise<void>,
+  ): Promise<void> {
     if (busyRef.current) return;
+    const initialSession = getOpenPasskey();
     busyRef.current = true;
     setBusy(true);
     setEntry(nextEntry);
     setNotice(undefined);
     setSheetError(undefined);
     try {
-      await action();
+      await action(initialSession);
       if (abandonedRef.current) return;
       unknownOfferedRef.current = false;
       setView('idle');
@@ -199,25 +203,25 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   }
 
   function startLogin(): void {
-    void run('login', async () => {
+    void run('login', async (initialSession) => {
       const result = await createWalletClient().login();
-      await remember(result);
+      await remember(result, initialSession);
     });
   }
 
   function startAuthenticate(): void {
-    void run('authenticate', async () => {
+    void run('authenticate', async (initialSession) => {
       const result = await createWalletClient().login();
-      await remember(result);
+      await remember(result, initialSession);
     });
   }
 
   function startRegister(): void {
     const address = mail.trim();
     if (!isMail(address)) return;
-    void run('register', async () => {
+    void run('register', async (initialSession) => {
       const result = await createWalletClient().register({ mail: address });
-      await remember(result);
+      await remember(result, initialSession);
     });
   }
 

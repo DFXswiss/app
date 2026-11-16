@@ -107,6 +107,7 @@ export default function PasskeyDesk({
   const busyRef = useRef(false);
   const mounted = useRef(false);
   const sheetRef = useRef<typeof sheet>();
+  const sheetSession = useRef<OpenPasskey>();
   const sheetOrigin = useRef<HTMLElement | null>(null);
   const sheetGeneration = useRef(0);
   const wordsGeneration = useRef(0);
@@ -157,9 +158,26 @@ export default function PasskeyDesk({
     }
   }
 
+  function closeSheet(): void {
+    sheetGeneration.current += 1;
+    sheetRef.current = undefined;
+    sheetSession.current = undefined;
+    wordsGeneration.current += 1;
+    wordsKeys.current = undefined;
+    setSheet(undefined);
+    setWords(undefined);
+    setRevokeAcknowledged(false);
+    setNote(undefined);
+    setChecks(undefined);
+  }
+
   useEffect(() => {
     mounted.current = true;
     const unsubscribe = subscribeOpenPasskey(() => {
+      if (sheetRef.current && sheetSession.current && !sameSession(getOpenPasskey(), sheetSession.current)) {
+        closeSheet();
+        return;
+      }
       if (!wordsKeys.current) return;
       const current = getOpenPasskey();
       if (!current || current.keys !== wordsKeys.current) {
@@ -312,19 +330,9 @@ export default function PasskeyDesk({
     if (sheetRef.current === undefined) sheetOrigin.current = document.activeElement as HTMLElement | null;
     sheetGeneration.current += 1;
     sheetRef.current = next;
+    sheetSession.current = getOpenPasskey();
     setNote(undefined);
     setSheet(next);
-  };
-  const closeSheet = () => {
-    sheetGeneration.current += 1;
-    sheetRef.current = undefined;
-    wordsGeneration.current += 1;
-    wordsKeys.current = undefined;
-    setSheet(undefined);
-    setWords(undefined);
-    setRevokeAcknowledged(false);
-    setNote(undefined);
-    setChecks(undefined);
   };
   const requestCloseSheet = () => {
     if (!busyRef.current) closeSheet();
