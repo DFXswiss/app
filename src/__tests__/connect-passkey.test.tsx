@@ -347,20 +347,43 @@ describe('ConnectPasskey', () => {
     }
   });
 
+  it('uses an explicitly supplied handbook assets fixture', async () => {
+    window.__dfxHandbookPasskeyAssets = [
+      { name: 'Bitcoin', amount: '0.1 BTC', chf: 6000, eur: 5800, network: 'Bitcoin' },
+    ];
+    try {
+      mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+      mockLogin.mockResolvedValue(authResult('unlocked', ring(SEED)));
+      renderPasskey();
+      fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Show wallet' }));
+      expect(screen.getByText('0.1 BTC')).toBeInTheDocument();
+      expect(screen.getByText('CHF 6,000.00')).toBeInTheDocument();
+    } finally {
+      delete window.__dfxHandbookPasskeyAssets;
+    }
+  });
+
   it('does not use a handbook fixture when NODE_ENV is production', () => {
     const previous = process.env.NODE_ENV;
     window.__dfxHandbookPasskeyHistory = { items: [], hasMore: false, loadMore: async () => undefined };
     window.__dfxHandbookPasskeyBalance = { chf: 1234.5, eur: 1000 };
+    window.__dfxHandbookPasskeyAssets = [
+      { name: 'Bitcoin', amount: '0.1 BTC', chf: 6000, eur: 5800, network: 'Bitcoin' },
+    ];
     process.env.NODE_ENV = 'production';
     try {
       setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
       renderPasskey();
       expect(screen.getAllByText('Not available yet')).toHaveLength(2);
       expect(screen.queryByText('No transactions yet.')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+      expect(screen.queryByText('0.1 BTC')).not.toBeInTheDocument();
     } finally {
       process.env.NODE_ENV = previous;
       delete window.__dfxHandbookPasskeyHistory;
       delete window.__dfxHandbookPasskeyBalance;
+      delete window.__dfxHandbookPasskeyAssets;
     }
   });
 

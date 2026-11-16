@@ -51,6 +51,7 @@ declare global {
   interface Window {
     __dfxHandbookPasskeyHistory?: PasskeyHistory;
     __dfxHandbookPasskeyBalance?: { chf: number; eur: number };
+    __dfxHandbookPasskeyAssets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
   }
 }
 
@@ -273,6 +274,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
         <PasskeyDesk
           onHome={() => navigate('/')}
           balance={process.env.NODE_ENV === 'production' ? undefined : window.__dfxHandbookPasskeyBalance}
+          assets={process.env.NODE_ENV === 'production' ? undefined : window.__dfxHandbookPasskeyAssets}
           history={process.env.NODE_ENV === 'production' ? undefined : window.__dfxHandbookPasskeyHistory}
           onCancel={onCancel}
           onRevoked={() => setNotice('The passkey wallet was revoked.')}

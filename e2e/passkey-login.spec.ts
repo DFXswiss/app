@@ -8,6 +8,7 @@ const DESK_DERIVED_BITCOIN_RECEIVE = 'tb1q0cxey6x9nz35jky4v0rh77ta34z63j4hzl6tvt
 
 type HistoryWindow = {
   __dfxHandbookPasskeyBalance?: { chf: number; eur: number };
+  __dfxHandbookPasskeyAssets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
   __dfxHandbookPasskeyHistory?: {
     items: {
       type: 'buy' | 'sell' | 'swap' | 'send' | 'receive' | 'pay';
@@ -1034,6 +1035,23 @@ test.describe('Passkey wallet design', () => {
     await expect(page.getByText('Not available yet')).toBeVisible();
     await expect(page.getByRole('button', { name: /Total balance/ })).toContainText('12,345');
     await expect(page).toHaveScreenshot('passkey-wallet-balance.png');
+  });
+
+  test('shows the asset rows from test props', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyBalance = { chf: 12345.67, eur: 11890.2 };
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyAssets = [
+        { name: 'Bitcoin', amount: '0.15 BTC', chf: 9000, eur: 8670, network: 'Bitcoin' },
+        { name: 'Ether', amount: '1.2 ETH', chf: 3345.67, eur: 3220.2, network: 'Ethereum' },
+      ];
+    });
+    await openWallet(page);
+    await page.getByRole('button', { name: 'Show wallet' }).first().click();
+    await expect(page.getByText('0.15 BTC')).toBeVisible();
+    await expect(page.getByText('1.2 ETH')).toBeVisible();
+    await expectDerivedReceiveRows(page);
+    await expect(page).toHaveScreenshot('passkey-wallet-assets.png', { fullPage: true });
   });
 
   test('shows a failed history page from test props', async ({ page }) => {
