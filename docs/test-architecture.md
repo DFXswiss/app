@@ -77,7 +77,8 @@ default of five seconds and two attempts. Node's `dns.lookup()` runs on libuv's 
 by default, and also resolves the database host when a new Postgres connection opens, so lookups that wait
 the default time hold up requests that need the database. The gateway URLs in `e2e-stack/env/api.env` point at
 `localhost` and are refused at once; the option does not change them. A green run does not show how the API
-behaves when an outside provider answers slowly.
+behaves when a name lookup stays unanswered for the resolver default, because here every such lookup gives up
+after one second.
 
 The details — the factories and the states that are deliberately not achievable — are in
 `e2e-stack/README.md` and `e2e-stack/docs/test-data.md`.
