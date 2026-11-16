@@ -332,9 +332,25 @@ describe('ConnectPasskey', () => {
     }
   });
 
+  it('uses an explicitly supplied handbook balance fixture', async () => {
+    window.__dfxHandbookPasskeyBalance = { chf: 1234.5, eur: 1000 };
+    try {
+      mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+      mockLogin.mockResolvedValue(authResult('unlocked', ring(SEED)));
+      renderPasskey();
+      fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+      expect(await screen.findByText('1,234')).toBeInTheDocument();
+      expect(screen.getByText('.50')).toBeInTheDocument();
+      expect(screen.getAllByText('Not available yet')).toHaveLength(1);
+    } finally {
+      delete window.__dfxHandbookPasskeyBalance;
+    }
+  });
+
   it('does not use a handbook fixture when NODE_ENV is production', () => {
     const previous = process.env.NODE_ENV;
     window.__dfxHandbookPasskeyHistory = { items: [], hasMore: false, loadMore: async () => undefined };
+    window.__dfxHandbookPasskeyBalance = { chf: 1234.5, eur: 1000 };
     process.env.NODE_ENV = 'production';
     try {
       setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
@@ -344,6 +360,7 @@ describe('ConnectPasskey', () => {
     } finally {
       process.env.NODE_ENV = previous;
       delete window.__dfxHandbookPasskeyHistory;
+      delete window.__dfxHandbookPasskeyBalance;
     }
   });
 

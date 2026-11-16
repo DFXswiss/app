@@ -572,8 +572,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   that the custody sign-up call reaches the real API, or the reporter's 60 s deduplication of identical
   reports, since the reporter is replaced.
 - **Passkey wallet balance and history props are not backed by a data source here.**
-  The empty and populated history screenshots pass fixtures through a non-production window hook to the desk prop.
-  A green visual run does not prove a production balance, rate or transaction-history integration.
+  The balance, empty, populated, failed and loading history screenshots pass fixtures through non-production window hooks (`__dfxHandbookPasskeyBalance`, `__dfxHandbookPasskeyHistory`) to the desk props; the failed page rejects `loadMore` and the loading page never settles it.
+  A green visual run does not prove a production balance, rate or transaction-history integration, nor how a real source fails or how long it takes.
 - **The layout configuration hook unit test replaces its context setter.**
   `src/__tests__/layout-config-hook.test.tsx` uses `mockSetConfig`; a green run does not prove that the real provider updates its context.
 - **The passkey sheet unit test replaces the active element in one case.**
@@ -705,8 +705,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   Toast tests use Jest fake timers; a green run does not prove when a real browser timer fires.
 - **`src/__tests__/connect-passkey.test.tsx`: production environment substitute.**
   `src/__tests__/connect-passkey.test.tsx` and `src/__tests__/passkey-session.test.ts` switch `process.env.NODE_ENV` to `production`; a green run does not prove the behaviour of a production build.
-- **`src/__tests__/connect-passkey.test.tsx`: injected history.**
-  Unit tests set `window.__dfxHandbookPasskeyHistory`; a green run does not prove real transaction history exists.
+- **`src/__tests__/connect-passkey.test.tsx`: injected history and balance.**
+  Unit tests set `window.__dfxHandbookPasskeyHistory` and `window.__dfxHandbookPasskeyBalance`; a green run does not prove real transaction history or a real balance exists.
 - **`src/__tests__/connect-passkey.test.tsx`: late-result state spies.**
   The `useState` spies named above include the link-success spy, which watches for `Linked Bitcoin bc1qlogin.` after unmount during refresh. A green run does not prove suppression without that instrumentation.
 - **`src/__tests__/connect-passkey.test.tsx`: QR substitutes.**

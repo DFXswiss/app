@@ -7,6 +7,7 @@ const DESK_DERIVED_EVM = '0xA6EC3c72017965c5fAeEdaF020895ef1aDD7Ad72';
 const DESK_DERIVED_BITCOIN_RECEIVE = 'tb1q0cxey6x9nz35jky4v0rh77ta34z63j4hzl6tvt';
 
 type HistoryWindow = {
+  __dfxHandbookPasskeyBalance?: { chf: number; eur: number };
   __dfxHandbookPasskeyHistory?: {
     items: {
       type: 'buy' | 'sell' | 'swap' | 'send' | 'receive' | 'pay';
@@ -1021,6 +1022,83 @@ test.describe('Passkey wallet design', () => {
     await showMore.click();
     await expect(page.getByText('Payment', { exact: true })).toBeVisible();
     await expect(page).toHaveScreenshot('passkey-wallet-history-expanded.png', { fullPage: true });
+  });
+
+  test('shows the balance from test props', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyBalance = { chf: 12345.67, eur: 11890.2 };
+    });
+    await openWallet(page);
+    await expect(page.getByText('Not available yet')).toHaveCount(1);
+    await expect(page.getByText('Not available yet')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Total balance/ })).toContainText('12,345');
+    await expect(page).toHaveScreenshot('passkey-wallet-balance.png');
+  });
+
+  test('shows a failed history page from test props', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyHistory = {
+        items: [
+          {
+            type: 'buy',
+            direction: 'in',
+            title: 'Bitcoin purchase',
+            date: '6 Nov 2026',
+            amount: '+0.01 BTC',
+            fiatValue: 'CHF 500',
+          },
+          {
+            type: 'receive',
+            direction: 'in',
+            title: 'Received Bitcoin',
+            date: '5 Nov 2026',
+            amount: '+0.001 BTC',
+            fiatValue: 'CHF 50',
+          },
+        ],
+        hasMore: true,
+        loadMore: () => Promise.reject(new Error('offline')),
+      };
+    });
+    await openWallet(page);
+    await page.getByRole('button', { name: 'Show more' }).click();
+    await expect(page.getByText('Could not load transactions.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-history-error.png', { fullPage: true });
+  });
+
+  test('shows a pending history page from test props', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyHistory = {
+        items: [
+          {
+            type: 'buy',
+            direction: 'in',
+            title: 'Bitcoin purchase',
+            date: '6 Nov 2026',
+            amount: '+0.01 BTC',
+            fiatValue: 'CHF 500',
+          },
+          {
+            type: 'receive',
+            direction: 'in',
+            title: 'Received Bitcoin',
+            date: '5 Nov 2026',
+            amount: '+0.001 BTC',
+            fiatValue: 'CHF 50',
+          },
+        ],
+        hasMore: true,
+        loadMore: () => new Promise<void>(() => undefined),
+      };
+    });
+    await openWallet(page);
+    await page.getByRole('button', { name: 'Show more' }).click();
+    await expect(page.getByLabel('Loading more transactions')).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-history-loading.png', { fullPage: true });
   });
 
   test('shows recovery words and revocation confirmation', async ({ page }) => {

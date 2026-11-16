@@ -50,6 +50,7 @@ const PASSKEY_DID_NOT_UNLOCK =
 declare global {
   interface Window {
     __dfxHandbookPasskeyHistory?: PasskeyHistory;
+    __dfxHandbookPasskeyBalance?: { chf: number; eur: number };
   }
 }
 
@@ -271,6 +272,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       <StyledVerticalStack gap={2} center full>
         <PasskeyDesk
           onHome={() => navigate('/')}
+          balance={process.env.NODE_ENV === 'production' ? undefined : window.__dfxHandbookPasskeyBalance}
           history={process.env.NODE_ENV === 'production' ? undefined : window.__dfxHandbookPasskeyHistory}
           onCancel={onCancel}
           onRevoked={() => setNotice('The passkey wallet was revoked.')}
