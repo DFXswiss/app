@@ -330,6 +330,7 @@ jobs:
         env:
           START_REPO: ${{ steps.side.outputs.start_repo }}
           START_PR: ${{ steps.side.outputs.start_pr }}
+          PREVIOUS_SHA: ${{ github.event.before || github.event.client_payload.before || '' }}
           E2E_PAIR_APP_SLUG: ${{ vars.E2E_PAIR_APP_SLUG }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

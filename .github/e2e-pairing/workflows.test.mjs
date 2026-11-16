@@ -158,6 +158,10 @@ test('the resolve job fails closed after an earlier step failed', () => {
   );
   assert.match(cleanup, /START_REPO: \$\{\{ steps\.side\.outputs\.start_repo \}\}/);
   assert.match(cleanup, /START_PR: \$\{\{ steps\.side\.outputs\.start_pr \}\}/);
+  assert.match(
+    cleanup,
+    /PREVIOUS_SHA: \$\{\{ github\.event\.before \|\| github\.event\.client_payload\.before \|\| '' \}\}/,
+  );
   assert.match(cleanup, /E2E_PAIR_APP_SLUG: \$\{\{ vars\.E2E_PAIR_APP_SLUG \}\}/);
   assert.match(cleanup, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
   assert.match(
