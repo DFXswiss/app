@@ -1,5 +1,7 @@
 // useMetaMask with a replaced web3: the wallet type, the event registration, the connection check, balances, adding
 // a token, transactions and the EIP-5792 and EIP-7702 calls, each with the failures the hook handles itself.
+// The Web3 stand-in records the provider it was given, so a payment test can call that adapter after
+// window.ethereum has been replaced.
 
 const mockGetAccounts = jest.fn();
 const mockGetChainId = jest.fn();
@@ -15,10 +17,12 @@ const mockContractMethods = {
   transfer: jest.fn(),
 };
 const mockContract = jest.fn();
+const mockWeb3Providers: unknown[] = [];
 let mockIsMobile = false;
 
 jest.mock('web3', () => {
-  function MockWeb3() {
+  function MockWeb3(provider?: unknown) {
+    mockWeb3Providers.push(provider);
     return {
       eth: {
         getAccounts: (...args: unknown[]) => mockGetAccounts(...args),
@@ -65,7 +69,10 @@ import { Asset, AssetType, Blockchain } from '@dfx.swiss/react';
 import { renderHook } from '@testing-library/react';
 import BigNumber from 'bignumber.js';
 import { AbortError } from '../../../util/abort-error';
+import { TranslatedError } from '../../../util/translated-error';
 import { Eip7702AuthorizationData, useMetaMask } from '../metamask.hook';
+
+const MISSING_WALLET = 'No wallet found. Please check your wallet extension or set one up, then reload this page.';
 
 let ethereum: { request: jest.Mock; on: jest.Mock };
 const originalLocation = window.location;
@@ -80,6 +87,7 @@ function call(value: unknown) {
 
 beforeEach(() => {
   mockIsMobile = false;
+  mockWeb3Providers.length = 0;
   ethereum = { request: jest.fn(), on: jest.fn() };
   (window as any).ethereum = ethereum;
   mockTimeout.mockImplementation((promise: Promise<unknown>) => promise);
@@ -116,6 +124,12 @@ describe('getWalletType', () => {
 
     expect(setup().getWalletType()).toBeUndefined();
   });
+
+  it('does not know an injected provider without a wallet flag', () => {
+    (window as any).ethereum = {};
+
+    expect(setup().getWalletType()).toBeUndefined();
+  });
 });
 
 describe('register', () => {
@@ -146,6 +160,35 @@ describe('register', () => {
     setup().register(onAccountChanged, jest.fn());
 
     expect(onAccountChanged).toHaveBeenCalledWith(undefined);
+  });
+
+  it('registers the web3 callbacks when the wallet does not emit events', () => {
+    (window as any).ethereum = { request: jest.fn() };
+    const onAccountChanged = jest.fn();
+    mockGetAccounts.mockImplementation((callback: (e: unknown, a: string[]) => void) => callback(null, ['0xabc']));
+    mockGetChainId.mockImplementation((callback: (e: unknown, c: number) => void) => callback(null, 1));
+
+    expect(() => setup().register(onAccountChanged, jest.fn())).not.toThrow();
+
+    expect(onAccountChanged).toHaveBeenCalledWith('checksum(0xabc)');
+  });
+
+  it('still reports the current account and chain when reading on throws', () => {
+    Object.defineProperty(ethereum, 'on', {
+      configurable: true,
+      get() {
+        throw new TypeError('proxy');
+      },
+    });
+    const onAccountChanged = jest.fn();
+    const onBlockchainChanged = jest.fn();
+    mockGetAccounts.mockImplementation((callback: (e: unknown, a: string[]) => void) => callback(null, ['0xabc']));
+    mockGetChainId.mockImplementation((callback: (e: unknown, c: number) => void) => callback(null, 1));
+
+    expect(() => setup().register(onAccountChanged, onBlockchainChanged)).not.toThrow();
+
+    expect(onAccountChanged).toHaveBeenCalledWith('checksum(0xabc)');
+    expect(onBlockchainChanged).toHaveBeenCalledWith('chain-1');
   });
 });
 
@@ -298,6 +341,13 @@ describe('readBalance', () => {
     await expect(setup().readBalance(coin)).resolves.toEqual({ asset: coin, amount: 0 });
   });
 
+  it('reads nothing without an asset', async () => {
+    await expect(setup().readBalance(undefined as unknown as Asset, '0xabc')).resolves.toEqual({
+      asset: undefined,
+      amount: 0,
+    });
+  });
+
   it('fails without an address when asked to', async () => {
     await expect(setup().readBalance(coin, undefined, true)).rejects.toThrow('No address or asset provided');
   });
@@ -393,6 +443,81 @@ describe('createTransaction', () => {
     expect(mockContractMethods.decimals).not.toHaveBeenCalled();
     expect(mockContractMethods.transfer).toHaveBeenCalledWith('0xt', '1500000');
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ gasPrice: 7 }));
+  });
+
+  it('polls the coin receipt on the provider that sent the transaction', async () => {
+    const replacement = { request: jest.fn(), on: jest.fn() };
+    mockSendTransaction.mockImplementation(async () => {
+      (window as any).ethereum = replacement;
+      const held = mockWeb3Providers[mockWeb3Providers.length - 1] as {
+        request: (args: { method: string; params?: unknown }) => Promise<unknown>;
+      };
+      await held.request({ method: 'eth_getTransactionReceipt', params: ['0xhash'] });
+      return { transactionHash: '0xhash' };
+    });
+
+    await expect(
+      setup().createTransaction(new BigNumber(1), { type: AssetType.COIN } as Asset, '0xfrom', '0xto'),
+    ).resolves.toBe('0xhash');
+
+    expect(mockSendTransaction).toHaveBeenCalledWith(expect.objectContaining({ value: '1-wei' }));
+    expect(ethereum.request).toHaveBeenCalledWith({ method: 'eth_getTransactionReceipt', params: ['0xhash'] });
+    expect(replacement.request).not.toHaveBeenCalled();
+  });
+
+  it('polls the token receipt on the provider that sent the transfer', async () => {
+    const replacement = { request: jest.fn(), on: jest.fn() };
+    const send = jest.fn().mockImplementation(async () => {
+      (window as any).ethereum = replacement;
+      const held = mockWeb3Providers[mockWeb3Providers.length - 1] as {
+        request: (args: { method: string; params?: unknown }) => Promise<unknown>;
+      };
+      await held.request({ method: 'eth_getTransactionReceipt', params: ['0xtoken-hash'] });
+      return { transactionHash: '0xtoken-hash' };
+    });
+    mockContractMethods.decimals.mockReturnValue(call(6));
+    mockContractMethods.transfer.mockReturnValue({ send });
+
+    await expect(
+      setup().createTransaction(new BigNumber(1), { type: AssetType.TOKEN, chainId: '0xtoken' } as Asset, '0xf', '0xt'),
+    ).resolves.toBe('0xtoken-hash');
+
+    expect(ethereum.request).toHaveBeenCalledWith({ method: 'eth_getTransactionReceipt', params: ['0xtoken-hash'] });
+    expect(replacement.request).not.toHaveBeenCalled();
+  });
+
+  it('fails with the hint when no wallet is injected', async () => {
+    delete (window as any).ethereum;
+
+    await expect(
+      setup().createTransaction(new BigNumber(1), { type: AssetType.COIN } as Asset, '0xfrom', '0xto'),
+    ).rejects.toThrow(MISSING_WALLET);
+  });
+
+  it('fails with the hint when the provider has no request', async () => {
+    (window as any).ethereum = { isMetaMask: true };
+
+    const transaction = setup().createTransaction(
+      new BigNumber(1),
+      { type: AssetType.COIN } as Asset,
+      '0xfrom',
+      '0xto',
+    );
+    await expect(transaction).rejects.toBeInstanceOf(TranslatedError);
+    await expect(transaction).rejects.toThrow(MISSING_WALLET);
+  });
+
+  it('fails with the hint when the injected provider cannot be read', async () => {
+    Object.defineProperty(window, 'ethereum', {
+      configurable: true,
+      get() {
+        throw new Error('unavailable');
+      },
+    });
+
+    await expect(
+      setup().createTransaction(new BigNumber(1), { type: AssetType.COIN } as Asset, '0xfrom', '0xto'),
+    ).rejects.toThrow(MISSING_WALLET);
   });
 });
 
@@ -495,5 +620,252 @@ describe('EIP-5792 calls', () => {
       wait.mockRestore();
     }
     expect(ethereum.request).toHaveBeenCalledTimes(122);
+  });
+
+  it('stops when the calls fail', async () => {
+    ethereum.request.mockImplementation(({ method }: { method: string }) => {
+      switch (method) {
+        case 'wallet_getCapabilities':
+          return Promise.resolve({ '0x1': { paymasterService: { supported: true } } });
+        case 'wallet_sendCalls':
+          return Promise.resolve({ id: 'calls-id' });
+        default:
+          return Promise.resolve({ status: 'FAILED' });
+      }
+    });
+
+    await expect(setup().sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow('Transaction failed');
+  });
+
+  it('fails when the wallet cannot sponsor gas', async () => {
+    ethereum.request.mockResolvedValue({ '0x1': { paymasterService: { supported: false } } });
+
+    const payment = setup().sendCallsWithPaymaster(calls, 'https://paymaster', 1);
+    await expect(payment).rejects.toBeInstanceOf(TranslatedError);
+    await expect(payment).rejects.toThrow(
+      'Your wallet does not support gasless transactions. Please update MetaMask to v12.20+ and enable Smart Account.',
+    );
+  });
+
+  it('fails with the gasless hint when the capabilities method is missing', async () => {
+    ethereum.request.mockRejectedValue({
+      code: -32601,
+      message: 'The method "wallet_getCapabilities" does not exist / is not available.',
+    });
+
+    const payment = setup().sendCallsWithPaymaster(calls, 'https://paymaster', 1);
+    await expect(payment).rejects.toBeInstanceOf(TranslatedError);
+    await expect(payment).rejects.toThrow(
+      'Your wallet does not support gasless transactions. Please update MetaMask to v12.20+ and enable Smart Account.',
+    );
+    expect(ethereum.request).toHaveBeenCalledWith({
+      method: 'wallet_getCapabilities',
+      params: ['checksum(0xabc)'],
+    });
+    expect(ethereum.request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_sendCalls' }));
+  });
+
+  it('fails with the hint when no wallet is injected', async () => {
+    delete (window as any).ethereum;
+
+    const payment = setup().sendCallsWithPaymaster(calls, 'https://paymaster', 1);
+    await expect(payment).rejects.toBeInstanceOf(TranslatedError);
+    await expect(payment).rejects.toThrow(MISSING_WALLET);
+  });
+
+  it('polls the calls status on the provider that sent them', async () => {
+    const replacement = { request: jest.fn(), on: jest.fn() };
+    ethereum.request.mockImplementation(({ method }: { method: string }) => {
+      switch (method) {
+        case 'wallet_getCapabilities':
+          return Promise.resolve({ '0x1': { paymasterService: { supported: true } } });
+        case 'wallet_sendCalls':
+          (window as any).ethereum = replacement;
+          return Promise.resolve({ id: 'calls-id' });
+        default:
+          return Promise.resolve({ status: 'CONFIRMED', receipts: [{ transactionHash: '0xhash' }] });
+      }
+    });
+
+    await expect(setup().sendCallsWithPaymaster(calls, 'https://paymaster', 1)).resolves.toBe('0xhash');
+    expect(ethereum.request).toHaveBeenCalledWith({ method: 'wallet_getCallsStatus', params: ['calls-id'] });
+    expect(replacement.request).not.toHaveBeenCalled();
+  });
+});
+
+describe('supportsEip5792Paymaster', () => {
+  it('is false without a wallet', async () => {
+    delete (window as any).ethereum;
+
+    await expect(setup().supportsEip5792Paymaster(1)).resolves.toBe(false);
+  });
+
+  it('is false when the provider has no request', async () => {
+    (window as any).ethereum = { isMetaMask: true };
+
+    await expect(setup().supportsEip5792Paymaster(1)).resolves.toBe(false);
+  });
+
+  it('is false when the provider cannot be read', async () => {
+    Object.defineProperty(window, 'ethereum', {
+      configurable: true,
+      get() {
+        throw new Error('unavailable');
+      },
+    });
+
+    await expect(setup().supportsEip5792Paymaster(1)).resolves.toBe(false);
+  });
+
+  it('is false when the capabilities request fails', async () => {
+    ethereum.request.mockRejectedValue(new Error('Method not supported'));
+
+    await expect(setup().supportsEip5792Paymaster(1)).resolves.toBe(false);
+  });
+
+  it('is false when the account cannot be read', async () => {
+    mockGetAccounts.mockRejectedValue(new Error('accounts failed'));
+
+    await expect(setup().supportsEip5792Paymaster(1)).resolves.toBe(false);
+    expect(ethereum.request).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['empty', {}],
+    ['for another chain', { '0x89': { paymasterService: { supported: true } } }],
+    ['without the service', { '0x1': {} }],
+    ['turned off', { '0x1': { paymasterService: { supported: false } } }],
+  ])('is false when the capability answer is %s', async (_label, answer) => {
+    ethereum.request.mockResolvedValue(answer);
+
+    await expect(setup().supportsEip5792Paymaster(1)).resolves.toBe(false);
+  });
+
+  it('is true when the chain supports the paymaster', async () => {
+    ethereum.request.mockResolvedValue({ '0x1': { paymasterService: { supported: true } } });
+
+    await expect(setup().supportsEip5792Paymaster(1)).resolves.toBe(true);
+  });
+});
+
+describe('injected provider adapter', () => {
+  function adapter(): {
+    request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+    on: (...args: unknown[]) => void;
+  } {
+    setup();
+    const created = mockWeb3Providers[0] as {
+      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+      on: (...args: unknown[]) => void;
+    };
+    if (!created) throw new Error('web3 was not constructed');
+    return created;
+  }
+
+  it('uses a wallet injected after the hook was created', async () => {
+    delete (window as any).ethereum;
+    const created = adapter();
+    const request = jest.fn().mockResolvedValue(['0xlate']);
+    (window as any).ethereum = { request, on: jest.fn() };
+
+    await expect(created.request({ method: 'eth_accounts' })).resolves.toEqual(['0xlate']);
+    expect(request).toHaveBeenCalledWith({ method: 'eth_accounts' });
+  });
+
+  it('fails with the hint when no wallet is injected', async () => {
+    delete (window as any).ethereum;
+
+    await expect(adapter().request({ method: 'eth_accounts' })).rejects.toThrow(MISSING_WALLET);
+  });
+
+  it('fails with the hint when the provider has no request', async () => {
+    (window as any).ethereum = { isMetaMask: true, on: jest.fn() };
+
+    await expect(adapter().request({ method: 'eth_accounts' })).rejects.toBeInstanceOf(TranslatedError);
+  });
+
+  it('fails with the hint when reading the provider throws', async () => {
+    Object.defineProperty(window, 'ethereum', {
+      configurable: true,
+      get() {
+        throw new Error('unavailable');
+      },
+    });
+
+    await expect(adapter().request({ method: 'eth_accounts' })).rejects.toThrow(MISSING_WALLET);
+  });
+
+  it('fails with the hint when reading request throws', async () => {
+    const provider = { isMetaMask: true, on: jest.fn() };
+    Object.defineProperty(provider, 'request', {
+      configurable: true,
+      get() {
+        throw new Error('request unavailable');
+      },
+    });
+    (window as any).ethereum = provider;
+
+    await expect(adapter().request({ method: 'eth_accounts' })).rejects.toThrow(MISSING_WALLET);
+  });
+
+  it('turns a plain user rejection into an Error that keeps its code', async () => {
+    ethereum.request.mockRejectedValue({ code: 4001, message: 'User rejected the request.', data: { cause: 'x' } });
+
+    const error = await adapter()
+      .request({ method: 'eth_requestAccounts' })
+      .catch((rejected: unknown) => rejected);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ code: 4001, message: 'User rejected the request.', data: { cause: 'x' } });
+  });
+
+  it('rethrows any other rejection unchanged', async () => {
+    const created = adapter();
+    ethereum.request.mockRejectedValueOnce(undefined);
+    const missing = await created
+      .request({ method: 'eth_accounts' })
+      .then((value) => ({ resolved: value }))
+      .catch((error: unknown) => ({ rejected: error }));
+    expect(missing).toEqual({ rejected: undefined });
+
+    const failure = { code: -32603, message: 'Internal error' };
+    ethereum.request.mockRejectedValueOnce(failure);
+    await expect(created.request({ method: 'eth_accounts' })).rejects.toBe(failure);
+
+    const typed = Object.assign(new Error('User rejected the request.'), { code: 4001 });
+    ethereum.request.mockRejectedValueOnce(typed);
+    await expect(created.request({ method: 'eth_accounts' })).rejects.toBe(typed);
+  });
+
+  it('forwards subscriptions and ignores a missing or throwing on', () => {
+    const created = adapter();
+    const handler = () => undefined;
+    created.on('message', handler);
+    expect(ethereum.on).toHaveBeenCalledWith('message', handler);
+
+    delete (window as any).ethereum;
+    expect(() => created.on('message', handler)).not.toThrow();
+
+    (window as any).ethereum = { request: jest.fn() };
+    expect(() => created.on('message', handler)).not.toThrow();
+
+    const throwing = {};
+    Object.defineProperty(throwing, 'on', {
+      configurable: true,
+      get() {
+        throw new TypeError('proxy');
+      },
+    });
+    (window as any).ethereum = throwing;
+    expect(() => created.on('accountsChanged', handler)).not.toThrow();
+
+    Object.defineProperty(window, 'ethereum', {
+      configurable: true,
+      get() {
+        throw new Error('unavailable');
+      },
+    });
+    expect(() => created.on('chainChanged', handler)).not.toThrow();
   });
 });

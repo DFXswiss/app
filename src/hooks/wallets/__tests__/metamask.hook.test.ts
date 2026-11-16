@@ -100,6 +100,12 @@ describe('useMetaMask', () => {
       const { result } = renderHook(() => useMetaMask());
       expect(result.current.isInstalled()).toBe(true);
     });
+
+    it('should return false for an injected provider that is not a known wallet', () => {
+      (window as any).ethereum = {};
+      const { result } = renderHook(() => useMetaMask());
+      expect(result.current.isInstalled()).toBe(false);
+    });
   });
 
   describe('getWalletType', () => {
@@ -121,20 +127,23 @@ describe('useMetaMask', () => {
     });
   });
 
-  describe('conflicting injected provider', () => {
-    it('should not throw when the injected provider breaks the Web3 constructor', () => {
-      (window as any).ethereum = { isMetaMask: true };
-      (Web3 as unknown as jest.Mock).mockImplementationOnce(() => {
-        throw new TypeError(
-          "'get' on proxy: property 'on' is a read-only and non-configurable data property on the proxy target but the proxy did not return its actual value",
-        );
-      });
+  describe('injected provider adapter', () => {
+    it('should build one web3 adapter and keep it when the wallet appears later', () => {
+      delete (window as any).ethereum;
+      (Web3 as unknown as jest.Mock).mockClear();
 
       const { result } = renderHook(() => useMetaMask());
 
+      expect(Web3).toHaveBeenCalledTimes(1);
+      const adapter = (Web3 as unknown as jest.Mock).mock.calls[0][0] as { request: unknown; on: unknown };
+      expect(typeof adapter.request).toBe('function');
+      expect(typeof adapter.on).toBe('function');
+      expect(result.current.isInstalled()).toBe(false);
+
+      (window as any).ethereum = { isMetaMask: true };
       expect(result.current.isInstalled()).toBe(true);
       expect(result.current.getWalletType()).toBe('MetaMask');
-      expect(Web3).toHaveBeenLastCalledWith();
+      expect(Web3).toHaveBeenCalledTimes(1);
     });
   });
 
