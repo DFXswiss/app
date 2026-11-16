@@ -199,6 +199,8 @@ fresh A38 enforce pass on
 the current head, `dfx pr guard` approves those waiting initial runs, then sets
 Ready when the review rule below is met, required GitHub jobs are green, and
 the PR is mergeable.
+A draft that a person sets stays draft until a person marks the pull request
+Ready or a first-run review comment posted after that draft names the current head.
 
 Two reviews are required before Ready. One review is enough only when the
 pull request opener is listed in one_review_authors in the trusted
