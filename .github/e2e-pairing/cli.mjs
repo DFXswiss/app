@@ -894,6 +894,7 @@ export async function failClosedAfterError(client, env, deps, startRepo, startPr
       }
     }
   }
+  const failedHeads = [];
   for (const head of heads.values()) {
     try {
       const newest = await newestAppStatus(head.repo, head.sha);
@@ -916,6 +917,13 @@ export async function failClosedAfterError(client, env, deps, startRepo, startPr
         description: truncateStatusDescription(reason),
         targetUrl: statusTargetUrl(env),
       });
+      failedHeads.push(head);
+    } catch (lookupError) {
+      deps.error(`::error::fail-closed cleanup failed: ${String(lookupError)}`);
+    }
+  }
+  for (const head of failedHeads) {
+    try {
       await rerunLocalWorkflow(client, head.repo, head.sha);
     } catch (lookupError) {
       deps.error(`::error::fail-closed cleanup failed: ${String(lookupError)}`);

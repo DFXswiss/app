@@ -940,6 +940,26 @@ test('the fail-closed helper still rethrows the original error when its own look
   assert.equal(await main(['resolve'], { ...cleanupDeps, env: { ...cleanupDeps.env, ...resolveEnv() } }), 1);
   assert.match(cleanupErrors[0], /fail-closed cleanup failed: Error: post offline/);
   assert.match(cleanupErrors.at(-1), /truncated/);
+
+  const rerun = new FakeGitHub({
+    ...validPairRoutes({ app: appPull(12, { changedFiles: 2 }) }),
+    ...appStatuses(APP_SHA, [status({ description: pairDescription() })]),
+    ...backendStatuses(BACKEND_SHA, []),
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    ...localRunRoutes({
+      repo: APP_REPO,
+      sha: APP_SHA,
+      runId: 10,
+      jobId: 101,
+      path: '.github/workflows/pr.yml',
+    }),
+    'POST /repos/DFXswiss/app/actions/jobs/101/rerun': new Error('rerun offline'),
+  });
+  const { deps: rerunDeps, errors: rerunErrors } = deps(rerun);
+  assert.equal(await main(['resolve'], { ...rerunDeps, env: { ...rerunDeps.env, ...resolveEnv() } }), 1);
+  assert.equal(rerun.statusPosts().length, 1);
+  assert.match(rerunErrors[0], /fail-closed cleanup failed: Error: rerun offline/);
+  assert.match(rerunErrors.at(-1), /truncated/);
 });
 
 test('the fail-closed helper skips starts it cannot prove are open', async () => {
@@ -1070,6 +1090,48 @@ test('the fail-closed helper recovers a pair behind a newer invalidation and fai
   assert.deepEqual(
     fake.reruns().map((call) => call.key),
     [
+      'POST /repos/DFXswiss/app/actions/jobs/101/rerun',
+      'POST /repos/DFXswiss/backend/actions/jobs/201/rerun',
+    ],
+  );
+});
+
+test('the fail-closed helper posts both failure statuses before rerunning either head', async () => {
+  const fake = new FakeGitHub({
+    ...openPairWithLocalRuns(),
+    ...appStatuses(APP_SHA, [status({ description: pairDescription() })]),
+    ...backendStatuses(BACKEND_SHA, [status({ description: pairDescription() })]),
+    [`POST /repos/DFXswiss/app/statuses/${APP_SHA}`]: { id: 1 },
+    [`POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`]: { id: 2 },
+  });
+  const { GitHubClient } = await import('./github.mjs');
+  const { deps: injected } = deps(fake);
+  const original = new Error('original failure');
+
+  await assert.rejects(
+    () =>
+      failClosedAfterError(
+        new GitHubClient({ token: 't', fetchImpl: fake.fetch.bind(fake) }),
+        { E2E_PAIR_APP_SLUG: SLUG, RUN_URL },
+        injected,
+        APP_REPO,
+        12,
+        original,
+      ),
+    (error) => error === original,
+  );
+
+  assert.deepEqual(
+    fake.calls
+      .filter(
+        (call) =>
+          call.key.startsWith('POST ') &&
+          (call.key.includes('/statuses/') || call.key.endsWith('/rerun')),
+      )
+      .map((call) => call.key),
+    [
+      `POST /repos/DFXswiss/app/statuses/${APP_SHA}`,
+      `POST /repos/DFXswiss/backend/statuses/${BACKEND_SHA}`,
       'POST /repos/DFXswiss/app/actions/jobs/101/rerun',
       'POST /repos/DFXswiss/backend/actions/jobs/201/rerun',
     ],
