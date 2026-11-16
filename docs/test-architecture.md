@@ -394,6 +394,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The exchange-rate unit test replaces the SDK and presentation components.**
   `src/__tests__/exchange-rate.test.tsx` supplies a formatter and renders component-library controls
   as plain elements. A green run does not prove the real SDK formatting or production controls.
+  It also replaces `useSettingsContext`: `translate` only substitutes placeholders in the English key.
+  A green run does not prove the de/fr/it translations or that the real keys exist in translation files.
 - **The sell-rate-steps visual spec supplies a synthetic quote.**
   `e2e/sell-rate-steps.spec.ts` uses an unsigned synthetic session and replaces user, startup, sell
   quote, payment info and address-check responses. A green run does not prove authentication, real
@@ -418,6 +420,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and `blockchainFee` on a `buy_fiat` row; the detail and list cases both use this starting state. A green run
   proves that the API returns the saved rate fields and the screen displays them as fiat per asset.
   It does not prove that transaction processing calculates or saves those rates and price steps.
+  Nor does it prove fee calculation: `percentFee`, `totalFeeAmount` and `blockchainFee` are set by SQL,
+  and the fiat fees on the screen are derived from these stored values and the stored base rate.
 - **The transaction-invoice visual spec answers the waiting buy row itself.**
   `e2e/transaction-invoice.spec.ts` fulfils `GET /v1/transaction/detail` with a synthetic CHF
   `WaitingForPayment` buy, signs in with an unsigned client-side session token, and answers

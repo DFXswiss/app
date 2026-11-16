@@ -45,7 +45,7 @@ export function ExchangeRate({
     type !== TransactionType.SWAP && fees.bankVariable ? `${fees.bankVariable}${feeSymbol}` : undefined;
   const bankFee =
     type !== TransactionType.SWAP && !bankFixedFee && !bankPercentFee && fees.bank ? `${fees.bank}${feeSymbol}` : false;
-  const networkStartFee = fees?.networkStart ? `${fees?.networkStart}${feeSymbol}` : undefined;
+  const networkStartFee = fees.networkStart ? `${fees.networkStart}${feeSymbol}` : undefined;
   const platformFee = fees.platform ? `${fees.platform}${feeSymbol}` : undefined;
 
   const l1Replacement =

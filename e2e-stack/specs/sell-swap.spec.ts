@@ -1075,6 +1075,15 @@ test.describe('Sell + Swap e2e', () => {
         .last();
       await expect(line).toContainText(`${step.to}/${step.from}`);
       await expect(line).not.toContainText(`${step.from}/${step.to}`);
+      const text = await line.innerText();
+      const value = text.split(prefix)[1]?.split(` ${step.to}/${step.from}`)[0];
+      expect(value).toBeTruthy();
+      const displayed = Number(value!.replace(/[',]/g, ''));
+      const expected = 1 / step.price;
+      expect(Math.abs(displayed - expected) / Math.abs(expected)).toBeLessThanOrEqual(1e-3);
+      if (Math.abs(step.price - 1) > 1e-3) {
+        expect(Math.abs(displayed - step.price) / Math.abs(step.price)).toBeGreaterThan(1e-3);
+      }
     }
   });
 
