@@ -685,9 +685,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the session store, polling, the countdown, navigation, the LNURL and EVM helpers and MetaMask. A
   green run proves how the provider reacts to those answers: the merchant page reads merchant info
   and creates no payment, invoice and lightning links load and poll, identifiers and MetaMask
-  payments are requested as built. It does not prove that the API returns merchant info for a
-  route or answers `404` and `400` as assumed, that the payment endpoints return those payloads, or
-  that a real MetaMask signs and sends the transaction.
+  payments are requested as built, and a MetaMask account request or payment the wallet rejects with
+  `Already processing … Please wait.` leaves the pending-request key as the MetaMask error. It does not
+  prove that the API returns merchant info for a route or answers `404` and `400` as assumed, that the
+  payment endpoints return those payloads, that a real MetaMask signs and sends the transaction, or that it
+  rejects a pending request with that text.
 - **The rejected address switch visual spec answers the user and the switch itself.**
   `e2e/connect-address-switch.spec.ts` authenticates with a synthetic unsigned JWT without an address, fulfils
   `GET /v2/user` with one synthetic address (and with none in the custody case) and the bootstrap GETs,
@@ -868,7 +870,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   an in-memory EIP-1193 provider (and a legacy `sendAsync` provider) that answers or rejects each method, and
   replaces web3's address checksum, which jsdom's `Uint8Array` breaks, the app's web3 hook with a fixed chain
   mapping, device detection, and `@dfx.swiss/react` with copies of its `AssetType` and `Blockchain` values. A green run proves that web3 keeps the EIP-1193 code of a rejection that is not
-  an Error, while other failures keep the message web3 builds for them. It does not prove that a real wallet
+  an Error, that a pending request rejected with code -32002 ends in the pending-request key, that a plain
+  rejection with the pending-request text and data keeps that text, while other failures keep the message web3
+  builds for them. It does not prove that a real wallet
   rejects with that shape, the chain mapping, the SDK's enum values, that the checksum is computed, or that a transaction reaches a
   chain.
 - **The MetaMask calls hook test replaces web3 and the injected provider.**
