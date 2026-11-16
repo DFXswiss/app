@@ -4,7 +4,11 @@ const PENDING_WALLET_REQUEST = /^Already processing \S+\. Please wait\.$/;
 
 export const PENDING_WALLET_REQUEST_HINT = 'Please confirm or close the pending request in your wallet.';
 
+export function isPendingWalletRequest(message: string): boolean {
+  return PENDING_WALLET_REQUEST.test(message);
+}
+
 // Replaces the raw wallet text with a translation key that tells the user what to do. Any other message stays as it is.
 export function mapWalletErrorMessage(message: string): string {
-  return PENDING_WALLET_REQUEST.test(message) ? PENDING_WALLET_REQUEST_HINT : message;
+  return isPendingWalletRequest(message) ? PENDING_WALLET_REQUEST_HINT : message;
 }

@@ -344,6 +344,16 @@ describe('MetaMask and other injected EVM wallets (through web3)', () => {
     await expectFailed('Please confirm or close the pending request in your wallet.');
   });
 
+  it('a pending request that carries data shows the pending-request hint', async () => {
+    answer('eth_requestAccounts', () =>
+      Promise.reject(rejection(-32603, 'Already processing unlock. Please wait.', { origin: 'dfx' })),
+    );
+
+    renderConnect(ConnectMetaMask, WalletType.META_MASK, Blockchain.ETHEREUM);
+
+    await expectFailed('Please confirm or close the pending request in your wallet.');
+  });
+
   it('a failed request to add the chain is still shown and reported', async () => {
     answer('wallet_switchEthereumChain', () => Promise.reject(rejection(4902, 'Unrecognized chain ID.')));
     answer('wallet_addEthereumChain', () => Promise.reject(rejection(-32602, 'Invalid chain parameters.')));

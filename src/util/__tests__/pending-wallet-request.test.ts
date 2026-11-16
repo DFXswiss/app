@@ -1,4 +1,4 @@
-import { PENDING_WALLET_REQUEST_HINT, mapWalletErrorMessage } from '../pending-wallet-request';
+import { isPendingWalletRequest, mapWalletErrorMessage, PENDING_WALLET_REQUEST_HINT } from '../pending-wallet-request';
 
 describe('mapWalletErrorMessage', () => {
   it('maps a pending connect to the hint', () => {
@@ -16,5 +16,12 @@ describe('mapWalletErrorMessage', () => {
     expect(mapWalletErrorMessage('Error: Already processing connect. Please wait.')).toBe(
       'Error: Already processing connect. Please wait.',
     );
+  });
+});
+
+describe('isPendingWalletRequest', () => {
+  it('recognises the pending-request text only', () => {
+    expect(isPendingWalletRequest('Already processing eth_requestAccounts. Please wait.')).toBe(true);
+    expect(isPendingWalletRequest('Already processing unlock. Please wait.\n{}')).toBe(false);
   });
 });

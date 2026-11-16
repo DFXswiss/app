@@ -8,7 +8,7 @@ import { TransactionConfig } from 'web3-core';
 import { Contract } from 'web3-eth-contract';
 import { AssetBalance } from '../../contexts/balance.context';
 import ERC20_ABI from '../../static/erc20.abi.json';
-import { PENDING_WALLET_REQUEST_HINT } from '../../util/pending-wallet-request';
+import { isPendingWalletRequest, PENDING_WALLET_REQUEST_HINT } from '../../util/pending-wallet-request';
 import { TranslatedError } from '../../util/translated-error';
 import { USER_REJECTED_CODE, UserRejectedError } from '../../util/user-rejection';
 import { timeout } from '../../util/utils';
@@ -68,13 +68,17 @@ export interface MetaMaskInterface {
   signEip7702Authorization: (authData: Eip7702AuthorizationData) => Promise<SignedEip7702Authorization>;
 }
 
+// JSON-RPC 'resource unavailable', which MetaMask sends while a request of the same page is still open
+const PENDING_REQUEST_CODE = -32002;
+
 interface MetaMaskError {
   code: number;
   message: string;
 }
 
 // web3 rewrites a rejection that is not an Error but carries data into a new Error, with the data appended to the
-// message and without the code. Injected wallets reject that way, so a cancel would no longer be recognised as one.
+// message and without the code. Injected wallets reject that way, so a cancel would no longer be recognised as one,
+// and a request the wallet is still processing would no longer show the pending-request hint.
 // web3 only uses request and on of an EIP-1193 provider, so it gets a plain object that passes both on.
 function keepUserRejection(provider: any): any {
   if (typeof provider?.request !== 'function') return provider;
@@ -82,8 +86,9 @@ function keepUserRejection(provider: any): any {
   return {
     request: (args: unknown) =>
       provider.request(args).catch((e: MetaMaskError) => {
-        const isPlainRejection = !(e instanceof Error) && e?.code === USER_REJECTED_CODE;
-        throw isPlainRejection ? Object.assign(new Error(e.message), e) : e;
+        const isKept =
+          e?.code === USER_REJECTED_CODE || (typeof e?.message === 'string' && isPendingWalletRequest(e.message));
+        throw !(e instanceof Error) && isKept ? Object.assign(new Error(e.message), e) : e;
       }),
     on: (...args: unknown[]) => provider.on?.(...args),
   };
@@ -434,7 +439,7 @@ export function useMetaMask(): MetaMaskInterface {
         throw new UserRejectedError();
 
       // a request of the same page is still open in the wallet
-      case -32002:
+      case PENDING_REQUEST_CODE:
         throw new TranslatedError(PENDING_WALLET_REQUEST_HINT);
     }
 
