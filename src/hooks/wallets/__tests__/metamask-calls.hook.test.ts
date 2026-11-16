@@ -647,6 +647,24 @@ describe('EIP-5792 calls', () => {
     );
   });
 
+  it('fails with the gasless hint when the capabilities method is missing', async () => {
+    ethereum.request.mockRejectedValue({
+      code: -32601,
+      message: 'The method "wallet_getCapabilities" does not exist / is not available.',
+    });
+
+    const payment = setup().sendCallsWithPaymaster(calls, 'https://paymaster', 1);
+    await expect(payment).rejects.toBeInstanceOf(TranslatedError);
+    await expect(payment).rejects.toThrow(
+      'Your wallet does not support gasless transactions. Please update MetaMask to v12.20+ and enable Smart Account.',
+    );
+    expect(ethereum.request).toHaveBeenCalledWith({
+      method: 'wallet_getCapabilities',
+      params: ['checksum(0xabc)'],
+    });
+    expect(ethereum.request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_sendCalls' }));
+  });
+
   it('fails with the hint when no wallet is injected', async () => {
     delete (window as any).ethereum;
 
@@ -703,6 +721,13 @@ describe('supportsEip5792Paymaster', () => {
     ethereum.request.mockRejectedValue(new Error('Method not supported'));
 
     await expect(setup().supportsEip5792Paymaster(1)).resolves.toBe(false);
+  });
+
+  it('is false when the account cannot be read', async () => {
+    mockGetAccounts.mockRejectedValue(new Error('accounts failed'));
+
+    await expect(setup().supportsEip5792Paymaster(1)).resolves.toBe(false);
+    expect(ethereum.request).not.toHaveBeenCalled();
   });
 
   it.each([

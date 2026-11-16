@@ -169,6 +169,21 @@ function paymasterSupported(capabilities: unknown, chainId: number): boolean {
   return known?.[chainHex]?.paymasterService?.supported === true;
 }
 
+// Rejection means the wallet has no paymaster capability (for example method -32601).
+async function paymasterSupportedBy(provider: UsableProvider, account: string, chainId: number): Promise<boolean> {
+  try {
+    return paymasterSupported(
+      await provider.request({
+        method: 'wallet_getCapabilities',
+        params: [account],
+      }),
+      chainId,
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function useMetaMask(): MetaMaskInterface {
   const web3 = useMemo(
     () => new Web3(eip1193Adapter(ethereum) as unknown as ConstructorParameters<typeof Web3>[0]),
@@ -390,13 +405,7 @@ export function useMetaMask(): MetaMaskInterface {
       const provider = usableProvider(ethereum);
       if (!provider) return false;
 
-      return paymasterSupported(
-        await provider.request({
-          method: 'wallet_getCapabilities',
-          params: [account],
-        }),
-        chainId,
-      );
+      return paymasterSupportedBy(provider, account, chainId);
     } catch {
       return false;
     }
@@ -471,13 +480,7 @@ export function useMetaMask(): MetaMaskInterface {
       if (!account) throw new Error('No account connected');
 
       const chainHex = `0x${chainId.toString(16)}`;
-      const supported = paymasterSupported(
-        await provider.request({
-          method: 'wallet_getCapabilities',
-          params: [account],
-        }),
-        chainId,
-      );
+      const supported = await paymasterSupportedBy(provider, account, chainId);
       if (!supported) {
         throw new TranslatedError(
           'Your wallet does not support gasless transactions. Please update MetaMask to v12.20+ and enable Smart Account.',
