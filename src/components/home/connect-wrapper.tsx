@@ -2,7 +2,6 @@ import { lazy } from 'react';
 import { WalletType } from '../../contexts/wallet.context';
 import { ConnectProps } from './connect-shared';
 
-const ConnectAlby = lazy(() => import('./wallet/connect-alby'));
 const ConnectBitbox = lazy(() => import('./wallet/connect-bitbox'));
 const ConnectCli = lazy(() => import('./wallet/connect-cli'));
 const ConnectLedger = lazy(() => import('./wallet/connect-ledger'));
@@ -22,9 +21,6 @@ export function ConnectWrapper(props: ConnectProps): JSX.Element {
   switch (props.wallet) {
     case WalletType.META_MASK:
       return <ConnectMetaMask {...props} />;
-
-    case WalletType.ALBY:
-      return <ConnectAlby {...props} />;
 
     case WalletType.LEDGER_BTC:
     case WalletType.LEDGER_ETH:

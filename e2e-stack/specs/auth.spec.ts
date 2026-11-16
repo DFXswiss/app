@@ -745,6 +745,7 @@ test.describe('Auth area e2e', () => {
     await expect(page.getByText('Login to DFX Services', { exact: true })).toHaveCount(0);
     await expect(page.locator('img[src*="metamask"]')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('img[src*="walletconnect"]')).toBeVisible();
+    await expect(page.locator('img[src*="alby"]')).toHaveCount(0);
   });
 
   // ---------------------------------------------------------------------------

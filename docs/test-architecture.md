@@ -641,11 +641,6 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/connect-mail-redirect.test.tsx` stubs `useAuth`, session and wallet contexts, app-handling
   and `useNavigation`, and asserts the `redirectUri` passed into `signInWithMail`. A green run does not
   prove a real mail login, that the API accepts that `redirectUri`, or a real SDK session change.
-- **The connect-alby redirect unit test replaces the SDK session hooks, the Alby hook, the app contexts
-  and wallet login.** `src/__tests__/connect-alby-redirect.test.tsx` stubs session, user and wallet
-  contexts, `useAlby` and `window.location`, and asserts the Alby `redirect` query. A green run does not
-  prove a real Alby login, a real SDK session change, or the real interplay with the app router and
-  navigation.
 - **The KYC wallet-mismatch visual spec answers the user endpoint itself.**
   `e2e/kyc-wallet-mismatch.spec.ts` fulfils the user routes with a built user and the placeholder
   address `0x1111111111111111111111111111111111111111`, and does not call a live API. A green run
