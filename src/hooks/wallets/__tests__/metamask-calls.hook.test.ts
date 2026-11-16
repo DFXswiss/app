@@ -451,6 +451,38 @@ describe('EIP-5792 calls', () => {
     await expect(setup().sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow('No account connected');
   });
 
+  it('reports no paymaster support when the wallet cannot answer for its capabilities', async () => {
+    ethereum.request.mockRejectedValue({ code: -32601, message: 'Method not found' });
+
+    await expect(setup().supportsEip5792Paymaster(1)).resolves.toBe(false);
+  });
+
+  it('refuses gasless calls for a wallet without paymaster support', async () => {
+    ethereum.request.mockImplementation(({ method }: { method: string }) =>
+      Promise.resolve(method === 'wallet_getCapabilities' ? { '0x1': {} } : 'calls-id'),
+    );
+
+    await expect(setup().sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow(
+      'Your wallet does not support gasless transactions. Please update MetaMask to v12.20+ and enable Smart Account.',
+    );
+    expect(ethereum.request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_sendCalls' }));
+  });
+
+  it('fails when the wallet reports the calls as failed', async () => {
+    ethereum.request.mockImplementation(({ method }: { method: string }) => {
+      switch (method) {
+        case 'wallet_getCapabilities':
+          return Promise.resolve({ '0x1': { paymasterService: { supported: true } } });
+        case 'wallet_sendCalls':
+          return Promise.resolve('calls-id');
+        default:
+          return Promise.resolve({ status: 'FAILED' });
+      }
+    });
+
+    await expect(setup().sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow('Transaction failed');
+  });
+
   it('waits on the calls id the wallet returns as a plain value', async () => {
     ethereum.request.mockImplementation(({ method }: { method: string }) => {
       switch (method) {

@@ -819,9 +819,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   as the chain, fixed fee data (`eth_gasPrice`, `eth_maxPriorityFeePerGas`, `eth_estimateGas`,
   `eth_getTransactionCount`, `eth_getBlockByNumber`) instead of a chain node, answers `wallet_switchEthereumChain`,
   `wallet_addEthereumChain` and `eth_sendTransaction` as the test decides, and signs the login message with the
-  dedicated test wallet's key. `e2e-stack/specs/auth.spec.ts` uses it for four MetaMask cases on `/login`, one of
-  them rejecting the account request with `Already processing unlock. Please wait.`, and installs in-page objects
-  for Phantom (`window.phantom.solana`), Trust (`window.trustwallet.solana` and `window.trustwallet.tronLink`) and
+  dedicated test wallet's key. `e2e-stack/specs/auth.spec.ts` uses it for five MetaMask cases on `/login`, two of
+  them rejecting the account request as still pending (code -32603 with `Already processing unlock. Please wait.`,
+  and code -32002 with `Already processing eth_requestAccounts. Please wait.`), and installs in-page objects for
+  Phantom (`window.phantom.solana`), Trust (`window.trustwallet.solana` and `window.trustwallet.tronLink`) and
   TronLink (`window.tronLink`, older protocol, and `window.tron`, newer protocol) that reject the connection with
   code 4001, or with another code for the failure cases, including a Phantom connect rejected with
   `Already processing connect. Please wait.`. `e2e-stack/specs/sell-swap.spec.ts` logs in through the injected

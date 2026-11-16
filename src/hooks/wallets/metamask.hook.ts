@@ -8,6 +8,7 @@ import { TransactionConfig } from 'web3-core';
 import { Contract } from 'web3-eth-contract';
 import { AssetBalance } from '../../contexts/balance.context';
 import ERC20_ABI from '../../static/erc20.abi.json';
+import { PENDING_WALLET_REQUEST_HINT } from '../../util/pending-wallet-request';
 import { TranslatedError } from '../../util/translated-error';
 import { USER_REJECTED_CODE, UserRejectedError } from '../../util/user-rejection';
 import { timeout } from '../../util/utils';
@@ -432,8 +433,9 @@ export function useMetaMask(): MetaMaskInterface {
       case USER_REJECTED_CODE:
         throw new UserRejectedError();
 
+      // a request of the same page is still open in the wallet
       case -32002:
-        throw new TranslatedError('There is already a request pending. Please confirm it in your MetaMask and retry.');
+        throw new TranslatedError(PENDING_WALLET_REQUEST_HINT);
     }
 
     // a wallet may reject without any value

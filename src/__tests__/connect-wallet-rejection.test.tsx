@@ -341,7 +341,7 @@ describe('MetaMask and other injected EVM wallets (through web3)', () => {
 
     renderConnect(ConnectMetaMask, WalletType.META_MASK, Blockchain.ETHEREUM);
 
-    await expectFailed('There is already a request pending. Please confirm it in your MetaMask and retry.');
+    await expectFailed('Please confirm or close the pending request in your wallet.');
   });
 
   it('a failed request to add the chain is still shown and reported', async () => {

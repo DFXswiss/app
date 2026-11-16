@@ -549,6 +549,46 @@ test.describe('Auth area e2e', () => {
     expect(sent).toEqual(['/v1/log/clientError']);
   });
 
+  test('an injected-wallet connect MetaMask reports as already pending shows and reports the pending-request hint', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+
+    // MetaMask answers a second account request while the first is still open with code -32002
+    const wallet = testWallet(58);
+    await injectWallet(
+      page,
+      walletAnswers(wallet, {
+        connected: () => false,
+        requestAccounts: () => ({
+          error: { code: -32002, message: 'Already processing eth_requestAccounts. Please wait.' },
+        }),
+      }),
+    );
+    const sent = recordAuthAndErrorReports(page);
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+    await page.locator('img[src*="cryptowallet"]').click();
+
+    const report = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/v1/log/clientError'),
+      { timeout: 20000 },
+    );
+    await page.locator('img[src*="metamask"]').click();
+
+    await expect(page.getByText('Connection failed!')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('Please confirm or close the pending request in your wallet.')).toBeVisible();
+    await expect(page.getByText('Already processing eth_requestAccounts. Please wait.')).toHaveCount(0);
+    const response = await report;
+    expect(response.ok()).toBe(true);
+    expect(JSON.parse(response.request().postData() ?? '{}').message).toBe(
+      'Please confirm or close the pending request in your wallet.',
+    );
+    expect(sent).toEqual(['/v1/log/clientError']);
+  });
+
   test('a cancelled Phantom connection returns to the wallet selection without a report', async ({ page }) => {
     test.setTimeout(90000);
 
