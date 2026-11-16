@@ -550,6 +550,7 @@
     "Please confirm the connection in your TronLink browser extension.": "Veuillez confirmer la connexion dans l'extension du navigateur TronLink.",
     "Please confirm the connection in your wallet.": "Veuillez confirmer la connexion dans votre portefeuille.",
     "Please confirm the connection with your Ledger.": "Veuillez confirmer la connexion avec votre Ledger.",
+    "Please confirm or close the pending request in your wallet.": "Veuillez confirmer ou fermer la demande en attente dans votre portefeuille.",
     "Connection failed!": "Échec de la connexion !",
     "Please make sure that all other applications and browser extensions that are connected to the ledger are completely closed when you try to connect.\nThis includes third-party wallets (Ledger Live, Metamask, Daedalus, MyEtherWallet) or other applications that could interfere with the connection between DFX.swiss and your ledger device.": "Veuillez vous assurer que toutes les autres applications et extensions de navigateur connectées au Ledger sont complètement fermées lorsque vous essayez de vous connecter.\nCela inclut les portefeuilles tiers (Ledger Live, Metamask, Daedalus, MyEtherWallet) ou d'autres applications qui pourraient interférer avec la connexion entre DFX.swiss et votre appareil Ledger.",
     "Connect your {{device}} with your computer": "Connectez votre {{device}} à votre ordinateur",
