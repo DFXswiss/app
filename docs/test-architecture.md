@@ -392,9 +392,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   one the quote showed: every quote in this environment uses the collection account and stores
   no bank selection.
 - **The exchange-rate unit test replaces the SDK and presentation components.**
-  `src/__tests__/exchange-rate.test.tsx` supplies a formatter and renders component-library controls
-  as plain elements. Inverted sell steps use `formatSignificantAmount` from `src/util/significant-amount.ts`
-  instead of that formatter. A green run does not prove the real SDK formatting or production controls.
+  `src/__tests__/exchange-rate.test.tsx` supplies `Utils.formatAmount` and `Utils.formatAmountCrypto`
+  and renders component-library controls as plain elements. The title, the fiat branch of the base rate
+  and inverted sell steps use `formatFiatRate` from `src/util/significant-amount.ts`. That helper never
+  calls the mocked formatter: from 1 upward, and for 0 and non-finite values, it rebuilds
+  `Utils.formatAmount` itself (`toFixed(2)` and a space as the thousands separator); below 1 it delegates
+  to `formatSignificantAmount`. A green run does not prove the real SDK formatting or production controls.
   It also replaces `useSettingsContext`: `translate` only substitutes placeholders in the English key.
   A green run does not prove the de/fr/it translations or that the real keys exist in translation files.
 - **The sell-rate-steps visual spec supplies a synthetic quote.**
@@ -408,10 +411,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   answers `GET /v1/transaction/detail` with the synthetic completed sale.
 - **The transaction-list unit test replaces the SDK and component library.**
   `src/__tests__/transaction-list-txinfo.test.tsx` replaces `@dfx.swiss/react` and implements
-  `Utils.formatAmountCrypto` locally as `String(Number(n.toPrecision(5)))`; the components are
-  replacements too. Inverted sell rates use `formatSignificantAmount` from `src/util/significant-amount.ts`,
-  so a green run of that case proves the helper inside the replaced screen. A green run does not prove
-  the real SDK's formatting or the real component library's rendering.
+  `Utils.formatAmountCrypto` locally the way the package does: `toPrecision`, then `toFixed`, then
+  trailing zeros stripped. The components are replacements too. Inverted sell rates do not use that
+  mock; they use `formatSignificantAmount` from `src/util/significant-amount.ts`, so a green run of
+  that case proves the helper inside the replaced screen. A green run does not prove the real SDK's
+  formatting or the real component library's rendering.
 - **The transaction-status unit test replaces the dropdown.**
   `src/__tests__/transaction-screen-status.test.tsx` replaces `StyledDropdown` with a list that
   calls `labelFunc` and `descriptionFunc` itself. A green run proves which labels the callbacks

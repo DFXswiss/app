@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { ExchangeRate } from '../components/exchange-rate';
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -21,7 +21,7 @@ jest.mock('@dfx.swiss/react-components', () => ({
   IconColor: { GRAY: 'gray' },
   StyledCollapsible: ({ children, title }: { children: React.ReactNode; title: string }) => (
     <div>
-      <div>{title}</div>
+      <div data-testid="exchange-rate-title">{title}</div>
       {children}
     </div>
   ),
@@ -193,12 +193,18 @@ describe('ExchangeRate fees and explanations', () => {
 describe('ExchangeRate fiat rates below and above 1', () => {
   const fees = { rate: 0, total: 0, dfx: 0, network: 0 } as never;
 
+  function expectTitleAndBaseRate(title: string, baseRate: string) {
+    expect(within(screen.getByTestId('exchange-rate-title')).getByText(title)).toBeInTheDocument();
+    const baseLine = screen.getByText('Base rate').nextElementSibling?.firstElementChild as HTMLElement;
+    expect(within(baseLine).getByText(baseRate)).toBeInTheDocument();
+  }
+
   it('formats a buy below 1 fiat on the title and the base rate', () => {
     render(
       <ExchangeRate
         type={'Buy' as never}
-        exchangeRate={1 / 6000}
-        rate={1 / 6173.4}
+        exchangeRate={1 / 6173.4}
+        rate={1 / 6000}
         amountIn={10}
         amountOut={1}
         from={{ name: 'EUR' } as never}
@@ -208,8 +214,7 @@ describe('ExchangeRate fiat rates below and above 1', () => {
         steps={[]}
       />,
     );
-    expect(screen.getByText('0.00016199 EUR/DEPS')).toBeInTheDocument();
-    expect(screen.getByText('0.00016667 EUR/DEPS')).toBeInTheDocument();
+    expectTitleAndBaseRate('0.00016667 EUR/DEPS', '0.00016199 EUR/DEPS');
   });
 
   it('formats a sell below 1 fiat on the title, the base rate and the price steps', () => {
@@ -227,8 +232,7 @@ describe('ExchangeRate fiat rates below and above 1', () => {
         steps={[{ source: 'Synthetic', from: 'DEPS', to: 'EUR', price: 6173.4, timestamp: new Date() }]}
       />,
     );
-    expect(screen.getByText('0.00016199 EUR/DEPS')).toBeInTheDocument();
-    expect(screen.getByText('0.00016667 EUR/DEPS')).toBeInTheDocument();
+    expectTitleAndBaseRate('0.00016199 EUR/DEPS', '0.00016667 EUR/DEPS');
     expect(screen.getByText('DEPS to EUR at 0.00016199 EUR/DEPS on Synthetic')).toBeInTheDocument();
   });
 
@@ -247,8 +251,7 @@ describe('ExchangeRate fiat rates below and above 1', () => {
         steps={[{ source: 'Denario', from: 'DSC', to: 'USD', price: 0.017966, timestamp: new Date() }]}
       />,
     );
-    expect(screen.getByText('48.07 EUR/DSC')).toBeInTheDocument();
-    expect(screen.getByText('49.69 EUR/DSC')).toBeInTheDocument();
+    expectTitleAndBaseRate('48.07 EUR/DSC', '49.69 EUR/DSC');
     expect(screen.getByText('DSC to USD at 55.66 USD/DSC on Denario')).toBeInTheDocument();
   });
 });

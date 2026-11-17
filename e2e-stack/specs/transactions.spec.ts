@@ -96,9 +96,7 @@ test('completed sell detail displays fiat per asset for the rate and price steps
   await expect(page.getByText('0.10 EUR (0.0018 ETH)', { exact: true })).toBeVisible();
   await expect(page.getByText('0.09 EUR (0.0016 ETH, 0.08%)', { exact: true })).toBeVisible();
 
-  await expect(
-    page.getByText('Output amount = (Input amount - Total fee) × Base rate.', { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText('Output amount = Input amount × Base rate - Total fee.', { exact: true })).toBeVisible();
   await expect(page.getByText('50.005 EUR/ETH', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('50.005 EUR/ETH', { exact: true })).toHaveCount(1);
   await expect(page.getByText('50.05 EUR/ETH', { exact: true })).toBeVisible();
@@ -193,9 +191,7 @@ test('completed sell in the list displays fiat rates and fees', async ({ page })
   await expect(page.getByText(/USD to EUR at 0\.92593 EUR\/USD/)).toBeVisible();
   await expect(page.getByText(/ETH to USD at 0\.0185 ETH\/USD/)).toHaveCount(0);
   await expect(page.getByText(/USD to EUR at 1\.08 USD\/EUR/)).toHaveCount(0);
-  await expect(
-    page.getByText('Output amount = (Input amount - Total fee) × Base rate.', { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText('Output amount = Input amount × Base rate - Total fee.', { exact: true })).toBeVisible();
   await expect(page.getByText('0.10 EUR (0.0018 ETH)', { exact: true })).toBeVisible();
   await expect(page.getByText('0.09 EUR (0.0016 ETH, 0.08%)', { exact: true })).toBeVisible();
   await expect(page.getByText('0.019998 ETH/EUR', { exact: true })).toHaveCount(0);

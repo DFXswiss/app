@@ -19,7 +19,7 @@ describe('formatSignificantAmount', () => {
     expect(formatSignificantAmount(0)).toBe('0');
   });
 
-  it('keeps five significant digits below 0.001, including trailing zeros from toPrecision', () => {
+  it('strips trailing zeros from five significant digits below 0.001', () => {
     expect(formatSignificantAmount(0.00016)).toBe('0.00016');
     expect(formatSignificantAmount(0.000173)).toBe('0.000173');
   });

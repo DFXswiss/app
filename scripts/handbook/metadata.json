@@ -33,7 +33,7 @@
   },
   "transaction-sell-rate": {
     "title": "Verkaufskurs einer Transaktion",
-    "description": "Abgeschlossener Verkauf mit aufgeklapptem Wechselkurs, Basiskurs und Gebühren in Detail- und Listenansicht. Gebühren stehen in Fiat mit dem Wert in der verkauften Währung in Klammern. Wechselkurs und Basiskurs stehen als Fiat pro Asset, zum Beispiel 48.075 EUR/DSC; die Formel lautet Output amount = (Input amount - Total fee) × Base rate."
+    "description": "Abgeschlossener Verkauf mit aufgeklapptem Wechselkurs, Basiskurs und Gebühren in Detail- und Listenansicht. Gebühren stehen in Fiat mit dem Wert in der verkauften Währung in Klammern. Wechselkurs und Basiskurs stehen als Fiat pro Asset, zum Beispiel 48.075 EUR/DSC; die Formel lautet Output amount = Input amount × Base rate - Total fee."
   },
   "sell-rate-steps": {
     "title": "Verkaufskurs und Preisschritte",

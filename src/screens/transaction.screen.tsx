@@ -1117,7 +1117,7 @@ export function TxInfo({ tx, showUserDetails }: TxInfoProps): JSX.Element {
     `screens/${type}`,
     type === 'buy'
       ? 'Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.'
-      : 'Output amount = (Input amount - Total fee) × Base rate.',
+      : 'Output amount = Input amount × Base rate - Total fee.',
   );
 
   const sell = tx.type === TransactionType.SELL;

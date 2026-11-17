@@ -1399,7 +1399,7 @@ describe('TxInfo priceSteps base rate info', () => {
 
 describe('TxInfo sell rates', () => {
   it.each([
-    ['Sell', 'Output amount = (Input amount - Total fee) × Base rate.'],
+    ['Sell', 'Output amount = Input amount × Base rate - Total fee.'],
     ['Buy', 'Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.'],
     ['Swap', 'Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.'],
   ])('shows the exchange rate explanation for %s', (type, explanation) => {
