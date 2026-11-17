@@ -167,7 +167,11 @@ App token on both repositories. Execution is a separate job with only
 `contents: read`; it checks out both exact heads, verifies each unmerged head
 against `refs/pull/<n>/head`, uses the backend deploy key only in the single
 fetch step that removes it before any PR code runs, and then runs the same
-stack steps as this workflow. Before the run, the App posts `pending` on every
+stack steps as this workflow. Its checkout steps opt in with
+`allow-unsafe-pr-checkout`: tooling pins `github.workflow_sha` (the
+default-branch definition, never fork code), and the run job executes the
+reviewed exact head without a write token and starts only after both review
+gates pass. Before the run, the App posts `pending` on every
 open head with a description naming both full heads and the run:
 `pair app#<A>@<app head> backend#<B>@<backend head> running <run id>`. Each
 head must be exactly 40 lowercase hex characters, so a 7-character prefix never

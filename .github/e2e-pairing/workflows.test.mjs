@@ -270,6 +270,52 @@ test('privileged paired jobs check out the immutable workflow commit', () => {
   }
 });
 
+test('every paired coordinator checkout opts into fork pull request code', () => {
+  const workflow = read('.github/workflows/e2e-paired.yml');
+  const uses = workflow.match(/^ +uses: actions\/checkout(?:@\S+)? *$/gm);
+  assert.ok(uses, 'the coordinator workflow has checkout steps');
+  assert.equal(uses.length, 4, 'the coordinator has exactly four actions/checkout steps');
+
+  const checkouts = [
+    [
+      'resolve',
+      'Check out trusted pairing tooling',
+      'Trusted: github.workflow_sha is the default-branch definition, never fork code.',
+    ],
+    [
+      'publish',
+      'Check out trusted pairing tooling',
+      'Trusted: github.workflow_sha is the default-branch definition, never fork code.',
+    ],
+    [
+      'reconcile',
+      'Check out trusted pairing tooling',
+      'Trusted: github.workflow_sha is the default-branch definition, never fork code.',
+    ],
+    [
+      'run',
+      'Check out app head',
+      'Deliberate: the run job executes the reviewed exact head without a write token; it starts only after both review gates pass.',
+    ],
+  ];
+  let seen = 0;
+  for (const [jobName, stepName, comment] of checkouts) {
+    const checkout = step(job(workflow, jobName), stepName);
+    const usesInStep = checkout.match(/uses: actions\/checkout\b/g);
+    assert.ok(usesInStep, `${jobName} checks out with actions/checkout`);
+    seen += usesInStep.length;
+    const withHeader = '\n        with:\n';
+    const withAt = checkout.indexOf(withHeader);
+    assert.notEqual(withAt, -1, `${jobName} checkout has a with block`);
+    const withBlock = checkout.slice(withAt + withHeader.length);
+    assert.ok(
+      withBlock.includes(`          # ${comment}\n          allow-unsafe-pr-checkout: true\n`),
+      `${jobName} sets allow-unsafe-pr-checkout in its with block`,
+    );
+  }
+  assert.equal(seen, 4, 'each actions/checkout step is one of the four opted-in steps');
+});
+
 test('the backend fetch is isolated, hook-free, key-scoped and moved in safely', () => {
   const workflow = read('.github/workflows/e2e-paired.yml');
   const runJob = job(workflow, 'run');
