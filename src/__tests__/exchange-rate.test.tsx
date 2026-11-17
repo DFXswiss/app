@@ -4,7 +4,16 @@ import { ExchangeRate } from '../components/exchange-rate';
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: { BITCOIN: 'Bitcoin', ETHEREUM: 'Ethereum' },
   TransactionType: { BUY: 'Buy', SELL: 'Sell', SWAP: 'Swap' },
-  Utils: { formatAmount: String, formatAmountCrypto: (value: number) => String(Number(value.toPrecision(5))) },
+  Utils: {
+    formatAmount: String,
+    formatAmountCrypto: (value: number, decimals = 5) => {
+      let r = (+value.toPrecision(decimals)).toFixed(decimals);
+      if (r.match(/\./)) {
+        r = r.replace(/\.?0+$/, '');
+      }
+      return r;
+    },
+  },
   useFiat: () => ({ toSymbol: () => ' EUR' }),
 }));
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -28,6 +37,7 @@ jest.mock('../contexts/settings.context', () => ({
 describe('ExchangeRate price steps', () => {
   it.each([
     ['Sell', 0.017966, 'DSC to USD at 55.661 USD/DSC on Denario'],
+    ['Sell', 6173.4, 'DSC to USD at 0.00016199 USD/DSC on Denario'],
     ['Buy', 0.017966, 'DSC to USD at 0.017966 DSC/USD on Denario'],
     ['Swap', 0.017966, 'DSC to USD at 0.017966 DSC/USD on Denario'],
     ['Sell', 0, 'DSC to USD at 0 DSC/USD on Denario'],

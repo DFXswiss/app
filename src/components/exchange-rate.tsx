@@ -2,6 +2,7 @@ import { Asset, Blockchain, Fees, Fiat, PriceStep, TransactionType, Utils, useFi
 import { IconColor, StyledCollapsible, StyledInfoText, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { useSettingsContext } from '../contexts/settings.context';
 import { ReactComponent as PathArrow } from '../static/assets/path-arrow.svg';
+import { formatSignificantAmount } from '../util/significant-amount';
 
 interface ExchangeRateProps {
   exchangeRate: number;
@@ -99,7 +100,7 @@ export function ExchangeRate({
                       source: step.source,
                       from: step.from,
                       to: step.to,
-                      price: inverted ? Utils.formatAmountCrypto(inverse) : step.price,
+                      price: inverted ? formatSignificantAmount(inverse) : step.price,
                     },
                   )}
                 </div>

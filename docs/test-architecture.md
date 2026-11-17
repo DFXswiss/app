@@ -393,7 +393,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   no bank selection.
 - **The exchange-rate unit test replaces the SDK and presentation components.**
   `src/__tests__/exchange-rate.test.tsx` supplies a formatter and renders component-library controls
-  as plain elements. A green run does not prove the real SDK formatting or production controls.
+  as plain elements. Inverted sell steps use `formatSignificantAmount` from `src/util/significant-amount.ts`
+  instead of that formatter. A green run does not prove the real SDK formatting or production controls.
   It also replaces `useSettingsContext`: `translate` only substitutes placeholders in the English key.
   A green run does not prove the de/fr/it translations or that the real keys exist in translation files.
 - **The sell-rate-steps visual spec supplies a synthetic quote.**
@@ -408,8 +409,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The transaction-list unit test replaces the SDK and component library.**
   `src/__tests__/transaction-list-txinfo.test.tsx` replaces `@dfx.swiss/react` and implements
   `Utils.formatAmountCrypto` locally as `String(Number(n.toPrecision(5)))`; the components are
-  replacements too. A green run does not prove the real SDK's formatting or the real component
-  library's rendering.
+  replacements too. Inverted sell rates use `formatSignificantAmount` from `src/util/significant-amount.ts`,
+  so a green run of that case proves the helper inside the replaced screen. A green run does not prove
+  the real SDK's formatting or the real component library's rendering.
 - **The transaction-status unit test replaces the dropdown.**
   `src/__tests__/transaction-screen-status.test.tsx` replaces `StyledDropdown` with a list that
   calls `labelFunc` and `descriptionFunc` itself. A green run proves which labels the callbacks
@@ -417,11 +419,19 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The completed sell rate full-stack case writes its starting row with SQL.**
   `e2e-stack/specs/transactions.spec.ts` sets `inputAmount`, `outputAmount`, `inputReferenceAmount`,
   `inputReferenceAmountMinusFee`, `outputAssetId`, `priceSteps`, `percentFee`, `totalFeeAmount`
-  and `blockchainFee` on a `buy_fiat` row; the detail and list cases both use this starting state. A green run
+  and `blockchainFee` on a `buy_fiat` row; the ETH detail and list cases share this starting state. A green run
   proves that the API returns the saved rate fields and the screen displays them as fiat per asset.
   It does not prove that transaction processing calculates or saves those rates and price steps.
   Nor does it prove fee calculation: `percentFee`, `totalFeeAmount` and `blockchainFee` are set by SQL,
   and the fiat fees on the screen are derived from these stored values and the stored base rate.
+- **The cheap-token sell rate full-stack case writes its starting row with SQL.**
+  `e2e-stack/specs/transactions.spec.ts` points `crypto_input.assetId` at the seeded token
+  `Ethereum/DEPS` (`migration/seed/asset.csv` in the API repository: id 354, type Token, sellable)
+  and sets `buy_fiat.inputAmount` 61734, `outputAmount` 10, `inputReferenceAmount` 61734,
+  `inputReferenceAmountMinusFee` 61734, `outputAssetId` and one price step of 6173.4. A green run
+  proves the detail screen shows `0.00016199 EUR/DEPS` for the rate, the base rate and that step.
+  It does not prove that pricing, fee calculation or transaction processing produced those amounts,
+  or that DEPS trades at that rate.
 - **The transaction-invoice visual spec answers the waiting buy row itself.**
   `e2e/transaction-invoice.spec.ts` fulfils `GET /v1/transaction/detail` with a synthetic CHF
   `WaitingForPayment` buy, signs in with an unsigned client-side session token, and answers

@@ -67,11 +67,13 @@ const DSC_ASSET = {
   limits: { minVolume: 0.01, maxVolume: 100 },
 };
 
+// Quote fees follow the API: total = dfx + platform + bank + network, and dfx does not include platform.
+// DSC dfx is total − platform − network, rounded to five significant digits (0.000596997 → 0.000597).
 const SELL_FEES = {
   rate: 0.0199,
   fixed: 0,
   min: 0,
-  dfx: 0.00089702,
+  dfx: 0.000597,
   bank: 0,
   network: 0.000078823,
   total: 0.00097582,
@@ -90,7 +92,8 @@ const SYNTHETIC_SELL = {
   maxVolume: 100,
   amount: 0.03,
   asset: DSC_ASSET,
-  feesTarget: { ...SELL_FEES, dfx: 0.05, network: 0, total: 0.05, platform: 0.02 },
+  // EUR at the 49.692 base rate, FIAT_FEE: dfx 0.03, platform 0.02, network 0, total 0.05.
+  feesTarget: { ...SELL_FEES, dfx: 0.03, network: 0, total: 0.05, platform: 0.02 },
   minVolumeTarget: 10,
   maxVolumeTarget: 250000,
   exchangeRate: 0.020124,

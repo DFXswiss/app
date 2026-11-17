@@ -64,6 +64,7 @@ import { useReportDisplayedError } from '../hooks/report-displayed-error.hook';
 import { useTransactionGuest } from '../hooks/transaction-guest.hook';
 import { BlockedBankRejection, KnownRejectionType } from '../util/known-rejections';
 import { getStoredPaymentDetailErrorMessage } from '../util/personal-iban';
+import { formatSignificantAmount } from '../util/significant-amount';
 import { canOpenInvoice, revealInvoicePdf } from '../util/transaction-invoice';
 import { blankedAddress, formatSwissDateTimeWithSeconds } from '../util/utils';
 import { ZipValidation } from '../util/validation-rules';
@@ -1082,7 +1083,7 @@ interface TxInfoProps {
 function displayRate(value: number, from: string, to: string, sell: boolean) {
   const inverse = 1 / value;
   return sell && value !== 0 && Number.isFinite(value) && Number.isFinite(inverse)
-    ? { value: Utils.formatAmountCrypto(inverse), from: to, to: from, inverted: true }
+    ? { value: formatSignificantAmount(inverse), from: to, to: from, inverted: true }
     : { value, from, to, inverted: false };
 }
 

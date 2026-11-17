@@ -109,6 +109,52 @@ test('completed sell detail displays fiat per asset for the rate and price steps
   await expect(page.getByText(/USD to EUR at 1\.08 USD\/EUR/)).toHaveCount(0);
 });
 
+test('completed sell of a cheap token displays five significant fiat digits', async ({ page }) => {
+  const user = await createUser({ tag: 'tx-sell-deps', kycLevel: 30, completePersonalData: true });
+  const tx = await createTransaction({
+    state: 'completed_sell',
+    tag: 'tx-sell-deps',
+    inputAsset: 'DEPS',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 61734,
+  });
+  const eur = required(
+    await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'EUR' LIMIT 1`),
+    'EUR must exist',
+  );
+  const deps = required(
+    await queryOne<{ id: number }>(`SELECT id FROM asset WHERE "uniqueName" = 'Ethereum/DEPS' LIMIT 1`),
+    'Ethereum/DEPS must exist in the asset seed',
+  );
+  await queryRows(`UPDATE crypto_input SET "assetId" = $1 WHERE id = $2`, [
+    deps.id,
+    required(tx.cryptoInputId, 'completed sell has a crypto input'),
+  ]);
+  await queryRows(
+    `UPDATE buy_fiat SET "inputAmount" = 61734, "inputAsset" = 'DEPS', "outputAmount" = 10,
+       "inputReferenceAmount" = 61734, "inputReferenceAmountMinusFee" = 61734, "outputAssetId" = $1,
+       "priceSteps" = $2 WHERE id = $3`,
+    [
+      eur.id,
+      JSON.stringify([
+        { source: 'Synthetic', from: 'DEPS', to: 'EUR', price: 6173.4, timestamp: '2026-10-22T13:29:00.687Z' },
+      ]),
+      required(tx.buyFiatId, 'completed sell has a buy fiat row'),
+    ],
+  );
+
+  await openScreen(page, `/tx/${tx.uid}`, user.jwt);
+  await page.getByText('0.00016199 EUR/DEPS', { exact: true }).first().click();
+  await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.00016199 EUR/DEPS', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('0.00016 EUR/DEPS', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText('DEPS to EUR at 0.00016199 EUR/DEPS (Synthetic, 2026-10-22T13:29:00.687Z)', { exact: true }),
+  ).toBeVisible();
+});
+
 test('completed sell in the list displays fiat rates and fees', async ({ page }) => {
   const user = await createUser({ tag: 'tx-list-sell-rate', kycLevel: 30, completePersonalData: true });
   const tx = await createTransaction({

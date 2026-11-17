@@ -35,7 +35,13 @@ jest.mock('@dfx.swiss/react', () => {
   const Utils = {
     formatIban: (v: any) => v,
     formatAmount: (n: any) => String(n),
-    formatAmountCrypto: (n: number) => String(Number(n.toPrecision(5))),
+    formatAmountCrypto: (n: number, decimals = 5) => {
+      let r = (+n.toPrecision(decimals)).toFixed(decimals);
+      if (r.match(/\./)) {
+        r = r.replace(/\.?0+$/, '');
+      }
+      return r;
+    },
     createRules: () => ({}),
   };
 
@@ -1544,6 +1550,38 @@ describe('TxInfo sell rates', () => {
     expect(screen.getByTestId('expansion-Base rate')).toHaveTextContent('48.075 EUR/DSC');
     expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent('55.661 USD/DSC');
     expect(screen.getAllByText('48.075 EUR/DSC', { exact: false }).length).toBeGreaterThan(0);
+  });
+
+  it('inverts a sell rate below 0.001 with five significant digits', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            state: 'Processing',
+            inputAsset: 'DEPS',
+            outputAsset: 'EUR',
+            rate: 6173.4,
+            exchangeRate: 6173.4,
+            priceSteps: [
+              {
+                source: 'Synthetic',
+                from: 'DEPS',
+                to: 'EUR',
+                price: 6173.4,
+                timestamp: '2026-10-22T13:29:00.687Z',
+              },
+            ],
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Base rate')).toHaveTextContent('0.00016199 EUR/DEPS');
+    expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent(
+      'DEPS to EUR at 0.00016199 EUR/DEPS (Synthetic, 2026-10-22T13:29:00.687Z)',
+    );
+    expect(screen.getAllByText('0.00016199 EUR/DEPS').length).toBeGreaterThan(0);
   });
 
   it.each([
