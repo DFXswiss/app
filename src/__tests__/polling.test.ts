@@ -138,6 +138,29 @@ describe('usePolling', () => {
     expect(mockFetchJson).toHaveBeenCalledTimes(1);
   });
 
+  it('should poll again for the same URL after being stopped', async () => {
+    // a wait poll keeps the same URL for as long as the payment is pending, so a restart
+    // after stop() has to work — otherwise the payment is never picked up again
+    const { result } = renderHook(() => usePolling());
+    const callback = jest.fn();
+
+    await act(async () => {
+      result.current.init('https://api.example.com', callback);
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.stop();
+    });
+
+    await act(async () => {
+      result.current.init('https://api.example.com', callback);
+      await Promise.resolve();
+    });
+
+    expect(mockFetchJson).toHaveBeenCalledTimes(2);
+  });
+
   it('should clean up interval on unmount', async () => {
     const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
     
