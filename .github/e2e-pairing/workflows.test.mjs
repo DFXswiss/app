@@ -344,6 +344,62 @@ test('the backend fetch is isolated, hook-free, key-scoped and moved in safely',
   assert.doesNotMatch(fetchStep, /api-repo\/\.git/);
 });
 
+test('the run job tears the stack down only after Bring stack up ran', () => {
+  const runJob = job(read('.github/workflows/e2e-paired.yml'), 'run');
+  const guarded =
+    "always() && (steps.stack-up.outcome == 'success' || steps.stack-up.outcome == 'failure')";
+  const bringUp = step(runJob, 'Bring stack up');
+  assert.deepEqual(
+    bringUp.split('\n').filter((line) => line.startsWith('        id:')),
+    ['        id: stack-up'],
+  );
+  const tearDown = step(runJob, 'Tear down stack');
+  assert.deepEqual(
+    tearDown.split('\n').filter((line) => line.startsWith('        if:')),
+    [`        if: ${guarded}`],
+  );
+
+  const lines = runJob.split('\n');
+  const starts = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].startsWith('      - name: ')) {
+      starts.push(index);
+    }
+  }
+  const workspaceScriptsUnderAlways = [];
+  for (let index = 0; index < starts.length; index += 1) {
+    const start = starts[index];
+    const end = index + 1 < starts.length ? starts[index + 1] : lines.length;
+    const body = lines.slice(start, end);
+    const name = lines[start].slice('      - name: '.length);
+    const condition = body
+      .filter((line) => line.startsWith('        if: '))
+      .map((line) => line.slice('        if: '.length))
+      .join('\n');
+    if (!condition.includes('always()')) {
+      continue;
+    }
+    const runAt = body.findIndex((line) => line.startsWith('        run:'));
+    if (runAt === -1) {
+      continue;
+    }
+    const runText = [body[runAt].slice('        run:'.length)];
+    for (let cursor = runAt + 1; cursor < body.length; cursor += 1) {
+      const line = body[cursor];
+      const indent = line.match(/^ */)?.[0].length ?? 0;
+      if (line.trim() !== '' && indent <= 8) {
+        break;
+      }
+      runText.push(line);
+    }
+    if (!runText.join('\n').includes('e2e-stack/scripts/')) {
+      continue;
+    }
+    workspaceScriptsUnderAlways.push({ name, condition });
+  }
+  assert.deepEqual(workspaceScriptsUnderAlways, [{ name: 'Tear down stack', condition: guarded }]);
+});
+
 test('admin docs scope the App private key to the develop-only environment', () => {
   for (const relativePath of ['CONTRIBUTING.md', 'e2e-stack/README.md', 'docs/test-architecture.md']) {
     const text = read(relativePath).replace(/\s+/g, ' ');

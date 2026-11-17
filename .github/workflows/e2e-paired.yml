@@ -493,6 +493,7 @@ jobs:
           npx tsc --noEmit
 
       - name: Bring stack up
+        id: stack-up
         run: E2E_API_REPO=$GITHUB_WORKSPACE/api-repo bash e2e-stack/scripts/up.sh
 
       - name: Run Playwright tests
@@ -525,8 +526,11 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+      # The teardown script comes from the workspace, so it runs only after
+      # `Bring stack up` ran, which requires the verified head; when
+      # verification failed, nothing was started and no workspace script runs.
       - name: Tear down stack
-        if: always()
+        if: always() && (steps.stack-up.outcome == 'success' || steps.stack-up.outcome == 'failure')
         run: bash e2e-stack/scripts/down.sh
 
       # A red Playwright test fails the job. The outcome step still runs with
