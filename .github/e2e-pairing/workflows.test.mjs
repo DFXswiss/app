@@ -316,6 +316,40 @@ test('every paired coordinator checkout opts into fork pull request code', () =>
   assert.equal(seen, 4, 'each actions/checkout step is one of the four opted-in steps');
 });
 
+test('the A38 policy excludes every paired coordinator job exactly once', () => {
+  const workflowPath = '.github/workflows/e2e-paired.yml';
+  const workflow = read(workflowPath);
+  const jobsAt = workflow.indexOf('\njobs:\n');
+  assert.notEqual(jobsAt, -1, 'the coordinator workflow has a jobs section');
+  const jobIds = workflow
+    .slice(jobsAt)
+    .split('\n')
+    .map((line) => /^  ([a-z][a-z0-9-]*):$/.exec(line)?.[1])
+    .filter(Boolean);
+  assert.deepEqual(jobIds, ['resolve', 'run', 'publish', 'reconcile']);
+
+  const policy = JSON.parse(read('.github/a38.json'));
+  assert.ok(Array.isArray(policy.jobs), 'a38.json has a jobs array');
+  assert.ok(Array.isArray(policy.exclusions), 'a38.json has an exclusions array');
+  for (const id of jobIds) {
+    job(workflow, id);
+    const matches = policy.exclusions.filter((entry) => entry.workflow === workflowPath && entry.job === id);
+    assert.equal(matches.length, 1, `${id} appears exactly once in exclusions`);
+    assert.equal(typeof matches[0].reason, 'string', `${id} exclusion has a reason`);
+    assert.notEqual(matches[0].reason.trim(), '', `${id} exclusion reason is not empty`);
+    assert.equal(
+      policy.jobs.filter((entry) => entry.workflow === workflowPath && entry.job === id).length,
+      0,
+      `${id} is not a measured A38 job`,
+    );
+  }
+  assert.equal(
+    policy.exclusions.filter((entry) => entry.workflow === workflowPath).length,
+    jobIds.length,
+    'a38.json excludes no other coordinator job',
+  );
+});
+
 test('the backend fetch is isolated, hook-free, key-scoped and moved in safely', () => {
   const workflow = read('.github/workflows/e2e-paired.yml');
   const runJob = job(workflow, 'run');
