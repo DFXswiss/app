@@ -173,13 +173,13 @@ this service's database.
 ### A38
 
 This repository requires A38 according to the canonical A38 standard in
-[DFXswiss/agent](https://github.com/DFXswiss/agent/blob/4a666e836a1acd94be73482b6b10b9fa6f384185/docs/a38.md)
-at commit `4a666e836a1acd94be73482b6b10b9fa6f384185`. Repo job selection:
+[DFXswiss/agent](https://github.com/DFXswiss/agent/blob/3528240c62d72e8f50f8ec5ddda0c4d213f0f04a/docs/a38.md)
+at commit `3528240c62d72e8f50f8ec5ddda0c4d213f0f04a`. Repo job selection:
 `.github/a38.json`. Target-branch applicability and fork workflow approval:
 `.github/pr-guard.json`. `workflow_approval.workflows` stays a required field
 there but no longer filters: after a fresh enforce pass the guard approves
 every initial held fork `pull_request` run. `dfx pr guard` is
-[wired in](https://github.com/DFXswiss/agent/blob/4a666e836a1acd94be73482b6b10b9fa6f384185/docs/a38-guard.md#how-fork-github-actions-are-meant-to-work).
+[wired in](https://github.com/DFXswiss/agent/blob/3528240c62d72e8f50f8ec5ddda0c4d213f0f04a/docs/a38-guard.md#how-fork-github-actions-are-meant-to-work).
 `.github/pr-guard.json` also turns on the held-run drain (`held_run_drain`): on the
 all-open reconcile (`schedule`, or `workflow_dispatch` without a pull request number)
 the guard deletes never-started held fork `pull_request` runs that no open pull request
@@ -199,6 +199,8 @@ fresh A38 enforce pass on
 the current head, `dfx pr guard` approves those waiting initial runs, then sets
 Ready when the review rule below is met, required GitHub jobs are green, and
 the PR is mergeable.
+A draft that a person sets stays draft until a person marks the pull request
+Ready or a first-run review comment posted after that draft names the current head.
 
 Two reviews are required before Ready. One review is enough only when the
 pull request opener is listed in one_review_authors in the trusted
