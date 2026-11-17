@@ -363,6 +363,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`openQuoteCapableBuy` and older quote cases) updates the limit
   directly so `LIMIT_EXCEEDED` does not hide payment info. A green run does **not** prove that a
   customer reaches that limit through the product path.
+- **The full-stack `/safe` level-50 case SQL-writes `user_data.kycLevel`.**
+  `e2e-stack/specs/account.spec.ts`
+  (`/safe renders portfolio shell for a KYC level 50 user with no custody accounts`) calls
+  `createUser` with `kycLevel: 50`, which writes the level, the personal data and the default
+  `depositLimit` directly as the visitor's starting state, so custody signup is allowed. A green
+  run does **not** prove that a customer reaches KYC level 50 through the KYC and approval flow.
 - **The full-stack provisional buy spec SQL-clears `user_data.tradeApprovalDate`.**
   `e2e-stack/specs/buy.spec.ts` (`/buy and /buy/info: provisional approval …`) sets the date to `NULL`
   after creating the customer, because the factory may leave one behind. A green run does **not** prove
