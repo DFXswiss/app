@@ -1,5 +1,5 @@
 import copy from 'copy-to-clipboard';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface ClipboardInterface {
   isCopying: boolean;
@@ -8,26 +8,44 @@ interface ClipboardInterface {
 
 export function useClipboard(): ClipboardInterface {
   const [isCopying, setIsCopying] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current !== undefined) clearTimeout(copiedTimer.current);
+    };
+  }, []);
+
+  function markCopied(): void {
+    if (copiedTimer.current !== undefined) clearTimeout(copiedTimer.current);
+    setIsCopying(true);
+    copiedTimer.current = setTimeout(() => {
+      setIsCopying(false);
+      copiedTimer.current = undefined;
+    }, 500);
+  }
+
+  function fallbackCopy(text: string): boolean {
+    try {
+      return copy(text) === true;
+    } catch {
+      return false;
+    }
+  }
+
   function copyHelper(text?: string): void {
     if (!text) return;
-    setIsCopying(true);
-
-    const resetIsCopying = () => setTimeout(() => setIsCopying(false), 500);
-
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard
+    const clipboard = navigator.clipboard;
+    if (clipboard?.writeText) {
+      clipboard
         .writeText(text)
-        .catch(() => copy(text))
-        .finally(resetIsCopying)
-        // settle deliberately: a throwing fallback would otherwise escape as an unhandled rejection
-        .catch(() => undefined);
-    } else {
-      try {
-        copy(text);
-      } finally {
-        resetIsCopying();
-      }
+        .then(() => markCopied())
+        .catch(() => {
+          if (fallbackCopy(text)) markCopied();
+        });
+      return;
     }
+    if (fallbackCopy(text)) markCopied();
   }
 
   return { copy: copyHelper, isCopying };

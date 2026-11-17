@@ -6,6 +6,7 @@ export interface LayoutConfig {
   onBack?: () => void;
   textStart?: boolean;
   noPadding?: boolean;
+  noHeader?: boolean;
   noMaxWidth?: boolean;
   smallMenu?: boolean;
 }

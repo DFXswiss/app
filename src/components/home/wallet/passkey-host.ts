@@ -1,21 +1,9 @@
-import { DfxApiClient } from '@dfx.swiss/core';
-import {
-  CredentialCache,
-  PasskeyAuth,
-  PasskeyCeremonies,
-  RP_IDS,
-  type PlatformReport,
-  type WalletEnv,
-} from '@dfx.swiss/wallet';
-import { Api } from '../../../config/api';
+import { RP_IDS, type PlatformReport, type WalletEnv } from '@dfx.swiss/wallet';
 
 const STG_HOST = 'stg.app.dfx.swiss';
 
 export const PASSKEY_PLATFORM_BLOCK = 'This browser has no passkey support';
 export const PASSKEY_GENERIC_ERROR = 'Something went wrong. Please try again.';
-export const PASSKEY_LOCKED = 'This passkey did not unlock the wallet';
-export const PASSKEY_SEED_MISMATCH = 'This passkey does not match the wallet';
-export const PASSKEY_NO_ACCOUNT = 'Sign in with mail first. The passkey is added to that account.';
 export const PASSKEY_LOGIN_HEADING = 'Log in with your device';
 export const PASSKEY_PREPARING = 'Preparing your login…';
 export const PASSKEY_CHOICE_HEADING = 'Do you already have an account?';
@@ -36,11 +24,6 @@ export const PASSKEY_OPEN_BROWSER = 'Open in browser';
 export const PASSKEY_COPY_LINK = 'Copy link';
 export const PASSKEY_LINK_COPIED = 'Copied';
 export const PASSKEY_PRF_UNSUPPORTED = 'This passkey cannot hold a wallet on this device.';
-
-export interface PasskeyClients {
-  auth: PasskeyAuth;
-  api: DfxApiClient;
-}
 
 export type PasskeyPlatformView = 'pending' | 'in-app' | 'os-old' | 'blocked' | 'ready';
 
@@ -65,10 +48,10 @@ export function passkeyPlatformBlock(report: PlatformReport | undefined): string
   return PASSKEY_PLATFORM_BLOCK;
 }
 
-export function passkeyOsTooOld(os: string | undefined): string {
+export function passkeyOsTooOld(os: string | undefined): { key: string; version?: string } {
   const trimmed = (os ?? '').trim();
-  if (trimmed === '') return 'This operating system cannot sign in with a passkey.';
-  return 'This operating system (' + trimmed + ') cannot sign in with a passkey.';
+  if (trimmed === '') return { key: 'This operating system cannot sign in with a passkey.' };
+  return { key: 'This operating system ({{version}}) cannot sign in with a passkey.', version: trimmed };
 }
 
 export function passkeyDismissed(error: unknown): boolean {
@@ -83,9 +66,7 @@ export function passkeyUnknownCredential(error: unknown): boolean {
   const message = typeof record.message === 'string' ? record.message.toLowerCase() : '';
   const code = typeof record.code === 'string' ? record.code.toLowerCase() : '';
   return (
-    message.includes('unknown credential') ||
-    code.includes('unknown credential') ||
-    record.code === 'UnknownCredential'
+    message.includes('unknown credential') || code.includes('unknown credential') || record.code === 'UnknownCredential'
   );
 }
 
@@ -111,13 +92,4 @@ export function passkeyPlatformView(report: PlatformReport | undefined): Passkey
 export function passkeyMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim() !== '') return error.message;
   return PASSKEY_GENERIC_ERROR;
-}
-
-export function createPasskeyClients(): PasskeyClients {
-  const env = walletEnvForHost(window.location.hostname);
-  const api = new DfxApiClient({ apiUrl: `${Api.url.replace(/\/$/, '')}/${Api.version}` });
-  // Public credential list from the wallet package. It holds no seed and no account token, and unlock
-  // and the recovery-word export read it after a later ceremony in this tab.
-  const cache = new CredentialCache(undefined, 'dfx.wallet.credentials.v1', RP_IDS[env]);
-  return { auth: new PasskeyAuth({ api, ceremonies: new PasskeyCeremonies(env), env, cache }), api };
 }
