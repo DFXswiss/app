@@ -736,6 +736,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   error, no report) and a failed one ("Transaction failed"). It does not prove that a real wallet rejects that
   way, production auth, that the API returns real bootstrap data or that quote, or that the real client-error
   endpoint receives the report.
+- **The partner wallet-selection visual spec answers the bootstrap and the client-error report itself.**
+  `e2e/partner-wallet-selection.spec.ts` fulfils the bootstrap GETs `GET /v1/language` (German and
+  English), `GET /v1/fiat` (CHF), `GET /v1/asset` (one ETH coin), `GET /v1/bankAccount` and
+  `GET /v1/country` (empty lists), and `GET /v1/setting/infoBanner` (no banner); `POST /v1/log/clientError`
+  is answered with 201 and recorded. Any other `/v1/**` and every `/v2/**` call gets `501` instead of being
+  continued, and the app is opened with `lang=en` in the partner modes `bitcoinonly`, `kevinsoell` and
+  `lightning-wallets`. A green run proves how three screens render with those answers and no Alby tile: the
+  bitcoinonly sell wallet list, the kevinsoell sell hardware-wallet selection (reached through the Bitcoin
+  Lightning tile), and the `lightning-wallets` Bitcoin Lightning wallet list, each without "Oh, sorry,
+  something went wrong" and with no client-error report. It does not prove the API's real answers, a real
+  wallet connection, or anything beyond how these three screens render.
 - **The MetaMask rejection hook test replaces the injected provider.**
   `src/hooks/wallets/__tests__/metamask-rejection.hook.test.ts` runs `useMetaMask` against the real web3 with
   an in-memory EIP-1193 provider (and a legacy `sendAsync` provider) that answers or rejects each method, and
