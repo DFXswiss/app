@@ -54,6 +54,28 @@ function job(workflow, name) {
   return lines.slice(0, next === -1 ? undefined : next).join('\n');
 }
 
+function ghApiInvocations(text) {
+  const invocations = [];
+  let command = '';
+  const finish = () => {
+    if (/(^|[^\w])gh api(\s|$)/.test(command)) {
+      invocations.push(command);
+    }
+    command = '';
+  };
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+    command = command ? `${command}\n${line}` : line;
+    if (!line.endsWith('\\')) {
+      finish();
+    }
+  }
+  if (command) {
+    finish();
+  }
+  return invocations;
+}
+
 function step(workflow, name) {
   const start = workflow.indexOf(`      - name: ${name}\n`);
   assert.notEqual(start, -1, `step ${name} is present`);
@@ -351,4 +373,25 @@ test('docs exclude paired PRs from the standard CI time target and keep the E2E 
     .find((block) => block.startsWith('|'));
   const table = layers.split('\n').filter((line) => line.startsWith('|'));
   assert.equal(new Set(table.map((line) => line.length)).size, 1);
+});
+
+test('gh api invocations do not combine --slurp with --jq or --template', () => {
+  const directory = fileURLToPath(new URL('.github/workflows/', root));
+  const names = fs
+    .readdirSync(directory)
+    .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
+    .sort();
+  assert.ok(names.includes('e2e-stack.yml'), 'e2e-stack.yml is included');
+  assert.ok(names.length > 0, 'workflow directory has files');
+  for (const name of names) {
+    for (const invocation of ghApiInvocations(read(`.github/workflows/${name}`))) {
+      const combinesSlurp =
+        invocation.includes('--slurp') && (invocation.includes('--jq') || invocation.includes('--template'));
+      assert.equal(
+        combinesSlurp,
+        false,
+        `${name} gh api invocation combines --slurp with --jq or --template:\n${invocation}`,
+      );
+    }
+  }
 });

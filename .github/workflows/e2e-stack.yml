@@ -163,11 +163,14 @@ jobs:
                 echo '::error::pull request changed-file count is not a non-negative integer.'
                 exit 1
               fi
-              file_fields=$(gh api --paginate --slurp \
-                "repos/DFXswiss/app/pulls/${PR_NUMBER}/files?per_page=100" \
-                --jq 'add // [] | [length, any(.filename == "e2e-companion.json" and (.status != "removed" and .status != "unchanged"))] | @tsv') || rc=$?
+              files_json=$(gh api --paginate --slurp "repos/DFXswiss/app/pulls/${PR_NUMBER}/files?per_page=100") || rc=$?
               if (( rc != 0 )); then
                 echo "::error::could not read the pull request file list for paired E2E scope (exit $rc)."
+                exit 1
+              fi
+              file_fields=$(jq -r 'add // [] | [length, any(.filename == "e2e-companion.json" and (.status != "removed" and .status != "unchanged"))] | @tsv' <<< "$files_json") || rc=$?
+              if (( rc != 0 )); then
+                echo "::error::could not parse the pull request file list for paired E2E scope (exit $rc)."
                 exit 1
               fi
               IFS=$'\t' read -r file_count paired <<< "$file_fields"
