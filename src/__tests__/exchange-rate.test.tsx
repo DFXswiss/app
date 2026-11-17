@@ -5,7 +5,8 @@ jest.mock('@dfx.swiss/react', () => ({
   Blockchain: { BITCOIN: 'Bitcoin', ETHEREUM: 'Ethereum' },
   TransactionType: { BUY: 'Buy', SELL: 'Sell', SWAP: 'Swap' },
   Utils: {
-    formatAmount: String,
+    formatAmount: (amount?: number | null, decimals = 2) =>
+      amount?.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') ?? '',
     formatAmountCrypto: (value: number, decimals = 5) => {
       let r = (+value.toPrecision(decimals)).toFixed(decimals);
       if (r.match(/\./)) {
@@ -36,7 +37,7 @@ jest.mock('../contexts/settings.context', () => ({
 
 describe('ExchangeRate price steps', () => {
   it.each([
-    ['Sell', 0.017966, 'DSC to USD at 55.661 USD/DSC on Denario'],
+    ['Sell', 0.017966, 'DSC to USD at 55.66 USD/DSC on Denario'],
     ['Sell', 6173.4, 'DSC to USD at 0.00016199 USD/DSC on Denario'],
     ['Buy', 0.017966, 'DSC to USD at 0.017966 DSC/USD on Denario'],
     ['Swap', 0.017966, 'DSC to USD at 0.017966 DSC/USD on Denario'],
@@ -96,8 +97,8 @@ describe('ExchangeRate fees and explanations', () => {
         }
       />,
     );
-    expect(screen.getByText('2.345678 EUR/USD')).toBeInTheDocument();
-    expect(screen.getByText('1.234567 EUR/USD')).toBeInTheDocument();
+    expect(screen.getByText('2.35 EUR/USD')).toBeInTheDocument();
+    expect(screen.getByText('1.23 EUR/USD')).toBeInTheDocument();
     expect(screen.getByText('2 EUR (2.00%, min. 0.5 EUR)')).toBeInTheDocument();
     expect(screen.getByText('4 EUR')).toBeInTheDocument();
     expect(screen.getByText('6 EUR')).toBeInTheDocument();
@@ -106,15 +107,15 @@ describe('ExchangeRate fees and explanations', () => {
     expect(screen.queryByText('Bank fee', { exact: true })).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        'The output amount is computed as the input amount minus the DFX fee, bank fee and the network fee over the base rate. That is, 8 USD = (10 EUR - 2 EUR - 3 EUR - 1 EUR) ÷ 1.234567 EUR/USD.',
+        'The output amount is computed as the input amount minus the DFX fee, bank fee and the network fee over the base rate. That is, 8 USD = (10 EUR - 2 EUR - 3 EUR - 1 EUR) ÷ 1.23 EUR/USD.',
       ),
     ).toBeInTheDocument();
   });
 
   it('displays fiat fees and the substituted sell explanation', () => {
     render(<ExchangeRate {...defaults} type={'Sell' as never} to={{ name: 'BTC', blockchain: 'Bitcoin' } as never} />);
-    expect(screen.getByText('2.345678 EUR/BTC')).toBeInTheDocument();
-    expect(screen.getByText('1.234567 EUR/BTC')).toBeInTheDocument();
+    expect(screen.getByText('2.35 EUR/BTC')).toBeInTheDocument();
+    expect(screen.getByText('1.23 EUR/BTC')).toBeInTheDocument();
     expect(screen.getByText('2 EUR (2.00%)')).toBeInTheDocument();
     expect(screen.getByText('Bank fee', { exact: true })).toBeInTheDocument();
     expect(screen.getByText('3 EUR')).toBeInTheDocument();
@@ -122,7 +123,7 @@ describe('ExchangeRate fees and explanations', () => {
     expect(screen.queryByText('Platform fee')).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        'The output amount is computed as the input amount times the base rate minus the DFX fee, bank fee and the network fee. That is, 8 EUR = 10 BTC × 1.234567 EUR/BTC - 2 EUR - 3 EUR - 1 EUR.',
+        'The output amount is computed as the input amount times the base rate minus the DFX fee, bank fee and the network fee. That is, 8 EUR = 10 BTC × 1.23 EUR/BTC - 2 EUR - 3 EUR - 1 EUR.',
       ),
     ).toBeInTheDocument();
   });
@@ -166,7 +167,7 @@ describe('ExchangeRate fees and explanations', () => {
     if (type === 'Swap') {
       expect(
         screen.getByText(
-          'The output amount is computed as the input amount minus the DFX fee and the network fee over the base rate. That is, 8 USD = (10 EUR - 0 EUR - 0 EUR) ÷ 1.234567 EUR/USD.',
+          'The output amount is computed as the input amount minus the DFX fee and the network fee over the base rate. That is, 8 USD = (10 EUR - 0 EUR - 0 EUR) ÷ 1.23 EUR/USD.',
         ),
       ).toBeInTheDocument();
     }
@@ -186,5 +187,68 @@ describe('ExchangeRate fees and explanations', () => {
         screen.getByText(`Use ${hint} as a Layer 2 solution to benefit from lower transaction fees`),
       ).toBeInTheDocument();
     else expect(screen.queryByText(/as a Layer 2 solution/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ExchangeRate fiat rates below and above 1', () => {
+  const fees = { rate: 0, total: 0, dfx: 0, network: 0 } as never;
+
+  it('formats a buy below 1 fiat on the title and the base rate', () => {
+    render(
+      <ExchangeRate
+        type={'Buy' as never}
+        exchangeRate={1 / 6000}
+        rate={1 / 6173.4}
+        amountIn={10}
+        amountOut={1}
+        from={{ name: 'EUR' } as never}
+        to={{ name: 'DEPS', blockchain: 'Ethereum' } as never}
+        feeCurrency={{ name: 'EUR' } as never}
+        fees={fees}
+        steps={[]}
+      />,
+    );
+    expect(screen.getByText('0.00016199 EUR/DEPS')).toBeInTheDocument();
+    expect(screen.getByText('0.00016667 EUR/DEPS')).toBeInTheDocument();
+  });
+
+  it('formats a sell below 1 fiat on the title, the base rate and the price steps', () => {
+    render(
+      <ExchangeRate
+        type={'Sell' as never}
+        exchangeRate={1 / 6000}
+        rate={1 / 6173.4}
+        amountIn={6173.4}
+        amountOut={1}
+        from={{ name: 'EUR' } as never}
+        to={{ name: 'DEPS', blockchain: 'Ethereum' } as never}
+        feeCurrency={{ name: 'EUR' } as never}
+        fees={fees}
+        steps={[{ source: 'Synthetic', from: 'DEPS', to: 'EUR', price: 6173.4, timestamp: new Date() }]}
+      />,
+    );
+    expect(screen.getByText('0.00016199 EUR/DEPS')).toBeInTheDocument();
+    expect(screen.getByText('0.00016667 EUR/DEPS')).toBeInTheDocument();
+    expect(screen.getByText('DEPS to EUR at 0.00016199 EUR/DEPS on Synthetic')).toBeInTheDocument();
+  });
+
+  it('uses the same fiat formatting for a sell title, base rate and price step above 1', () => {
+    render(
+      <ExchangeRate
+        type={'Sell' as never}
+        exchangeRate={1 / 0.020124}
+        rate={1 / 0.020801}
+        amountIn={0.03}
+        amountOut={1.44}
+        from={{ name: 'EUR' } as never}
+        to={{ name: 'DSC', blockchain: 'Polygon' } as never}
+        feeCurrency={{ name: 'EUR' } as never}
+        fees={fees}
+        steps={[{ source: 'Denario', from: 'DSC', to: 'USD', price: 0.017966, timestamp: new Date() }]}
+      />,
+    );
+    expect(screen.getByText('48.07 EUR/DSC')).toBeInTheDocument();
+    expect(screen.getByText('49.69 EUR/DSC')).toBeInTheDocument();
+    expect(screen.getByText('DSC to USD at 55.66 USD/DSC on Denario')).toBeInTheDocument();
   });
 });

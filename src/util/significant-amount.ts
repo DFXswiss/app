@@ -27,3 +27,13 @@ function plainSmallAmount(precise: string): string {
   const zeros = -Number(exponential[3]) - 1;
   return `0.${'0'.repeat(zeros)}${digits}`.replace(/0+$/, '');
 }
+
+// Fiat per asset on the payment pages. At and above 1, and for 0 and non-finite values, this is
+// Utils.formatAmount: two decimals and a space as the thousands separator (utils.js). Below 1,
+// five significant digits, same as formatSignificantAmount.
+export function formatFiatRate(amount: number): string {
+  if (!Number.isFinite(amount) || amount === 0 || Math.abs(amount) >= 1) {
+    return amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+  return formatSignificantAmount(amount);
+}

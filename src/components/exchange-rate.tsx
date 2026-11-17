@@ -2,7 +2,7 @@ import { Asset, Blockchain, Fees, Fiat, PriceStep, TransactionType, Utils, useFi
 import { IconColor, StyledCollapsible, StyledInfoText, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { useSettingsContext } from '../contexts/settings.context';
 import { ReactComponent as PathArrow } from '../static/assets/path-arrow.svg';
-import { formatSignificantAmount } from '../util/significant-amount';
+import { formatFiatRate } from '../util/significant-amount';
 
 interface ExchangeRateProps {
   exchangeRate: number;
@@ -33,10 +33,10 @@ export function ExchangeRate({
   const { toSymbol } = useFiat();
 
   const feeSymbol = 'blockchain' in feeCurrency ? ` ${feeCurrency.name}` : toSymbol(feeCurrency);
+  const formatFromAmount = (value: number) =>
+    'blockchain' in from ? Utils.formatAmountCrypto(value) : formatFiatRate(value);
 
-  const baseRate = `${
-    'blockchain' in from ? Utils.formatAmountCrypto(exchangeRate) : Utils.formatAmount(exchangeRate)
-  } ${from.name}/${to.name}`;
+  const baseRate = `${formatFromAmount(exchangeRate)} ${from.name}/${to.name}`;
   const minFee = `, min. ${fees.min}${feeSymbol}`;
   const totalFee = `${fees.total}${feeSymbol}`;
   const dfxFee = `${fees.dfx}${feeSymbol} (${(fees.rate * 100).toFixed(2)}%${fees.min ? minFee : ''})`;
@@ -68,13 +68,7 @@ export function ExchangeRate({
     <StyledCollapsible
       full
       label={translate('screens/payment', 'Exchange rate')}
-      title={`${
-        rate === Number.MAX_VALUE
-          ? '∞'
-          : 'blockchain' in from
-            ? Utils.formatAmountCrypto(rate)
-            : Utils.formatAmount(rate)
-      } ${from.name}/${to.name}`}
+      title={`${rate === Number.MAX_VALUE ? '∞' : formatFromAmount(rate)} ${from.name}/${to.name}`}
     >
       <StyledVerticalStack gap={2}>
         <div className="grid gap-1 w-full text-sm grid-cols-[10rem_1fr]">
@@ -100,7 +94,7 @@ export function ExchangeRate({
                       source: step.source,
                       from: step.from,
                       to: step.to,
-                      price: inverted ? formatSignificantAmount(inverse) : step.price,
+                      price: inverted ? formatFiatRate(inverse) : step.price,
                     },
                   )}
                 </div>

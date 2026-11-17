@@ -109,7 +109,64 @@ const SYNTHETIC_SELL = {
   isValid: true,
 };
 
-async function installSellRoutes(page: Page, addressCheckResult: 'LikelyReturn' | 'Ok'): Promise<void> {
+const DEPS_ASSET = {
+  ...DSC_ASSET,
+  id: 354,
+  name: 'DEPS',
+  uniqueName: 'Polygon/DEPS',
+  description: 'Synthetic DEPS',
+  dexName: 'DEPS',
+  decimals: 18,
+  limits: { minVolume: 1, maxVolume: 1000000 },
+};
+
+// 6173.4 DEPS at 6173.4 DEPS/EUR is 1 EUR before fees.
+// Asset fees use five significant digits: dfx = 6173.4 * 0.0199 = 122.85, platform = 6173.4 * 0.01 = 61.734,
+// network 0, total = 184.58. Fiat fees divide by 6173.4 and ceil to cents: dfx 0.02, platform 0.01, total 0.03.
+// Output is round((6173.4 - 184.58) / 6173.4, 2) = 0.97.
+// The quote rate is input per output after fees: 6173.4 / 0.97 = 6364.329896907217.
+// Inverting that shows 0.00015713 EUR/DEPS. The base rate and the price step stay 6173.4, shown as 0.00016199.
+const DEPS_SELL = {
+  ...SYNTHETIC_SELL,
+  uid: 'synthetic-sell-deps',
+  fees: {
+    rate: 0.0199,
+    fixed: 0,
+    min: 0,
+    dfx: 122.85,
+    bank: 0,
+    network: 0,
+    total: 184.58,
+    platform: 61.734,
+  },
+  minVolume: 1,
+  maxVolume: 1000000,
+  amount: 6173.4,
+  asset: DEPS_ASSET,
+  feesTarget: {
+    rate: 0.0199,
+    fixed: 0,
+    min: 0,
+    dfx: 0.02,
+    bank: 0,
+    network: 0,
+    total: 0.03,
+    platform: 0.01,
+  },
+  minVolumeTarget: 0.01,
+  maxVolumeTarget: 250000,
+  exchangeRate: 6173.4,
+  priceSteps: [{ source: 'Synthetic', from: 'DEPS', to: 'EUR', price: 6173.4, timestamp: '2026-10-22T13:29:00.687Z' }],
+  rate: 6173.4 / 0.97,
+  estimatedAmount: 0.97,
+};
+
+async function installSellRoutes(
+  page: Page,
+  addressCheckResult: 'LikelyReturn' | 'Ok',
+  sell: typeof SYNTHETIC_SELL = SYNTHETIC_SELL,
+  assets: Array<typeof DSC_ASSET> = [DSC_ASSET],
+): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -127,7 +184,7 @@ async function installSellRoutes(page: Page, addressCheckResult: 'LikelyReturn' 
     }
 
     if (method === 'GET' && path === '/v1/asset') {
-      return json(route, [DSC_ASSET]);
+      return json(route, assets);
     }
 
     if (method === 'GET' && path === '/v1/bankAccount') {
@@ -156,7 +213,7 @@ async function installSellRoutes(page: Page, addressCheckResult: 'LikelyReturn' 
     }
 
     if (method === 'PUT' && ['/v1/sell/quote', '/v1/sell/paymentInfos'].includes(path)) {
-      return json(route, SYNTHETIC_SELL);
+      return json(route, sell);
     }
 
     await json(route, { error: `Unexpected ${method} ${path}` }, 501);
@@ -197,8 +254,24 @@ test('expanded sell rate shows fiat price steps and fees', async ({ page }) => {
   await page.goto(`/sell?session=${encodeURIComponent(jwt())}&lang=en&asset-in=DSC&asset-out=EUR&amount-in=0.03`);
   const rate = page.getByText(/EUR\/DSC/).first();
   await expect(rate).toBeVisible();
+  await expect(page.getByText('48.07 EUR/DSC', { exact: true }).first()).toBeVisible();
   await rate.click();
   await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
-  await expect(page.getByText(/DSC to USD at 55\.661 USD\/DSC on Denario/)).toBeVisible();
+  await expect(page.getByText('49.69 EUR/DSC', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/DSC to USD at 55\.66 USD\/DSC on Denario/)).toBeVisible();
+  await expect(page.getByText(/USDT to EUR at 0\.89278 EUR\/USDT on CoinGecko/)).toBeVisible();
   await expect(page).toHaveScreenshot('sell-rate-steps-01-expanded.png', { fullPage: true });
+});
+
+test('sell under 1 eur shows the quote rate apart from the base rate and the price step', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await installSellRoutes(page, 'Ok', DEPS_SELL, [DEPS_ASSET]);
+  await page.goto(`/sell?session=${encodeURIComponent(jwt())}&lang=en&asset-in=DEPS&asset-out=EUR&amount-in=6173.4`);
+  await expect(page.locator('div.flex-1', { hasText: '0.00015713 EUR/DEPS' })).toHaveText('0.00015713 EUR/DEPS');
+  await page.locator('div.flex-1', { hasText: '0.00015713 EUR/DEPS' }).click();
+  await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Base rate', { exact: true }).locator('..').locator('> div').nth(1).locator('> div').first(),
+  ).toHaveText('0.00016199 EUR/DEPS');
+  await expect(page.getByText(/DEPS to EUR at 0\.00016199 EUR\/DEPS on Synthetic/)).toBeVisible();
 });

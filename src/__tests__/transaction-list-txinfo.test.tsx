@@ -1611,6 +1611,36 @@ describe('TxInfo sell rates', () => {
     expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent(expectedStep);
     expect(screen.getAllByText(expected, { exact: false }).length).toBeGreaterThan(0);
   });
+
+  it('keeps the asset-per-fiat text when a sell rate has an infinite reciprocal', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            rate: Number.MIN_VALUE,
+            exchangeRate: Number.MIN_VALUE,
+            priceSteps: [
+              {
+                source: 'Denario',
+                from: 'DSC',
+                to: 'USD',
+                price: Number.MIN_VALUE,
+                timestamp: '2026-10-22T13:29:00.687Z',
+              },
+            ],
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Base rate')).toHaveTextContent(`${Number.MIN_VALUE} DSC/EUR`);
+    expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent(
+      `DSC to USD at ${Number.MIN_VALUE} DSC/USD (Denario, 2026-10-22T13:29:00.687Z)`,
+    );
+  });
 });
 
 // Line 1216: TxInfo CopyButton for chargebackTarget.

@@ -1,4 +1,4 @@
-import { formatSignificantAmount } from '../util/significant-amount';
+import { formatFiatRate, formatSignificantAmount } from '../util/significant-amount';
 
 describe('formatSignificantAmount', () => {
   it.each([
@@ -29,5 +29,25 @@ describe('formatSignificantAmount', () => {
     expect(formatSignificantAmount(-1.5)).toBe('-1.5');
     expect(formatSignificantAmount(Number.POSITIVE_INFINITY)).toBe('Infinity');
     expect(formatSignificantAmount(Number.NaN)).toBe('NaN');
+  });
+});
+
+describe('formatFiatRate', () => {
+  it.each([
+    [1, '1.00'],
+    [-1, '-1.00'],
+    [0, '0.00'],
+    [1 / 0.020801, '48.07'],
+    [2475.25, '2 475.25'],
+    [-2475.25, '-2 475.25'],
+    [0.99999, '0.99999'],
+    [1 / 2.7663, '0.36149'],
+    [1 / 6173.4, '0.00016199'],
+    [-1 / 6173.4, '-0.00016199'],
+    [Number.POSITIVE_INFINITY, 'Infinity'],
+    [Number.NEGATIVE_INFINITY, '-Infinity'],
+    [Number.NaN, 'NaN'],
+  ])('formats %s as %s', (amount, expected) => {
+    expect(formatFiatRate(amount)).toBe(expected);
   });
 });
