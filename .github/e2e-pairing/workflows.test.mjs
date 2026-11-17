@@ -280,17 +280,17 @@ test('every paired coordinator checkout opts into fork pull request code', () =>
     [
       'resolve',
       'Check out trusted pairing tooling',
-      'Trusted: github.workflow_sha is the default-branch definition, never fork code.',
+      'Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.',
     ],
     [
       'publish',
       'Check out trusted pairing tooling',
-      'Trusted: github.workflow_sha is the default-branch definition, never fork code.',
+      'Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.',
     ],
     [
       'reconcile',
       'Check out trusted pairing tooling',
-      'Trusted: github.workflow_sha is the default-branch definition, never fork code.',
+      'Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.',
     ],
     [
       'run',

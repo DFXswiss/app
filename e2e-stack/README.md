@@ -224,8 +224,10 @@ closed after an earlier failure before the CLI runs.
 
 Administrators install the pairing GitHub App on both repositories with commit
 status read/write, Actions read/write, Contents read/write, Pull requests read,
-Issues read, and Metadata read. Both repositories set `E2E_PAIR_APP_CLIENT_ID`
-and `E2E_PAIR_APP_SLUG` as variables. The private key is **not** a repository
+Issues read, and Metadata read. The App is `dfx-e2e-pairing`; install it only on
+`DFXswiss/app` and `DFXswiss/backend`, never on all repositories of the
+organisation. Both repositories set `E2E_PAIR_APP_CLIENT_ID` and
+`E2E_PAIR_APP_SLUG` as variables. The private key is **not** a repository
 secret: in `DFXswiss/app`, create the GitHub Actions environment `e2e-pairing`
 with a deployment-branch policy limited to `develop`, and store
 `E2E_PAIR_APP_PRIVATE_KEY` as an environment secret there. The `resolve` and

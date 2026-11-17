@@ -68,7 +68,7 @@ jobs:
       - name: Check out trusted pairing tooling
         uses: actions/checkout@v4
         with:
-          # Trusted: github.workflow_sha is the default-branch definition, never fork code.
+          # Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.
           allow-unsafe-pr-checkout: true
           ref: ${{ github.workflow_sha }}
           path: trusted-e2e-pairing
@@ -562,7 +562,7 @@ jobs:
       - name: Check out trusted pairing tooling
         uses: actions/checkout@v4
         with:
-          # Trusted: github.workflow_sha is the default-branch definition, never fork code.
+          # Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.
           allow-unsafe-pr-checkout: true
           ref: ${{ github.workflow_sha }}
           path: trusted-e2e-pairing
@@ -667,7 +667,7 @@ jobs:
       - name: Check out trusted pairing tooling
         uses: actions/checkout@v4
         with:
-          # Trusted: github.workflow_sha is the default-branch definition, never fork code.
+          # Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.
           allow-unsafe-pr-checkout: true
           ref: ${{ github.workflow_sha }}
           path: trusted-e2e-pairing
