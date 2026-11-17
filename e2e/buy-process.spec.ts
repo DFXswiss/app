@@ -202,7 +202,9 @@ test.describe('Buy Process - UI Flow', () => {
       });
     });
 
-    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&amount-in=100&personal-iban=frick`);
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&amount-in=100&personal-iban=frick&lang=en`,
+    );
 
     // No intermediate confirmation step: the selector is applied directly and the
     // Frick-backed payment details render as soon as the quote resolves.
@@ -234,8 +236,9 @@ test.describe('Buy Process - UI Flow', () => {
 
     // asset-out is pinned: without it the screen picks the first listed asset, which has
     // no price rule in the local seed and the quote never reaches the payment details.
+    // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
@@ -319,7 +322,7 @@ test.describe('Buy Process - UI Flow', () => {
     // asset-out is pinned: without it the screen picks the first listed asset, which has
     // no price rule in the local seed and the quote never reaches the payment details.
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
@@ -454,7 +457,7 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
@@ -647,7 +650,7 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     await expect(
@@ -762,7 +765,7 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     await expect(
@@ -940,7 +943,7 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     // No personal-iban param: no selector at all, the precondition the promo banner requires.
-    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100`);
+    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&lang=en`);
 
     const promoBlock = page.getByRole('heading', { name: 'New: Personal IBAN in your own name!' }).locator('..');
     await expect(promoBlock.getByRole('heading', { name: 'New: Personal IBAN in your own name!' })).toBeVisible({
