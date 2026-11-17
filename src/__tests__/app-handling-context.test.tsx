@@ -292,7 +292,8 @@ describe('AppHandlingContextProvider', () => {
       personalIban: 'frick',
     };
 
-    it('reads the widget attributes, the session from the host URL and keeps personalIban live', async () => {
+    it('ignores a session injected via the host page URL but keeps redirect/type and attributes', async () => {
+      // a hostile embedder puts ?session=... in its own address bar: it must not reach the widget
       window.history.pushState({}, '', '/host?session=host-jwt&redirect=/sell&type=Address');
 
       await renderProvider({ isWidget: true, params: { wallet: 'Partner', personalIban: 'frick' } });
@@ -300,9 +301,29 @@ describe('AppHandlingContextProvider', () => {
       expect(ctx.isWidget).toBe(true);
       expect(ctx.isEmbedded).toBe(true);
       expect(ctx.widgetPersonalIban).toBe('frick');
-      expect(ctx.params).toMatchObject({ wallet: 'Partner', session: 'host-jwt', redirect: '/sell', type: 'Address' });
+      expect(ctx.params.session).toBeUndefined();
+      expect(ctx.hasSession).toBe(false);
+      // non-credential host params and the controlled widget attributes stay functional
+      expect(ctx.params).toMatchObject({ wallet: 'Partner', redirect: '/sell', type: 'Address' });
       expect(ctx.params.personalIban).toBeUndefined();
+    });
+
+    it('accepts a session supplied through the controlled widget parameters', async () => {
+      window.history.pushState({}, '', '/host?redirect=/sell&type=Address');
+
+      await renderProvider({
+        isWidget: true,
+        params: { wallet: 'Partner', session: 'widget-jwt', personalIban: 'frick' },
+      });
+
+      expect(ctx.params.session).toBe('widget-jwt');
       expect(ctx.hasSession).toBe(true);
+      expect(ctx.params).toMatchObject({
+        wallet: 'Partner',
+        session: 'widget-jwt',
+        redirect: '/sell',
+        type: 'Address',
+      });
     });
 
     it('ignores attributes that are not strings', async () => {

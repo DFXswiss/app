@@ -364,6 +364,7 @@ describe('safe-storage', () => {
     local.setItem('dfx.authenticationToken', 'tok');
     local.setItem('dfx.srv.activeWallet', 'MetaMask');
     local.setItem('dfx.srv.queryParams', '{}');
+    local.setItem('dfx.srv.redirectUri', 'https://old.example.com');
     local.setItem('dfx.srv.language', 'de');
     session.setItem('other', '1');
 
@@ -373,6 +374,7 @@ describe('safe-storage', () => {
     expect(local.getItem('dfx.authenticationToken')).toBeNull();
     expect(local.getItem('dfx.srv.activeWallet')).toBeNull();
     expect(local.getItem('dfx.srv.queryParams')).toBeNull();
+    expect(local.getItem('dfx.srv.redirectUri')).toBeNull();
     expect(local.getItem('dfx.srv.language')).toBe('de');
     expect(session.getItem('other')).toBeNull();
 
