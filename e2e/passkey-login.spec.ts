@@ -9,6 +9,7 @@ const DESK_DERIVED_BITCOIN_RECEIVE = 'tb1q0cxey6x9nz35jky4v0rh77ta34z63j4hzl6tvt
 type HistoryWindow = {
   __dfxHandbookPasskeyBalance?: { chf: number; eur: number };
   __dfxHandbookPasskeyAssets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
+  __dfxHandbookPasskeyReceiveError?: 'evm' | 'bitcoin' | 'spark';
   __dfxHandbookPasskeyHistory?: {
     items: {
       type: 'buy' | 'sell' | 'swap' | 'send' | 'receive' | 'pay';
@@ -919,6 +920,20 @@ test.describe('Passkey wallet design', () => {
     await page.getByRole('button', { name: 'Settings' }).click();
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
     await expect(page).toHaveScreenshot('passkey-wallet-settings.png');
+  });
+
+  test('shows the expanded wallet when spark derivation fails', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyReceiveError = 'spark';
+    });
+    await openWallet(page);
+    await page.getByRole('button', { name: 'Show wallet' }).first().click();
+    await expect(page.locator(`li [title="${DESK_DERIVED_EVM}"]`)).toHaveCount(1);
+    await expect(page.locator(`li [title="${DESK_DERIVED_BITCOIN_RECEIVE}"]`)).toHaveCount(1);
+    await expect(page.locator('li [title^="spark1"]')).toHaveCount(0);
+    await expect(page.getByText('Something went wrong. Please try again.')).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-expanded-receive-error.png');
   });
 
   test('shows the danger zone of the settings', async ({ page }) => {

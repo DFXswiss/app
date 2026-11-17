@@ -29,6 +29,7 @@ export interface PasskeyDeskProps {
   balance?: { chf: number; eur: number };
   assets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
   history?: PasskeyHistory;
+  receiveError?: ReceiveFamily;
   onCancel: () => void;
   onHome?: () => void;
   onRevoked: () => void;
@@ -91,6 +92,7 @@ export default function PasskeyDesk({
   balance,
   assets,
   history,
+  receiveError,
 }: PasskeyDeskProps): JSX.Element {
   const { translate, locale } = useSettingsContext();
   const [currentSymbol, setCurrentSymbol] = useState<'CHF' | 'EUR'>(() => {
@@ -403,6 +405,7 @@ export default function PasskeyDesk({
       : (['evm', 'bitcoin', 'spark'] as const).map((family): ShownReceive => {
           const label = receiveLabel[family];
           try {
+            if (receiveError === family) throw new Error();
             return { family, label, address: receiveAddress(sessionKeys, family) };
           } catch (caught) {
             return { family, label, error: t(passkeyMessage(caught)) };

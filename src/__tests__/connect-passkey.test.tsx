@@ -364,6 +364,38 @@ describe('ConnectPasskey', () => {
     }
   });
 
+  it('uses an explicitly supplied handbook receive error', async () => {
+    window.__dfxHandbookPasskeyReceiveError = 'spark';
+    try {
+      mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+      mockLogin.mockResolvedValue(authResult('unlocked', ring(SEED)));
+      renderPasskey();
+      fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Show wallet' }));
+      expect(screen.getByTitle(SEED)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' })).toBeInTheDocument();
+      expect(screen.getByTitle(BITCOIN_RECEIVE)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Copy address Bitcoin' })).toBeInTheDocument();
+      expect(screen.getByText('Lightning (Spark)')).toBeInTheDocument();
+      expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument();
+      expect(screen.queryByTitle(SPARK_RECEIVE)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Copy address Lightning (Spark)' })).not.toBeInTheDocument();
+    } finally {
+      delete window.__dfxHandbookPasskeyReceiveError;
+    }
+  });
+
+  it('shows the spark address when no handbook receive error is set', async () => {
+    mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
+    mockLogin.mockResolvedValue(authResult('unlocked', ring(SEED)));
+    renderPasskey();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show wallet' }));
+    expect(screen.getByTitle(SPARK_RECEIVE)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy address Lightning (Spark)' })).toBeInTheDocument();
+    expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument();
+  });
+
   it('does not use a handbook fixture when NODE_ENV is production', () => {
     const previous = process.env.NODE_ENV;
     window.__dfxHandbookPasskeyHistory = { items: [], hasMore: false, loadMore: async () => undefined };
@@ -371,6 +403,7 @@ describe('ConnectPasskey', () => {
     window.__dfxHandbookPasskeyAssets = [
       { name: 'Bitcoin', amount: '0.1 BTC', chf: 6000, eur: 5800, network: 'Bitcoin' },
     ];
+    window.__dfxHandbookPasskeyReceiveError = 'spark';
     process.env.NODE_ENV = 'production';
     try {
       setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
@@ -379,11 +412,14 @@ describe('ConnectPasskey', () => {
       expect(screen.queryByText('No transactions yet.')).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
       expect(screen.queryByText('0.1 BTC')).not.toBeInTheDocument();
+      expect(screen.getByTitle(SPARK_RECEIVE)).toBeInTheDocument();
+      expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument();
     } finally {
       process.env.NODE_ENV = previous;
       delete window.__dfxHandbookPasskeyHistory;
       delete window.__dfxHandbookPasskeyBalance;
       delete window.__dfxHandbookPasskeyAssets;
+      delete window.__dfxHandbookPasskeyReceiveError;
     }
   });
 
