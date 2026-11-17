@@ -550,6 +550,7 @@
     "Please confirm the connection in your TronLink browser extension.": "Bitte bestätige die Verbindung in der TronLink Browsererweiterung.",
     "Please confirm the connection in your wallet.": "Bitte bestätige die Verbindung in Deiner Wallet.",
     "Please confirm the connection with your Ledger.": "Bitte bestätige die Verbindung mit Deinem Ledger.",
+    "Please confirm or close the pending request in your wallet.": "Bitte bestätige oder schliesse die offene Anfrage in Deiner Wallet.",
     "Connection failed!": "Verbindung fehlgeschlagen!",
     "Please make sure that all other applications and browser extensions that are connected to the ledger are completely closed when you try to connect.\nThis includes third-party wallets (Ledger Live, Metamask, Daedalus, MyEtherWallet) or other applications that could interfere with the connection between DFX.swiss and your ledger device.": "Bitte stelle sicher, dass alle anderen Anwendungen und Browsererweiterungen, die mit dem Ledger verbunden sind, vollständig geschlossen sind, wenn Du versuchst, eine Verbindung herzustellen.\nDazu gehören Wallets von Drittanbietern (Ledger Live, Metamask, Daedalus, MyEtherWallet) oder andere Anwendungen, die die Verbindung zwischen DFX.swiss und Deinem Ledger-Gerät stören könnten.",
     "Connect your {{device}} with your computer": "Verbinde Deinen {{device}} mit Deinem Computer",
@@ -965,7 +966,8 @@
     "Show Bank Frick IBAN": "Bank Frick-IBAN anzeigen",
     "Show available IBAN": "Verfügbare IBAN anzeigen",
     "The requested personal IBAN is not available for your account. Please switch back or contact support.": "Die angeforderte persönliche IBAN ist für Dein Konto nicht verfügbar. Bitte wechsle zurück oder kontaktiere den Support.",
-    "Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.": "Deine neue Bank Frick-IBAN erfordert KYC-Stufe 50 - wir zeigen Dir stattdessen Deine bestehende IBAN."
+    "Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.": "Deine neue Bank Frick-IBAN erfordert KYC-Stufe 50 - wir zeigen Dir stattdessen Deine bestehende IBAN.",
+    "Please confirm or close the pending request in your wallet.": "Bitte bestätige oder schliesse die offene Anfrage in Deiner Wallet."
   },
   "screens/iban": {
     "Your Bank Accounts": "Deine Bankkonten",

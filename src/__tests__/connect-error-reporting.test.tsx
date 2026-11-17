@@ -46,6 +46,18 @@ describe('ConnectError reporting', () => {
     expect(mockReportClientError.mock.calls[0][1]).toBe('/buy');
   });
 
+  it('shows and reports the pending-request hint instead of the wallet text', async () => {
+    renderAt(<ConnectError error="Already processing unlock. Please wait." />);
+
+    expect(screen.getByText('Please confirm or close the pending request in your wallet.')).toBeInTheDocument();
+    expect(screen.queryByText('Already processing unlock. Please wait.')).not.toBeInTheDocument();
+    await waitFor(() => expect(mockReportClientError).toHaveBeenCalledTimes(1));
+    expect(mockReportClientError.mock.calls[0][0]).toMatchObject({
+      message: 'Please confirm or close the pending request in your wallet.',
+      name: 'HandledError',
+    });
+  });
+
   it('does not report when error is undefined at runtime and still shows the heading', async () => {
     renderAt(<ConnectError error={undefined as unknown as string} />);
 

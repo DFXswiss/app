@@ -3,12 +3,14 @@ import { expect, Page, Route, test } from '@playwright/test';
 /**
  * Visual regression: a connection the user cancels in an injected wallet (MetaMask) ends back at the
  * wallet selection with no error, while a connection the wallet fails still shows "Connection failed!"
- * with the wallet's message. On the sell form, a transaction the user cancels in the wallet keeps the
- * form without an error, while a transaction the wallet fails still shows "Transaction failed".
+ * with the wallet's message. A connection the wallet is still processing ("Already processing unlock.
+ * Please wait.") shows the hint to confirm or close the pending request in the wallet instead of that
+ * text. On the sell form, a transaction the user cancels in the wallet keeps the form without an error,
+ * while a transaction the wallet fails still shows "Transaction failed".
  *
  * The injected wallet is an in-page EIP-1193 object installed with addInitScript: it rejects the
  * account request with a plain object, the way MetaMask does (code 4001 with data for the cancel,
- * code -32603 for the failure). Bootstrap GETs are mocked via page.route, so the suite does not need
+ * code -32603 for the failure and for the pending request). Bootstrap GETs are mocked via page.route, so the suite does not need
  * a live API; the client-error POST is fulfilled and recorded. A green run does not prove that a real
  * wallet rejects with that shape. The cancel, the retry to a real login and the reported failure run
  * against the real API and database in the full-stack harness (e2e-stack/specs/auth.spec.ts).
@@ -53,6 +55,8 @@ const ETH = {
 
 const CANCEL = { code: 4001, message: 'User rejected the request.', data: { cause: 'rejectAllApprovals' } };
 const FAILURE = { code: -32603, message: 'Internal JSON-RPC error.' };
+// The extension rejects a second request while the first one is still open in its popup
+const PENDING = { code: -32603, message: 'Already processing unlock. Please wait.' };
 const SELL_CANCEL = { code: 4001, message: 'User rejected the request.', data: { location: 'confirmation' } };
 
 const SELL_ADDRESS = '0x1111111111111111111111111111111111111111';
@@ -366,7 +370,7 @@ async function completeSellInWallet(page: Page): Promise<void> {
 }
 
 // An injected wallet on Ethereum with no connected account that rejects the account request with `rejection`.
-async function injectWallet(page: Page, rejection: typeof CANCEL | typeof FAILURE): Promise<void> {
+async function injectWallet(page: Page, rejection: typeof CANCEL | typeof FAILURE | typeof PENDING): Promise<void> {
   await page.addInitScript((answer) => {
     (window as unknown as { ethereum: unknown }).ethereum = {
       isMetaMask: true,
@@ -423,6 +427,25 @@ test.describe('Cancel in the wallet', () => {
 
     await page.waitForTimeout(500);
     await expect(page).toHaveScreenshot('wallet-cancel-02-connection-failed.png', {
+      fullPage: true,
+      maxDiffPixels: 1000,
+    });
+  });
+
+  test('a connection the wallet is still processing shows the pending-request hint', async ({ page }) => {
+    const reports: string[] = [];
+    await installRoutes(page, reports);
+    await injectWallet(page, PENDING);
+
+    await openMetaMask(page);
+
+    await expect(page.getByText('Connection failed!')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Please confirm or close the pending request in your wallet.')).toBeVisible();
+    await expect(page.getByText('Already processing unlock. Please wait.')).toHaveCount(0);
+    await expect.poll(() => reports.length).toBe(1);
+
+    await page.waitForTimeout(500);
+    await expect(page).toHaveScreenshot('wallet-cancel-05-pending-request.png', {
       fullPage: true,
       maxDiffPixels: 1000,
     });
