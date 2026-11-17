@@ -11,7 +11,6 @@ import { useBalanceContext } from './balance.context';
 
 export enum WalletType {
   META_MASK = 'MetaMask',
-  ALBY = 'Alby',
   LEDGER_BTC = 'LedgerBtc',
   LEDGER_ETH = 'LedgerEth',
   BITBOX_BTC = 'BitBoxBtc',
@@ -57,7 +56,6 @@ export const WalletBlockchains: { [w in WalletType]?: Blockchain[] } = {
     Blockchain.CITREA_TESTNET,
     Blockchain.SEPOLIA,
   ],
-  [WalletType.ALBY]: [Blockchain.LIGHTNING],
   [WalletType.LEDGER_BTC]: [Blockchain.BITCOIN],
   [WalletType.LEDGER_ETH]: [Blockchain.ETHEREUM, Blockchain.ARBITRUM, Blockchain.OPTIMISM, Blockchain.POLYGON],
   [WalletType.BITBOX_BTC]: [Blockchain.BITCOIN],
@@ -118,7 +116,6 @@ export function supportsBlockchain(wallet: WalletType, blockchain: Blockchain): 
 
 const WalletTypeMap: { [k in WalletType]: AuthWalletType | undefined } = {
   [WalletType.META_MASK]: AuthWalletType.METAMASK,
-  [WalletType.ALBY]: AuthWalletType.ALBY,
   [WalletType.LEDGER_BTC]: AuthWalletType.LEDGER,
   [WalletType.LEDGER_ETH]: AuthWalletType.LEDGER,
   [WalletType.BITBOX_BTC]: AuthWalletType.BIT_BOX,
@@ -176,6 +173,10 @@ export function useWalletContext(): WalletInterface {
   return useContext(WalletContext);
 }
 
+function knownWalletType(value?: string): WalletType | undefined {
+  return Object.values(WalletType).includes(value as WalletType) ? (value as WalletType) : undefined;
+}
+
 export function WalletContextProvider(props: WalletContextProps): JSX.Element {
   const { isInitialized: isSessionInitialized, isLoggedIn, logout } = useSessionContext();
   const { updateSession } = useApiSession();
@@ -191,7 +192,9 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
   const { getWalletType } = useMetaMask();
 
   const [isInitialized, setIsInitialized] = useState(false);
-  const [activeWallet, setActiveWallet] = useState<WalletType | undefined>(activeWalletStore.get());
+  const [activeWallet, setActiveWallet] = useState<WalletType | undefined>(() =>
+    knownWalletType(activeWalletStore.get()),
+  );
   const [activeBlockchain, setActiveBlockchain] = useState<Blockchain>();
   const lastAppliedCredentials = useRef<{ address?: string; signature?: string; session?: string }>({});
 

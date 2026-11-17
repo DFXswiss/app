@@ -745,6 +745,7 @@ test.describe('Auth area e2e', () => {
     await expect(page.getByText('Login to DFX Services', { exact: true })).toHaveCount(0);
     await expect(page.locator('img[src*="metamask"]')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('img[src*="walletconnect"]')).toBeVisible();
+    await expect(page.locator('img[src*="alby"]')).toHaveCount(0);
   });
 
   // ---------------------------------------------------------------------------
@@ -813,6 +814,70 @@ test.describe('Auth area e2e', () => {
     await page.waitForTimeout(3000);
     expect(switchCalls).toBe(1);
     expect(normPath(new URL(page.url()).pathname)).toBe('/connect');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Stored wallet — a returning browser that still remembers the removed Alby wallet
+  // ---------------------------------------------------------------------------
+
+  test('a stored Alby wallet is dropped and a signed-in visitor can continue buying Bitcoin', async ({ page }) => {
+    test.setTimeout(90000);
+
+    // Dedicated index that no other test signs in with, so the session below only comes from here.
+    const wallet = testWallet(57);
+    const jwt = await signatureLogin(wallet);
+
+    // The removed wallet is still in the browser storage of a returning visitor.
+    await page.addInitScript(() => {
+      window.localStorage.setItem('dfx.srv.activeWallet', 'Alby');
+    });
+
+    await gotoWithSession(page, '/', jwt);
+
+    // App initialisation strips the one-shot session parameter; waiting for that keeps the clicks
+    // below away from the remount it triggers.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('session'), { timeout: 15000 })
+      .toBe(false);
+    await page.waitForLoadState('networkidle');
+
+    // The app no longer knows Alby, so initialisation must drop the stored key instead of keeping
+    // a wallet type it cannot resolve (or failing on it).
+    await expect
+      .poll(() => page.evaluate(() => window.localStorage.getItem('dfx.srv.activeWallet')), { timeout: 15000 })
+      .toBeNull();
+
+    // The visitor can continue a real flow: home → buy → Bitcoin → wallet selection.
+    await page.locator('img[src$="/kaufen_en.jpg"]').click();
+    await expect(page.locator('img[src$="/bitcoinlightning_en.jpg"]')).toBeVisible({ timeout: 15000 });
+    await page.locator('img[src$="/bitcoinlightning_en.jpg"]').click();
+
+    await expect(page.locator('img[src$="/hardwarewallets_en.jpg"]')).toBeVisible({ timeout: 15000 });
+    // A Bitcoin-capable non-Alby wallet proves the selection rendered for this flow.
+    await expect(page.locator('img[src$="/command_en.jpg"]')).toBeVisible();
+    await expect(page.locator('img[src*="alby"]')).toHaveCount(0);
+    await expect(page.getByText('Oh, sorry, something went wrong')).toHaveCount(0);
+
+    // The wallet list also renders for a logged-out visitor, so it does not prove the session
+    // survived. Reload the guarded account page from the browser's stored token: it must not
+    // redirect to /login, and the user data the real API returns must belong to this wallet.
+    const userResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === 'GET' && /\/v[12]\/user$/.test(new URL(response.url()).pathname),
+      { timeout: 20000 },
+    );
+    await page.goto('/account');
+    const userResponse = await userResponsePromise;
+    expect(userResponse.ok(), `GET /v2/user returned ${userResponse.status()}`).toBe(true);
+    const account = (await userResponse.json()) as { addresses?: Array<{ address?: string }> };
+    expect(
+      account.addresses?.map((entry) => entry.address?.toLowerCase()),
+      'the account API response must contain the signed-in wallet address',
+    ).toContain(wallet.address.toLowerCase());
+
+    await expect(page.getByText('Account', { exact: true }).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Active address', { exact: true })).toBeVisible();
+    await expect(page.getByText(wallet.address, { exact: false }).first()).toBeVisible();
+    expect(normPath(new URL(page.url()).pathname)).toBe('/account');
   });
 
   // ---------------------------------------------------------------------------

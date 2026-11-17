@@ -28,7 +28,7 @@ jest.mock('../contexts/wallet.context', () => {
   const WalletBlockchains: Record<string, string[] | undefined> = { MetaMask: ['Ethereum', 'Polygon'] };
 
   return {
-    WalletType: { META_MASK: 'MetaMask', ALBY: 'Alby', WALLET_CONNECT: 'WalletConnect', MAIL: 'Mail' },
+    WalletType: { META_MASK: 'MetaMask', TRUST_SOL: 'TrustSol', WALLET_CONNECT: 'WalletConnect', MAIL: 'Mail' },
     WalletBlockchains,
     supportsBlockchain: (wallet: string, blockchain: string) => {
       const chains = WalletBlockchains[wallet];
@@ -327,14 +327,14 @@ describe('ConnectBase connect', () => {
   // assertions below record what the code does today, not what it should do.
   it('switches the wallet and requests the account there on a wallet switch error', async () => {
     mockGetAccount
-      .mockRejectedValueOnce(new WalletSwitchError(WalletType.ALBY))
+      .mockRejectedValueOnce(new WalletSwitchError(WalletType.TRUST_SOL))
       .mockResolvedValueOnce({ address: 'x' });
     await renderReady();
 
     await act(() => content().connect());
 
-    expect(mockOnSwitch).toHaveBeenCalledWith(WalletType.ALBY);
-    expect(mockGetAccount).toHaveBeenLastCalledWith(WalletType.ALBY, Blockchain.ETHEREUM, false);
+    expect(mockOnSwitch).toHaveBeenCalledWith(WalletType.TRUST_SOL);
+    expect(mockGetAccount).toHaveBeenLastCalledWith(WalletType.TRUST_SOL, Blockchain.ETHEREUM, false);
     expect(mockOnLogin).not.toHaveBeenCalled();
   });
 
@@ -380,7 +380,7 @@ describe('ConnectBase login', () => {
   });
 
   it.each([
-    ['another wallet is active', WalletType.ALBY, { address: '0xabc' }],
+    ['another wallet is active', WalletType.TRUST_SOL, { address: '0xabc' }],
     ['the address differs from the session', WalletType.META_MASK, { address: '0xdef' }],
     ['the session has no address', WalletType.META_MASK, {}],
     ['there is no session', WalletType.META_MASK, undefined],

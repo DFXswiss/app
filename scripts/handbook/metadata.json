@@ -205,7 +205,7 @@
   },
   "login-redirect": {
     "title": "Login-Weiterleitung",
-    "description": "Hat kein Screen zur Anmeldung geschickt, führt die Anmeldung auf /login per Wallet oder Alby nach /buy und der Mail-Link ebenfalls über /buy; weil eine Mail-Session keine Adresse hat, geht es danach weiter auf /connect. Eine Anmeldung per Wallet oder Alby auf /connect endet dann auf /account. Hat ein Screen zur Anmeldung geschickt, führen Wallet, Alby und Mail-Link stattdessen direkt dorthin zurück. Im eingebetteten Widget mit service=connect schließt sich nach einer Anmeldung auf der Seite stattdessen das Widget, auf /login wie auf /connect und auch dann, wenn ein Screen zur Anmeldung geschickt hat. Die Bilder zeigen die Kommandozeilen-Wallet."
+    "description": "Hat kein Screen zur Anmeldung geschickt, führt die Anmeldung auf /login per Wallet nach /buy und der Mail-Link ebenfalls über /buy; weil eine Mail-Session keine Adresse hat, geht es danach weiter auf /connect. Eine Anmeldung per Wallet auf /connect endet dann auf /account. Hat ein Screen zur Anmeldung geschickt, führen Wallet und Mail-Link stattdessen direkt dorthin zurück. Im eingebetteten Widget mit service=connect schließt sich nach einer Anmeldung auf der Seite stattdessen das Widget, auf /login wie auf /connect und auch dann, wenn ein Screen zur Anmeldung geschickt hat. Die Bilder zeigen die Kommandozeilen-Wallet."
   },
   "tfa-merged-redirect": {
     "title": "2FA-Screen: Weiterleitung bei zusammengeführtem Account",
@@ -274,6 +274,10 @@
   "wallet-cancel": {
     "title": "Abbruch im Wallet",
     "description": "Bricht der Benutzer im Wallet ab (EIP-1193-Code 4001), endet der Vorgang ohne Fehlermeldung und ohne Fehlerbericht: beim Verbinden wieder bei der Wallet-Auswahl, beim Verkauf im Formular, wo ein neuer Versuch möglich ist. Varianten: abgebrochene Verbindung zurück bei der Wallet-Auswahl; eine vom Wallet fehlgeschlagene Verbindung, die weiterhin \"Connection failed!\" mit der Meldung des Wallets zeigt; eine im Wallet abgebrochene Verkaufstransaktion, nach der das Formular ohne Fehler stehen bleibt; eine vom Wallet fehlgeschlagene Verkaufstransaktion, die weiterhin \"Transaction failed\" zeigt."
+  },
+  "partner-wallet-selection": {
+    "title": "Partner-Wallet-Auswahl",
+    "description": "Die Wallet-Liste der zwei geänderten Partner-Verkaufsflüsse und die Bitcoin-Lightning-Wallet-Liste nach dem Entfernen von Alby, ohne Alby-Kachel: bitcoinonly → Verkaufen → Bitcoin mit der Wallet-Auswahl des Partners (Hardware-Wallets; die DFX-App-Kachel ist Lightning-only und wird durch die vorausgewählte Bitcoin-Blockchain ausgeblendet), kevinsoell → Verkaufen → Bitcoin, wo nur die Hardware-Wallet-Kachel erlaubt ist und die App direkt zur Hardware-Wallet-Auswahl weitergeht, sowie die Bitcoin-Lightning-Seite mit DFX-App und Kommandozeilen-Wallet."
   },
   "docs": {
     "docs/EIP7702-Implementierungsplan.md": {

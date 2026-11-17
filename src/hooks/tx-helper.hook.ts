@@ -6,7 +6,6 @@ import { AssetBalance, useBalanceContext } from '../contexts/balance.context';
 import { WalletType, useWalletContext } from '../contexts/wallet.context';
 import { TranslatedError } from '../util/translated-error';
 import { useBlockchainBalance } from './blockchain-balance.hook';
-import { useAlby } from './wallets/alby.hook';
 import { Eip7702AuthorizationData, useMetaMask } from './wallets/metamask.hook';
 import { usePhantom } from './wallets/phantom.hook';
 import { useTronLinkTrx } from './wallets/tronlink-trx.hook';
@@ -40,7 +39,6 @@ export function useTxHelper(): TxHelperInterface {
     createTransaction: createTransactionWalletConnect,
     requestChangeToBlockchain: requestChangeToBlockchainWalletConnect,
   } = useWalletConnect();
-  const { sendPayment } = useAlby();
   const { createTransaction: createTransactionPhantomSol } = usePhantom();
   const { createTransaction: createTransactionTrustSol } = useTrustSol();
   const { createTransaction: createTransactionTrustTrx } = useTrustTrx();
@@ -141,11 +139,6 @@ export function useTxHelper(): TxHelperInterface {
 
         return createTransactionMetaMask(new BigNumber(tx.amount), asset, session.address, tx.depositAddress);
 
-      case WalletType.ALBY:
-        if (!tx.paymentRequest) throw new Error('Payment request not defined');
-
-        return sendPayment(tx.paymentRequest).then((p) => p.preimage);
-
       case WalletType.WALLET_CONNECT:
         if (!session?.address) throw new Error('Address is not defined');
         await requestChangeToBlockchainWalletConnect(asset.blockchain);
@@ -177,7 +170,6 @@ export function useTxHelper(): TxHelperInterface {
 
     switch (activeWallet) {
       case WalletType.META_MASK:
-      case WalletType.ALBY:
       case WalletType.WALLET_CONNECT:
       case WalletType.PHANTOM_SOL:
       case WalletType.TRUST_SOL:
@@ -192,7 +184,6 @@ export function useTxHelper(): TxHelperInterface {
     [
       createTransactionMetaMask,
       createTransactionWalletConnect,
-      sendPayment,
       activeWallet,
       session,
       getParamBalances,

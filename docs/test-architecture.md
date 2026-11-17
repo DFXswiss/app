@@ -641,11 +641,6 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/connect-mail-redirect.test.tsx` stubs `useAuth`, session and wallet contexts, app-handling
   and `useNavigation`, and asserts the `redirectUri` passed into `signInWithMail`. A green run does not
   prove a real mail login, that the API accepts that `redirectUri`, or a real SDK session change.
-- **The connect-alby redirect unit test replaces the SDK session hooks, the Alby hook, the app contexts
-  and wallet login.** `src/__tests__/connect-alby-redirect.test.tsx` stubs session, user and wallet
-  contexts, `useAlby` and `window.location`, and asserts the Alby `redirect` query. A green run does not
-  prove a real Alby login, a real SDK session change, or the real interplay with the app router and
-  navigation.
 - **The KYC wallet-mismatch visual spec answers the user endpoint itself.**
   `e2e/kyc-wallet-mismatch.spec.ts` fulfils the user routes with a built user and the placeholder
   address `0x1111111111111111111111111111111111111111`, and does not call a live API. A green run
@@ -741,6 +736,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   error, no report) and a failed one ("Transaction failed"). It does not prove that a real wallet rejects that
   way, production auth, that the API returns real bootstrap data or that quote, or that the real client-error
   endpoint receives the report.
+- **The partner wallet-selection visual spec answers the bootstrap and the client-error report itself.**
+  `e2e/partner-wallet-selection.spec.ts` fulfils the bootstrap GETs `GET /v1/language` (German and
+  English), `GET /v1/fiat` (CHF), `GET /v1/asset` (one ETH coin), `GET /v1/bankAccount` and
+  `GET /v1/country` (empty lists), and `GET /v1/setting/infoBanner` (no banner); `POST /v1/log/clientError`
+  is answered with 201 and recorded. Any other `/v1/**` and every `/v2/**` call gets `501` instead of being
+  continued, and the app is opened with `lang=en` in the partner modes `bitcoinonly`, `kevinsoell` and
+  `lightning-wallets`. A green run proves how three screens render with those answers and no Alby tile: the
+  bitcoinonly sell wallet list, the kevinsoell sell hardware-wallet selection (reached through the Bitcoin
+  Lightning tile), and the `lightning-wallets` Bitcoin Lightning wallet list, each without "Oh, sorry,
+  something went wrong" and with no client-error report. It does not prove the API's real answers, a real
+  wallet connection, or anything beyond how these three screens render.
 - **The MetaMask rejection hook test replaces the injected provider.**
   `src/hooks/wallets/__tests__/metamask-rejection.hook.test.ts` runs `useMetaMask` against the real web3 with
   an in-memory EIP-1193 provider (and a legacy `sendAsync` provider) that answers or rejects each method, and
