@@ -433,7 +433,8 @@ test.describe('SEPA + misc e2e', () => {
       kycLevel: 30,
       completePersonalData: true,
     });
-    const pl = await createPaymentLink(user.jwt, { tag: 'stickers-route', amount: 10 });
+    // Without a login the route lookup only resolves routes whose owner allowed anonymous invoices.
+    const pl = await createPaymentLink(user.jwt, { tag: 'stickers-route', amount: 10, allowAnonymousInvoices: true });
     expect(pl.routeId, 'createPaymentLink must return routeId').toBeTruthy();
 
     await page.goto('/stickers');
