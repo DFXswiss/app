@@ -41,8 +41,10 @@
 # round trip, but not a re-transfer of the content, for the common path — it only helps the
 # broken one. Verify with: curl -sI https://app.dfx.swiss/static/js/main.<hash>.js
 #
-# Security headers for every response. The edge merges this rule with the more specific ones
-# below; none of them sets these header names, so nothing is duplicated.
+# Security headers for every statically served response, which includes the app shell on every
+# route. A response built by functions/[[path]].js (the 404 for a missing asset) does not get
+# them: Pages does not apply this file to Function responses. The edge merges this rule with the
+# more specific ones below; none of them sets these header names, so nothing is duplicated.
 #
 # Strict-Transport-Security: the app is served over HTTPS only. No includeSubDomains and no
 # preload, so the policy stays limited to the host that sends it.
