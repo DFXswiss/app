@@ -68,6 +68,8 @@ jobs:
       - name: Check out trusted pairing tooling
         uses: actions/checkout@v4
         with:
+          # Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.workflow_sha }}
           path: trusted-e2e-pairing
           persist-credentials: false
@@ -360,6 +362,8 @@ jobs:
           # An open PR may come from a fork; its commit is reachable through
           # the pull ref even when the base repository cannot fetch the SHA.
           ref: ${{ needs.resolve.outputs.app_merged == 'true' && needs.resolve.outputs.app_sha || format('refs/pull/{0}/head', needs.resolve.outputs.app_pr) }}
+          # Deliberate: the run job executes the reviewed exact head without a write token; it starts only after both review gates pass.
+          allow-unsafe-pr-checkout: true
           persist-credentials: false
 
       - name: Verify app pull-request head
@@ -489,6 +493,7 @@ jobs:
           npx tsc --noEmit
 
       - name: Bring stack up
+        id: stack-up
         run: E2E_API_REPO=$GITHUB_WORKSPACE/api-repo bash e2e-stack/scripts/up.sh
 
       - name: Run Playwright tests
@@ -521,8 +526,11 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+      # The teardown script comes from the workspace, so it runs only after
+      # `Bring stack up` ran, which requires the verified head; when
+      # verification failed, nothing was started and no workspace script runs.
       - name: Tear down stack
-        if: always()
+        if: always() && (steps.stack-up.outcome == 'success' || steps.stack-up.outcome == 'failure')
         run: bash e2e-stack/scripts/down.sh
 
       # A red Playwright test fails the job. The outcome step still runs with
@@ -554,6 +562,8 @@ jobs:
       - name: Check out trusted pairing tooling
         uses: actions/checkout@v4
         with:
+          # Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.workflow_sha }}
           path: trusted-e2e-pairing
           persist-credentials: false
@@ -657,6 +667,8 @@ jobs:
       - name: Check out trusted pairing tooling
         uses: actions/checkout@v4
         with:
+          # Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.workflow_sha }}
           path: trusted-e2e-pairing
           persist-credentials: false

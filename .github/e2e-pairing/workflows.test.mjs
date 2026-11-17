@@ -270,6 +270,86 @@ test('privileged paired jobs check out the immutable workflow commit', () => {
   }
 });
 
+test('every paired coordinator checkout opts into fork pull request code', () => {
+  const workflow = read('.github/workflows/e2e-paired.yml');
+  const uses = workflow.match(/^ +uses: actions\/checkout(?:@\S+)? *$/gm);
+  assert.ok(uses, 'the coordinator workflow has checkout steps');
+  assert.equal(uses.length, 4, 'the coordinator has exactly four actions/checkout steps');
+
+  const checkouts = [
+    [
+      'resolve',
+      'Check out trusted pairing tooling',
+      'Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.',
+    ],
+    [
+      'publish',
+      'Check out trusted pairing tooling',
+      'Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.',
+    ],
+    [
+      'reconcile',
+      'Check out trusted pairing tooling',
+      'Trusted: github.workflow_sha is the develop commit of this workflow definition, never fork code.',
+    ],
+    [
+      'run',
+      'Check out app head',
+      'Deliberate: the run job executes the reviewed exact head without a write token; it starts only after both review gates pass.',
+    ],
+  ];
+  let seen = 0;
+  for (const [jobName, stepName, comment] of checkouts) {
+    const checkout = step(job(workflow, jobName), stepName);
+    const usesInStep = checkout.match(/uses: actions\/checkout\b/g);
+    assert.ok(usesInStep, `${jobName} checks out with actions/checkout`);
+    seen += usesInStep.length;
+    const withHeader = '\n        with:\n';
+    const withAt = checkout.indexOf(withHeader);
+    assert.notEqual(withAt, -1, `${jobName} checkout has a with block`);
+    const withBlock = checkout.slice(withAt + withHeader.length);
+    assert.ok(
+      withBlock.includes(`          # ${comment}\n          allow-unsafe-pr-checkout: true\n`),
+      `${jobName} sets allow-unsafe-pr-checkout in its with block`,
+    );
+  }
+  assert.equal(seen, 4, 'each actions/checkout step is one of the four opted-in steps');
+});
+
+test('the A38 policy excludes every paired coordinator job exactly once', () => {
+  const workflowPath = '.github/workflows/e2e-paired.yml';
+  const workflow = read(workflowPath);
+  const jobsAt = workflow.indexOf('\njobs:\n');
+  assert.notEqual(jobsAt, -1, 'the coordinator workflow has a jobs section');
+  const jobIds = workflow
+    .slice(jobsAt)
+    .split('\n')
+    .map((line) => /^  ([a-z][a-z0-9-]*):$/.exec(line)?.[1])
+    .filter(Boolean);
+  assert.deepEqual(jobIds, ['resolve', 'run', 'publish', 'reconcile']);
+
+  const policy = JSON.parse(read('.github/a38.json'));
+  assert.ok(Array.isArray(policy.jobs), 'a38.json has a jobs array');
+  assert.ok(Array.isArray(policy.exclusions), 'a38.json has an exclusions array');
+  for (const id of jobIds) {
+    job(workflow, id);
+    const matches = policy.exclusions.filter((entry) => entry.workflow === workflowPath && entry.job === id);
+    assert.equal(matches.length, 1, `${id} appears exactly once in exclusions`);
+    assert.equal(typeof matches[0].reason, 'string', `${id} exclusion has a reason`);
+    assert.notEqual(matches[0].reason.trim(), '', `${id} exclusion reason is not empty`);
+    assert.equal(
+      policy.jobs.filter((entry) => entry.workflow === workflowPath && entry.job === id).length,
+      0,
+      `${id} is not a measured A38 job`,
+    );
+  }
+  assert.equal(
+    policy.exclusions.filter((entry) => entry.workflow === workflowPath).length,
+    jobIds.length,
+    'a38.json excludes no other coordinator job',
+  );
+});
+
 test('the backend fetch is isolated, hook-free, key-scoped and moved in safely', () => {
   const workflow = read('.github/workflows/e2e-paired.yml');
   const runJob = job(workflow, 'run');
@@ -296,6 +376,62 @@ test('the backend fetch is isolated, hook-free, key-scoped and moved in safely',
     'the key is confined to the fetch step',
   );
   assert.doesNotMatch(fetchStep, /api-repo\/\.git/);
+});
+
+test('the run job tears the stack down only after Bring stack up ran', () => {
+  const runJob = job(read('.github/workflows/e2e-paired.yml'), 'run');
+  const guarded =
+    "always() && (steps.stack-up.outcome == 'success' || steps.stack-up.outcome == 'failure')";
+  const bringUp = step(runJob, 'Bring stack up');
+  assert.deepEqual(
+    bringUp.split('\n').filter((line) => line.startsWith('        id:')),
+    ['        id: stack-up'],
+  );
+  const tearDown = step(runJob, 'Tear down stack');
+  assert.deepEqual(
+    tearDown.split('\n').filter((line) => line.startsWith('        if:')),
+    [`        if: ${guarded}`],
+  );
+
+  const lines = runJob.split('\n');
+  const starts = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].startsWith('      - name: ')) {
+      starts.push(index);
+    }
+  }
+  const workspaceScriptsUnderAlways = [];
+  for (let index = 0; index < starts.length; index += 1) {
+    const start = starts[index];
+    const end = index + 1 < starts.length ? starts[index + 1] : lines.length;
+    const body = lines.slice(start, end);
+    const name = lines[start].slice('      - name: '.length);
+    const condition = body
+      .filter((line) => line.startsWith('        if: '))
+      .map((line) => line.slice('        if: '.length))
+      .join('\n');
+    if (!condition.includes('always()')) {
+      continue;
+    }
+    const runAt = body.findIndex((line) => line.startsWith('        run:'));
+    if (runAt === -1) {
+      continue;
+    }
+    const runText = [body[runAt].slice('        run:'.length)];
+    for (let cursor = runAt + 1; cursor < body.length; cursor += 1) {
+      const line = body[cursor];
+      const indent = line.match(/^ */)?.[0].length ?? 0;
+      if (line.trim() !== '' && indent <= 8) {
+        break;
+      }
+      runText.push(line);
+    }
+    if (!runText.join('\n').includes('e2e-stack/scripts/')) {
+      continue;
+    }
+    workspaceScriptsUnderAlways.push({ name, condition });
+  }
+  assert.deepEqual(workspaceScriptsUnderAlways, [{ name: 'Tear down stack', condition: guarded }]);
 });
 
 test('admin docs scope the App private key to the develop-only environment', () => {
