@@ -105,9 +105,10 @@ jest.mock('../contexts/balance.context', () => ({
 }));
 
 import { Blockchain } from '@dfx.swiss/react';
+import type { Router } from '@remix-run/router';
 import { supportsBlockchain, useWalletContext, WalletContextProvider, WalletType } from '../contexts/wallet.context';
 
-const router = { navigate: mockNavigate } as any;
+const router = { navigate: mockNavigate } as unknown as Router;
 
 function wrapper({ children }: PropsWithChildren): JSX.Element {
   return <WalletContextProvider router={router}>{children}</WalletContextProvider>;

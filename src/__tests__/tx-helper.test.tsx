@@ -91,19 +91,35 @@ jest.mock('../hooks/wallets/tronlink-trx.hook', () => ({
 }));
 
 import { Blockchain } from '@dfx.swiss/react';
+import type { Asset, Sell, Swap } from '@dfx.swiss/react';
 import { WalletType } from '../contexts/wallet.context';
 import { useTxHelper } from '../hooks/tx-helper.hook';
 import { TranslatedError } from '../util/translated-error';
 
-const asset = { id: 1, blockchain: Blockchain.BITCOIN, name: 'BTC' } as any;
-const otherAsset = { id: 2, blockchain: Blockchain.ETHEREUM, name: 'ETH' } as any;
+const asset = { id: 1, blockchain: Blockchain.BITCOIN, name: 'BTC' } as Asset;
+const otherAsset = { id: 2, blockchain: Blockchain.ETHEREUM, name: 'ETH' } as Asset;
 
-function sell(overrides: Record<string, unknown> = {}): any {
-  return { id: 11, amount: '1.5', asset, depositAddress: 'deposit-address', ...overrides };
+// Gasless fields the API adds to the payment info; the SDK type does not declare them yet.
+interface GaslessPaymentInfo {
+  gaslessAvailable?: boolean;
+  eip7702Authorization?: { contractAddress?: string };
 }
 
-function swap(overrides: Record<string, unknown> = {}): any {
-  return { id: 12, amount: '2.5', sourceAsset: otherAsset, depositAddress: 'deposit-address', ...overrides };
+type SellTest = Sell & GaslessPaymentInfo;
+type SwapTest = Swap & GaslessPaymentInfo;
+
+function sell(overrides: Record<string, unknown> = {}): SellTest {
+  return { id: 11, amount: '1.5', asset, depositAddress: 'deposit-address', ...overrides } as unknown as SellTest;
+}
+
+function swap(overrides: Record<string, unknown> = {}): SwapTest {
+  return {
+    id: 12,
+    amount: '2.5',
+    sourceAsset: otherAsset,
+    depositAddress: 'deposit-address',
+    ...overrides,
+  } as unknown as SwapTest;
 }
 
 function reset(): void {
@@ -132,7 +148,7 @@ beforeEach(reset);
 describe('useTxHelper getBalances', () => {
   it('falls back to the parameter balances without an active wallet, an address or a blockchain', async () => {
     const { result, rerender } = renderHook(() => useTxHelper());
-    const assets: any[] = [asset];
+    const assets: Asset[] = [asset];
     const stored = [{ asset, amount: 1 }];
     mockGetParamBalances.mockReturnValue(stored);
 
@@ -156,7 +172,7 @@ describe('useTxHelper getBalances', () => {
   it('reads the address balances for a supported wallet', async () => {
     mockActiveWallet = WalletType.META_MASK;
     const { result } = renderHook(() => useTxHelper());
-    const assets: any[] = [asset];
+    const assets: Asset[] = [asset];
     const balances = [{ asset, amount: 2 }];
     mockGetAddressBalances.mockResolvedValue(balances);
 

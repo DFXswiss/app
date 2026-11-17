@@ -1,7 +1,9 @@
+import type { Blockchain } from '@dfx.swiss/react';
+
 const mockOnLogin = jest.fn();
 const mockOnCancel = jest.fn();
 const mockOnSwitch = jest.fn();
-const mockBlockchain = 'Ethereum';
+const mockBlockchain = 'Ethereum' as Blockchain;
 
 function mockMarker(name: string) {
   return {
@@ -78,7 +80,7 @@ function connectProps(wallet: WalletType) {
   return {
     rootRef: createRef<HTMLDivElement>(),
     wallet,
-    blockchain: mockBlockchain as any,
+    blockchain: mockBlockchain,
     isConnect: true,
     onLogin: mockOnLogin,
     onCancel: mockOnCancel,

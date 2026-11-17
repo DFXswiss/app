@@ -11,6 +11,8 @@
  * Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
  * /sell also proves three wallet address-check outcomes through the real API: Ok without a banner,
  * LikelyReturn with the return banner, and Unknown (chain without Scorechain coverage) without a banner.
+ * The partner sell wallet lists (bitcoinonly, kevinsoell) are driven from their ?mode= entry page
+ * through to the hardware-wallet selection.
  */
 
 import type { Page, Response } from '@playwright/test';
@@ -1429,5 +1431,59 @@ test.describe('Sell + Swap e2e', () => {
 
     expect(bankAccountPosts, 'an existing bank account must not be created again').toBe(0);
     expect(paymentInfos.last, 'the screen must get as far as requesting payment information').toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Partner sell wallet lists — the tiles offered after Alby's removal
+// ---------------------------------------------------------------------------
+
+test.describe('Partner sell wallet lists', () => {
+  test('bitcoinonly sell offers only the partner wallet tiles and opens the hardware wallets', async ({ page }) => {
+    test.setTimeout(90000);
+
+    await page.goto('/?mode=bitcoinonly&lang=en');
+    await page.waitForLoadState('networkidle');
+    await page.locator('img[src$="/verkaufen_en.jpg"]').click();
+
+    // bitcoinonly-sell has a single Bitcoin tile, so the app descends straight into the wallet list.
+    await expect(page.locator('img[src$="/hardwarewallets_en.jpg"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('img[src*="alby"]')).toHaveCount(0);
+
+    // The DFX app tile supports only Lightning, so the preset Bitcoin blockchain hides it here.
+    const tileImages = await page
+      .locator('img[src$="_en.jpg"]')
+      .evaluateAll((images) => images.map((image) => (image.getAttribute('src') ?? '').split('/').pop() ?? ''));
+    expect(tileImages.sort()).toEqual(['hardwarewallets_en.jpg']);
+
+    await page.locator('img[src$="/hardwarewallets_en.jpg"]').click();
+
+    // The hardware-wallet selection, still without Alby.
+    await expect(page.locator('img[src$="/bitbox_en.jpg"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('img[src$="/ledger_en.jpg"]')).toBeVisible();
+    await expect(page.locator('img[src$="/trezor_en.jpg"]')).toBeVisible();
+    await expect(page.locator('img[src*="alby"]')).toHaveCount(0);
+  });
+
+  test('kevinsoell sell offers only the hardware-wallet tile and opens the hardware wallets', async ({ page }) => {
+    test.setTimeout(90000);
+
+    await page.goto('/?mode=kevinsoell&lang=en');
+    await page.waitForLoadState('networkidle');
+    await page.locator('img[src$="/verkaufen_en.jpg"]').click();
+
+    // kevinsoell-sell also offers an ERC20 tile, so Bitcoin has to be selected explicitly.
+    await expect(page.locator('img[src$="/bitcoinlightning_en.jpg"]')).toBeVisible({ timeout: 15000 });
+    await page.locator('img[src$="/bitcoinlightning_en.jpg"]').click();
+
+    // This partner allows only the hardware-wallet tile, whose page is the only tile on the list,
+    // so the app descends one step further into the hardware-wallet selection right away.
+    await expect(page.locator('img[src$="/bitbox_en.jpg"]')).toBeVisible({ timeout: 15000 });
+    // The hardware-wallet list is exactly these three tiles.
+    const hardwareTiles = await page
+      .locator('img[src$="_en.jpg"]')
+      .evaluateAll((images) => images.map((image) => (image.getAttribute('src') ?? '').split('/').pop() ?? ''));
+    expect(hardwareTiles.sort()).toEqual(['bitbox_en.jpg', 'ledger_en.jpg', 'trezor_en.jpg']);
+    await expect(page.locator('img[src*="alby"]')).toHaveCount(0);
   });
 });
