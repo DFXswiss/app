@@ -35,16 +35,23 @@ import { setupLanguages } from 'src/translations';
 
 const SLIM = {
   en: 'Selling is temporarily unavailable. Do not send funds to deposit addresses you received from DFX before 18 November 2026.',
-  de: 'Verkaufen ist vorübergehend nicht möglich. Sende keine Gelder an Einzahlungsadressen, die Du vor dem 18. November 2026 von DFX erhalten hast.',
+  de: 'Verkaufen ist vorübergehend nicht möglich. Senden Sie keine Gelder an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben.',
   fr: "La vente est temporairement indisponible. N'envoyez pas de fonds aux adresses de dépôt que vous avez reçues de DFX avant le 18 novembre 2026.",
   it: 'La vendita è temporaneamente non disponibile. Non inviare fondi agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026.',
 };
 
 const PROMINENT = {
   en: 'Selling and swapping are temporarily unavailable. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.',
-  de: 'Verkaufen und Tauschen sind vorübergehend nicht möglich. Sende keine Gelder an Einzahlungsadressen, die Du vor dem 18. November 2026 von DFX erhalten hast — diese Adressen dürfen nicht mehr verwendet werden.',
+  de: 'Verkaufen und Tauschen sind vorübergehend nicht möglich. Senden Sie keine Gelder an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben — diese Adressen dürfen nicht mehr verwendet werden.',
   fr: "La vente et l'échange sont temporairement indisponibles. N'envoyez pas de fonds à une adresse de dépôt que vous avez reçue de DFX avant le 18 novembre 2026 — ces adresses ne doivent plus être utilisées.",
   it: 'La vendita e lo scambio sono temporaneamente non disponibili. Non inviare fondi a nessun indirizzo di deposito ricevuto da DFX prima del 18 novembre 2026 — questi indirizzi non devono più essere utilizzati.',
+};
+
+const BUY = {
+  en: 'Buying works as usual; just follow the details below.',
+  de: 'Kaufen ist ganz normal möglich, befolgen Sie einfach die Angaben unten.',
+  fr: "L'achat fonctionne normalement, suivez simplement les indications ci-dessous.",
+  it: "L'acquisto funziona normalmente, segui semplicemente le indicazioni qui sotto.",
 };
 
 const LANGUAGES = ['en', 'de', 'fr', 'it'] as const;
@@ -86,7 +93,7 @@ describe('ServiceNoticeBanner', () => {
     },
   );
 
-  it.each(['/', '/buy', '/account', '/sell/info', '/swap/info', '/selling', '/support/tickets'])(
+  it.each(['/', '/account', '/buy/info', '/buying', '/sell/info', '/swap/info', '/selling', '/support/tickets'])(
     'shows the slim notice on %s',
     (path) => {
       renderAt(path);
@@ -100,9 +107,21 @@ describe('ServiceNoticeBanner', () => {
       expect(screen.getByTestId('info-text')).toHaveAttribute('data-icon-color', 'DARK_GRAY');
       expect(screen.getByTestId('info-text')).toHaveAttribute('data-text-size', 'XS');
       expect(banner).toHaveTextContent(SLIM.en);
+      expect(banner).not.toHaveTextContent(BUY.en);
       expect(screen.queryByText(PROMINENT.en)).not.toBeInTheDocument();
     },
   );
+
+  it.each(['/buy', '/buy/'])('adds the buy sentence to the slim notice on %s', (path) => {
+    renderAt(path);
+
+    const banner = screen.getByTestId('service-notice-banner');
+    expect(banner).toHaveAttribute('data-variant', 'slim');
+    expect(banner).toHaveAttribute('role', 'note');
+    expect(screen.getByTestId('info-text')).toHaveAttribute('data-icon-color', 'DARK_GRAY');
+    expect(screen.getByTestId('info-text')).toHaveAttribute('data-text-size', 'XS');
+    expect(banner.textContent).toBe(`${SLIM.en} ${BUY.en}`);
+  });
 
   it.each(['/sell', '/sell/', '/swap', '/swap/'])('shows the prominent notice on %s', (path) => {
     renderAt(path);
@@ -116,23 +135,30 @@ describe('ServiceNoticeBanner', () => {
     expect(screen.getByTestId('info-text')).toHaveAttribute('data-icon-color', 'RED');
     expect(screen.getByTestId('info-text')).not.toHaveAttribute('data-text-size');
     expect(banner).toHaveTextContent(PROMINENT.en);
+    expect(banner).not.toHaveTextContent(BUY.en);
     expect(screen.queryByText(SLIM.en)).not.toBeInTheDocument();
   });
 
-  it.each(LANGUAGES)('translates both notices into %s', async (language) => {
+  it.each(LANGUAGES)('translates every notice into %s', async (language) => {
     await i18n.changeLanguage(language);
 
     const { unmount } = renderAt('/');
-    expect(screen.getByTestId('service-notice-banner')).toHaveTextContent(SLIM[language]);
+    expect(screen.getByTestId('service-notice-banner').textContent).toBe(SLIM[language]);
     unmount();
+
+    const buy = renderAt('/buy');
+    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${SLIM[language]} ${BUY[language]}`);
+    buy.unmount();
 
     renderAt('/sell');
     expect(screen.getByTestId('service-notice-banner')).toHaveTextContent(PROMINENT[language]);
   });
 
-  it('uses Swiss spelling in German', async () => {
+  it.each(['/', '/buy', '/swap'])('uses Swiss spelling and the formal Sie in German on %s', async (path) => {
     await i18n.changeLanguage('de');
-    renderAt('/swap');
-    expect(screen.getByTestId('service-notice-banner').textContent).not.toContain('ß');
+    renderAt(path);
+    const text = screen.getByTestId('service-notice-banner').textContent ?? '';
+    expect(text).not.toContain('ß');
+    expect(text).not.toMatch(/\b(Du|Dein|Deine|Dir|Dich|Sende|hast)\b/i);
   });
 });

@@ -1169,7 +1169,7 @@ test.describe('Sell + Swap e2e', () => {
   // Service notice: prominent above the form on /sell and /swap, slim everywhere else
   // ---------------------------------------------------------------------------
 
-  test('/sell and /swap show the prominent service notice above the form; other pages show the slim one', async ({
+  test('/sell and /swap show the prominent service notice above the form; /buy adds the buy sentence; other pages show the slim one', async ({
     page,
   }) => {
     const user = await createUser({
@@ -1184,6 +1184,7 @@ test.describe('Sell + Swap e2e', () => {
       'Selling and swapping are temporarily unavailable. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.';
     const slimText =
       'Selling is temporarily unavailable. Do not send funds to deposit addresses you received from DFX before 18 November 2026.';
+    const buyText = 'Buying works as usual; just follow the details below.';
 
     for (const path of ['/sell', '/swap']) {
       await openScreen(page, path, user.jwt);
@@ -1207,14 +1208,26 @@ test.describe('Sell + Swap e2e', () => {
       await expect(amount).toBeEnabled();
     }
 
-    for (const path of ['/buy', '/account']) {
-      await openScreen(page, path, user.jwt);
+    // /buy: the slim notice adds that buying works as usual, above the buy form and its payment details.
+    await openScreen(page, '/buy', user.jwt);
+    const buyNotice = page.getByTestId('service-notice-banner');
+    await expect(buyNotice).toHaveCount(1);
+    await expect(buyNotice).toHaveAttribute('data-variant', 'slim');
+    await expect(buyNotice).toHaveText(`${slimText} ${buyText}`);
+    const buyAmount = page.locator('input[inputmode="decimal"]').first();
+    await expect(buyAmount).toBeVisible({ timeout: 15000 });
+    const buyNoticeBox = await buyNotice.boundingBox();
+    const buyAmountBox = await buyAmount.boundingBox();
+    expect(buyNoticeBox).not.toBeNull();
+    expect(buyAmountBox).not.toBeNull();
+    expect((buyNoticeBox as { y: number }).y).toBeLessThan((buyAmountBox as { y: number }).y);
+    await expect(buyAmount).toBeEnabled();
 
-      const notice = page.getByTestId('service-notice-banner');
-      await expect(notice).toHaveCount(1);
-      await expect(notice).toHaveAttribute('data-variant', 'slim');
-      await expect(notice).toHaveText(slimText);
-    }
+    await openScreen(page, '/account', user.jwt);
+    const notice = page.getByTestId('service-notice-banner');
+    await expect(notice).toHaveCount(1);
+    await expect(notice).toHaveAttribute('data-variant', 'slim');
+    await expect(notice).toHaveText(slimText);
 
     // Not dismissable: still there after a reload.
     await page.reload();

@@ -533,9 +533,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `/v1/bankAccount`, `/v1/country`, `/v1/setting/infoBanner`). Unmatched `/v1/**`
   and `/v2/**` calls get `501`. The session is a synthetic unsigned JWT, so a green
   run does not prove login or token verification. A green run proves the slim notice
-  renders on `/support` and the prominent notice renders on `/sell` and `/swap`. It does not
-  prove that those bootstrap endpoints return real data or that the Sell and Swap
-  forms work; the real test is the service-notice test in `e2e-stack/specs/sell-swap.spec.ts`.
+  renders on `/support`, the slim notice with the buy sentence renders on `/buy`, and the
+  prominent notice renders on `/sell` and `/swap`. It does not prove that those bootstrap
+  endpoints return real data or that the Buy, Sell and Swap forms work; the real test is the
+  service-notice test in `e2e-stack/specs/sell-swap.spec.ts`.
 - **The deleted-address visual spec answers GET /v2/user and PUT /v2/user/reactivate itself.**
   `e2e/deleted-address.spec.ts` fulfils `/v2/user` with a synthetic user whose active address
   has status `Deleted`, fulfils `PUT /v2/user/reactivate` with a synthetic 400 error, and

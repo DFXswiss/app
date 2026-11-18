@@ -1368,6 +1368,7 @@
   },
   "components/service-notice": {
     "Selling is temporarily unavailable. Do not send funds to deposit addresses you received from DFX before 18 November 2026.": "La vendita è temporaneamente non disponibile. Non inviare fondi agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026.",
-    "Selling and swapping are temporarily unavailable. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.": "La vendita e lo scambio sono temporaneamente non disponibili. Non inviare fondi a nessun indirizzo di deposito ricevuto da DFX prima del 18 novembre 2026 — questi indirizzi non devono più essere utilizzati."
+    "Selling and swapping are temporarily unavailable. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.": "La vendita e lo scambio sono temporaneamente non disponibili. Non inviare fondi a nessun indirizzo di deposito ricevuto da DFX prima del 18 novembre 2026 — questi indirizzi non devono più essere utilizzati.",
+    "Buying works as usual; just follow the details below.": "L'acquisto funziona normalmente, segui semplicemente le indicazioni qui sotto."
   }
 }

@@ -5,6 +5,8 @@ import { useSettingsContext } from '../contexts/settings.context';
 
 // Sell and swap pages show the prominent variant; every other page shows the slim one.
 const PROMINENT_PATHS = /^\/(sell|swap)\/?$/;
+// The buy page shows its payment details below the notice, so the slim notice there adds that buying still works.
+const BUY_PATH = /^\/buy\/?$/;
 
 // Service notice shown on every page while FeatureFlags.serviceNotice is on. It cannot be
 // dismissed, so it is back after every reload.
@@ -40,6 +42,8 @@ export function ServiceNoticeBanner(): JSX.Element | null {
           'components/service-notice',
           'Selling is temporarily unavailable. Do not send funds to deposit addresses you received from DFX before 18 November 2026.',
         )}
+        {BUY_PATH.test(pathname) &&
+          ` ${translate('components/service-notice', 'Buying works as usual; just follow the details below.')}`}
       </StyledInfoText>
     </div>
   );
