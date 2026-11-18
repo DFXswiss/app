@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 
 // public/_headers is read by the hosting edge, not by the app, so nothing else in the suite looks
-// at it. These cases pin the security headers it sends with every response, and pin just as much
+// at it. These cases pin the security headers its `/*` rule adds to every statically served
+// response (Function responses do not get them, see the comment in that file), and pin just as much
 // what it must NOT send: the app is embedded by third-party sites (README.md, Iframe integration)
 // and loads scripts, frames and connections from many origins, so a framing restriction or a
 // fetch directive in the policy would break those integrations without any test noticing.
