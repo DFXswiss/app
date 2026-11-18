@@ -1365,5 +1365,9 @@
     "Promo redemption": "Utilisation de code promo",
     "Invite": "Invitation",
     "Promo": "Promo"
+  },
+  "components/service-notice": {
+    "Selling is temporarily unavailable. Do not send funds to deposit addresses you received from DFX before 18 November 2026.": "La vente est temporairement indisponible. N'envoyez pas de fonds aux adresses de dépôt que vous avez reçues de DFX avant le 18 novembre 2026.",
+    "Selling and swapping are temporarily unavailable. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.": "La vente et l'échange sont temporairement indisponibles. N'envoyez pas de fonds à une adresse de dépôt que vous avez reçue de DFX avant le 18 novembre 2026 — ces adresses ne doivent plus être utilisées."
   }
 }
