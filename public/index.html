@@ -191,6 +191,16 @@
         outline-offset: 2px;
       }
 
+      .outage-popup__content p a {
+        color: #ffffff;
+        text-decoration: underline;
+      }
+
+      .outage-popup__content p a:focus {
+        outline: 3px solid #ffffff;
+        outline-offset: 2px;
+      }
+
       .outage-popup__close {
         position: absolute;
         top: 4px;
@@ -267,8 +277,8 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="outage-notice" class="outage-notice" aria-live="polite" hidden>
-      <p lang="de">Systemunterbruch bei DFX bis heute, 18. November 2026, 12:00 Uhr MEZ.</p>
-      <p lang="en">System outage at DFX until today, 18 November 2026, 12:00 CET.</p>
+      <p lang="de">Systemunterbruch bei DFX. Geplante Wiederinbetriebnahme: Donnerstag, 19. November 2026, 09:00 Uhr MEZ.</p>
+      <p lang="en">System outage at DFX. Planned restart: Thursday, 19 November 2026, 09:00 CET.</p>
     </div>
     <div id="outage-popup" class="outage-popup" hidden>
       <div
@@ -287,6 +297,8 @@
             <p class="outage-popup__warning">⚠️ Wichtig: Bitte sende bis auf Weiteres keine Kryptowährungen an DFX-Einzahlungsadressen. Dies gilt auch für bereits gespeicherte Einzahlungsadressen. Gelder, die an kompromittierte Adressen gesendet werden, können gefährdet sein.</p>
             <p>Wir arbeiten daran, alle betroffenen Adressen zu ersetzen und unsere Dienste so schnell und sicher wie möglich wiederherzustellen.</p>
             <p>Wir informieren dich, sobald die neuen Einzahlungsadressen verfügbar sind und Transaktionen wieder sicher möglich sind.</p>
+            <p>Wir planen, den DFX-Service am Donnerstag, 19. November 2026, um 09:00 Uhr MEZ wieder in Betrieb zu nehmen.</p>
+            <p>Du kannst dich jederzeit per E-Mail an <a href="mailto:support@dfx.swiss">support@dfx.swiss</a> wenden.</p>
             <p>Vielen Dank für deine Geduld und dein Verständnis.</p>
           </section>
           <section lang="en">
@@ -296,6 +308,8 @@
             <p class="outage-popup__warning">⚠️ Important: Please do not send any cryptocurrency to DFX deposit addresses until further notice. This also applies to previously saved deposit addresses. Funds sent to compromised addresses may be at risk.</p>
             <p>We are working to replace all affected addresses and restore our services as quickly and safely as possible.</p>
             <p>We will inform you as soon as the new deposit addresses are available and transactions can safely resume.</p>
+            <p>We plan to resume the DFX service on Thursday, 19 November 2026, at 09:00 CET.</p>
+            <p>You can contact us at any time at <a href="mailto:support@dfx.swiss">support@dfx.swiss</a>.</p>
             <p>Thank you for your patience and understanding.</p>
           </section>
         </div>

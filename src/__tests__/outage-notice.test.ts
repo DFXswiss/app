@@ -12,11 +12,12 @@ import { join } from 'path';
 const INDEX_HTML = readFileSync(join(__dirname, '../../public/index.html'), 'utf8');
 const SCRIPT_SOURCE = readFileSync(join(__dirname, '../../public/outage-notice.js'), 'utf8');
 
-// 18 November 2026, 12:00 CET = 11:00 UTC, computed independently of the string in the script.
-const END = Date.UTC(2026, 10, 18, 11, 0, 0, 0);
+// 19 November 2026, 09:00 CET = 08:00 UTC, computed independently of the string in the script.
+const END = Date.UTC(2026, 10, 19, 8, 0, 0, 0);
 
-const GERMAN_LINE = 'Systemunterbruch bei DFX bis heute, 18. November 2026, 12:00 Uhr MEZ.';
-const ENGLISH_LINE = 'System outage at DFX until today, 18 November 2026, 12:00 CET.';
+const GERMAN_LINE =
+  'Systemunterbruch bei DFX. Geplante Wiederinbetriebnahme: Donnerstag, 19. November 2026, 09:00 Uhr MEZ.';
+const ENGLISH_LINE = 'System outage at DFX. Planned restart: Thursday, 19 November 2026, 09:00 CET.';
 
 // Both notices verbatim (en dash in the titles, warning sign in the third paragraph), Swiss spelling
 // in German.
@@ -25,24 +26,33 @@ const POPUP_WARNING_DE =
   '⚠️ Wichtig: Bitte sende bis auf Weiteres keine Kryptowährungen an DFX-Einzahlungsadressen. ' +
   'Dies gilt auch für bereits gespeicherte Einzahlungsadressen. Gelder, die an kompromittierte Adressen ' +
   'gesendet werden, können gefährdet sein.';
+const PLANNED_RESTART_DE =
+  'Wir planen, den DFX-Service am Donnerstag, 19. November 2026, um 09:00 Uhr MEZ wieder in Betrieb zu nehmen.';
+const SUPPORT_DE = 'Du kannst dich jederzeit per E-Mail an support@dfx.swiss wenden.';
 const POPUP_PARAGRAPHS_DE = [
   'Wir verzeichnen derzeit einen Sicherheitsvorfall, der DFX-Einzahlungsadressen betrifft.',
   'Es wurden keine Kundendaten und keine Kundengelder kompromittiert. DFX arbeitet non-custodial und verwahrt keine Kundengelder.',
   POPUP_WARNING_DE,
   'Wir arbeiten daran, alle betroffenen Adressen zu ersetzen und unsere Dienste so schnell und sicher wie möglich wiederherzustellen.',
   'Wir informieren dich, sobald die neuen Einzahlungsadressen verfügbar sind und Transaktionen wieder sicher möglich sind.',
+  PLANNED_RESTART_DE,
+  SUPPORT_DE,
   'Vielen Dank für deine Geduld und dein Verständnis.',
 ];
 const POPUP_TITLE_EN = 'DFX Security Update – Important Notice';
 const POPUP_WARNING_EN =
   '⚠️ Important: Please do not send any cryptocurrency to DFX deposit addresses until further notice. ' +
   'This also applies to previously saved deposit addresses. Funds sent to compromised addresses may be at risk.';
+const PLANNED_RESTART_EN = 'We plan to resume the DFX service on Thursday, 19 November 2026, at 09:00 CET.';
+const SUPPORT_EN = 'You can contact us at any time at support@dfx.swiss.';
 const POPUP_PARAGRAPHS_EN = [
   'We are currently experiencing a security incident affecting DFX deposit addresses.',
   'No customer data or customer funds have been compromised. DFX operates on a non-custodial basis and does not hold customer funds.',
   POPUP_WARNING_EN,
   'We are working to replace all affected addresses and restore our services as quickly and safely as possible.',
   'We will inform you as soon as the new deposit addresses are available and transactions can safely resume.',
+  PLANNED_RESTART_EN,
+  SUPPORT_EN,
   'Thank you for your patience and understanding.',
 ];
 const DO_NOT_SEND_SENTENCE_DE = 'Bitte sende bis auf Weiteres keine Kryptowährungen an DFX-Einzahlungsadressen.';
@@ -98,7 +108,7 @@ function popupTitle(lang: 'de' | 'en'): HTMLElement {
   return element;
 }
 
-// All links inside the dialog box: the X link in the source line and the Mehr Infos button.
+// All links inside the dialog box: two support links, the X link in the source line and the Mehr Infos button.
 function popupLinks(): HTMLAnchorElement[] {
   return Array.from(popupDialog().querySelectorAll<HTMLAnchorElement>('a'));
 }
@@ -109,7 +119,7 @@ function popupMoreLink(): HTMLAnchorElement {
   return element;
 }
 
-// The six text paragraphs of one language section.
+// The eight text paragraphs of one language section.
 function popupParagraphs(lang: 'de' | 'en'): HTMLParagraphElement[] {
   return Array.from(popupSection(lang).querySelectorAll<HTMLParagraphElement>('p'));
 }
@@ -432,14 +442,14 @@ describe('outage notice', () => {
       expect(popupDialog().querySelectorAll('h2')).toHaveLength(2);
     });
 
-    it('shows the six German paragraphs verbatim and in order', () => {
+    it('shows the eight German paragraphs verbatim and in order', () => {
       expect(popupParagraphs('de').map((p) => p.textContent)).toEqual(POPUP_PARAGRAPHS_DE);
-      expect(popupParagraphs('de')).toHaveLength(6);
+      expect(popupParagraphs('de')).toHaveLength(8);
     });
 
-    it('shows the six English paragraphs verbatim and in order', () => {
+    it('shows the eight English paragraphs verbatim and in order', () => {
       expect(popupParagraphs('en').map((p) => p.textContent)).toEqual(POPUP_PARAGRAPHS_EN);
-      expect(popupParagraphs('en')).toHaveLength(6);
+      expect(popupParagraphs('en')).toHaveLength(8);
     });
 
     it('contains the sentence not to send any cryptocurrency in both languages, in the emphasised paragraph', () => {
@@ -457,11 +467,22 @@ describe('outage notice', () => {
       expect(warningEn.textContent).toContain(DO_NOT_SEND_SENTENCE_EN);
     });
 
+    it('links the support address with mailto in both language sections', () => {
+      const links = Array.from(popupDialog().querySelectorAll<HTMLAnchorElement>('a[href="mailto:support@dfx.swiss"]'));
+
+      expect(links).toHaveLength(2);
+      expect(links.map((link) => link.textContent)).toEqual(['support@dfx.swiss', 'support@dfx.swiss']);
+      expect(links.map((link) => link.closest('section')?.getAttribute('lang'))).toEqual(['de', 'en']);
+      expect(popupParagraphs('de')[6].contains(links[0])).toBe(true);
+      expect(popupParagraphs('en')[6].contains(links[1])).toBe(true);
+    });
+
     it('links the source line to the post on X in a new tab, without opener', () => {
       const links = popupLinks();
-      expect(links).toHaveLength(2);
+      expect(links).toHaveLength(4);
 
-      const [xLink, moreLink] = links;
+      const xLink = links[2];
+      const moreLink = links[3];
       expect(xLink).toBe(popupDialog().querySelector('.outage-popup__source a'));
 
       const relAttribute = xLink.getAttribute('rel');
@@ -473,7 +494,7 @@ describe('outage notice', () => {
       expect(xLink.getAttribute('target')).toBe('_blank');
       expect(rel).toContain('noopener');
       expect(rel).toContain('noreferrer');
-      expect(popupDialog().querySelectorAll('a')).toHaveLength(2);
+      expect(popupDialog().querySelectorAll('a')).toHaveLength(4);
       expect(popupDialog().querySelector('.outage-popup__source')?.textContent).toBe('DFX on X');
       expect(moreLink).toBe(popupMoreLink());
     });
@@ -487,7 +508,7 @@ describe('outage notice', () => {
       expect(moreLink.getAttribute('href')).toBe(INFO_URL);
       expect(moreLink.hasAttribute('target')).toBe(false);
       expect(content.compareDocumentPosition(moreLink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-      expect(content.querySelectorAll('a')).toHaveLength(0);
+      expect(content.querySelectorAll('a[href="mailto:support@dfx.swiss"]')).toHaveLength(2);
     });
 
     it('orders heading, paragraphs, source line and Mehr Infos link', () => {
@@ -652,6 +673,9 @@ describe('outage notice', () => {
       expect(ruleFor('.outage-popup__source a').get('outline')).toBeUndefined();
       expect(ruleFor('.outage-popup__source a:focus').get('outline')).toBe('3px solid #ffffff');
       expect(ruleFor('.outage-popup__source a:focus').get('outline-offset')).toBe('2px');
+      expect(ruleFor('.outage-popup__content p a').get('outline')).toBeUndefined();
+      expect(ruleFor('.outage-popup__content p a:focus').get('outline')).toBe('3px solid #ffffff');
+      expect(ruleFor('.outage-popup__content p a:focus').get('outline-offset')).toBe('2px');
     });
 
     it('sets the long text left-aligned with a readable line height', () => {
@@ -685,6 +709,13 @@ describe('outage notice', () => {
       expect(rule.get('color')).toBe('#ffffff');
       expect(rule.get('text-decoration')).toBe('underline');
       expect(ruleFor('.outage-popup__dialog').get('color')).toBe('#ffffff');
+    });
+
+    it('styles the email links in the paragraphs like the source links', () => {
+      const rule = ruleFor('.outage-popup__content p a');
+
+      expect(rule.get('color')).toBe('#ffffff');
+      expect(rule.get('text-decoration')).toBe('underline');
     });
 
     it('makes the close button a 44x44px touch target in white on transparent', () => {
@@ -1145,9 +1176,9 @@ describe('outage notice', () => {
 
     it('is true strictly before the end and false from the end on', () => {
       expect(isActive(new Date(END - 1))).toBe(true);
-      expect(isActive(new Date('2026-11-18T11:59:59.999+01:00'))).toBe(true);
+      expect(isActive(new Date('2026-11-19T08:59:59.999+01:00'))).toBe(true);
       expect(isActive(new Date(END))).toBe(false);
-      expect(isActive(new Date('2026-11-18T12:00:00+01:00'))).toBe(false);
+      expect(isActive(new Date('2026-11-19T09:00:00+01:00'))).toBe(false);
       expect(isActive(new Date(END + 1))).toBe(false);
     });
 

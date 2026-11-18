@@ -30,8 +30,8 @@
 (function () {
   'use strict';
 
-  // End of the outage: 18 November 2026, 12:00 CET (UTC+1).
-  var OUTAGE_NOTICE_END = new Date('2026-11-18T12:00:00+01:00');
+  // End of the outage: 19 November 2026, 09:00 CET (UTC+1).
+  var OUTAGE_NOTICE_END = new Date('2026-11-19T09:00:00+01:00');
 
   function isOutageNoticeActive(now) {
     if (Object.prototype.toString.call(now) !== '[object Date]' || isNaN(now.getTime())) {
