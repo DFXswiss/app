@@ -41,7 +41,8 @@
          notice opts out of that (display: block, height: auto, flex: none) so it is only as tall as
          its text. While the notice is shown, outage-notice.js adds has-outage-notice to body, which
          makes body a flex column so #root takes exactly the remaining height below the notice.
-         Dark text on amber, contrast about 11:1 (WCAG AA). Shown by outage-notice.js. */
+         White text on DFX blue (#124370), contrast about 10:1 (WCAG AAA). Shown by
+         outage-notice.js. */
       .outage-notice {
         display: block;
         height: auto;
@@ -50,9 +51,9 @@
         width: 100%;
         margin: 0;
         padding: 12px 16px;
-        background-color: #ffcc00;
-        color: #1b1b1b;
-        border-bottom: 2px solid #1b1b1b;
+        background-color: #124370;
+        color: #ffffff;
+        border-bottom: 2px solid rgba(255, 255, 255, 0.35);
         font-family: Inter, Arial, Helvetica, sans-serif;
         font-size: 16px;
         font-weight: 600;
@@ -91,11 +92,13 @@
          it is out of flow and takes no part in the body flex column while the bar is shown, so it never
          changes the document layout; no scroll lock. z-index 10000 lies above the highest z-index the app
          uses (9999, the full-screen file viewer in src/util/utils.ts). The dialog box is at most as tall
-         as the viewport minus the backdrop padding and scrolls inside, so the OK button stays reachable
-         on small screens (320x568); the second max-height with dvh keeps the whole box inside the
-         visible area while mobile browser bars are shown, browsers without dvh keep the vh value. The
+         as the viewport minus the backdrop padding and scrolls inside, so the Mehr Infos button stays
+         reachable on small screens (320x568); the second max-height with dvh keeps the whole box inside
+         the visible area while mobile browser bars are shown, browsers without dvh keep the vh value. The
          script focuses the box itself (tabindex="-1") so it opens at its beginning; that programmatic
-         focus shows no outline on the box, the OK button and the link keep their focus outline. The app stylesheet styles h2, p margins and links (Tailwind base),
+         focus shows no outline on the box, the close button, the Mehr Infos button and the X link keep
+         their focus outline. The dialog box is position: relative so the close button sits in its top
+         right corner; the heading has right padding so it does not run under that button. The app stylesheet styles h2, p margins and links (Tailwind base),
          so the headings, paragraphs and link set their own values explicitly. German and English
          are separate sections inside the content wrapper: stacked with a separator on narrow screens,
          two equal columns from 900px on. Shown by outage-notice.js. */
@@ -123,6 +126,7 @@
       }
 
       .outage-popup__dialog {
+        position: relative;
         box-sizing: border-box;
         max-width: min(32rem, calc(100vw - 2rem));
         max-height: calc(100vh - 2rem);
@@ -131,10 +135,11 @@
         outline: none;
         margin: 0;
         padding: 24px;
-        border: 2px solid #1b1b1b;
+        border: 1px solid rgba(255, 255, 255, 0.35);
         border-radius: 12px;
-        background-color: #ffcc00;
-        color: #1b1b1b;
+        background-color: #124370;
+        color: #ffffff;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
         font-family: Inter, Arial, Helvetica, sans-serif;
         font-size: 16px;
         font-weight: 400;
@@ -145,7 +150,8 @@
 
       .outage-popup__title {
         margin: 0 0 12px;
-        color: #1b1b1b;
+        padding-right: 36px;
+        color: #ffffff;
         font-size: 1.25rem;
         font-weight: 700;
         line-height: 1.3;
@@ -155,7 +161,7 @@
       .outage-popup__content > section + section {
         margin-top: 20px;
         padding-top: 20px;
-        border-top: 1px solid rgba(27, 27, 27, 0.4);
+        border-top: 1px solid rgba(255, 255, 255, 0.35);
       }
 
       .outage-popup__dialog p {
@@ -176,11 +182,54 @@
       }
 
       .outage-popup__source a {
-        color: #1b1b1b;
+        color: #ffffff;
         text-decoration: underline;
       }
 
+      .outage-popup__source a:focus {
+        outline: 3px solid #ffffff;
+        outline-offset: 2px;
+      }
+
+      .outage-popup__content p a {
+        color: #ffffff;
+        text-decoration: underline;
+      }
+
+      .outage-popup__content p a:focus {
+        outline: 3px solid #ffffff;
+        outline-offset: 2px;
+      }
+
       .outage-popup__close {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        box-sizing: border-box;
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background-color: transparent;
+        color: #ffffff;
+        font-family: inherit;
+        font-size: 1.5rem;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .outage-popup__close:focus {
+        outline: 3px solid #ffffff;
+        outline-offset: 2px;
+      }
+
+      .outage-popup__more {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         box-sizing: border-box;
         min-width: 88px;
         min-height: 44px;
@@ -188,18 +237,19 @@
         padding: 10px 24px;
         border: 0;
         border-radius: 8px;
-        background-color: #1b1b1b;
-        color: #ffffff;
+        background-color: #ffffff;
+        color: #124370;
         font-family: inherit;
         font-size: 16px;
         font-weight: 700;
         line-height: 1.5;
+        text-decoration: none;
         cursor: pointer;
       }
 
-      .outage-popup__close:focus {
-        outline: 3px solid #1b1b1b;
-        outline-offset: 3px;
+      .outage-popup__more:focus {
+        outline: 3px solid #ffffff;
+        outline-offset: 2px;
       }
 
       /* Wide viewports: both languages side by side in two equal columns. */
@@ -227,8 +277,8 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="outage-notice" class="outage-notice" aria-live="polite" hidden>
-      <p lang="de">Systemunterbruch bei DFX bis heute, 18. November 2026, 12:00 Uhr MEZ.</p>
-      <p lang="en">System outage at DFX until today, 18 November 2026, 12:00 CET.</p>
+      <p lang="de">Systemunterbruch bei DFX. Geplante Wiederinbetriebnahme: Donnerstag, 19. November 2026, 09:00 Uhr MEZ.</p>
+      <p lang="en">System outage at DFX. Planned restart: Thursday, 19 November 2026, 09:00 CET.</p>
     </div>
     <div id="outage-popup" class="outage-popup" hidden>
       <div
@@ -238,6 +288,7 @@
         tabindex="-1"
         aria-labelledby="outage-popup-title-de outage-popup-title-en"
       >
+        <button type="button" class="outage-popup__close" aria-label="Schliessen / Close">×</button>
         <div class="outage-popup__content">
           <section lang="de">
             <h2 id="outage-popup-title-de" class="outage-popup__title">DFX Sicherheitsupdate – Wichtiger Hinweis</h2>
@@ -246,6 +297,8 @@
             <p class="outage-popup__warning">⚠️ Wichtig: Bitte sende bis auf Weiteres keine Kryptowährungen an DFX-Einzahlungsadressen. Dies gilt auch für bereits gespeicherte Einzahlungsadressen. Gelder, die an kompromittierte Adressen gesendet werden, können gefährdet sein.</p>
             <p>Wir arbeiten daran, alle betroffenen Adressen zu ersetzen und unsere Dienste so schnell und sicher wie möglich wiederherzustellen.</p>
             <p>Wir informieren dich, sobald die neuen Einzahlungsadressen verfügbar sind und Transaktionen wieder sicher möglich sind.</p>
+            <p>Wir planen, den DFX-Service am Donnerstag, 19. November 2026, um 09:00 Uhr MEZ wieder in Betrieb zu nehmen.</p>
+            <p>Du kannst dich jederzeit per E-Mail an <a href="mailto:support@dfx.swiss">support@dfx.swiss</a> wenden.</p>
             <p>Vielen Dank für deine Geduld und dein Verständnis.</p>
           </section>
           <section lang="en">
@@ -255,11 +308,13 @@
             <p class="outage-popup__warning">⚠️ Important: Please do not send any cryptocurrency to DFX deposit addresses until further notice. This also applies to previously saved deposit addresses. Funds sent to compromised addresses may be at risk.</p>
             <p>We are working to replace all affected addresses and restore our services as quickly and safely as possible.</p>
             <p>We will inform you as soon as the new deposit addresses are available and transactions can safely resume.</p>
+            <p>We plan to resume the DFX service on Thursday, 19 November 2026, at 09:00 CET.</p>
+            <p>You can contact us at any time at <a href="mailto:support@dfx.swiss">support@dfx.swiss</a>.</p>
             <p>Thank you for your patience and understanding.</p>
           </section>
         </div>
         <p class="outage-popup__source"><a href="https://x.com/dfx_swiss/status/2122956475865677875" target="_blank" rel="noopener noreferrer">DFX on X</a></p>
-        <button type="button" class="outage-popup__close">OK</button>
+        <a class="outage-popup__more" href="https://dfx.swiss/security-incident">Mehr Infos / More info</a>
       </div>
     </div>
     <script src="%REACT_APP_PUBLIC_URL%/outage-notice.js"></script>

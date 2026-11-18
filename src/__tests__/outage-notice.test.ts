@@ -12,11 +12,12 @@ import { join } from 'path';
 const INDEX_HTML = readFileSync(join(__dirname, '../../public/index.html'), 'utf8');
 const SCRIPT_SOURCE = readFileSync(join(__dirname, '../../public/outage-notice.js'), 'utf8');
 
-// 18 November 2026, 12:00 CET = 11:00 UTC, computed independently of the string in the script.
-const END = Date.UTC(2026, 10, 18, 11, 0, 0, 0);
+// 19 November 2026, 09:00 CET = 08:00 UTC, computed independently of the string in the script.
+const END = Date.UTC(2026, 10, 19, 8, 0, 0, 0);
 
-const GERMAN_LINE = 'Systemunterbruch bei DFX bis heute, 18. November 2026, 12:00 Uhr MEZ.';
-const ENGLISH_LINE = 'System outage at DFX until today, 18 November 2026, 12:00 CET.';
+const GERMAN_LINE =
+  'Systemunterbruch bei DFX. Geplante Wiederinbetriebnahme: Donnerstag, 19. November 2026, 09:00 Uhr MEZ.';
+const ENGLISH_LINE = 'System outage at DFX. Planned restart: Thursday, 19 November 2026, 09:00 CET.';
 
 // Both notices verbatim (en dash in the titles, warning sign in the third paragraph), Swiss spelling
 // in German.
@@ -25,28 +26,38 @@ const POPUP_WARNING_DE =
   '⚠️ Wichtig: Bitte sende bis auf Weiteres keine Kryptowährungen an DFX-Einzahlungsadressen. ' +
   'Dies gilt auch für bereits gespeicherte Einzahlungsadressen. Gelder, die an kompromittierte Adressen ' +
   'gesendet werden, können gefährdet sein.';
+const PLANNED_RESTART_DE =
+  'Wir planen, den DFX-Service am Donnerstag, 19. November 2026, um 09:00 Uhr MEZ wieder in Betrieb zu nehmen.';
+const SUPPORT_DE = 'Du kannst dich jederzeit per E-Mail an support@dfx.swiss wenden.';
 const POPUP_PARAGRAPHS_DE = [
   'Wir verzeichnen derzeit einen Sicherheitsvorfall, der DFX-Einzahlungsadressen betrifft.',
   'Es wurden keine Kundendaten und keine Kundengelder kompromittiert. DFX arbeitet non-custodial und verwahrt keine Kundengelder.',
   POPUP_WARNING_DE,
   'Wir arbeiten daran, alle betroffenen Adressen zu ersetzen und unsere Dienste so schnell und sicher wie möglich wiederherzustellen.',
   'Wir informieren dich, sobald die neuen Einzahlungsadressen verfügbar sind und Transaktionen wieder sicher möglich sind.',
+  PLANNED_RESTART_DE,
+  SUPPORT_DE,
   'Vielen Dank für deine Geduld und dein Verständnis.',
 ];
 const POPUP_TITLE_EN = 'DFX Security Update – Important Notice';
 const POPUP_WARNING_EN =
   '⚠️ Important: Please do not send any cryptocurrency to DFX deposit addresses until further notice. ' +
   'This also applies to previously saved deposit addresses. Funds sent to compromised addresses may be at risk.';
+const PLANNED_RESTART_EN = 'We plan to resume the DFX service on Thursday, 19 November 2026, at 09:00 CET.';
+const SUPPORT_EN = 'You can contact us at any time at support@dfx.swiss.';
 const POPUP_PARAGRAPHS_EN = [
   'We are currently experiencing a security incident affecting DFX deposit addresses.',
   'No customer data or customer funds have been compromised. DFX operates on a non-custodial basis and does not hold customer funds.',
   POPUP_WARNING_EN,
   'We are working to replace all affected addresses and restore our services as quickly and safely as possible.',
   'We will inform you as soon as the new deposit addresses are available and transactions can safely resume.',
+  PLANNED_RESTART_EN,
+  SUPPORT_EN,
   'Thank you for your patience and understanding.',
 ];
 const DO_NOT_SEND_SENTENCE_DE = 'Bitte sende bis auf Weiteres keine Kryptowährungen an DFX-Einzahlungsadressen.';
 const DO_NOT_SEND_SENTENCE_EN = 'Please do not send any cryptocurrency to DFX deposit addresses until further notice.';
+const INFO_URL = 'https://dfx.swiss/security-incident';
 const POST_URL = 'https://x.com/dfx_swiss/status/2122956475865677875';
 
 type OutageWindow = Window & { isOutageNoticeActive?: (now: Date) => boolean };
@@ -97,13 +108,18 @@ function popupTitle(lang: 'de' | 'en'): HTMLElement {
   return element;
 }
 
-function popupSourceLink(): HTMLAnchorElement {
-  const element = popupDialog().querySelector<HTMLAnchorElement>('.outage-popup__source a');
-  if (!element) throw new Error('.outage-popup__source a not found in the popup dialog');
+// All links inside the dialog box: two support links, the X link in the source line and the Mehr Infos button.
+function popupLinks(): HTMLAnchorElement[] {
+  return Array.from(popupDialog().querySelectorAll<HTMLAnchorElement>('a'));
+}
+
+function popupMoreLink(): HTMLAnchorElement {
+  const element = popupDialog().querySelector<HTMLAnchorElement>('a.outage-popup__more');
+  if (!element) throw new Error('a.outage-popup__more not found in the popup dialog');
   return element;
 }
 
-// The six text paragraphs of one language section.
+// The eight text paragraphs of one language section.
 function popupParagraphs(lang: 'de' | 'en'): HTMLParagraphElement[] {
   return Array.from(popupSection(lang).querySelectorAll<HTMLParagraphElement>('p'));
 }
@@ -127,7 +143,7 @@ function pressKey(key: string): void {
 type CloseTrigger = [name: string, close: () => void];
 
 const CLOSE_TRIGGERS: CloseTrigger[] = [
-  ['the OK button', () => popupButton().click()],
+  ['the close button', () => popupButton().click()],
   ['a click on the backdrop', () => clickBackdrop()],
   ['Escape', () => pressKey('Escape')],
 ];
@@ -426,14 +442,14 @@ describe('outage notice', () => {
       expect(popupDialog().querySelectorAll('h2')).toHaveLength(2);
     });
 
-    it('shows the six German paragraphs verbatim and in order', () => {
+    it('shows the eight German paragraphs verbatim and in order', () => {
       expect(popupParagraphs('de').map((p) => p.textContent)).toEqual(POPUP_PARAGRAPHS_DE);
-      expect(popupParagraphs('de')).toHaveLength(6);
+      expect(popupParagraphs('de')).toHaveLength(8);
     });
 
-    it('shows the six English paragraphs verbatim and in order', () => {
+    it('shows the eight English paragraphs verbatim and in order', () => {
       expect(popupParagraphs('en').map((p) => p.textContent)).toEqual(POPUP_PARAGRAPHS_EN);
-      expect(popupParagraphs('en')).toHaveLength(6);
+      expect(popupParagraphs('en')).toHaveLength(8);
     });
 
     it('contains the sentence not to send any cryptocurrency in both languages, in the emphasised paragraph', () => {
@@ -451,37 +467,69 @@ describe('outage notice', () => {
       expect(warningEn.textContent).toContain(DO_NOT_SEND_SENTENCE_EN);
     });
 
+    it('links the support address with mailto in both language sections', () => {
+      const links = Array.from(popupDialog().querySelectorAll<HTMLAnchorElement>('a[href="mailto:support@dfx.swiss"]'));
+
+      expect(links).toHaveLength(2);
+      expect(links.map((link) => link.textContent)).toEqual(['support@dfx.swiss', 'support@dfx.swiss']);
+      expect(links.map((link) => link.closest('section')?.getAttribute('lang'))).toEqual(['de', 'en']);
+      expect(popupParagraphs('de')[6].contains(links[0])).toBe(true);
+      expect(popupParagraphs('en')[6].contains(links[1])).toBe(true);
+    });
+
     it('links the source line to the post on X in a new tab, without opener', () => {
-      const link = popupSourceLink();
-      const relAttribute = link.getAttribute('rel');
+      const links = popupLinks();
+      expect(links).toHaveLength(4);
+
+      const xLink = links[2];
+      const moreLink = links[3];
+      expect(xLink).toBe(popupDialog().querySelector('.outage-popup__source a'));
+
+      const relAttribute = xLink.getAttribute('rel');
       if (relAttribute === null) throw new Error('rel missing on the source link');
       const rel = relAttribute.split(/\s+/);
 
-      expect(link.textContent).toBe('DFX on X');
-      expect(link.getAttribute('href')).toBe(POST_URL);
-      expect(link.getAttribute('target')).toBe('_blank');
+      expect(xLink.textContent).toBe('DFX on X');
+      expect(xLink.getAttribute('href')).toBe(POST_URL);
+      expect(xLink.getAttribute('target')).toBe('_blank');
       expect(rel).toContain('noopener');
       expect(rel).toContain('noreferrer');
-      expect(popupDialog().querySelectorAll('a')).toHaveLength(1);
+      expect(popupDialog().querySelectorAll('a')).toHaveLength(4);
+      expect(popupDialog().querySelector('.outage-popup__source')?.textContent).toBe('DFX on X');
+      expect(moreLink).toBe(popupMoreLink());
     });
 
-    it('orders heading, paragraphs, source line and OK button', () => {
+    it('turns the small Mehr Infos link into a button-like link after both language sections', () => {
+      const moreLink = popupMoreLink();
+      const content = popupDialog().querySelector('.outage-popup__content');
+      if (!content) throw new Error('.outage-popup__content not found in the popup dialog');
+
+      expect(moreLink.textContent).toBe('Mehr Infos / More info');
+      expect(moreLink.getAttribute('href')).toBe(INFO_URL);
+      expect(moreLink.hasAttribute('target')).toBe(false);
+      expect(content.compareDocumentPosition(moreLink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(content.querySelectorAll('a[href="mailto:support@dfx.swiss"]')).toHaveLength(2);
+    });
+
+    it('orders heading, paragraphs, source line and Mehr Infos link', () => {
       const children = Array.from(popupDialog().children);
 
-      expect(children.map((child) => child.tagName)).toEqual(['DIV', 'P', 'BUTTON']);
-      expect(children[0].classList.contains('outage-popup__content')).toBe(true);
-      expect(children[0].querySelectorAll('section')).toHaveLength(2);
-      expect(children[1].classList.contains('outage-popup__source')).toBe(true);
-      expect(children[2]).toBe(popupButton());
+      expect(children.map((child) => child.tagName)).toEqual(['BUTTON', 'DIV', 'P', 'A']);
+      expect(children[0]).toBe(popupButton());
+      expect(children[1].classList.contains('outage-popup__content')).toBe(true);
+      expect(children[1].querySelectorAll('section')).toHaveLength(2);
+      expect(children[2].classList.contains('outage-popup__source')).toBe(true);
+      expect(children[3]).toBe(popupMoreLink());
     });
 
-    it('contains exactly one OK button inside the dialog box', () => {
+    it('contains exactly one close button with an aria-label and the multiplication sign as its text', () => {
       const buttons = Array.from(popupDialog().querySelectorAll('button'));
 
       expect(buttons).toHaveLength(1);
       expect(buttons[0]).toBe(popupButton());
       expect(popupButton().getAttribute('type')).toBe('button');
-      expect(popupButton().textContent).toBe('OK');
+      expect(popupButton().getAttribute('aria-label')).toBe('Schliessen / Close');
+      expect(popupButton().textContent).toBe('×');
       expect(popupDialog().contains(popupButton())).toBe(true);
       expect(popup().querySelectorAll('button')).toHaveLength(1);
     });
@@ -502,6 +550,14 @@ describe('outage notice', () => {
       expect(rule.get('display')).toBe('block');
       expect(rule.get('height')).toBe('auto');
       expect(rule.get('flex')).toBe('none');
+    });
+
+    it('uses the DFX blue bar with white text and a light separator', () => {
+      const rule = ruleFor('.outage-notice');
+
+      expect(rule.get('background-color')).toBe('#124370');
+      expect(rule.get('color')).toBe('#ffffff');
+      expect(rule.get('border-bottom')).toBe('2px solid rgba(255, 255, 255, 0.35)');
     });
 
     it('still hides the notice with the hidden attribute', () => {
@@ -551,7 +607,7 @@ describe('outage notice', () => {
     });
 
     // The long text must stay usable on small screens (320x568): the box is at most as tall as the
-    // viewport minus the backdrop padding and scrolls inside, so the OK button stays reachable. The
+    // viewport minus the backdrop padding and scrolls inside, so the Mehr Infos button stays reachable. The
     // vh value comes first as the fallback; the dvh value after it wins in browsers that support it,
     // so the box stays inside the visible area while mobile browser bars are shown. Narrow viewports
     // keep the single-column width and the two language sections stacked.
@@ -564,9 +620,18 @@ describe('outage notice', () => {
       expect(rule.get('box-sizing')).toBe('border-box');
     });
 
+    it('uses the DFX blue dialog with white text, a light border and a dark shadow', () => {
+      const rule = ruleFor('.outage-popup__dialog');
+
+      expect(rule.get('background-color')).toBe('#124370');
+      expect(rule.get('color')).toBe('#ffffff');
+      expect(rule.get('border')).toBe('1px solid rgba(255, 255, 255, 0.35)');
+      expect(rule.get('box-shadow')).toBe('0 12px 32px rgba(0, 0, 0, 0.45)');
+    });
+
     it('separates the stacked language sections with a thin line', () => {
       expect(ruleFor('.outage-popup__content > section + section').get('border-top')).toBe(
-        '1px solid rgba(27, 27, 27, 0.4)',
+        '1px solid rgba(255, 255, 255, 0.35)',
       );
     });
 
@@ -585,13 +650,32 @@ describe('outage notice', () => {
       );
     });
 
+    it('positions the dialog box relatively and the close button absolutely in its top right corner', () => {
+      expect(ruleFor('.outage-popup__dialog').get('position')).toBe('relative');
+      expect(ruleFor('.outage-popup__close').get('position')).toBe('absolute');
+      expect(ruleFor('.outage-popup__close').get('top')).toBe('4px');
+      expect(ruleFor('.outage-popup__close').get('right')).toBe('4px');
+    });
+
+    it('keeps the heading clear of the close button', () => {
+      expect(ruleFor('.outage-popup__title').get('padding-right')).toBe('36px');
+    });
+
     // The script focuses the box itself so it opens at its beginning; that focus must not draw a ring
-    // around the whole box. Only the box opts out; the OK button and the link keep their outline.
-    it('shows no focus outline on the dialog box, but keeps it on the OK button and the link', () => {
+    // around the whole box. Only the box opts out; the close button, the Mehr Infos button and the
+    // link keep a white outline.
+    it('shows no focus outline on the dialog box, but keeps white outlines on the buttons and link', () => {
       expect(ruleFor('.outage-popup__dialog').get('outline')).toBe('none');
-      expect(ruleFor('.outage-popup__close:focus').get('outline')).toBe('3px solid #1b1b1b');
+      expect(ruleFor('.outage-popup__close:focus').get('outline')).toBe('3px solid #ffffff');
+      expect(ruleFor('.outage-popup__close:focus').get('outline-offset')).toBe('2px');
+      expect(ruleFor('.outage-popup__more:focus').get('outline')).toBe('3px solid #ffffff');
+      expect(ruleFor('.outage-popup__more:focus').get('outline-offset')).toBe('2px');
       expect(ruleFor('.outage-popup__source a').get('outline')).toBeUndefined();
-      expect(styleRules().has('.outage-popup__source a:focus')).toBe(false);
+      expect(ruleFor('.outage-popup__source a:focus').get('outline')).toBe('3px solid #ffffff');
+      expect(ruleFor('.outage-popup__source a:focus').get('outline-offset')).toBe('2px');
+      expect(ruleFor('.outage-popup__content p a').get('outline')).toBeUndefined();
+      expect(ruleFor('.outage-popup__content p a:focus').get('outline')).toBe('3px solid #ffffff');
+      expect(ruleFor('.outage-popup__content p a:focus').get('outline-offset')).toBe('2px');
     });
 
     it('sets the long text left-aligned with a readable line height', () => {
@@ -607,6 +691,7 @@ describe('outage notice', () => {
       expect(rule.get('font-size')).toBe('1.25rem');
       expect(rule.get('font-weight')).toBe('700');
       expect(rule.get('margin')).toBe('0 0 12px');
+      expect(rule.get('color')).toBe('#ffffff');
     });
 
     it('spaces the paragraphs', () => {
@@ -618,20 +703,48 @@ describe('outage notice', () => {
       expect(ruleFor('.outage-popup__warning').get('font-weight')).toBe('700');
     });
 
-    it('underlines the source link in the dark text colour', () => {
+    it('underlines the source links in white', () => {
       const rule = ruleFor('.outage-popup__source a');
 
-      expect(rule.get('color')).toBe('#1b1b1b');
+      expect(rule.get('color')).toBe('#ffffff');
       expect(rule.get('text-decoration')).toBe('underline');
-      expect(ruleFor('.outage-popup__dialog').get('color')).toBe('#1b1b1b');
+      expect(ruleFor('.outage-popup__dialog').get('color')).toBe('#ffffff');
     });
 
-    it('keeps the OK button at least 44px tall as a touch target', () => {
-      expect(ruleFor('.outage-popup__close').get('min-height')).toBe('44px');
+    it('styles the email links in the paragraphs like the source links', () => {
+      const rule = ruleFor('.outage-popup__content p a');
+
+      expect(rule.get('color')).toBe('#ffffff');
+      expect(rule.get('text-decoration')).toBe('underline');
     });
 
-    it('keeps a visible focus outline on the OK button', () => {
-      expect(ruleFor('.outage-popup__close:focus').get('outline')).toBe('3px solid #1b1b1b');
+    it('makes the close button a 44x44px touch target in white on transparent', () => {
+      const rule = ruleFor('.outage-popup__close');
+
+      expect(rule.get('width')).toBe('44px');
+      expect(rule.get('min-width')).toBe('44px');
+      expect(rule.get('height')).toBe('44px');
+      expect(rule.get('min-height')).toBe('44px');
+      expect(rule.get('background-color')).toBe('transparent');
+      expect(rule.get('color')).toBe('#ffffff');
+      expect(rule.get('font-size')).toBe('1.5rem');
+    });
+
+    it('keeps the Mehr Infos button at least 44px tall as a touch target', () => {
+      expect(ruleFor('.outage-popup__more').get('min-height')).toBe('44px');
+    });
+
+    it('styles the Mehr Infos link like the former OK button, white on blue without underline', () => {
+      const rule = ruleFor('.outage-popup__more');
+
+      expect(rule.get('background-color')).toBe('#ffffff');
+      expect(rule.get('color')).toBe('#124370');
+      expect(rule.get('display')).toBe('inline-flex');
+      expect(rule.get('align-items')).toBe('center');
+      expect(rule.get('justify-content')).toBe('center');
+      expect(rule.get('border-radius')).toBe('8px');
+      expect(rule.get('font-weight')).toBe('700');
+      expect(rule.get('text-decoration')).toBe('none');
     });
   });
 
@@ -667,7 +780,7 @@ describe('outage notice', () => {
       expectPopupListenersRegistered(registered);
     });
 
-    // Focusing the OK button at the end of the long text would make the browser scroll the box to its
+    // Focusing the Mehr Infos button at the end of the long text would make the browser scroll the box to its
     // bottom on small screens. The box itself is focused without scrolling and reset to its top.
     it.each([
       ['before the end', END - 1],
@@ -759,23 +872,37 @@ describe('outage notice', () => {
       expect(isPopupHidden()).toBe(true);
     });
 
-    it('closes on Escape pressed while the OK button has focus', () => {
+    it('closes on Escape pressed while the close button has focus', () => {
       popupButton().focus();
       popupButton().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
       expect(isPopupHidden()).toBe(true);
     });
 
-    it('stays open on a click on the dialog box, its heading, its text or the source link', () => {
+    it('stays open on a click on the dialog box, its heading, its text or a source link', () => {
       popupDialog().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       popupTitle('de').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       popupTitle('en').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       popupParagraphs('de')[0].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       popupParagraphs('en')[0].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       // Default prevented, so jsdom does not try to follow the link.
-      popupSourceLink().addEventListener('click', (event) => event.preventDefault());
-      popupSourceLink().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      for (const link of popupLinks()) {
+        link.addEventListener('click', (event) => event.preventDefault());
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      }
 
+      expect(isPopupHidden()).toBe(false);
+    });
+
+    it('lets a click on the Mehr Infos link navigate without hiding the popup', () => {
+      // jsdom does not implement navigation; a hash keeps the dispatched click from logging one.
+      const moreLink = popupMoreLink();
+      moreLink.setAttribute('href', '#more-info-test');
+      const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+
+      moreLink.dispatchEvent(click);
+
+      expect(click.defaultPrevented).toBe(false);
       expect(isPopupHidden()).toBe(false);
     });
 
@@ -1049,9 +1176,9 @@ describe('outage notice', () => {
 
     it('is true strictly before the end and false from the end on', () => {
       expect(isActive(new Date(END - 1))).toBe(true);
-      expect(isActive(new Date('2026-11-18T11:59:59.999+01:00'))).toBe(true);
+      expect(isActive(new Date('2026-11-19T08:59:59.999+01:00'))).toBe(true);
       expect(isActive(new Date(END))).toBe(false);
-      expect(isActive(new Date('2026-11-18T12:00:00+01:00'))).toBe(false);
+      expect(isActive(new Date('2026-11-19T09:00:00+01:00'))).toBe(false);
       expect(isActive(new Date(END + 1))).toBe(false);
     });
 
@@ -1092,7 +1219,7 @@ describe('outage notice', () => {
     jest.setSystemTime(new Date(now));
     document.body.innerHTML =
       '<div id="outage-notice" hidden></div>' +
-      '<div id="outage-popup" hidden><button type="button" class="outage-popup__close">OK</button></div>' +
+      '<div id="outage-popup" hidden><button type="button" class="outage-popup__close">×</button></div>' +
       '<div id="root"></div>';
 
     expect(() => runScript()).toThrow('Outage notice: dialog box .outage-popup__dialog in #outage-popup is missing');
@@ -1103,7 +1230,7 @@ describe('outage notice', () => {
   it.each([
     ['before the end', END - 1],
     ['after the end', END + 1],
-  ])('throws when the OK button of the popup is missing, loaded %s', (_, now) => {
+  ])('throws when the close button of the popup is missing, loaded %s', (_, now) => {
     jest.setSystemTime(new Date(now));
     document.body.innerHTML =
       '<div id="outage-notice" hidden></div>' +
