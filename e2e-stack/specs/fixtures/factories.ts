@@ -14,6 +14,7 @@ import { randomBytes } from 'node:crypto';
 import { apiPost, apiPut } from './api-client';
 import { queryOne, queryRows, withDb } from './db';
 import { signatureLogin, testWallet, type TestRole, type TestWallet } from './auth';
+import { pausable } from './paused';
 import { TEST_IBAN } from './test-data';
 
 // ---------------------------------------------------------------------------
@@ -910,14 +911,18 @@ export async function createSell(jwt: string, options: CreateSellOptions = {}): 
   const currencyId = await resolveSellableFiatId(options.currencyId ?? 'CHF');
 
   // POST /sell (CreateSellDto) — simpler than paymentInfos, still creates a real sell route + deposit.
-  const res = await apiPost<{ id: number; iban: string }>(
+  // While sell is switched off the API answers 503 TRANSACTIONS_PAUSED: that throws TransactionsPausedError.
+  const res = await pausable(
     'sell',
-    {
-      iban,
-      currency: { id: currencyId },
-      blockchain,
-    },
-    { jwt },
+    apiPost<{ id: number; iban: string }>(
+      'sell',
+      {
+        iban,
+        currency: { id: currencyId },
+        blockchain,
+      },
+      { jwt },
+    ),
   );
   const sellId = requireId(res.id, 'createSell', 'id');
   track('deposit_route', sellId);
@@ -938,13 +943,17 @@ export async function createSwap(jwt: string, options: CreateSwapOptions = {}): 
   await updateById('user_data', userRow.userDataId, { kycLevel: 30 });
 
   // POST /swap (CreateSwapDto) — route only; paymentInfos needs pricing.
-  const res = await apiPost<{ id: number }>(
+  // While swap is switched off the API answers 503 TRANSACTIONS_PAUSED: that throws TransactionsPausedError.
+  const res = await pausable(
     'swap',
-    {
-      blockchain,
-      targetAsset: { id: asset.id },
-    },
-    { jwt },
+    apiPost<{ id: number }>(
+      'swap',
+      {
+        blockchain,
+        targetAsset: { id: asset.id },
+      },
+      { jwt },
+    ),
   );
   const swapId = requireId(res.id, 'createSwap', 'id');
   track('deposit_route', swapId);
@@ -1071,6 +1080,7 @@ export async function createTransaction(options: CreateTransactionOptions = {}):
 
   if ((state === 'completed_sell' || state === 'pending_sell') && !sellId) {
     if (!jwt) throw new Error('createTransaction: jwt required to create sell route when sellId is omitted');
+    // Throws TransactionsPausedError while sell is switched off, before any transaction row is written.
     const sell = await createSell(jwt, {});
     sellId = sell.sellId;
   }

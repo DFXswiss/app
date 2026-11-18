@@ -130,6 +130,17 @@ The harness does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` other
 
 The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (override listen port with `E2E_LOOPBACK_PORT`, upstream with `E2E_API_URL`) that relays to the real API service. Under `Environment.LOC` the API builds some URLs (notably KYC-step endpoints) as `http://localhost:3000/...` because it assumes frontend and API share a host; without the forwarder, the browser inside the Playwright container would hit itself and fail with `net::ERR_CONNECTION_REFUSED`.
 
+### Paused sell and swap
+
+The API can switch sell or swap transactions off. While one is off, the endpoints that create or
+confirm it answer HTTP 503 with the error code `TRANSACTIONS_PAUSED`. The harness passes against an
+API in either state and reads the state from the answer, never from a flag or an environment
+variable. `fixtures/paused.ts` holds the helpers: `createSell` and `createSwap` throw
+`TransactionsPausedError` on that answer, `orPaused` turns it into a value a test can branch on, and
+`expectPausedQuoteOnScreen` checks that a sell or swap screen shows the API's message and no payment
+information. A test that needs a sell or swap asserts the paused answer and keeps its other
+assertions, so it passes instead of failing and the rest of a serial file still runs.
+
 ## Relation to the existing suite under `e2e/`
 
 The suite under `e2e/` is visual-regression testing (screenshot baselines). It deliberately does not run in CI, because baselines are platform- and font-dependent.

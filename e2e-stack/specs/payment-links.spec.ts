@@ -19,11 +19,14 @@ import {
   createSell,
   createUser,
   expect,
+  expectTransactionsPaused,
   normPath,
   openScreen,
+  orPaused,
   queryOne,
   queryRows,
   test,
+  TransactionsPausedError,
   waitForRow,
 } from './fixtures';
 
@@ -222,7 +225,11 @@ test.describe('Payment links / routes / invoice', () => {
   }) => {
     const user = await createUser({ tag: 'pl-routes-mixed', language: 'EN', kycLevel: 30, completePersonalData: true });
     const buy = await createBuy(user.jwt);
-    const sell = await createSell(user.jwt, { blockchain: 'Ethereum' });
+    // While sell is switched off at the API there is no sell route to list: the paused answer is
+    // checked here and the rest of the screen (buy route, payment link) is still asserted below.
+    const sell = await orPaused(createSell(user.jwt, { blockchain: 'Ethereum' }));
+    if (sell instanceof TransactionsPausedError) expectTransactionsPaused(sell, 'sell');
+    const sellId = sell instanceof TransactionsPausedError ? undefined : sell.sellId;
     const pl = await createPaymentLink(user.jwt, {
       tag: 'pl-routes-mixed',
       amount: 18.5,
@@ -231,7 +238,7 @@ test.describe('Payment links / routes / invoice', () => {
 
     // DB preconditions for what the list should surface.
     await waitForRow(`SELECT id FROM buy WHERE id = $1`, [buy.buyId]);
-    await waitForRow(`SELECT id FROM deposit_route WHERE id = $1 AND type = 'Sell'`, [sell.sellId]);
+    if (sellId) await waitForRow(`SELECT id FROM deposit_route WHERE id = $1 AND type = 'Sell'`, [sellId]);
     await waitForRow(`SELECT id, status FROM payment_link WHERE id = $1`, [pl.paymentLinkId]);
     expect(pl.paymentId, 'factory should create a pending payment_link_payment').toBeTruthy();
     const paymentRow = await waitForRow<{ id: number; amount: number; status: string }>(
@@ -245,7 +252,7 @@ test.describe('Payment links / routes / invoice', () => {
 
     // Buy + sell route cards (title is "Route <id>" — numeric id is language-stable).
     await routeVisibleInSection(page, 'Buy', `Route ${buy.buyId}`);
-    await routeVisibleInSection(page, 'Sell', `Route ${sell.sellId}`);
+    if (sellId) await routeVisibleInSection(page, 'Sell', `Route ${sellId}`);
     // Payment link's own Lightning sell route is also a sell card (same section).
     if (pl.routeId) {
       await routeVisibleInSection(page, 'Sell', `Route ${pl.routeId}`);

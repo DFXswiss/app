@@ -7,6 +7,7 @@ export * from './auth';
 export * from './db';
 export * from './factories';
 export * from './mail';
+export * from './paused';
 export * from './routes';
 export * from './screen-sync';
 export * from './test-data';
