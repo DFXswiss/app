@@ -92,11 +92,13 @@
          it is out of flow and takes no part in the body flex column while the bar is shown, so it never
          changes the document layout; no scroll lock. z-index 10000 lies above the highest z-index the app
          uses (9999, the full-screen file viewer in src/util/utils.ts). The dialog box is at most as tall
-         as the viewport minus the backdrop padding and scrolls inside, so the OK button stays reachable
-         on small screens (320x568); the second max-height with dvh keeps the whole box inside the
-         visible area while mobile browser bars are shown, browsers without dvh keep the vh value. The
+         as the viewport minus the backdrop padding and scrolls inside, so the Mehr Infos button stays
+         reachable on small screens (320x568); the second max-height with dvh keeps the whole box inside
+         the visible area while mobile browser bars are shown, browsers without dvh keep the vh value. The
          script focuses the box itself (tabindex="-1") so it opens at its beginning; that programmatic
-         focus shows no outline on the box, the OK button and the links keep their focus outline. The app stylesheet styles h2, p margins and links (Tailwind base),
+         focus shows no outline on the box, the close button, the Mehr Infos button and the X link keep
+         their focus outline. The dialog box is position: relative so the close button sits in its top
+         right corner; the heading has right padding so it does not run under that button. The app stylesheet styles h2, p margins and links (Tailwind base),
          so the headings, paragraphs and link set their own values explicitly. German and English
          are separate sections inside the content wrapper: stacked with a separator on narrow screens,
          two equal columns from 900px on. Shown by outage-notice.js. */
@@ -124,6 +126,7 @@
       }
 
       .outage-popup__dialog {
+        position: relative;
         box-sizing: border-box;
         max-width: min(32rem, calc(100vw - 2rem));
         max-height: calc(100vh - 2rem);
@@ -147,6 +150,7 @@
 
       .outage-popup__title {
         margin: 0 0 12px;
+        padding-right: 36px;
         color: #ffffff;
         font-size: 1.25rem;
         font-weight: 700;
@@ -188,6 +192,34 @@
       }
 
       .outage-popup__close {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        box-sizing: border-box;
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background-color: transparent;
+        color: #ffffff;
+        font-family: inherit;
+        font-size: 1.5rem;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .outage-popup__close:focus {
+        outline: 3px solid #ffffff;
+        outline-offset: 2px;
+      }
+
+      .outage-popup__more {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         box-sizing: border-box;
         min-width: 88px;
         min-height: 44px;
@@ -201,10 +233,11 @@
         font-size: 16px;
         font-weight: 700;
         line-height: 1.5;
+        text-decoration: none;
         cursor: pointer;
       }
 
-      .outage-popup__close:focus {
+      .outage-popup__more:focus {
         outline: 3px solid #ffffff;
         outline-offset: 2px;
       }
@@ -245,6 +278,7 @@
         tabindex="-1"
         aria-labelledby="outage-popup-title-de outage-popup-title-en"
       >
+        <button type="button" class="outage-popup__close" aria-label="Schliessen / Close">×</button>
         <div class="outage-popup__content">
           <section lang="de">
             <h2 id="outage-popup-title-de" class="outage-popup__title">DFX Sicherheitsupdate – Wichtiger Hinweis</h2>
@@ -265,8 +299,8 @@
             <p>Thank you for your patience and understanding.</p>
           </section>
         </div>
-        <p class="outage-popup__source"><a href="https://dfx.swiss/security-incident">Mehr Infos / More info</a> · <a href="https://x.com/dfx_swiss/status/2122956475865677875" target="_blank" rel="noopener noreferrer">DFX on X</a></p>
-        <button type="button" class="outage-popup__close">OK</button>
+        <p class="outage-popup__source"><a href="https://x.com/dfx_swiss/status/2122956475865677875" target="_blank" rel="noopener noreferrer">DFX on X</a></p>
+        <a class="outage-popup__more" href="https://dfx.swiss/security-incident">Mehr Infos / More info</a>
       </div>
     </div>
     <script src="%REACT_APP_PUBLIC_URL%/outage-notice.js"></script>
