@@ -57,6 +57,54 @@ function expectNoListenerReacts(): void {
   expect(notice().hasAttribute('hidden')).toBe(false);
 }
 
+// Set on body by the script while the notice is shown, so the style block can lay out #root below it.
+function hasBodyClass(): boolean {
+  return document.body.classList.contains('has-outage-notice');
+}
+
+type Declarations = Map<string, string>;
+
+// Parses the <style> block of public/index.html into selector -> (property -> value), with comments
+// removed and whitespace collapsed. Fails loudly on anything it cannot parse or on a duplicate selector.
+function styleRules(): Map<string, Declarations> {
+  const match = /<style>([\s\S]*?)<\/style>/.exec(INDEX_HTML);
+  if (!match) throw new Error('<style> block not found in public/index.html');
+
+  const css = match[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = new Map<string, Declarations>();
+  for (const block of css.split('}')) {
+    const open = block.indexOf('{');
+    if (open === -1) {
+      if (block.trim() !== '') throw new Error(`Unparsable CSS in public/index.html: ${block.trim()}`);
+      continue;
+    }
+
+    const selector = block.slice(0, open).trim().replace(/\s+/g, ' ');
+    const declarations: Declarations = new Map();
+    for (const declaration of block.slice(open + 1).split(';')) {
+      if (declaration.trim() === '') continue;
+      const colon = declaration.indexOf(':');
+      if (colon === -1) throw new Error(`Unparsable declaration in "${selector}": ${declaration.trim()}`);
+      const property = declaration.slice(0, colon).trim();
+      const value = declaration
+        .slice(colon + 1)
+        .trim()
+        .replace(/\s+/g, ' ');
+      declarations.set(property, value);
+    }
+
+    if (rules.has(selector)) throw new Error(`Duplicate rule "${selector}" in public/index.html`);
+    rules.set(selector, declarations);
+  }
+  return rules;
+}
+
+function ruleFor(selector: string): Declarations {
+  const rule = styleRules().get(selector);
+  if (!rule) throw new Error(`Rule "${selector}" not found in the <style> block of public/index.html`);
+  return rule;
+}
+
 function isActive(now: Date): boolean {
   const fn = (window as OutageWindow).isOutageNoticeActive;
   if (!fn) throw new Error('window.isOutageNoticeActive was not attached');
@@ -82,6 +130,8 @@ describe('outage notice', () => {
     delete (window as OutageWindow).isOutageNoticeActive;
     document.head.innerHTML = '';
     document.body.innerHTML = '';
+    // loadIndexHtml() replaces only the content of body, not its class attribute.
+    document.body.className = '';
   });
 
   describe('public/index.html markup', () => {
@@ -125,6 +175,37 @@ describe('outage notice', () => {
     });
   });
 
+  describe('public/index.html styles', () => {
+    // src/index.css makes every body > div a full-height flex column; these rules keep the notice
+    // as tall as its text and let #root take only the remaining height while the notice is shown.
+    it('lets the notice opt out of the global body > div rule', () => {
+      const rule = ruleFor('.outage-notice');
+
+      expect(rule.get('display')).toBe('block');
+      expect(rule.get('height')).toBe('auto');
+      expect(rule.get('flex')).toBe('none');
+    });
+
+    it('still hides the notice with the hidden attribute', () => {
+      expect(ruleFor('.outage-notice[hidden]').get('display')).toBe('none');
+    });
+
+    it('makes body a flex column while the notice is shown', () => {
+      const rule = ruleFor('body.has-outage-notice');
+
+      expect(rule.get('display')).toBe('flex');
+      expect(rule.get('flex-direction')).toBe('column');
+    });
+
+    it('lets #root fill the remaining height while the notice is shown', () => {
+      const rule = ruleFor('body.has-outage-notice > #root');
+
+      expect(rule.get('height')).toBe('auto');
+      expect(rule.get('flex')).toBe('1 1 auto');
+      expect(rule.get('min-height')).toBe('0');
+    });
+  });
+
   describe('visibility at load', () => {
     beforeEach(() => {
       loadIndexHtml();
@@ -137,6 +218,7 @@ describe('outage notice', () => {
 
       expect(notice().hasAttribute('hidden')).toBe(false);
       expect(notice().hidden).toBe(false);
+      expect(hasBodyClass()).toBe(true);
     });
 
     it('keeps the notice hidden exactly at the end', () => {
@@ -145,6 +227,7 @@ describe('outage notice', () => {
       const registered = runScriptRecordingListeners();
 
       expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(hasBodyClass()).toBe(false);
       expect(registered).not.toContain('visibilitychange');
       expect(registered).not.toContain('pageshow');
     });
@@ -155,6 +238,7 @@ describe('outage notice', () => {
       const registered = runScriptRecordingListeners();
 
       expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(hasBodyClass()).toBe(false);
       expect(registered).not.toContain('visibilitychange');
       expect(registered).not.toContain('pageshow');
     });
@@ -171,14 +255,17 @@ describe('outage notice', () => {
       runScript();
 
       expect(notice().hasAttribute('hidden')).toBe(false);
+      expect(hasBodyClass()).toBe(true);
 
       jest.advanceTimersByTime(999);
 
       expect(notice().hasAttribute('hidden')).toBe(false);
+      expect(hasBodyClass()).toBe(true);
 
       jest.advanceTimersByTime(1);
 
       expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(hasBodyClass()).toBe(false);
     });
 
     it('schedules no timer when loaded exactly at the end', () => {
@@ -187,6 +274,7 @@ describe('outage notice', () => {
       const registered = runScriptRecordingListeners();
 
       expect(jest.getTimerCount()).toBe(0);
+      expect(hasBodyClass()).toBe(false);
       expect(registered).not.toContain('visibilitychange');
       expect(registered).not.toContain('pageshow');
     });
@@ -197,6 +285,7 @@ describe('outage notice', () => {
       const registered = runScriptRecordingListeners();
 
       expect(jest.getTimerCount()).toBe(0);
+      expect(hasBodyClass()).toBe(false);
       expect(registered).not.toContain('visibilitychange');
       expect(registered).not.toContain('pageshow');
     });
@@ -210,6 +299,7 @@ describe('outage notice', () => {
       jest.runOnlyPendingTimers();
 
       expect(notice().hasAttribute('hidden')).toBe(false);
+      expect(hasBodyClass()).toBe(true);
       expect(jest.getTimerCount()).toBe(1);
     });
   });
@@ -225,11 +315,13 @@ describe('outage notice', () => {
       runScript();
 
       expect(notice().hasAttribute('hidden')).toBe(false);
+      expect(hasBodyClass()).toBe(true);
 
       jest.setSystemTime(new Date(END + 1));
       document.dispatchEvent(new Event('visibilitychange'));
 
       expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(hasBodyClass()).toBe(false);
       expectNoListenerReacts();
     });
 
@@ -239,11 +331,13 @@ describe('outage notice', () => {
       runScript();
 
       expect(notice().hasAttribute('hidden')).toBe(false);
+      expect(hasBodyClass()).toBe(true);
 
       jest.setSystemTime(new Date(END + 1));
       window.dispatchEvent(new Event('pageshow'));
 
       expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(hasBodyClass()).toBe(false);
       expect(jest.getTimerCount()).toBe(0);
       expectNoListenerReacts();
     });
@@ -261,6 +355,7 @@ describe('outage notice', () => {
       jest.advanceTimersByTime(1000);
 
       expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(hasBodyClass()).toBe(false);
       expect(jest.getTimerCount()).toBe(0);
     });
 
@@ -306,6 +401,7 @@ describe('outage notice', () => {
       window.dispatchEvent(new Event('pageshow'));
 
       expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(hasBodyClass()).toBe(false);
       expect(jest.getTimerCount()).toBe(0);
     });
 
@@ -320,6 +416,7 @@ describe('outage notice', () => {
       document.dispatchEvent(new Event('visibilitychange'));
 
       expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(hasBodyClass()).toBe(false);
       expect(jest.getTimerCount()).toBe(0);
     });
   });

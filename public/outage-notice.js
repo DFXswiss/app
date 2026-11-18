@@ -6,7 +6,9 @@
  * wall clock is re-checked whenever the page becomes visible (visibilitychange) or is shown again
  * (pageshow, e.g. restored from the back/forward cache). Every re-check before the end, and a timer
  * that fires early, replaces the pending timer with one for the remaining time, so at most one timer
- * is pending. Removing the notice therefore needs no second deployment.
+ * is pending. Removing the notice therefore needs no second deployment. While the notice is shown,
+ * body carries the class has-outage-notice (see the style block in index.html), so #root takes only
+ * the height left below the notice; it is removed again together with the notice.
  *
  * Deliberately a plain ES5 script without dependencies, loaded by its own <script> tag outside the
  * React root: it must run while the static loader is still on screen and must not depend on the app
@@ -33,6 +35,9 @@
     throw new Error('Outage notice: element #outage-notice is missing');
   }
 
+  // Class on body while the notice is shown; makes body a flex column so #root fills the rest.
+  var BODY_CLASS = 'has-outage-notice';
+
   // The single pending timer while the notice is shown, null otherwise.
   var timer = null;
 
@@ -54,6 +59,7 @@
     }
 
     notice.setAttribute('hidden', '');
+    document.body.classList.remove(BODY_CLASS);
     document.removeEventListener('visibilitychange', syncNotice);
     window.removeEventListener('pageshow', syncNotice);
     if (timer !== null) {
@@ -70,6 +76,7 @@
   var loadedAt = new Date();
   if (isOutageNoticeActive(loadedAt)) {
     notice.removeAttribute('hidden');
+    document.body.classList.add(BODY_CLASS);
     // The app is a single-page app, so a tab opened before the end can stay open past it.
     scheduleTimer(loadedAt);
     // Timers do not run while the page is frozen or the device sleeps; re-check on wake-up/return.
