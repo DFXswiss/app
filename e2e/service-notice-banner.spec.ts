@@ -74,6 +74,11 @@ async function installRoutes(page: Page): Promise<void> {
       return json(route, []);
     }
 
+    // No CMS info banner, so the screenshots show only the service notice.
+    if (method === 'GET' && path === '/v1/setting/infoBanner') {
+      return json(route, {});
+    }
+
     await route.fulfill({
       status: 501,
       contentType: 'application/json',
