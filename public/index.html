@@ -35,11 +35,46 @@
       .loader {
         color: #072440;
       }
+
+      /* Outage notice: in normal document flow above the app, never covering its controls.
+         Dark text on amber, contrast about 11:1 (WCAG AA). Shown by outage-notice.js. */
+      .outage-notice {
+        box-sizing: border-box;
+        width: 100%;
+        margin: 0;
+        padding: 12px 16px;
+        background-color: #ffcc00;
+        color: #1b1b1b;
+        border-bottom: 2px solid #1b1b1b;
+        font-family: Inter, Arial, Helvetica, sans-serif;
+        font-size: 16px;
+        font-weight: 600;
+        line-height: 1.4;
+        text-align: center;
+        overflow-wrap: break-word;
+      }
+
+      .outage-notice[hidden] {
+        display: none;
+      }
+
+      .outage-notice p {
+        margin: 0;
+      }
+
+      .outage-notice p + p {
+        margin-top: 4px;
+      }
     </style>
   </head>
 
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="outage-notice" class="outage-notice" aria-live="polite" hidden>
+      <p lang="de">Systemunterbruch bei DFX bis heute, 18. November 2026, 12:00 Uhr MEZ.</p>
+      <p lang="en">System outage at DFX until today, 18 November 2026, 12:00 CET.</p>
+    </div>
+    <script src="%REACT_APP_PUBLIC_URL%/outage-notice.js"></script>
     <div id="root">
       <div class="loader-container">
         <div class="loader">Loading ...</div>
