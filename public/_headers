@@ -84,6 +84,14 @@
 /robots.txt
   Cache-Control: no-cache, must-revalidate
 
+# Non-fingerprinted script loaded by index.html to show the time-limited outage notice. Must
+# never be cached: the end instant inside it may be changed by a later deploy, and a stale copy
+# would hide or show the notice at the wrong time. Listed in public/_routes.json include for the
+# same reason as /manifest.json: a missing file is answered 404 instead of SPA-fallback HTML under
+# the script URL.
+/outage-notice.js
+  Cache-Control: no-store
+
 # Deploy marker written per CI run and polled by the PRD verify step. Must never be cached:
 # each poll has to reflect the deploy that is currently live, not a previous run's id.
 /deploy-id.txt
