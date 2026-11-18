@@ -17,6 +17,10 @@ jest.mock('src/components/info-banner', () => ({
   InfoBannerComponent: () => null,
 }));
 
+jest.mock('src/components/service-notice-banner', () => ({
+  ServiceNoticeBanner: () => null,
+}));
+
 jest.mock('src/components/navigation', () => {
   const { forwardRef } = jest.requireActual('react') as typeof import('react');
   return {
