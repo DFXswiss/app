@@ -1,14 +1,18 @@
 import { IconColor, StyledInfoText, StyledInfoTextSize } from '@dfx.swiss/react-components';
 import { useLocation } from 'react-router-dom';
+import { FeatureFlags } from '../config/feature-flags';
 import { useSettingsContext } from '../contexts/settings.context';
 
 // Sell and swap pages show the prominent variant; every other page shows the slim one.
 const PROMINENT_PATHS = /^\/(sell|swap)\/?$/;
 
-// Service notice shown on every page. It cannot be dismissed, so it is back after every reload.
-export function ServiceNoticeBanner(): JSX.Element {
+// Service notice shown on every page while FeatureFlags.serviceNotice is on. It cannot be
+// dismissed, so it is back after every reload.
+export function ServiceNoticeBanner(): JSX.Element | null {
   const { translate } = useSettingsContext();
   const { pathname } = useLocation();
+
+  if (!FeatureFlags.serviceNotice) return null;
 
   return PROMINENT_PATHS.test(pathname) ? (
     <div

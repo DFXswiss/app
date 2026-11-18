@@ -1202,10 +1202,10 @@ test.describe('Sell + Swap e2e', () => {
       expect(noticeBox).not.toBeNull();
       expect(amountBox).not.toBeNull();
       expect((noticeBox as { y: number }).y).toBeLessThan((amountBox as { y: number }).y);
-    }
 
-    // The forms stay usable: the notice does not disable the amount field.
-    await expect(page.locator('input[inputmode="decimal"]').first()).toBeEnabled();
+      // The form stays usable: the notice does not disable the amount field.
+      await expect(amount).toBeEnabled();
+    }
 
     for (const path of ['/buy', '/account']) {
       await openScreen(page, path, user.jwt);

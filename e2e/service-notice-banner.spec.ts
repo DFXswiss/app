@@ -7,7 +7,7 @@ import { expect, Page, Route, test } from '@playwright/test';
  * prominent notice there instead, above the form.
  *
  * Routes:
- *   - /      (home, slim notice)
+ *   - /support (slim notice)
  *   - /sell  (prominent notice)
  *   - /swap  (prominent notice)
  *
@@ -76,7 +76,7 @@ async function installRoutes(page: Page): Promise<void> {
 
     // No CMS info banner, so the screenshots show only the service notice.
     if (method === 'GET' && path === '/v1/setting/infoBanner') {
-      return json(route, {});
+      return json(route, null);
     }
 
     await route.fulfill({
@@ -123,9 +123,20 @@ test.describe('Service notice banner', () => {
   const token = jwt();
 
   const cases = [
-    { path: '/', variant: 'slim', text: SLIM_EN, file: 'service-notice-banner-01-home.png' },
-    { path: '/sell', variant: 'prominent', text: PROMINENT_EN, file: 'service-notice-banner-02-sell.png' },
-    { path: '/swap', variant: 'prominent', text: PROMINENT_EN, file: 'service-notice-banner-03-swap.png' },
+    // The slim notice is shot on the support landing page, which renders fully with these mocks.
+    { path: '/support', variant: 'slim', text: SLIM_EN, file: 'service-notice-banner-01-support.png' },
+    {
+      path: '/sell',
+      variant: 'prominent',
+      text: PROMINENT_EN,
+      file: 'service-notice-banner-02-sell.png',
+    },
+    {
+      path: '/swap',
+      variant: 'prominent',
+      text: PROMINENT_EN,
+      file: 'service-notice-banner-03-swap.png',
+    },
   ];
 
   for (const { path, variant, text, file } of cases) {
@@ -134,6 +145,7 @@ test.describe('Service notice banner', () => {
 
       await page.goto(`${path}?session=${encodeURIComponent(token)}&lang=en`);
       await closeSecurityPopup(page);
+      await expect(page.locator('.animate-spin')).toHaveCount(0, { timeout: 15_000 });
 
       const notice = page.getByTestId('service-notice-banner');
       await expect(notice).toHaveAttribute('data-variant', variant, { timeout: 15_000 });

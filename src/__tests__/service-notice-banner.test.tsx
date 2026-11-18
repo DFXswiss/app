@@ -30,6 +30,7 @@ import { render, screen } from '@testing-library/react';
 import i18n from 'i18next';
 import { MemoryRouter } from 'react-router-dom';
 import { ServiceNoticeBanner } from 'src/components/service-notice-banner';
+import { FeatureFlags } from 'src/config/feature-flags';
 import { setupLanguages } from 'src/translations';
 
 const SLIM = {
@@ -62,8 +63,28 @@ describe('ServiceNoticeBanner', () => {
   });
 
   beforeEach(async () => {
+    FeatureFlags.serviceNotice = true;
     await i18n.changeLanguage('en');
   });
+
+  afterAll(() => {
+    FeatureFlags.serviceNotice = true;
+  });
+
+  it('ships with the service notice switched on', () => {
+    expect(FeatureFlags).toEqual({ serviceNotice: true });
+  });
+
+  it.each(['/', '/buy', '/account', '/sell', '/sell/', '/swap', '/swap/', '/sell/info', '/support/tickets'])(
+    'renders nothing on %s when the service notice flag is off',
+    (path) => {
+      FeatureFlags.serviceNotice = false;
+      const { container } = renderAt(path);
+
+      expect(screen.queryByTestId('service-notice-banner')).not.toBeInTheDocument();
+      expect(container).toBeEmptyDOMElement();
+    },
+  );
 
   it.each(['/', '/buy', '/account', '/sell/info', '/swap/info', '/selling', '/support/tickets'])(
     'shows the slim notice on %s',
