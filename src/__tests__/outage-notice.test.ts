@@ -32,6 +32,31 @@ function notice(): HTMLElement {
   return element;
 }
 
+// Runs the script with spies on both addEventListener methods and returns the event types it
+// registered on document and window. The spies call through and are always restored.
+function runScriptRecordingListeners(): string[] {
+  const documentSpy = jest.spyOn(document, 'addEventListener');
+  const windowSpy = jest.spyOn(window, 'addEventListener');
+  try {
+    runScript();
+    const documentTypes = documentSpy.mock.calls.map((call) => String(call[0]));
+    const windowTypes = windowSpy.mock.calls.map((call) => String(call[0]));
+    return documentTypes.concat(windowTypes);
+  } finally {
+    documentSpy.mockRestore();
+    windowSpy.mockRestore();
+  }
+}
+
+// Shows the notice again by hand after it was hidden and fires both events: if neither listener is
+// still registered, nothing hides it again.
+function expectNoListenerReacts(): void {
+  notice().removeAttribute('hidden');
+  document.dispatchEvent(new Event('visibilitychange'));
+  window.dispatchEvent(new Event('pageshow'));
+  expect(notice().hasAttribute('hidden')).toBe(false);
+}
+
 function isActive(now: Date): boolean {
   const fn = (window as OutageWindow).isOutageNoticeActive;
   if (!fn) throw new Error('window.isOutageNoticeActive was not attached');
@@ -44,6 +69,14 @@ describe('outage notice', () => {
   });
 
   afterEach(() => {
+    // A script loaded before the end leaves listeners on document and window that outlive the DOM
+    // reset below. Driving it to its expired state makes its own syncNotice remove both listeners and
+    // its timer, so no listener can leak into the next test. A script loaded at or after the end (or
+    // one that threw) registered nothing, and one that already expired during the test removed its
+    // listeners; for both the dispatch is a no-op.
+    jest.setSystemTime(new Date(END + 1));
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(jest.getTimerCount()).toBe(0);
     jest.clearAllTimers();
     jest.useRealTimers();
     delete (window as OutageWindow).isOutageNoticeActive;
@@ -109,17 +142,21 @@ describe('outage notice', () => {
     it('keeps the notice hidden exactly at the end', () => {
       jest.setSystemTime(new Date(END));
 
-      runScript();
+      const registered = runScriptRecordingListeners();
 
       expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(registered).not.toContain('visibilitychange');
+      expect(registered).not.toContain('pageshow');
     });
 
     it('keeps the notice hidden after the end', () => {
       jest.setSystemTime(new Date(END + 24 * 60 * 60 * 1000));
 
-      runScript();
+      const registered = runScriptRecordingListeners();
 
       expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(registered).not.toContain('visibilitychange');
+      expect(registered).not.toContain('pageshow');
     });
   });
 
@@ -147,16 +184,142 @@ describe('outage notice', () => {
     it('schedules no timer when loaded exactly at the end', () => {
       jest.setSystemTime(new Date(END));
 
-      runScript();
+      const registered = runScriptRecordingListeners();
 
       expect(jest.getTimerCount()).toBe(0);
+      expect(registered).not.toContain('visibilitychange');
+      expect(registered).not.toContain('pageshow');
     });
 
     it('schedules no timer when loaded after the end', () => {
       jest.setSystemTime(new Date(END + 1));
 
+      const registered = runScriptRecordingListeners();
+
+      expect(jest.getTimerCount()).toBe(0);
+      expect(registered).not.toContain('visibilitychange');
+      expect(registered).not.toContain('pageshow');
+    });
+
+    it('reschedules exactly one timer when the timer fires before the end', () => {
+      jest.setSystemTime(new Date(END - 1000));
+
       runScript();
 
+      jest.setSystemTime(new Date(END - 5000));
+      jest.runOnlyPendingTimers();
+
+      expect(notice().hasAttribute('hidden')).toBe(false);
+      expect(jest.getTimerCount()).toBe(1);
+    });
+  });
+
+  describe('re-checking the wall clock after sleep or a frozen tab', () => {
+    beforeEach(() => {
+      loadIndexHtml();
+    });
+
+    it('hides the notice on visibilitychange once the end has passed, without the timer firing', () => {
+      jest.setSystemTime(new Date(END - 60000));
+
+      runScript();
+
+      expect(notice().hasAttribute('hidden')).toBe(false);
+
+      jest.setSystemTime(new Date(END + 1));
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      expect(notice().hasAttribute('hidden')).toBe(true);
+      expectNoListenerReacts();
+    });
+
+    it('hides the notice on pageshow once the end has passed, without the timer firing', () => {
+      jest.setSystemTime(new Date(END - 60000));
+
+      runScript();
+
+      expect(notice().hasAttribute('hidden')).toBe(false);
+
+      jest.setSystemTime(new Date(END + 1));
+      window.dispatchEvent(new Event('pageshow'));
+
+      expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(jest.getTimerCount()).toBe(0);
+      expectNoListenerReacts();
+    });
+
+    it('corrects a timer delayed by sleep on visibilitychange before the end', () => {
+      // Loaded 60 s before the end, the pending timer has 60 s left. The wall clock then jumps to 1 s
+      // before the end without the timer advancing (device asleep). The re-check must replace it with
+      // a 1 s timer instead of leaving the stale 60 s one.
+      jest.setSystemTime(new Date(END - 60000));
+
+      runScript();
+
+      jest.setSystemTime(new Date(END - 1000));
+      document.dispatchEvent(new Event('visibilitychange'));
+      jest.advanceTimersByTime(1000);
+
+      expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('keeps the notice visible on visibilitychange before the end', () => {
+      jest.setSystemTime(new Date(END - 60000));
+
+      runScript();
+
+      jest.setSystemTime(new Date(END - 30000));
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      expect(notice().hasAttribute('hidden')).toBe(false);
+      expect(jest.getTimerCount()).toBe(1);
+    });
+
+    it('clears the timer when hidden through an event and tolerates further events', () => {
+      jest.setSystemTime(new Date(END - 60000));
+
+      runScript();
+
+      expect(jest.getTimerCount()).toBe(1);
+
+      jest.setSystemTime(new Date(END + 1));
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(jest.getTimerCount()).toBe(0);
+
+      expect(() => document.dispatchEvent(new Event('visibilitychange'))).not.toThrow();
+      expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('registers nothing when loaded exactly at the end', () => {
+      jest.setSystemTime(new Date(END));
+
+      const registered = runScriptRecordingListeners();
+
+      expect(registered).not.toContain('visibilitychange');
+      expect(registered).not.toContain('pageshow');
+
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('pageshow'));
+
+      expect(notice().hasAttribute('hidden')).toBe(true);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('registers nothing when loaded after the end', () => {
+      jest.setSystemTime(new Date(END + 1));
+
+      const registered = runScriptRecordingListeners();
+
+      expect(registered).not.toContain('visibilitychange');
+      expect(registered).not.toContain('pageshow');
+
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      expect(notice().hasAttribute('hidden')).toBe(true);
       expect(jest.getTimerCount()).toBe(0);
     });
   });
