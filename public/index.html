@@ -37,8 +37,15 @@
       }
 
       /* Outage notice: in normal document flow above the app, never covering its controls.
+         The app stylesheet (src/index.css) makes every body > div a full-height flex column; the
+         notice opts out of that (display: block, height: auto, flex: none) so it is only as tall as
+         its text. While the notice is shown, outage-notice.js adds has-outage-notice to body, which
+         makes body a flex column so #root takes exactly the remaining height below the notice.
          Dark text on amber, contrast about 11:1 (WCAG AA). Shown by outage-notice.js. */
       .outage-notice {
+        display: block;
+        height: auto;
+        flex: none;
         box-sizing: border-box;
         width: 100%;
         margin: 0;
@@ -64,6 +71,17 @@
 
       .outage-notice p + p {
         margin-top: 4px;
+      }
+
+      body.has-outage-notice {
+        display: flex;
+        flex-direction: column;
+      }
+
+      body.has-outage-notice > #root {
+        height: auto;
+        flex: 1 1 auto;
+        min-height: 0;
       }
     </style>
   </head>
