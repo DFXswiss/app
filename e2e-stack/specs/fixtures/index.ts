@@ -124,6 +124,12 @@ async function isolateFromExternalHosts(page: Page): Promise<void> {
 export const test = base.extend<AuthFixtures>({
   page: async ({ page }, use, testInfo) => {
     await isolateFromExternalHosts(page);
+    // The security notice popup of public/index.html is shown on every load of the app entry page,
+    // until a later deployment removes it, and covers the whole app, so it would intercept every
+    // click. The specs test the app behind it, so it is dismissed whenever it blocks an action.
+    await page.addLocatorHandler(page.locator('#outage-popup [role="dialog"]'), async () => {
+      await page.locator('#outage-popup .outage-popup__close').click();
+    });
     // Record where the browser actually went, together with the spec file that drove the page.
     // The coverage gate requires every claimed route to have been opened by the claiming suite —
     // not merely by any suite that happened to land on the same path.
