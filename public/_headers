@@ -40,6 +40,35 @@
 # revalidation is answered 304 (unchanged) in the normal case, so this costs a conditional
 # round trip, but not a re-transfer of the content, for the common path — it only helps the
 # broken one. Verify with: curl -sI https://app.dfx.swiss/static/js/main.<hash>.js
+#
+# Security headers for every statically served response, which includes the app shell on every
+# route. A response built by functions/[[path]].js (the 404 for a missing asset) does not get
+# them: Pages does not apply this file to Function responses. The edge merges this rule with the
+# more specific ones below; none of them sets these header names, so nothing is duplicated.
+#
+# Strict-Transport-Security: the app is served over HTTPS only. No includeSubDomains and no
+# preload, so the policy stays limited to the host that sends it.
+#
+# Content-Security-Policy: deliberately restricted to directives that cannot block anything the
+# app loads today. There is no default-src/script-src/connect-src/frame-src/style-src/img-src:
+# wallet connectors, hardware-wallet bridges, KYC provider frames, blockchain RPC endpoints and
+# payment providers come from many origins, some chosen at runtime. There is also no
+# frame-ancestors and no X-Frame-Options: README.md documents embedding the app in an iframe on
+# any third-party site as a supported integration, and either header would break it. object-src
+# keeps blob: because PDFs are previewed in an <embed> of a blob: URL (openPdfFromString in
+# src/util/utils.ts, the compliance file preview); plugin content from any other origin is refused.
+#
+# Permissions-Policy: switches off device and tracking features that neither the app nor the frames
+# it embeds use. Everything else stays at the browser default (self, plus frames the app delegates
+# a feature to with allow=), notably camera and microphone (KYC identification), hid (hardware
+# wallets), usb (left alone because the hardware-wallet bridge frame may need it), clipboard-write
+# (copy buttons) and fullscreen (KYC frame).
+# Verify with: curl -sI https://app.dfx.swiss/
+/*
+  Strict-Transport-Security: max-age=31536000
+  Content-Security-Policy: object-src 'self' blob:; base-uri 'self'; upgrade-insecure-requests
+  Permissions-Policy: serial=(), bluetooth=(), midi=(), display-capture=(), browsing-topics=()
+
 /static/*
   Cache-Control: public, max-age=31536000
   Access-Control-Allow-Origin: *
