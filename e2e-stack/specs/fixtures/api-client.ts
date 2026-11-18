@@ -25,6 +25,20 @@ export interface ApiOptions {
   onStatus?: (status: number) => void;
 }
 
+/**
+ * Thrown for a non-2xx response when `expectOk` is on. The message is the same as before; `status`
+ * and `body` let a caller tell one rejection from another without parsing the message.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: unknown,
+  ) {
+    super(message);
+  }
+}
+
 const DEFAULT_BASE = 'http://api:3000';
 
 function baseUrl(): string {
@@ -80,7 +94,7 @@ async function request<T>(
   if (expectOk && (res.status < 200 || res.status >= 300)) {
     const bodyPreview =
       typeof parsed === 'string' ? parsed : parsed !== undefined ? JSON.stringify(parsed) : '(empty body)';
-    throw new Error(`${method} ${relative} failed: HTTP ${res.status} — ${bodyPreview}`);
+    throw new ApiError(`${method} ${relative} failed: HTTP ${res.status} — ${bodyPreview}`, res.status, parsed);
   }
 
   return parsed as T;
