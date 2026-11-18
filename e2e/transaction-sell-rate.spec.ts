@@ -61,6 +61,40 @@ const COMPLETED_SELL = {
   targetAccount: 'CH3600000000000000000',
 };
 
+// Completed sale with a 1% fee, the shape mapFees returns once percentFee is set.
+// inputAmount 61734, inputReferenceAmount 61734, total fee 61734 * 0.01 = 617.34,
+// inputReferenceAmountMinusFee = 61734 - 617.34 = 61116.66.
+// Base price 6173.4 DEPS/EUR → outputAmount = 61116.66 / 6173.4 = 9.9.
+// exchangeRate = (61734 / 61734) * (61116.66 / 9.9) = 6173.4.
+// rate = roundReadable(61734 / 9.9, ASSET) = 6235.8 (five significant digits).
+// formatSignificantAmount(1/6235.8) = 0.00016036; formatSignificantAmount(1/6173.4) = 0.00016199.
+// referencePrice is 1, so dfx and total stay 617.34. displayFee(617.34) = 0.10 EUR (617.34 DEPS).
+const DEPS_COMPLETED_SELL = {
+  ...COMPLETED_SELL,
+  uid: 'T-synthetic-sell-deps',
+  inputAmount: 61734,
+  inputAsset: 'DEPS',
+  inputBlockchain: 'Ethereum',
+  outputAmount: 9.9,
+  outputAsset: 'EUR',
+  rate: 6235.8,
+  exchangeRate: 6173.4,
+  priceSteps: [{ source: 'Synthetic', from: 'DEPS', to: 'EUR', price: 6173.4, timestamp: '2026-10-22T13:29:00.687Z' }],
+  feeAmount: 617.34,
+  feeAsset: 'DEPS',
+  fees: {
+    total: 617.34,
+    dfx: 617.34,
+    rate: 0.01,
+    platform: 0,
+    network: 0,
+    bankFixed: 0,
+    bankVariable: 0,
+  },
+  outputTxId: null,
+  targetAccount: null,
+};
+
 function jwt(): string {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
   return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
@@ -79,7 +113,10 @@ async function fulfillJson(route: Route, body: unknown): Promise<void> {
   });
 }
 
-async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: string[] }> {
+async function installSyntheticApi(
+  page: Page,
+  sell: typeof COMPLETED_SELL | typeof DEPS_COMPLETED_SELL = COMPLETED_SELL,
+): Promise<{ unexpectedRequests: string[] }> {
   const unexpectedRequests: string[] = [];
 
   await page.route('**/v1/**', async (route) => {
@@ -100,17 +137,13 @@ async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: st
       return;
     }
 
-    if (
-      request.method() === 'GET' &&
-      path === '/v1/transaction/single' &&
-      url.searchParams.get('uid') === COMPLETED_SELL.uid
-    ) {
-      await fulfillJson(route, COMPLETED_SELL);
+    if (request.method() === 'GET' && path === '/v1/transaction/single' && url.searchParams.get('uid') === sell.uid) {
+      await fulfillJson(route, sell);
       return;
     }
 
     if (request.method() === 'GET' && path === '/v1/transaction/detail') {
-      await fulfillJson(route, [COMPLETED_SELL]);
+      await fulfillJson(route, [sell]);
       return;
     }
 
@@ -184,6 +217,26 @@ test.describe('Completed sell exchange rate', () => {
     await expect(page.getByText('0.05 EUR (0.00097582 DSC)', { exact: true })).toBeVisible();
     await expect(page.getByText(/DSC to USD at 55\.661 USD\/DSC/)).toBeVisible();
     await expect(page).toHaveScreenshot('tx-sell-rate-01-expanded.png', { fullPage: true });
+    expect(unexpectedRequests).toEqual([]);
+  });
+
+  test('shows the expanded sell rate below 1 eur per asset', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const { unexpectedRequests } = await installSyntheticApi(page, DEPS_COMPLETED_SELL);
+    await page.goto(`/tx/T-synthetic-sell-deps?session=${jwt()}`);
+    const rate = page.getByText('0.00016036 EUR/DEPS', { exact: true });
+    await expect(rate).toHaveCount(1);
+    await rate.click();
+    await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+    await expect(page.getByText('0.00016036 EUR/DEPS', { exact: true })).toHaveCount(1);
+    await expect(page.getByText('0.00016199 EUR/DEPS', { exact: true })).toHaveCount(1);
+    await expect(
+      page.getByText('DEPS to EUR at 0.00016199 EUR/DEPS (Synthetic, 2026-10-22T13:29:00.687Z)', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('61734 DEPS (Ethereum)', { exact: true })).toBeVisible();
+    await expect(page.getByText('9.9 EUR', { exact: true })).toBeVisible();
+    await expect(page.getByText('0.10 EUR (617.34 DEPS)', { exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot('tx-sell-rate-03-below-one-expanded.png', { fullPage: true });
     expect(unexpectedRequests).toEqual([]);
   });
 });

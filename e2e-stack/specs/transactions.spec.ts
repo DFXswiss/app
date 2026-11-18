@@ -1135,6 +1135,80 @@ test('late refund error does not appear after leaving the refund screen', async 
   }
 });
 
+// pending_buy is refundable: amlCheck Pending, no chargeback (transaction.controller.ts getTransactionRefund).
+// The ZIP case above already receives a successful refund GET for this state; the form renders only then.
+test('late refund success does not send another refund request after leaving the screen', async ({ page }) => {
+  test.setTimeout(600_000);
+  const user = await createUser({
+    tag: 'tx-refund-late-ok',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  const tx = await createTransaction({
+    state: 'pending_buy',
+    tag: 'tx-refund-late-ok',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 191,
+    inputAsset: 'CHF',
+  });
+  await seedActionSecret(tx.uid);
+  const refundPath = `/v1/transaction/uid/${tx.uid}/${ACTION_SECRET}/refund`;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let routeHandled: Promise<void> | undefined;
+  let refundGets = 0;
+  await page.route(`**${refundPath}`, async (route) => {
+    if (route.request().method() !== 'GET' || new URL(route.request().url()).pathname !== refundPath) {
+      await route.fallback();
+      return;
+    }
+    refundGets += 1;
+    if (refundGets === 1) {
+      routeHandled = fulfillRealResponseAfterGate(route, gate);
+      await routeHandled;
+      return;
+    }
+    await route.fallback();
+  });
+
+  try {
+    await page.context().clearCookies();
+    await page.goto(`/tx/${tx.uid}/${ACTION_SECRET}/refund`);
+    await expect.poll(() => refundGets).toBe(1);
+    const title = page.getByText('Transaction refund', { exact: true });
+    await expect(title).toBeVisible();
+    await title.locator('..').locator('button').first().click();
+    await expect(page).toHaveURL(new RegExp(`/tx/${tx.uid}$`));
+    await expect(page.getByText('Transaction status', { exact: true })).toBeVisible();
+    await expect(page.getByText(/191.*CHF|CHF.*191/)).toBeVisible();
+
+    const response = page.waitForResponse(
+      (result) => result.request().method() === 'GET' && new URL(result.url()).pathname === refundPath,
+    );
+    release();
+    const delivered = await response;
+    expect(delivered.ok()).toBe(true);
+    const body = (await delivered.json()) as { expiryDate?: string };
+    const expiryMs = new Date(body.expiryDate ?? '').getTime();
+    expect(Number.isFinite(expiryMs)).toBe(true);
+    const remainingMs = expiryMs - Date.now();
+    expect(remainingMs).toBeGreaterThan(0);
+    expect(remainingMs).toBeLessThanOrEqual(360_000);
+    await delivered.finished();
+    await required(routeHandled, 'refund route must have been intercepted');
+    const getsAtDelivery = refundGets;
+    await page.waitForTimeout(remainingMs + 15_000);
+    expect(refundGets - getsAtDelivery).toBe(0);
+  } finally {
+    release();
+    if (routeHandled) await routeHandled;
+  }
+});
+
 test('completed buy is not refundable and shows ErrorHint with DB unchanged', async ({ page }) => {
   const user = await createUser({
     tag: 'tx-refund-completed',

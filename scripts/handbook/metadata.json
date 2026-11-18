@@ -33,11 +33,11 @@
   },
   "transaction-sell-rate": {
     "title": "Verkaufskurs einer Transaktion",
-    "description": "Abgeschlossener Verkauf mit aufgeklapptem Wechselkurs, Basiskurs und Gebühren in Detail- und Listenansicht. Gebühren stehen in Fiat mit dem Wert in der verkauften Währung in Klammern. Wechselkurs und Basiskurs stehen als Fiat pro Asset, zum Beispiel 48.075 EUR/DSC; die Formel lautet Output amount = Input amount × Base rate - Total fee."
+    "description": "Abgeschlossener Verkauf mit aufgeklapptem Wechselkurs. Detail- und Listenansicht eines DSC-Verkaufs zeigen den Kurs 48.075 EUR/DSC, den Basiskurs 49.692 EUR/DSC, die Gebühr 0.05 EUR (0.00097582 DSC) und den Schritt DSC to USD at 55.661 USD/DSC. Die Formel lautet Output amount = Input amount × Base rate - Total fee. Die Detailansicht eines DEPS-Verkaufs unter 1 EUR zeigt den Eingang 61734 DEPS (Ethereum), den Ausgang 9.9 EUR, den Kurs 0.00016036 EUR/DEPS, den Basiskurs 0.00016199 EUR/DEPS, den Schritt DEPS to EUR at 0.00016199 EUR/DEPS (Synthetic, 2026-10-22T13:29:00.687Z) und die Gesamtgebühr 0.10 EUR (617.34 DEPS)."
   },
   "sell-rate-steps": {
     "title": "Verkaufskurs und Preisschritte",
-    "description": "Verkaufsseite mit aufgeklapptem Basiskurs, Preisschritten und Gebühren in Fiat."
+    "description": "Verkaufsseite mit aufgeklapptem Basiskurs, Preisschritten und Gebühren in Fiat. Der DSC-Verkauf zeigt den Kurs 48.07 EUR/DSC, den Basiskurs 49.69 EUR/DSC, den Schritt DSC to USD at 55.66 USD/DSC on Denario und den Schritt USDT to EUR at 0.89278 EUR/USDT on CoinGecko. Der DEPS-Verkauf unter 1 EUR zeigt den Kurs 0.00015713 EUR/DEPS, den Basiskurs 0.00016199 EUR/DEPS und den Schritt DEPS to EUR at 0.00016199 EUR/DEPS on Synthetic."
   },
   "transaction-sell-rate-before": {
     "title": "Verkaufskurs einer Transaktion (frühere Anzeige)",

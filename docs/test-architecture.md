@@ -405,12 +405,23 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The sell-rate-steps visual spec supplies a synthetic quote.**
   `e2e/sell-rate-steps.spec.ts` uses an unsigned synthetic session and replaces user, startup, sell
   quote, payment info and address-check responses. A green run does not prove authentication, real
-  price steps or API fees.
+  price steps or API fees. The case under 1 EUR per asset uses those same replacements with a
+  synthetic DEPS quote (6173.4 DEPS in, 0.97 EUR out). A green run of that case shows the quote
+  0.00015713 EUR/DEPS, the base rate 0.00016199 EUR/DEPS and the step DEPS to EUR at 0.00016199
+  EUR/DEPS on Synthetic. It does not prove authentication, real price steps or API fees either.
 - **The transaction-sell-rate visual spec supplies a synthetic completed sale.**
   `e2e/transaction-sell-rate.spec.ts` replaces `GET /v1/transaction/single`, startup lookups,
   `/v1/setting/infoBanner`, `/v1/transaction/unassigned`, and `/v2/user` and uses an unsigned session token. It shows the expanded rate for that fixture. It does not prove that
   the API returns those values or that login and transaction processing work. The list variant also
-  answers `GET /v1/transaction/detail` with the synthetic completed sale.
+  answers `GET /v1/transaction/detail` with the synthetic completed sale. The case under 1 EUR per
+  asset fulfils the same routes with a synthetic completed DEPS sale whose fee is set: input 61734
+  DEPS, output 9.9 EUR, `exchangeRate` 6173.4 and `rate` 6235.8. Those are the five-significant-digit
+  values of `(inputReferenceAmountMinusFee / outputAmount)` and `inputAmount / outputAmount` after a
+  1% fee (617.34 DEPS). `fees.total` and `fees.dfx` are 617.34, `fees.rate` is 0.01, and network,
+  platform and both bank fields are 0, which is what `mapFees` returns when `percentFee` is set and
+  the reference price is 1. A green run shows 61734 DEPS (Ethereum), 9.9 EUR, the quote 0.00016036
+  EUR/DEPS, the base rate and the price step 0.00016199 EUR/DEPS, and the total fee 0.10 EUR
+  (617.34 DEPS). It does not prove that the API returns those values.
 - **The transaction-list unit test replaces the SDK and component library.**
   `src/__tests__/transaction-list-txinfo.test.tsx` replaces `@dfx.swiss/react` and implements
   `Utils.formatAmountCrypto` locally the way the package does: `toPrecision`, then `toFixed`, then
@@ -598,7 +609,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/transactions.spec.ts` intercepts the guest refund request, fetches the real API
   response with `route.fetch()` and delivers that response only after leaving the refund screen.
   A green run proves that a late real refund error is not shown after navigation. It does not prove
-  the API's natural latency or the behavior of a late successful response.
+  the API's natural latency. The late successful response is the next entry.
+- **The late refund-success case holds delivery of a real API response.**
+  The same spec starts from a `pending_buy` (amlCheck Pending, no chargeback), the guest state
+  whose refund GET already succeeds in the ZIP case. It intercepts
+  `GET /v1/transaction/uid/:uid/:secret/refund`, fetches the real API response with `route.fetch()`
+  and delivers that body only after leaving the refund screen. A green run proves the delivered
+  response is HTTP 200, that its `expiryDate` is in the future and at most six minutes ahead, and
+  that no further GET to that route arrives until that `expiryDate` plus 15 seconds. It does not
+  prove the API's natural latency, that the visitor can submit the refund, or that two refund
+  requests of one still-mounted screen can overlap.
 - **Full-stack screen-sync regressions hold delivery of real API responses.**
   `e2e-stack/specs/screen-sync.spec.ts` intercepts `GET /v2/kyc/file/:id` and
   `GET /v1/dashboard/financial/latest`, calls `route.fetch()` against the real API, then

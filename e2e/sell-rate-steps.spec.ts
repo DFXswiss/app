@@ -274,4 +274,5 @@ test('sell under 1 eur shows the quote rate apart from the base rate and the pri
     page.getByText('Base rate', { exact: true }).locator('..').locator('> div').nth(1).locator('> div').first(),
   ).toHaveText('0.00016199 EUR/DEPS');
   await expect(page.getByText(/DEPS to EUR at 0\.00016199 EUR\/DEPS on Synthetic/)).toBeVisible();
+  await expect(page).toHaveScreenshot('sell-rate-steps-02-below-one-expanded.png', { fullPage: true });
 });
