@@ -44,6 +44,8 @@ describe('formatFiatRate', () => {
     [1 / 2.7663, '0.36149'],
     [1 / 6173.4, '0.00016199'],
     [-1 / 6173.4, '-0.00016199'],
+    [1 / 6000000000, '0.00000000016667'],
+    [1 / Number.MAX_VALUE, '0.00'],
     [Number.POSITIVE_INFINITY, 'Infinity'],
     [Number.NEGATIVE_INFINITY, '-Infinity'],
     [Number.NaN, 'NaN'],

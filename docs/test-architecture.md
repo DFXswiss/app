@@ -393,9 +393,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   no bank selection.
 - **The exchange-rate unit test replaces the SDK and presentation components.**
   `src/__tests__/exchange-rate.test.tsx` supplies `Utils.formatAmount` and `Utils.formatAmountCrypto`
-  and renders component-library controls as plain elements. The title, the fiat branch of the base rate
-  and inverted sell steps use `formatFiatRate` from `src/util/significant-amount.ts`. That helper never
-  calls the mocked formatter: from 1 upward, and for 0 and non-finite values, it rebuilds
+  and renders component-library controls as plain elements. On a sell, the title, the fiat branch of the base rate
+  and inverted sell steps use `formatFiatRate` from `src/util/significant-amount.ts`. A buy uses the mocked
+  `Utils.formatAmount` in the fiat branch, including a rate below 1. That helper never
+  calls the mocked formatter: from 1 upward, for 0, for non-finite values, and for the sell-page image of the
+  API placeholder `Number.MAX_VALUE` (`1 / Number.MAX_VALUE`, shown as `0.00`), it rebuilds
   `Utils.formatAmount` itself (`toFixed(2)` and a space as the thousands separator); below 1 it delegates
   to `formatSignificantAmount`. A green run does not prove the real SDK formatting or production controls.
   It also replaces `useSettingsContext`: `translate` only substitutes placeholders in the English key.

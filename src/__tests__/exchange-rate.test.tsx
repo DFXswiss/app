@@ -199,12 +199,12 @@ describe('ExchangeRate fiat rates below and above 1', () => {
     expect(within(baseLine).getByText(baseRate)).toBeInTheDocument();
   }
 
-  it('formats a buy below 1 fiat on the title and the base rate', () => {
+  it('keeps two-decimal fiat formatting for a buy, including 0.50 and a rate below 1', () => {
     render(
       <ExchangeRate
         type={'Buy' as never}
         exchangeRate={1 / 6173.4}
-        rate={1 / 6000}
+        rate={0.5}
         amountIn={10}
         amountOut={1}
         from={{ name: 'EUR' } as never}
@@ -214,7 +214,7 @@ describe('ExchangeRate fiat rates below and above 1', () => {
         steps={[]}
       />,
     );
-    expectTitleAndBaseRate('0.00016667 EUR/DEPS', '0.00016199 EUR/DEPS');
+    expectTitleAndBaseRate('0.50 EUR/DEPS', '0.00 EUR/DEPS');
   });
 
   it('formats a sell below 1 fiat on the title, the base rate and the price steps', () => {
@@ -253,5 +253,23 @@ describe('ExchangeRate fiat rates below and above 1', () => {
     );
     expectTitleAndBaseRate('48.07 EUR/DSC', '49.69 EUR/DSC');
     expect(screen.getByText('DSC to USD at 55.66 USD/DSC on Denario')).toBeInTheDocument();
+  });
+
+  it('shows 0.00 on a sell title for the inverse of the API zero-target placeholder', () => {
+    render(
+      <ExchangeRate
+        type={'Sell' as never}
+        exchangeRate={1 / 6000}
+        rate={1 / Number.MAX_VALUE}
+        amountIn={1}
+        amountOut={0}
+        from={{ name: 'EUR' } as never}
+        to={{ name: 'DEPS', blockchain: 'Ethereum' } as never}
+        feeCurrency={{ name: 'EUR' } as never}
+        fees={fees}
+        steps={[]}
+      />,
+    );
+    expectTitleAndBaseRate('0.00 EUR/DEPS', '0.00016667 EUR/DEPS');
   });
 });

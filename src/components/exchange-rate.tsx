@@ -33,8 +33,12 @@ export function ExchangeRate({
   const { toSymbol } = useFiat();
 
   const feeSymbol = 'blockchain' in feeCurrency ? ` ${feeCurrency.name}` : toSymbol(feeCurrency);
-  const formatFromAmount = (value: number) =>
-    'blockchain' in from ? Utils.formatAmountCrypto(value) : formatFiatRate(value);
+  const formatFromAmount = (value: number) => {
+    if ('blockchain' in from) return Utils.formatAmountCrypto(value);
+    // A buy rounds the fiat rate to two decimals. formatFiatRate would show 0.50 as 0.5.
+    if (type === TransactionType.SELL) return formatFiatRate(value);
+    return Utils.formatAmount(value);
+  };
 
   const baseRate = `${formatFromAmount(exchangeRate)} ${from.name}/${to.name}`;
   const minFee = `, min. ${fees.min}${feeSymbol}`;
