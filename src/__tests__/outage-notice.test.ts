@@ -44,6 +44,7 @@ describe('outage notice', () => {
   });
 
   afterEach(() => {
+    jest.clearAllTimers();
     jest.useRealTimers();
     delete (window as OutageWindow).isOutageNoticeActive;
     document.head.innerHTML = '';
@@ -119,6 +120,44 @@ describe('outage notice', () => {
       runScript();
 
       expect(notice().hasAttribute('hidden')).toBe(true);
+    });
+  });
+
+  describe('hiding in an open tab', () => {
+    beforeEach(() => {
+      loadIndexHtml();
+    });
+
+    it('hides the notice again exactly at the end when loaded before it', () => {
+      jest.setSystemTime(new Date(END - 1000));
+
+      runScript();
+
+      expect(notice().hasAttribute('hidden')).toBe(false);
+
+      jest.advanceTimersByTime(999);
+
+      expect(notice().hasAttribute('hidden')).toBe(false);
+
+      jest.advanceTimersByTime(1);
+
+      expect(notice().hasAttribute('hidden')).toBe(true);
+    });
+
+    it('schedules no timer when loaded exactly at the end', () => {
+      jest.setSystemTime(new Date(END));
+
+      runScript();
+
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('schedules no timer when loaded after the end', () => {
+      jest.setSystemTime(new Date(END + 1));
+
+      runScript();
+
+      expect(jest.getTimerCount()).toBe(0);
     });
   });
 

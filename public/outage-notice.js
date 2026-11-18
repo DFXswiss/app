@@ -1,6 +1,7 @@
 /**
- * Shows the outage notice in public/index.html while the visitor's clock is before the end of the
- * announced outage, and never afterwards, so removing it needs no second deployment.
+ * Shows the outage notice in public/index.html only if the visitor's clock is before the end of the
+ * announced outage when the page loads, and hides it again at the end instant in a tab that stays
+ * open, so removing it needs no second deployment.
  *
  * Deliberately a plain ES5 script without dependencies, loaded by its own <script> tag outside the
  * React root: it must run while the static loader is still on screen and must not depend on the app
@@ -27,7 +28,12 @@
     throw new Error('Outage notice: element #outage-notice is missing');
   }
 
-  if (isOutageNoticeActive(new Date())) {
+  var now = new Date();
+  if (isOutageNoticeActive(now)) {
     notice.removeAttribute('hidden');
+    // The app is a single-page app, so a tab opened before the end can stay open past it.
+    setTimeout(function () {
+      notice.setAttribute('hidden', '');
+    }, OUTAGE_NOTICE_END.getTime() - now.getTime());
   }
 })();
