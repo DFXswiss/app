@@ -16,16 +16,14 @@ import { expect, Page, Route, test } from '@playwright/test';
  * Auth is a synthetic unsigned JWT (`alg: none`, role User). Bootstrap GETs are mocked via
  * page.route, so the suite does not need a live API. A green run does not prove production auth.
  * UI language is pinned with `lang=en`. Unmatched v1/v2 calls are fulfilled with 501.
- *
- * The security popup of public/index.html covers the page on every load until a later deployment
- * removes it; it is closed before each screenshot so the app behind it is visible.
  */
 
 const SLIM_EN =
-  'Selling is temporarily unavailable. Do not send funds to deposit addresses you received from DFX before 18 November 2026.';
+  'Due to a security incident affecting DFX deposit addresses, selling is temporarily unavailable. No customer data or customer funds were compromised. Do not send funds to deposit addresses you received from DFX before 18 November 2026.';
 const BUY_EN = 'Buying works as usual; just follow the details below.';
 const PROMINENT_EN =
-  'Selling and swapping are temporarily unavailable. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.';
+  'Due to a security incident affecting DFX deposit addresses, selling and swapping are temporarily unavailable. No customer data or customer funds were compromised. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.';
+const HINT_EN = ' Questions: Open a support ticket';
 
 const ADDRESS = '0x0000000000000000000000000000000000000001';
 
@@ -115,11 +113,6 @@ async function installRoutes(page: Page): Promise<void> {
   });
 }
 
-async function closeSecurityPopup(page: Page): Promise<void> {
-  const close = page.locator('#outage-popup .outage-popup__close');
-  if (await close.isVisible()) await close.click();
-}
-
 test.describe('Service notice banner', () => {
   test.use({ timezoneId: 'Europe/Zurich' });
 
@@ -127,23 +120,23 @@ test.describe('Service notice banner', () => {
 
   const cases = [
     // The slim notice is shot on the support landing page, which renders fully with these mocks.
-    { path: '/support', variant: 'slim', text: SLIM_EN, file: 'service-notice-banner-01-support.png' },
+    { path: '/support', variant: 'slim', text: `${SLIM_EN}${HINT_EN}`, file: 'service-notice-banner-01-support.png' },
     {
       path: '/sell',
       variant: 'prominent',
-      text: PROMINENT_EN,
+      text: `${PROMINENT_EN}${HINT_EN}`,
       file: 'service-notice-banner-02-sell.png',
     },
     {
       path: '/swap',
       variant: 'prominent',
-      text: PROMINENT_EN,
+      text: `${PROMINENT_EN}${HINT_EN}`,
       file: 'service-notice-banner-03-swap.png',
     },
     {
       path: '/buy',
       variant: 'slim',
-      text: `${SLIM_EN} ${BUY_EN}`,
+      text: `${SLIM_EN} ${BUY_EN}${HINT_EN}`,
       file: 'service-notice-banner-04-buy.png',
     },
   ];
@@ -153,7 +146,6 @@ test.describe('Service notice banner', () => {
       await installRoutes(page);
 
       await page.goto(`${path}?session=${encodeURIComponent(token)}&lang=en`);
-      await closeSecurityPopup(page);
       await expect(page.locator('.animate-spin')).toHaveCount(0, { timeout: 15_000 });
 
       const notice = page.getByTestId('service-notice-banner');
@@ -161,7 +153,6 @@ test.describe('Service notice banner', () => {
       await expect(notice).toHaveText(text);
 
       await page.waitForTimeout(1000);
-      await closeSecurityPopup(page);
       await expect(page).toHaveScreenshot(file, { fullPage: true, maxDiffPixels: 1000 });
     });
   }

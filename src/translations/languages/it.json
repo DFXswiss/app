@@ -1367,8 +1367,10 @@
     "Promo": "Promo"
   },
   "components/service-notice": {
-    "Selling is temporarily unavailable. Do not send funds to deposit addresses you received from DFX before 18 November 2026.": "La vendita è temporaneamente non disponibile. Non inviare fondi agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026.",
-    "Selling and swapping are temporarily unavailable. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.": "La vendita e lo scambio sono temporaneamente non disponibili. Non inviare fondi a nessun indirizzo di deposito ricevuto da DFX prima del 18 novembre 2026 — questi indirizzi non devono più essere utilizzati.",
-    "Buying works as usual; just follow the details below.": "L'acquisto funziona normalmente, segui semplicemente le indicazioni qui sotto."
+    "Due to a security incident affecting DFX deposit addresses, selling is temporarily unavailable. No customer data or customer funds were compromised. Do not send funds to deposit addresses you received from DFX before 18 November 2026.": "A causa di un incidente di sicurezza che riguarda gli indirizzi di deposito DFX, la vendita è temporaneamente non disponibile. Nessun dato e nessun fondo dei clienti è stato compromesso. Non inviare fondi agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026.",
+    "Due to a security incident affecting DFX deposit addresses, selling and swapping are temporarily unavailable. No customer data or customer funds were compromised. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.": "A causa di un incidente di sicurezza che riguarda gli indirizzi di deposito DFX, la vendita e lo scambio sono temporaneamente non disponibili. Nessun dato e nessun fondo dei clienti è stato compromesso. Non inviare fondi a nessun indirizzo di deposito ricevuto da DFX prima del 18 novembre 2026 — questi indirizzi non devono più essere utilizzati.",
+    "Buying works as usual; just follow the details below.": "L'acquisto funziona normalmente, segui semplicemente le indicazioni qui sotto.",
+    "Questions:": "Domande:",
+    "Open a support ticket": "Apri un ticket di supporto"
   }
 }
