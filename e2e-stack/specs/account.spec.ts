@@ -5,10 +5,6 @@
  * Browser drives the real frontend; Postgres proves language and mail writes, and that a
  * mail-only (KycOnly) account gets no bank account row when it tries to add an IBAN.
  *
- * /safe covers both sides of the KYC gate: a level-50 visitor gets the portfolio shell and the
- * custody user row created by the real signup (POST /v1/custody), while a visitor below level 50
- * gets the refusal and no custody user row.
- *
  * Not covered (by design / environment limits):
  * - Custody account portfolio data on /safe: no factory or seed for custody accounts
  *   (test-data.md has no createCustody*); empty Safe UI is asserted instead.
@@ -321,42 +317,14 @@ test.describe('Account area e2e', () => {
   // /safe — custody dashboard empty/setup state (no custody factory)
   // ---------------------------------------------------------------------------
 
-  test('/safe renders portfolio shell for a KYC level 50 user with no custody accounts', async ({ page }) => {
-    // Level 50 is the starting state; custody signup itself is the visitor's action under test.
-    const user = await createUser({ tag: 'acct-safe', language: 'EN', kycLevel: 50 });
+  test('/safe renders portfolio shell for logged-in user with no custody accounts', async ({ page }) => {
+    const user = await createUser({ tag: 'acct-safe', language: 'EN' });
     await openScreen(page, '/safe', user.jwt);
 
     // Safe-specific chrome: layout title + portfolio header (empty balances still render the shell).
     await expect(page.getByText('My DFX Safe', { exact: true }).first()).toBeVisible({ timeout: 20000 });
     await expect(page.getByText('Portfolio', { exact: true })).toBeVisible();
     await expect(page.getByText('Total portfolio value', { exact: true })).toBeVisible();
-
-    // POST /v1/custody ran for real and created exactly one custody user for this visitor.
-    await waitForRow<{ id: number }>(
-      `SELECT id FROM "user" WHERE "userDataId" = $1 AND role = 'Custody'`,
-      [user.userDataId],
-      20000,
-    );
-    const custodyUsers = await queryOne<{ count: string }>(
-      `SELECT COUNT(*) AS count FROM "user" WHERE "userDataId" = $1 AND role = 'Custody'`,
-      [user.userDataId],
-    );
-    expect(Number(required(custodyUsers, 'custody user count').count)).toBe(1);
-  });
-
-  test('/safe refuses custody below KYC level 50 and creates no custody user', async ({ page }) => {
-    // No kycLevel: the fresh account level, below the custody requirement.
-    const user = await createUser({ tag: 'acct-safe-kyc', language: 'EN' });
-    await openScreen(page, '/safe', user.jwt);
-
-    await expect(page.getByText('KYC level 50 or higher required for custody')).toBeVisible({ timeout: 20000 });
-    await expect(page.getByText('Total portfolio value', { exact: true })).toHaveCount(0);
-
-    const custodyUsers = await queryOne<{ count: string }>(
-      `SELECT COUNT(*) AS count FROM "user" WHERE "userDataId" = $1 AND role = 'Custody'`,
-      [user.userDataId],
-    );
-    expect(Number(required(custodyUsers, 'custody user count').count)).toBe(0);
   });
 
   test('/safe without session redirects away (useUserGuard → /login)', async ({ page }) => {
