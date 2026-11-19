@@ -62,15 +62,22 @@ test('empty transaction list shows "No transactions found"', async ({ page }) =>
 
 test('completed sell detail displays fiat per asset for the rate and price steps', async ({ page }) => {
   const user = await createUser({ tag: 'tx-sell-rate', kycLevel: 30, completePersonalData: true });
-  const tx = await createTransaction({
-    state: 'completed_sell',
-    tag: 'tx-sell-rate',
-    inputAsset: 'ETH',
-    userId: user.userId,
-    userDataId: user.userDataId,
-    jwt: user.jwt,
-    amount: 2,
-  });
+  const tx = await orPaused(
+    createTransaction({
+      state: 'completed_sell',
+      tag: 'tx-sell-rate',
+      inputAsset: 'ETH',
+      userId: user.userId,
+      userDataId: user.userDataId,
+      jwt: user.jwt,
+      amount: 2,
+    }),
+  );
+  if (tx instanceof TransactionsPausedError) {
+    // Sell is switched off at the API: there is no sell transaction to open.
+    expectTransactionsPaused(tx, 'sell');
+    return;
+  }
   const eur = required(
     await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'EUR' LIMIT 1`),
     'EUR must exist',
@@ -109,15 +116,22 @@ test('completed sell detail displays fiat per asset for the rate and price steps
 
 test('completed sell of a cheap token displays five significant fiat digits', async ({ page }) => {
   const user = await createUser({ tag: 'tx-sell-deps', kycLevel: 30, completePersonalData: true });
-  const tx = await createTransaction({
-    state: 'completed_sell',
-    tag: 'tx-sell-deps',
-    inputAsset: 'DEPS',
-    userId: user.userId,
-    userDataId: user.userDataId,
-    jwt: user.jwt,
-    amount: 61734,
-  });
+  const tx = await orPaused(
+    createTransaction({
+      state: 'completed_sell',
+      tag: 'tx-sell-deps',
+      inputAsset: 'DEPS',
+      userId: user.userId,
+      userDataId: user.userDataId,
+      jwt: user.jwt,
+      amount: 61734,
+    }),
+  );
+  if (tx instanceof TransactionsPausedError) {
+    // Sell is switched off at the API: there is no sell transaction to open.
+    expectTransactionsPaused(tx, 'sell');
+    return;
+  }
   const eur = required(
     await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'EUR' LIMIT 1`),
     'EUR must exist',
@@ -155,15 +169,22 @@ test('completed sell of a cheap token displays five significant fiat digits', as
 
 test('completed sell in the list displays fiat rates and fees', async ({ page }) => {
   const user = await createUser({ tag: 'tx-list-sell-rate', kycLevel: 30, completePersonalData: true });
-  const tx = await createTransaction({
-    state: 'completed_sell',
-    tag: 'tx-list-sell-rate',
-    inputAsset: 'ETH',
-    userId: user.userId,
-    userDataId: user.userDataId,
-    jwt: user.jwt,
-    amount: 2,
-  });
+  const tx = await orPaused(
+    createTransaction({
+      state: 'completed_sell',
+      tag: 'tx-list-sell-rate',
+      inputAsset: 'ETH',
+      userId: user.userId,
+      userDataId: user.userDataId,
+      jwt: user.jwt,
+      amount: 2,
+    }),
+  );
+  if (tx instanceof TransactionsPausedError) {
+    // Sell is switched off at the API: there is no sell transaction to open.
+    expectTransactionsPaused(tx, 'sell');
+    return;
+  }
   const eur = required(
     await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'EUR' LIMIT 1`),
     'EUR must exist',

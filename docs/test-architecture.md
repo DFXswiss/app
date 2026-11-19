@@ -440,6 +440,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `inputReferenceAmountMinusFee`, `outputAssetId`, `priceSteps`, `percentFee`, `totalFeeAmount`
   and `blockchainFee` on a `buy_fiat` row; the ETH detail and list cases share this starting state. A green run
   proves that the API returns the saved rate fields and the screen displays them as fiat per asset.
+  When the API answers that sell is paused, a green run checks only that paused answer.
   It does not prove that transaction processing calculates or saves those rates and price steps.
   Nor does it prove fee calculation: `percentFee`, `totalFeeAmount` and `blockchainFee` are set by SQL,
   and the fiat fees on the screen are derived from these stored values and the stored base rate.
@@ -449,6 +450,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and sets `buy_fiat.inputAmount` 61734, `outputAmount` 10, `inputReferenceAmount` 61734,
   `inputReferenceAmountMinusFee` 61734, `outputAssetId` and one price step of 6173.4. A green run
   proves the detail screen shows `0.00016199 EUR/DEPS` for the rate, the base rate and that step.
+  When the API answers that sell is paused, a green run checks only that paused answer.
   It does not prove that pricing, fee calculation or transaction processing produced those amounts,
   or that DEPS trades at that rate.
 - **The transaction-invoice visual spec answers the waiting buy row itself.**

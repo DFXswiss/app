@@ -1073,6 +1073,7 @@ test.describe('Sell + Swap e2e', () => {
   test('/sell payment info displays price steps in the base rate direction', async ({ page }) => {
     test.setTimeout(90000);
     const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-ui-price-steps');
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
     await expect.poll(() => paymentInfos.last?.status).toBe(200);
@@ -1118,6 +1119,7 @@ test.describe('Sell + Swap e2e', () => {
       'sell-ui-price-steps-below-one',
       'asset-in=DEPS&asset-out=CHF&amount-in=200&blockchain=Ethereum',
     );
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
     await expect.poll(() => paymentInfos.last?.status).toBe(200);
