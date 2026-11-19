@@ -231,7 +231,7 @@ function trackPaymentInfosResponses(
     if (!url.includes(pathIncludes)) return;
     if (res.request().method() !== 'PUT') return;
     const body = await res.text().catch(() => '');
-    box.last = { status: res.status(), body: body.slice(0, 500) };
+    box.last = { status: res.status(), body };
   });
   return box;
 }
@@ -264,6 +264,7 @@ async function expectNoDepositRoute(userId: number, type: 'Sell' | 'Crypto'): Pr
 async function setupSellFullUiFlow(
   page: Page,
   tag: string,
+  query = 'asset-in=ETH&asset-out=CHF&amount-in=0.1',
 ): Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
   const user = await createUser({
     walletIndex: nextWalletIndex(),
@@ -282,7 +283,7 @@ async function setupSellFullUiFlow(
   // regression test at the end of this file (select existing, do not recreate). Do not wait for
   // 'networkidle' either: pricing effects keep the network busy on this screen, so content-based
   // waits are what gate these tests.
-  await gotoWithSession(page, `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1`, user.jwt);
+  await gotoWithSession(page, `/sell?${query}`, user.jwt);
   expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
 
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
@@ -1049,6 +1050,117 @@ test.describe('Sell + Swap e2e', () => {
     await page.getByRole('button', { name: 'Complete transaction in your wallet' }).click({ timeout: 15000 });
     await expect.poll(() => calls.includes('wallet_addEthereumChain'), { timeout: 15000 }).toBe(true);
     await expect(page.getByText(/Transaction failed\. Click Retry/)).toBeVisible({ timeout: 15000 });
+  });
+
+  // Payment-page fiat rate: two decimals at and above 1 (space as thousands separator), five
+  // significant digits below 1. 0 and non-finite values stay on the two-decimal path.
+  const formatFiatRate = (amount: number): string => {
+    if (!Number.isFinite(amount) || amount === 0 || Math.abs(amount) >= 1) {
+      return amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    }
+    const sign = amount < 0 ? '-' : '';
+    const precise = Math.abs(amount).toPrecision(5);
+    if (Number(precise) >= 0.001) {
+      return sign + Number(precise).toFixed(5).replace(/\.?0+$/, '');
+    }
+    const exponential = /^(\d)\.(\d+)[eE]([+-]?\d+)$/.exec(precise);
+    if (!exponential) return sign + precise.replace(/(\.\d*?)0+$/, '$1');
+    const digits = `${exponential[1]}${exponential[2]}`;
+    const zeros = -Number(exponential[3]) - 1;
+    return sign + `0.${'0'.repeat(zeros)}${digits}`.replace(/0+$/, '');
+  };
+
+  test('/sell payment info displays price steps in the base rate direction', async ({ page }) => {
+    test.setTimeout(90000);
+    const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-ui-price-steps');
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    expect(outcome.kind).toBe('payment_info');
+    await expect.poll(() => paymentInfos.last?.status).toBe(200);
+    const payload = JSON.parse(paymentInfos.last!.body) as {
+      rate: number;
+      exchangeRate: number;
+      currency: { name: string };
+      asset: { name: string };
+      priceSteps: { from: string; to: string; price: number; source: string }[];
+    };
+    expect(payload.priceSteps.length).toBeGreaterThan(0);
+    const pair = `${payload.currency.name}/${payload.asset.name}`;
+    const title = `${formatFiatRate(1 / payload.rate)} ${pair}`;
+    const base = `${formatFiatRate(1 / payload.exchangeRate)} ${pair}`;
+    const rate = page.getByText(title, { exact: true }).first();
+    await expect(rate).toBeVisible();
+    await rate.click();
+    await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+    await expect(page.getByText(base, { exact: true }).first()).toBeVisible();
+    for (const step of payload.priceSteps) {
+      const inverse = 1 / step.price;
+      expect(Number.isFinite(step.price) && step.price !== 0 && Number.isFinite(inverse)).toBe(true);
+      const expectedPrice = formatFiatRate(inverse);
+      const prefix = `${step.from} to ${step.to} at `;
+      const line = page
+        .locator('div')
+        .filter({ hasText: prefix })
+        .filter({ hasText: ` on ${step.source}` })
+        .last();
+      await expect(line).toContainText(`${expectedPrice} ${step.to}/${step.from}`);
+      await expect(line).not.toContainText(`${step.from}/${step.to}`);
+    }
+  });
+
+  test('/sell payment info displays a fiat rate below 1 with five significant digits', async ({ page }) => {
+    test.setTimeout(90000);
+    // Ethereum/DEPS (asset.csv id 354, sellable, priceRuleId 51). Rule 51 stores 2.7713465
+    // DEPS per dEURO; joined with the dEURO and CHF hops that is about 0.335 CHF per DEPS.
+    // 200 DEPS is about 67 CHF: above the seeded Fiat/CHF In minimum of 1 CHF (up.sh) and
+    // above the 50 CHF network-fee cap, so a zero target amount cannot replace the rate.
+    const { paymentInfos } = await setupSellFullUiFlow(
+      page,
+      'sell-ui-price-steps-below-one',
+      'asset-in=DEPS&asset-out=CHF&amount-in=200&blockchain=Ethereum',
+    );
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    expect(outcome.kind).toBe('payment_info');
+    await expect.poll(() => paymentInfos.last?.status).toBe(200);
+    const payload = JSON.parse(paymentInfos.last!.body) as {
+      rate: number;
+      exchangeRate: number;
+      currency: { name: string };
+      asset: { name: string; uniqueName: string };
+      priceSteps: { from: string; to: string; price: number; source: string }[];
+    };
+    expect(payload.asset.uniqueName).toBe('Ethereum/DEPS');
+    expect(payload.currency.name).toBe('CHF');
+    expect(payload.priceSteps.length).toBeGreaterThan(0);
+    const fiatPerAsset = 1 / payload.rate;
+    const fiatPerAssetBase = 1 / payload.exchangeRate;
+    expect(fiatPerAsset).toBeLessThan(1);
+    expect(fiatPerAssetBase).toBeLessThan(1);
+    const twoDecimals = (amount: number): string => amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    expect(formatFiatRate(fiatPerAsset)).not.toBe(twoDecimals(fiatPerAsset));
+    expect(formatFiatRate(fiatPerAssetBase)).not.toBe(twoDecimals(fiatPerAssetBase));
+    const pair = `${payload.currency.name}/${payload.asset.name}`;
+    const title = `${formatFiatRate(fiatPerAsset)} ${pair}`;
+    const base = `${formatFiatRate(fiatPerAssetBase)} ${pair}`;
+    const rate = page.getByText(title, { exact: true }).first();
+    await expect(rate).toBeVisible();
+    await rate.click();
+    await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+    await expect(page.getByText(base, { exact: true }).first()).toBeVisible();
+    for (const step of payload.priceSteps) {
+      const inverse = 1 / step.price;
+      expect(Number.isFinite(step.price) && step.price !== 0 && Number.isFinite(inverse)).toBe(true);
+      const expectedPrice = formatFiatRate(inverse);
+      const prefix = `${step.from} to ${step.to} at `;
+      const line = page
+        .locator('div')
+        .filter({ hasText: prefix })
+        .filter({ hasText: ` on ${step.source}` })
+        .last();
+      await expect(line).toContainText(`${expectedPrice} ${step.to}/${step.from}`);
+      await expect(line).not.toContainText(`${step.from}/${step.to}`);
+    }
   });
 
   test('/sell: native form submit completes the transaction', async ({ page }) => {

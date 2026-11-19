@@ -2,6 +2,7 @@ import { Asset, Blockchain, Fees, Fiat, PriceStep, TransactionType, Utils, useFi
 import { IconColor, StyledCollapsible, StyledInfoText, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { useSettingsContext } from '../contexts/settings.context';
 import { ReactComponent as PathArrow } from '../static/assets/path-arrow.svg';
+import { formatFiatRate } from '../util/significant-amount';
 
 interface ExchangeRateProps {
   exchangeRate: number;
@@ -32,10 +33,14 @@ export function ExchangeRate({
   const { toSymbol } = useFiat();
 
   const feeSymbol = 'blockchain' in feeCurrency ? ` ${feeCurrency.name}` : toSymbol(feeCurrency);
+  const formatFromAmount = (value: number) => {
+    if ('blockchain' in from) return Utils.formatAmountCrypto(value);
+    // A buy rounds the fiat rate to two decimals. formatFiatRate would show 0.50 as 0.5.
+    if (type === TransactionType.SELL) return formatFiatRate(value);
+    return Utils.formatAmount(value);
+  };
 
-  const baseRate = `${
-    'blockchain' in from ? Utils.formatAmountCrypto(exchangeRate) : Utils.formatAmount(exchangeRate)
-  } ${from.name}/${to.name}`;
+  const baseRate = `${formatFromAmount(exchangeRate)} ${from.name}/${to.name}`;
   const minFee = `, min. ${fees.min}${feeSymbol}`;
   const totalFee = `${fees.total}${feeSymbol}`;
   const dfxFee = `${fees.dfx}${feeSymbol} (${(fees.rate * 100).toFixed(2)}%${fees.min ? minFee : ''})`;
@@ -45,7 +50,7 @@ export function ExchangeRate({
     type !== TransactionType.SWAP && fees.bankVariable ? `${fees.bankVariable}${feeSymbol}` : undefined;
   const bankFee =
     type !== TransactionType.SWAP && !bankFixedFee && !bankPercentFee && fees.bank ? `${fees.bank}${feeSymbol}` : false;
-  const networkStartFee = fees?.networkStart ? `${fees?.networkStart}${feeSymbol}` : undefined;
+  const networkStartFee = fees.networkStart ? `${fees.networkStart}${feeSymbol}` : undefined;
   const platformFee = fees.platform ? `${fees.platform}${feeSymbol}` : undefined;
 
   const l1Replacement =
@@ -67,30 +72,38 @@ export function ExchangeRate({
     <StyledCollapsible
       full
       label={translate('screens/payment', 'Exchange rate')}
-      title={`${
-        rate === Number.MAX_VALUE
-          ? '∞'
-          : 'blockchain' in from
-            ? Utils.formatAmountCrypto(rate)
-            : Utils.formatAmount(rate)
-      } ${from.name}/${to.name}`}
+      title={`${rate === Number.MAX_VALUE ? '∞' : formatFromAmount(rate)} ${from.name}/${to.name}`}
     >
       <StyledVerticalStack gap={2}>
         <div className="grid gap-1 w-full text-sm grid-cols-[10rem_1fr]">
           <div className="text-dfxGray-800">{translate('screens/payment', 'Base rate')}</div>
           <StyledVerticalStack gap={1}>
             <div>{baseRate}</div>
-            {steps.map((step: any, index: any) => (
-              <div key={index} className="flex flex-row gap-1 text-xs text-dfxGray-700 leading-tight">
-                <PathArrow className="w-2.5 h-2.5" />
-                {translate('screens/payment', '{{from}} to {{to}} at {{price}} {{from}}/{{to}} on {{source}}', {
-                  source: step.source,
-                  from: step.from,
-                  to: step.to,
-                  price: step.price,
-                })}
-              </div>
-            ))}
+            {steps.map((step, index) => {
+              const inverse = 1 / step.price;
+              const inverted =
+                type === TransactionType.SELL &&
+                step.price !== 0 &&
+                Number.isFinite(step.price) &&
+                Number.isFinite(inverse);
+              return (
+                <div key={index} className="flex flex-row gap-1 text-xs text-dfxGray-700 leading-tight">
+                  <PathArrow className="w-2.5 h-2.5" />
+                  {translate(
+                    'screens/payment',
+                    inverted
+                      ? '{{from}} to {{to}} at {{price}} {{to}}/{{from}} on {{source}}'
+                      : '{{from}} to {{to}} at {{price}} {{from}}/{{to}} on {{source}}',
+                    {
+                      source: step.source,
+                      from: step.from,
+                      to: step.to,
+                      price: inverted ? formatFiatRate(inverse) : step.price,
+                    },
+                  )}
+                </div>
+              );
+            })}
           </StyledVerticalStack>
           <div className="text-dfxGray-800">{translate('screens/payment', 'Total fee')}</div>
           <div>{totalFee}</div>
