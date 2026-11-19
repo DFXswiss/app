@@ -309,6 +309,41 @@ describe('OnboardingFeeEditor', () => {
     expect(await screen.findByText(ONBOARDING_FEE_API_OFF)).toBeInTheDocument();
   });
 
+  // The shape the client really raises while the flag is off: Nest's NotFoundException body.
+  it('says the API is switched off for a 404 whose message is Not Found', async () => {
+    mockSetOnboardingFee.mockRejectedValue(Object.assign(new Error('Not Found'), { statusCode: 404 }));
+    render(element());
+    openSet();
+    fillAmount('5');
+    selectAddress('0xabc');
+    fireEvent.click(saveButton());
+
+    expect(await screen.findByText(ONBOARDING_FEE_API_OFF)).toBeInTheDocument();
+    expect(screen.queryByText('Not Found')).not.toBeInTheDocument();
+  });
+
+  it('shows the message of a plain error object', async () => {
+    mockSetOnboardingFee.mockRejectedValue({ statusCode: 400, message: 'Address is blocked or deleted' });
+    render(element());
+    openSet();
+    fillAmount('5');
+    selectAddress('0xabc');
+    fireEvent.click(saveButton());
+
+    expect(await screen.findByText('Address is blocked or deleted')).toBeInTheDocument();
+  });
+
+  it('falls back to a generic message when a plain error object has no text message', async () => {
+    mockSetOnboardingFee.mockRejectedValue({ statusCode: 400, message: 42 });
+    render(element());
+    openSet();
+    fillAmount('5');
+    selectAddress('0xabc');
+    fireEvent.click(saveButton());
+
+    expect(await screen.findByText('Failed to set the onboarding fee')).toBeInTheDocument();
+  });
+
   it('falls back to a generic message when the set failure is not an Error', async () => {
     mockSetOnboardingFee.mockRejectedValue('boom');
     render(element());

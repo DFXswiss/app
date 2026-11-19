@@ -45,22 +45,48 @@ async function ensureStaffReady(userId: number, surname = 'Compliance'): Promise
   });
 }
 
+// The `onboardingFeeUsedRef` setting as it was before the first onboarding-fee test wrote it:
+// `undefined` = not captured yet, `null` = the row did not exist. Restored in afterAll.
+let previousOnboardingFeeRef: string | null | undefined;
+
 /**
  * The onboarding-fee API reads `onboardingFeeUsedRef` to attribute the named address to the
- * key-account manager. Create a customer, use its own ref as that value, and return the ref.
+ * key-account manager. Create a customer, give it a ref, use that ref as the setting, and return it.
+ * A factory user has no ref (the API assigns one only on its own KYC path at level 50), so the ref is
+ * written here as starting state, in the API's `NNN-NNN` format and unused by any other user.
  */
 async function seedOnboardingFeeRef(): Promise<string> {
   const owner = await createUser({ tag: 'cmp-onboarding-ref-owner', kycLevel: 30, completePersonalData: true });
-  const row = await queryOne<{ ref: string | null }>(`SELECT ref FROM "user" WHERE id = $1`, [owner.userId]);
-  if (!row?.ref) {
-    throw new Error(`seedOnboardingFeeRef: ref-owner user ${owner.userId} has no ref`);
+  let ref: string | undefined;
+  for (let attempt = 0; attempt < 20 && !ref; attempt++) {
+    const candidate = `${String(Math.floor(Math.random() * 900) + 100)}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+    const taken = await queryOne<{ id: number }>(`SELECT id FROM "user" WHERE ref = $1`, [candidate]);
+    if (!taken) ref = candidate;
+  }
+  if (!ref) throw new Error('seedOnboardingFeeRef: no free ref found');
+  await queryRows(`UPDATE "user" SET ref = $1 WHERE id = $2`, [ref, owner.userId]);
+
+  if (previousOnboardingFeeRef === undefined) {
+    const row = await queryOne<{ value: string }>(`SELECT value FROM setting WHERE key = 'onboardingFeeUsedRef'`);
+    previousOnboardingFeeRef = row?.value ?? null;
   }
   await queryRows(
     `INSERT INTO setting (key, value) VALUES ('onboardingFeeUsedRef', $1)
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-    [row.ref],
+    [ref],
   );
-  return row.ref;
+  return ref;
+}
+
+/** Put the `onboardingFeeUsedRef` setting back to its value before this file's tests. */
+async function restoreOnboardingFeeRef(): Promise<void> {
+  if (previousOnboardingFeeRef === undefined) return;
+  if (previousOnboardingFeeRef === null) {
+    await queryRows(`DELETE FROM setting WHERE key = 'onboardingFeeUsedRef'`);
+  } else {
+    await queryRows(`UPDATE setting SET value = $1 WHERE key = 'onboardingFeeUsedRef'`, [previousOnboardingFeeRef]);
+  }
+  previousOnboardingFeeRef = undefined;
 }
 
 /**
@@ -102,7 +128,12 @@ function styledInput(page: Page, fieldLabel: string): Locator {
 
 test.describe('Compliance area (cases)', () => {
   test.afterAll(async () => {
-    await cleanupCreatedData();
+    // Before the cleanup deletes the ref owner the setting points at.
+    try {
+      await restoreOnboardingFeeRef();
+    } finally {
+      await cleanupCreatedData();
+    }
   });
 
   // -------------------------------------------------------------------------
@@ -786,10 +817,23 @@ test.describe('Compliance area (cases)', () => {
     expect(afterUser).toEqual(beforeUser);
     expect(afterUserData).toEqual(beforeUserData);
 
-    const logs = await queryRows(
+    // The refusal itself is audited: one rejection row naming the clerk, the amount, the address and
+    // the reason - and no attribution row.
+    await waitForRow(
+      `SELECT id FROM support_log
+       WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 AND message = $3 AND comment = $4`,
+      [
+        customer.userDataId,
+        'E2E Test Staff',
+        `Onboarding fee 5 CHF for ${customer.address} rejected`,
+        'Address is blocked or deleted',
+      ],
+      15000,
+    );
+    const attributionLogs = await queryRows(
       `SELECT id FROM support_log WHERE "userDataId" = $1 AND message LIKE 'Onboarding fee usedRef of user %'`,
       [customer.userDataId],
     );
-    expect(logs).toEqual([]);
+    expect(attributionLogs).toEqual([]);
   });
 });

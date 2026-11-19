@@ -19,12 +19,15 @@ export const ONBOARDING_FEE_API_OFF = 'The onboarding fee API is switched off.';
 const buttonClass =
   'px-3 py-1 text-xs text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded transition-colors whitespace-nowrap';
 
-// The API client raises its ApiError type for a failed call: statusCode plus the API's message. A bare
-// 404 has no message, which is how the disabled feature is recognised.
+// The API client raises ApiException (an Error) with the status and the API's message. While the
+// feature flag is off, both endpoints throw Nest's plain NotFoundException, whose body message is
+// "Not Found"; a 404 with a meaning carries its own text ("Address not found"). The message is also
+// read from a plain { statusCode, message } object, which some callers reject with.
 function failureMessage(e: unknown, fallback: string): string {
   const apiError = e as Partial<ApiError> | null | undefined;
-  if (apiError?.statusCode === 404 && !apiError.message) return ONBOARDING_FEE_API_OFF;
-  return e instanceof Error ? e.message : fallback;
+  const message = typeof apiError?.message === 'string' ? apiError.message : undefined;
+  if (apiError?.statusCode === 404 && (!message || message === 'Not Found')) return ONBOARDING_FEE_API_OFF;
+  return message || fallback;
 }
 
 function userOptionLabel(user: UserInfo): string {
