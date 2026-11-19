@@ -236,6 +236,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   (`compliance-user-15`) intercepts `GET /v2/kyc/file/:uid?access=View` and answers HTTP 500 with a
   fixed message. A green run proves that the loaded dossier keeps rendering the file error in its
   preview area, not that the API rejects a real KYC-file request or returns that message.
+- **The onboarding-fee error visual answers the PUT and the clerk lookup itself.** `e2e/compliance.spec.ts`
+  (`compliance-user-17`) intercepts `PUT /v1/userData/1005/onboardingFee` and answers HTTP 400 with
+  `Address is blocked or deleted`, and answers `GET /v1/support/issue/clerk` with a fixed clerk name.
+  A green run proves that the form shows that message, not that the API rejects a real address or
+  returns that text.
 - **The transaction-search test writes the customer's verified name itself.**
   `e2e-stack/specs/compliance.spec.ts` (`/compliance search by transaction id …`) sets
   `user_data.verifiedName` by SQL before the search, because no identification runs in the stack. A green
@@ -491,6 +496,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `ManualReview` on a synthetic account at KYC level 0 whose `accountType` stays null. A green run
   does **not** prove how such a step reaches review; the customer KYC flow only offers `Statutes` to
   association accounts.
+- **The onboarding-fee full-stack case writes the fee setting and the NA starting status itself.**
+  `e2e-stack/specs/compliance-cases.spec.ts` (`/compliance/user/:id sets and removes an onboarding
+fee …`) inserts the `onboardingFeeUsedRef` setting row and sets the customer's `"user"` and
+  `user_data` status to `NA` by SQL. A green run does not prove the production migration that seeds
+  the setting or how a customer reaches `NA`.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs

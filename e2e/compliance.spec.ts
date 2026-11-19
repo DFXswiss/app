@@ -98,11 +98,13 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await page.waitForTimeout(2000);
 
       // Wait for search results or "No entries found" message
-      await page.waitForSelector('text=Matching Entries, text=No entries found', {
-        timeout: 10000,
-      }).catch(() => {
-        // One of these should appear
-      });
+      await page
+        .waitForSelector('text=Matching Entries, text=No entries found', {
+          timeout: 10000,
+        })
+        .catch(() => {
+          // One of these should appear
+        });
 
       await expect(page).toHaveScreenshot('compliance-02-search-results.png', {
         fullPage: true,
@@ -153,11 +155,13 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await page.waitForTimeout(2000);
 
       // Wait for data to load - either user data table or error
-      await page.waitForSelector('text=User Data, text=Error', {
-        timeout: 15000,
-      }).catch(() => {
-        // One of these should appear
-      });
+      await page
+        .waitForSelector('text=User Data, text=Error', {
+          timeout: 15000,
+        })
+        .catch(() => {
+          // One of these should appear
+        });
 
       await expect(page).toHaveScreenshot('compliance-user-01-overview.png', {
         fullPage: true,
@@ -337,6 +341,105 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await expect(page.getByText('File could not be loaded')).toBeVisible();
 
       await expect(page).toHaveScreenshot('compliance-user-15-kyc-file-error.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the onboarding fee form with an amount and a selected address', async ({ page }) => {
+      await page.route(`**/v1/support/${TEST_USER_DATA_ID}`, async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const users =
+          Array.isArray(data.users) && data.users.length > 0
+            ? data.users
+            : [
+                {
+                  id: 1,
+                  address: '0x0000000000000000000000000000000000000001',
+                  role: 'User',
+                  status: 'NA',
+                  usedRef: '194-687',
+                  created: '2026-01-01T00:00:00.000Z',
+                },
+              ];
+
+        await route.fulfill({ response, json: { ...data, users } });
+      });
+      await page.route('**/v1/support/issue/clerk', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ clerk: 'E2E Clerk' }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+      await page.locator('#onboarding-fee-amount').fill('5');
+      await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
+      await page.waitForTimeout(500);
+
+      await expect(page).toHaveScreenshot('compliance-user-16-onboarding-fee-form.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the API error when setting an onboarding fee is refused', async ({ page }) => {
+      await page.route(`**/v1/support/${TEST_USER_DATA_ID}`, async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const users =
+          Array.isArray(data.users) && data.users.length > 0
+            ? data.users
+            : [
+                {
+                  id: 1,
+                  address: '0x0000000000000000000000000000000000000001',
+                  role: 'User',
+                  status: 'NA',
+                  usedRef: '194-687',
+                  created: '2026-01-01T00:00:00.000Z',
+                },
+              ];
+
+        await route.fulfill({ response, json: { ...data, users } });
+      });
+      await page.route('**/v1/support/issue/clerk', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ clerk: 'E2E Clerk' }),
+        });
+      });
+      await page.route(`**/v1/userData/${TEST_USER_DATA_ID}/onboardingFee`, async (route) => {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ statusCode: 400, message: 'Address is blocked or deleted' }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+      await page.locator('#onboarding-fee-amount').fill('5');
+      await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
+
+      const save = page.getByRole('button', { name: 'Save', exact: true });
+      await expect(save).toBeEnabled({ timeout: 10000 });
+      await save.click();
+      await expect(page.getByText('Address is blocked or deleted', { exact: true })).toBeVisible({
+        timeout: 10000,
+      });
+
+      await expect(page).toHaveScreenshot('compliance-user-17-onboarding-fee-error.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });
