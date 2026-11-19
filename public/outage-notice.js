@@ -17,10 +17,11 @@
  * the end of the outage: it is shown on every load of the page, before and after that instant, until
  * a later deployment removes it. The dialog box itself (tabindex="-1") is focused without scrolling
  * and its own scroll position is reset to the top, so it always opens at its heading and warning, also
- * on small screens where the box scrolls inside; focusing the OK button at the end of the long text
- * would make the browser scroll the box to its bottom. The visitor closes it with the OK button,
- * a click on the backdrop itself or Escape. Closing hides the popup and removes its listeners; it
- * comes back on the next page load. Nothing is stored. The expiry of the bar never touches it.
+ * on small screens where the box scrolls inside; focusing the OK button at the end of the long
+ * text would make the browser scroll the box to its bottom. The visitor closes it with the close
+ * button or the OK button in the box, a click on the backdrop itself or Escape. Closing hides the popup and removes
+ * its listeners; it comes back on the next page load. Nothing is stored. The expiry of the bar never
+ * touches it.
  *
  * Deliberately a plain ES5 script without dependencies, loaded by its own <script> tag outside the
  * React root: it must run while the static loader is still on screen and must not depend on the app
@@ -29,8 +30,9 @@
 (function () {
   'use strict';
 
-  // End of the outage: 18 November 2026, 12:00 CET (UTC+1).
-  var OUTAGE_NOTICE_END = new Date('2026-11-18T12:00:00+01:00');
+  // End of the bar: 19 November 2026, 01:00 CET (UTC+1). The owner had the bar removed at that time,
+  // ahead of the planned restart at 09:00 announced in the popup.
+  var OUTAGE_NOTICE_END = new Date('2026-11-19T01:00:00+01:00');
 
   function isOutageNoticeActive(now) {
     if (Object.prototype.toString.call(now) !== '[object Date]' || isNaN(now.getTime())) {
@@ -61,6 +63,10 @@
   if (!popupCloseButton) {
     throw new Error('Outage notice: button .outage-popup__close in #outage-popup is missing');
   }
+  var popupOkButton = popup.querySelector('.outage-popup__ok');
+  if (!popupOkButton) {
+    throw new Error('Outage notice: button .outage-popup__ok in #outage-popup is missing');
+  }
 
   // Class on body while the bar is shown; makes body a flex column so #root fills the rest.
   var BODY_CLASS = 'has-outage-notice';
@@ -78,10 +84,11 @@
     document.removeEventListener('keydown', onPopupKeydown);
   }
 
-  // One click listener for the whole popup: the OK button closes it, and so does a click on the
-  // backdrop itself. A click anywhere inside the dialog box other than the button does not.
+  // One click listener for the whole popup: the close button and the OK button close it, and so does a
+  // click on the backdrop itself. A click anywhere else inside the dialog box does not, so the
+  // Mehr Infos link in the source line navigates normally.
   function onPopupClick(event) {
-    if (event.target === popup || popupCloseButton.contains(event.target)) {
+    if (event.target === popup || popupCloseButton.contains(event.target) || popupOkButton.contains(event.target)) {
       closePopup();
     }
   }
@@ -142,8 +149,8 @@
   popup.removeAttribute('hidden');
   popup.addEventListener('click', onPopupClick);
   document.addEventListener('keydown', onPopupKeydown);
-  // Focus the box, not the OK button at its end: the browser would scroll the button into view and
-  // the box would open at its last paragraphs. preventScroll and the reset keep it at its beginning.
+  // Focus the box, not the OK button at its end: the browser would scroll the button into view
+  // and the box would open at its last paragraphs. preventScroll and the reset keep it at its beginning.
   popupDialog.focus({ preventScroll: true });
   popupDialog.scrollTop = 0;
 })();
