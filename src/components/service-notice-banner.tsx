@@ -41,7 +41,7 @@ export function ServiceNoticeBanner(): JSX.Element | null {
       <StyledInfoText iconColor={IconColor.RED}>
         {translate(
           'components/service-notice',
-          'Due to a security incident affecting DFX deposit addresses, selling and swapping are temporarily unavailable. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.',
+          'Due to a security incident affecting DFX deposit addresses, selling and swapping are temporarily unavailable. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.',
         )}
         <SupportTicketHint />
       </StyledInfoText>
@@ -56,7 +56,7 @@ export function ServiceNoticeBanner(): JSX.Element | null {
       <StyledInfoText iconColor={IconColor.DARK_GRAY} textSize={StyledInfoTextSize.XS}>
         {translate(
           'components/service-notice',
-          'Due to a security incident affecting DFX deposit addresses, selling is temporarily unavailable. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.',
+          'Due to a security incident affecting DFX deposit addresses, selling is temporarily unavailable. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.',
         )}
         {BUY_PATH.test(pathname) &&
           ` ${translate('components/service-notice', 'Buying works as usual; just follow the details below.')}`}
