@@ -24,7 +24,7 @@ COPY README.md CONTRIBUTING.md ./
 
 RUN NODE_PATH=./_handbook-deps/node_modules node scripts/handbook/build.js /out
 
-FROM nginx:1.27-alpine
+FROM nginx:1.30.7-alpine
 
 # htpasswd binary for runtime credential file generation.
 RUN apk add --no-cache apache2-utils
