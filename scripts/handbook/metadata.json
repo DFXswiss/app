@@ -33,7 +33,7 @@
   },
   "transaction-sell-rate": {
     "title": "Verkaufskurs einer Transaktion",
-    "description": "Abgeschlossener Verkauf mit aufgeklapptem Wechselkurs. Detail- und Listenansicht eines DSC-Verkaufs zeigen den Kurs 48.075 EUR/DSC, den Basiskurs 49.692 EUR/DSC, die Gebühr 0.05 EUR (0.00097582 DSC) und den Schritt DSC to USD at 55.661 USD/DSC. Die Formel lautet Output amount = Input amount × Base rate - Total fee. Die Detailansicht eines DEPS-Verkaufs unter 1 EUR zeigt den Eingang 61734 DEPS (Ethereum), den Ausgang 9.9 EUR, den Kurs 0.00016036 EUR/DEPS, den Basiskurs 0.00016199 EUR/DEPS, den Schritt DEPS to EUR at 0.00016199 EUR/DEPS (Synthetic, 2026-10-22T13:29:00.687Z) und die Gesamtgebühr 0.10 EUR (617.34 DEPS)."
+    "description": "Abgeschlossener Verkauf mit aufgeklapptem Wechselkurs. Detail- und Listenansicht eines DSC-Verkaufs zeigen den Kurs 48.075 EUR/DSC, den Basiskurs 49.692 EUR/DSC, die Gebühr 0.05 EUR (0.00097582 DSC) und den Schritt DSC to USD at 55.661 USD/DSC. Die Formel lautet Output amount = Input amount × Base rate - Total fee. Die Listenansicht mit aufgeklapptem DEPS-Verkauf unter 1 EUR und die Detailansicht zeigen dieselben Werte: Eingang 61734 DEPS (Ethereum), Ausgang 9.9 EUR, Kurs 0.00016036 EUR/DEPS, Basiskurs 0.00016199 EUR/DEPS, Schritt DEPS to EUR at 0.00016199 EUR/DEPS (Synthetic, 2026-10-22T13:29:00.687Z) und Gesamtgebühr 0.10 EUR (617.34 DEPS)."
   },
   "sell-rate-steps": {
     "title": "Verkaufskurs und Preisschritte",

@@ -74,7 +74,10 @@ const DEPS_COMPLETED_SELL = {
   uid: 'T-synthetic-sell-deps',
   inputAmount: 61734,
   inputAsset: 'DEPS',
+  inputAssetId: 354,
+  inputChainId: '0x103747924e74708139a9400e4ab4bea79fffa380',
   inputBlockchain: 'Ethereum',
+  inputEvmChainId: 1,
   outputAmount: 9.9,
   outputAsset: 'EUR',
   rate: 6235.8,
@@ -91,7 +94,10 @@ const DEPS_COMPLETED_SELL = {
     bankFixed: 0,
     bankVariable: 0,
   },
+  inputTxUrl: 'https://etherscan.io/tx/0x1111111111111111111111111111111111111111111111111111111111111111',
   outputTxId: null,
+  chargebackAsset: 'DEPS',
+  chargebackAssetId: 354,
   targetAccount: null,
 };
 
@@ -237,6 +243,29 @@ test.describe('Completed sell exchange rate', () => {
     await expect(page.getByText('9.9 EUR', { exact: true })).toBeVisible();
     await expect(page.getByText('0.10 EUR (617.34 DEPS)', { exact: true })).toBeVisible();
     await expect(page).toHaveScreenshot('tx-sell-rate-03-below-one-expanded.png', { fullPage: true });
+    expect(unexpectedRequests).toEqual([]);
+  });
+
+  test('shows the expanded sell below 1 eur per asset in the transaction list', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1250 });
+    const { unexpectedRequests } = await installSyntheticApi(page, DEPS_COMPLETED_SELL);
+    await page.goto(`/tx?session=${jwt()}`);
+    const sellRow = page.getByText('Completed', { exact: true });
+    await expect(sellRow).toBeVisible();
+    await sellRow.click();
+    const rate = page.getByText('0.00016036 EUR/DEPS', { exact: true });
+    await expect(rate).toHaveCount(1);
+    await rate.click();
+    await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+    await expect(page.getByText('0.00016036 EUR/DEPS', { exact: true })).toHaveCount(1);
+    await expect(page.getByText('0.00016199 EUR/DEPS', { exact: true })).toHaveCount(1);
+    await expect(
+      page.getByText('DEPS to EUR at 0.00016199 EUR/DEPS (Synthetic, 2026-10-22T13:29:00.687Z)', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('61734 DEPS (Ethereum)', { exact: true })).toBeVisible();
+    await expect(page.getByText('9.9 EUR', { exact: true })).toBeVisible();
+    await expect(page.getByText('0.10 EUR (617.34 DEPS)', { exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot('tx-sell-rate-04-list-below-one-expanded.png', { fullPage: true });
     expect(unexpectedRequests).toEqual([]);
   });
 });

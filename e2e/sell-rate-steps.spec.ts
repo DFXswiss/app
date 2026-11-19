@@ -111,8 +111,10 @@ const SYNTHETIC_SELL = {
 
 const DEPS_ASSET = {
   ...DSC_ASSET,
-  id: 354,
+  id: 356,
   name: 'DEPS',
+  chainId: '0x9d74de101e2a54ad42198f37bdcce0a0160acacb',
+  explorerUrl: 'https://polygonscan.com/token/0x9d74de101e2a54ad42198f37bdcce0a0160acacb',
   uniqueName: 'Polygon/DEPS',
   description: 'Synthetic DEPS',
   dexName: 'DEPS',

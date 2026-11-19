@@ -414,14 +414,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `/v1/setting/infoBanner`, `/v1/transaction/unassigned`, and `/v2/user` and uses an unsigned session token. It shows the expanded rate for that fixture. It does not prove that
   the API returns those values or that login and transaction processing work. The list variant also
   answers `GET /v1/transaction/detail` with the synthetic completed sale. The case under 1 EUR per
-  asset fulfils the same routes with a synthetic completed DEPS sale whose fee is set: input 61734
-  DEPS, output 9.9 EUR, `exchangeRate` 6173.4 and `rate` 6235.8. Those are the five-significant-digit
-  values of `(inputReferenceAmountMinusFee / outputAmount)` and `inputAmount / outputAmount` after a
-  1% fee (617.34 DEPS). `fees.total` and `fees.dfx` are 617.34, `fees.rate` is 0.01, and network,
-  platform and both bank fields are 0, which is what `mapFees` returns when `percentFee` is set and
-  the reference price is 1. A green run shows 61734 DEPS (Ethereum), 9.9 EUR, the quote 0.00016036
-  EUR/DEPS, the base rate and the price step 0.00016199 EUR/DEPS, and the total fee 0.10 EUR
-  (617.34 DEPS). It does not prove that the API returns those values.
+  asset fulfils the same routes with a synthetic completed sale of seeded Ethereum/DEPS (asset id
+  354, `inputChainId` `0x103747924e74708139a9400e4ab4bea79fffa380`, `inputEvmChainId` 1,
+  `inputTxUrl` on etherscan.io for the same input hash, `chargebackAsset` DEPS, `chargebackAssetId` 354) whose fee is set: input 61734 DEPS, output 9.9 EUR, `exchangeRate` 6173.4 and `rate` 6235.8.
+  Those are the five-significant-digit values of `(inputReferenceAmountMinusFee / outputAmount)` and
+  `inputAmount / outputAmount` after a 1% fee (617.34 DEPS). `fees.total` and `fees.dfx` are 617.34,
+  `fees.rate` is 0.01, and network, platform and both bank fields are 0, which is what `mapFees`
+  returns when `percentFee` is set and the reference price is 1. A green run of the detail screen
+  and of the transaction list (row expanded) shows 61734 DEPS (Ethereum), 9.9 EUR, the quote
+  0.00016036 EUR/DEPS, the base rate and the price step 0.00016199 EUR/DEPS, and the total fee
+  0.10 EUR (617.34 DEPS). It does not prove that the API returns those values.
 - **The transaction-list unit test replaces the SDK and component library.**
   `src/__tests__/transaction-list-txinfo.test.tsx` replaces `@dfx.swiss/react` and implements
   `Utils.formatAmountCrypto` locally the way the package does: `toPrecision`, then `toFixed`, then
