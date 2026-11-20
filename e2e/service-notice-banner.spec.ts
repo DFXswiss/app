@@ -3,12 +3,13 @@ import { expect, Page, Route, test } from '@playwright/test';
 /**
  * Visual regression: service notice banner.
  *
- * Every page shows the slim notice at the top of the content column; /swap shows the prominent
- * notice there instead, above the form, because swapping is not available again yet.
+ * Every page shows the slim notice at the top of the content column; /sell and /swap show the
+ * prominent notice there instead, above the form. Both variants show the same text with a link
+ * to the security incident page.
  *
  * Routes:
  *   - /support (slim notice)
- *   - /sell  (slim notice)
+ *   - /sell  (prominent notice)
  *   - /swap  (prominent notice)
  *   - /buy   (slim notice)
  *
@@ -17,11 +18,9 @@ import { expect, Page, Route, test } from '@playwright/test';
  * UI language is pinned with `lang=en`. Unmatched v1/v2 calls are fulfilled with 501.
  */
 
-const SLIM_EN =
-  'All DFX core features are available again. Buying and selling on the most popular blockchains is fully operational again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Customer data was not affected by this incident.';
-const PROMINENT_EN =
-  'Swapping is not yet available again. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Buying and selling on the most popular blockchains is fully operational again. Customer data was not affected by this incident.';
-const HINT_EN = ' Questions: Open a support ticket';
+const TEXT_EN =
+  'All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.';
+const MORE_EN = ' More';
 
 const ADDRESS = '0x0000000000000000000000000000000000000001';
 
@@ -118,15 +117,20 @@ test.describe('Service notice banner', () => {
 
   const cases = [
     // The slim notice is shot on the support landing page, which renders fully with these mocks.
-    { path: '/support', variant: 'slim', text: `${SLIM_EN}${HINT_EN}`, file: 'service-notice-banner-01-support.png' },
-    { path: '/sell', variant: 'slim', text: `${SLIM_EN}${HINT_EN}`, file: 'service-notice-banner-02-sell.png' },
+    { path: '/support', variant: 'slim', text: `${TEXT_EN}${MORE_EN}`, file: 'service-notice-banner-01-support.png' },
+    {
+      path: '/sell',
+      variant: 'prominent',
+      text: `${TEXT_EN}${MORE_EN}`,
+      file: 'service-notice-banner-02-sell.png',
+    },
     {
       path: '/swap',
       variant: 'prominent',
-      text: `${PROMINENT_EN}${HINT_EN}`,
+      text: `${TEXT_EN}${MORE_EN}`,
       file: 'service-notice-banner-03-swap.png',
     },
-    { path: '/buy', variant: 'slim', text: `${SLIM_EN}${HINT_EN}`, file: 'service-notice-banner-04-buy.png' },
+    { path: '/buy', variant: 'slim', text: `${TEXT_EN}${MORE_EN}`, file: 'service-notice-banner-04-buy.png' },
   ];
 
   for (const { path, variant, text, file } of cases) {
@@ -139,6 +143,10 @@ test.describe('Service notice banner', () => {
       const notice = page.getByTestId('service-notice-banner');
       await expect(notice).toHaveAttribute('data-variant', variant, { timeout: 15_000 });
       await expect(notice).toHaveText(text);
+      await expect(notice.getByRole('link', { name: 'More' })).toHaveAttribute(
+        'href',
+        'https://dfx.swiss/security-incident.html',
+      );
 
       await page.waitForTimeout(1000);
       await expect(page).toHaveScreenshot(file, { fullPage: true, maxDiffPixels: 1000 });

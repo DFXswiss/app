@@ -29,30 +29,22 @@ jest.mock('src/contexts/settings.context', () => {
 import { render, screen } from '@testing-library/react';
 import i18n from 'i18next';
 import { MemoryRouter } from 'react-router-dom';
-import { ServiceNoticeBanner } from 'src/components/service-notice-banner';
+import { SECURITY_INCIDENT_URL, ServiceNoticeBanner } from 'src/components/service-notice-banner';
 import { FeatureFlags } from 'src/config/feature-flags';
 import { setupLanguages } from 'src/translations';
 
-const SLIM = {
-  en: 'All DFX core features are available again. Buying and selling on the most popular blockchains is fully operational again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Customer data was not affected by this incident.',
-  de: 'Alle DFX-Core-Funktionen sind wieder verfügbar. Kaufen und Verkaufen der beliebtesten Blockchains ist wieder vollständig in Betrieb. Senden Sie keine Crypto Tokens an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben. Kundendaten waren bei diesem Zwischenfall nicht betroffen.',
-  fr: "Toutes les fonctionnalités principales de DFX sont de nouveau disponibles. L'achat et la vente sur les blockchains les plus populaires fonctionnent de nouveau pleinement. N'envoyez pas de tokens crypto aux adresses de dépôt que vous avez reçues de DFX avant le 18 novembre 2026. Les données des clients n'ont pas été touchées par cet incident.",
-  it: "Tutte le funzionalità principali di DFX sono di nuovo disponibili. L'acquisto e la vendita sulle blockchain più popolari sono di nuovo pienamente operativi. Non inviare token crypto agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026. I dati dei clienti non sono stati coinvolti in questo incidente.",
+const TEXT = {
+  en: 'All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.',
+  de: 'Alle DFX-Core-Funktionen sind wieder verfügbar. Senden Sie keine Crypto Tokens an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben.',
+  fr: "Toutes les fonctionnalités principales de DFX sont de nouveau disponibles. N'envoyez pas de tokens crypto aux adresses de dépôt que vous avez reçues de DFX avant le 18 novembre 2026.",
+  it: 'Tutte le funzionalità principali di DFX sono di nuovo disponibili. Non inviare token crypto agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026.',
 };
 
-const PROMINENT = {
-  en: 'Swapping is not yet available again. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Buying and selling on the most popular blockchains is fully operational again. Customer data was not affected by this incident.',
-  de: 'Tauschen ist noch nicht wieder verfügbar. Senden Sie keine Crypto Tokens an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben — diese Adressen dürfen nicht mehr verwendet werden. Kaufen und Verkaufen der beliebtesten Blockchains ist wieder vollständig in Betrieb. Kundendaten waren bei diesem Zwischenfall nicht betroffen.',
-  fr: "L'échange n'est pas encore rétabli. N'envoyez pas de tokens crypto à une adresse de dépôt que vous avez reçue de DFX avant le 18 novembre 2026 — ces adresses ne doivent plus être utilisées. L'achat et la vente sur les blockchains les plus populaires fonctionnent de nouveau pleinement. Les données des clients n'ont pas été touchées par cet incident.",
-  it: "Lo scambio non è ancora stato ripristinato. Non inviare token crypto a nessun indirizzo di deposito ricevuto da DFX prima del 18 novembre 2026 — questi indirizzi non devono più essere utilizzati. L'acquisto e la vendita sulle blockchain più popolari sono di nuovo pienamente operativi. I dati dei clienti non sono stati coinvolti in questo incidente.",
-};
-
-// Appended to every notice: questions go to the support tickets, never to an email address.
-const HINT = {
-  en: ' Questions: Open a support ticket',
-  de: ' Fragen: Support-Ticket erstellen',
-  fr: ' Questions : Ouvrir un ticket de support',
-  it: ' Domande: Apri un ticket di supporto',
+const MORE = {
+  en: 'More',
+  de: 'Mehr',
+  fr: 'En savoir plus',
+  it: 'Scopri di più',
 };
 
 const LANGUAGES = ['en', 'de', 'fr', 'it'] as const;
@@ -101,8 +93,6 @@ describe('ServiceNoticeBanner', () => {
     '/buy/',
     '/buy/info',
     '/buying',
-    '/sell',
-    '/sell/',
     '/sell/info',
     '/swap/info',
     '/selling',
@@ -118,11 +108,10 @@ describe('ServiceNoticeBanner', () => {
     );
     expect(screen.getByTestId('info-text')).toHaveAttribute('data-icon-color', 'DARK_GRAY');
     expect(screen.getByTestId('info-text')).toHaveAttribute('data-text-size', 'XS');
-    expect(banner.textContent).toBe(`${SLIM.en}${HINT.en}`);
-    expect(screen.queryByText(PROMINENT.en)).not.toBeInTheDocument();
+    expect(banner.textContent).toBe(`${TEXT.en} ${MORE.en}`);
   });
 
-  it.each(['/swap', '/swap/'])('shows the prominent notice on %s', (path) => {
+  it.each(['/sell', '/sell/', '/swap', '/swap/'])('shows the prominent notice on %s', (path) => {
     renderAt(path);
 
     const banner = screen.getByTestId('service-notice-banner');
@@ -133,26 +122,21 @@ describe('ServiceNoticeBanner', () => {
     );
     expect(screen.getByTestId('info-text')).toHaveAttribute('data-icon-color', 'RED');
     expect(screen.getByTestId('info-text')).not.toHaveAttribute('data-text-size');
-    expect(banner.textContent).toBe(`${PROMINENT.en}${HINT.en}`);
-    expect(screen.queryByText(SLIM.en)).not.toBeInTheDocument();
+    expect(banner.textContent).toBe(`${TEXT.en} ${MORE.en}`);
   });
 
-  it.each(LANGUAGES)('translates every notice into %s', async (language) => {
+  it.each(LANGUAGES)('translates the notice and the link into %s', async (language) => {
     await i18n.changeLanguage(language);
 
     const { unmount } = renderAt('/');
-    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${SLIM[language]}${HINT[language]}`);
+    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${TEXT[language]} ${MORE[language]}`);
     unmount();
 
-    const sell = renderAt('/sell');
-    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${SLIM[language]}${HINT[language]}`);
-    sell.unmount();
-
-    renderAt('/swap');
-    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${PROMINENT[language]}${HINT[language]}`);
+    renderAt('/sell');
+    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${TEXT[language]} ${MORE[language]}`);
   });
 
-  it.each(['/', '/sell', '/swap'])('uses Swiss spelling and the formal Sie in German on %s', async (path) => {
+  it.each(['/', '/sell'])('uses Swiss spelling and the formal Sie in German on %s', async (path) => {
     await i18n.changeLanguage('de');
     renderAt(path);
     const text = screen.getByTestId('service-notice-banner').textContent ?? '';
@@ -161,14 +145,18 @@ describe('ServiceNoticeBanner', () => {
   });
 
   it.each(['/', '/buy', '/sell', '/swap'])(
-    'links questions to the support tickets and names no email address on %s',
+    'links More to the security incident page in a new tab and names no email address on %s',
     (path) => {
       renderAt(path);
 
       const banner = screen.getByTestId('service-notice-banner');
-      const link = screen.getByRole('link', { name: 'Open a support ticket' });
+      const link = screen.getByRole('link', { name: 'More' });
       expect(banner).toContainElement(link);
-      expect(link).toHaveAttribute('href', '/support/tickets');
+      expect(link).toHaveAttribute('href', 'https://dfx.swiss/security-incident.html');
+      expect(link).toHaveAttribute('href', SECURITY_INCIDENT_URL);
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(screen.getAllByRole('link')).toHaveLength(1);
       expect(banner.textContent).not.toContain('@');
     },
   );

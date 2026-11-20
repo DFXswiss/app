@@ -1367,9 +1367,7 @@
     "Promo": "Promo"
   },
   "components/service-notice": {
-    "All DFX core features are available again. Buying and selling on the most popular blockchains is fully operational again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Customer data was not affected by this incident.": "Toutes les fonctionnalités principales de DFX sont de nouveau disponibles. L'achat et la vente sur les blockchains les plus populaires fonctionnent de nouveau pleinement. N'envoyez pas de tokens crypto aux adresses de dépôt que vous avez reçues de DFX avant le 18 novembre 2026. Les données des clients n'ont pas été touchées par cet incident.",
-    "Swapping is not yet available again. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Buying and selling on the most popular blockchains is fully operational again. Customer data was not affected by this incident.": "L'échange n'est pas encore rétabli. N'envoyez pas de tokens crypto à une adresse de dépôt que vous avez reçue de DFX avant le 18 novembre 2026 — ces adresses ne doivent plus être utilisées. L'achat et la vente sur les blockchains les plus populaires fonctionnent de nouveau pleinement. Les données des clients n'ont pas été touchées par cet incident.",
-    "Questions:": "Questions :",
-    "Open a support ticket": "Ouvrir un ticket de support"
+    "All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.": "Toutes les fonctionnalités principales de DFX sont de nouveau disponibles. N'envoyez pas de tokens crypto aux adresses de dépôt que vous avez reçues de DFX avant le 18 novembre 2026.",
+    "More": "En savoir plus"
   }
 }

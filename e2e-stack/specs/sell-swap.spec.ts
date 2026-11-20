@@ -1215,10 +1215,10 @@ test.describe('Sell + Swap e2e', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Service notice: prominent above the form on /swap, slim everywhere else
+  // Service notice: prominent above the form on /sell and /swap, slim everywhere else
   // ---------------------------------------------------------------------------
 
-  test('/swap shows the prominent service notice above the form; /sell, /buy and other pages show the slim one', async ({
+  test('/sell and /swap show the prominent service notice above the form; /buy and other pages show the slim one', async ({
     page,
   }) => {
     const user = await createUser({
@@ -1229,14 +1229,23 @@ test.describe('Sell + Swap e2e', () => {
       language: 'EN',
     });
 
-    const hint = ' Questions: Open a support ticket';
-    const prominentText =
-      'Swapping is not yet available again. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Buying and selling on the most popular blockchains is fully operational again. Customer data was not affected by this incident.';
-    const slimText =
-      'All DFX core features are available again. Buying and selling on the most popular blockchains is fully operational again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Customer data was not affected by this incident.';
+    // Both variants show the same text, followed by the More link to the security incident page.
+    const noticeText =
+      'All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. More';
 
-    // The notice sits above the first amount field, and the form stays usable.
-    const expectNoticeAboveUsableForm = async (notice: ReturnType<typeof page.getByTestId>) => {
+    for (const path of ['/sell', '/swap']) {
+      await openScreen(page, path, user.jwt);
+
+      const notice = page.getByTestId('service-notice-banner');
+      await expect(notice).toHaveCount(1);
+      await expect(notice).toHaveAttribute('data-variant', 'prominent');
+      await expect(notice).toHaveText(noticeText);
+      await expect(notice.getByRole('link', { name: 'More' })).toHaveAttribute(
+        'href',
+        'https://dfx.swiss/security-incident.html',
+      );
+
+      // Visible before any form input: the notice sits above the first amount field.
       const amount = page.locator('input[inputmode="decimal"]').first();
       await expect(amount).toBeVisible({ timeout: 15000 });
       const noticeBox = await notice.boundingBox();
@@ -1244,36 +1253,35 @@ test.describe('Sell + Swap e2e', () => {
       expect(noticeBox).not.toBeNull();
       expect(amountBox).not.toBeNull();
       expect((noticeBox as { y: number }).y).toBeLessThan((amountBox as { y: number }).y);
+
+      // The form stays usable: the notice does not disable the amount field.
       await expect(amount).toBeEnabled();
-    };
-
-    await openScreen(page, '/swap', user.jwt);
-    const swapNotice = page.getByTestId('service-notice-banner');
-    await expect(swapNotice).toHaveCount(1);
-    await expect(swapNotice).toHaveAttribute('data-variant', 'prominent');
-    await expect(swapNotice).toHaveText(`${prominentText}${hint}`);
-    await expect(page.getByText(slimText)).toHaveCount(0);
-    await expectNoticeAboveUsableForm(swapNotice);
-
-    for (const path of ['/sell', '/buy']) {
-      await openScreen(page, path, user.jwt);
-      const notice = page.getByTestId('service-notice-banner');
-      await expect(notice).toHaveCount(1);
-      await expect(notice).toHaveAttribute('data-variant', 'slim');
-      await expect(notice).toHaveText(`${slimText}${hint}`);
-      await expect(page.getByText(prominentText)).toHaveCount(0);
-      await expectNoticeAboveUsableForm(notice);
     }
+
+    // /buy: the slim notice sits above the buy form and its payment details.
+    await openScreen(page, '/buy', user.jwt);
+    const buyNotice = page.getByTestId('service-notice-banner');
+    await expect(buyNotice).toHaveCount(1);
+    await expect(buyNotice).toHaveAttribute('data-variant', 'slim');
+    await expect(buyNotice).toHaveText(noticeText);
+    const buyAmount = page.locator('input[inputmode="decimal"]').first();
+    await expect(buyAmount).toBeVisible({ timeout: 15000 });
+    const buyNoticeBox = await buyNotice.boundingBox();
+    const buyAmountBox = await buyAmount.boundingBox();
+    expect(buyNoticeBox).not.toBeNull();
+    expect(buyAmountBox).not.toBeNull();
+    expect((buyNoticeBox as { y: number }).y).toBeLessThan((buyAmountBox as { y: number }).y);
+    await expect(buyAmount).toBeEnabled();
 
     await openScreen(page, '/account', user.jwt);
     const notice = page.getByTestId('service-notice-banner');
     await expect(notice).toHaveCount(1);
     await expect(notice).toHaveAttribute('data-variant', 'slim');
-    await expect(notice).toHaveText(`${slimText}${hint}`);
+    await expect(notice).toHaveText(noticeText);
 
     // Not dismissable: still there after a reload.
     await page.reload();
-    await expect(page.getByTestId('service-notice-banner')).toHaveText(`${slimText}${hint}`, { timeout: 15000 });
+    await expect(page.getByTestId('service-notice-banner')).toHaveText(noticeText, { timeout: 15000 });
   });
 
   test('/swap source assets are sellable and target assets are buyable vs GET /v1/asset', async ({ page }) => {

@@ -1,22 +1,27 @@
 import { IconColor, StyledInfoText, StyledInfoTextSize } from '@dfx.swiss/react-components';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { FeatureFlags } from '../config/feature-flags';
 import { useSettingsContext } from '../contexts/settings.context';
 
-// Swapping is not back yet, so /swap shows the prominent variant; every other page shows the slim one.
-const PROMINENT_PATHS = /^\/swap\/?$/;
+// Sell and swap send crypto to a deposit address, so these pages show the prominent variant; every other page
+// shows the slim one. Both variants show the same text.
+const PROMINENT_PATHS = /^\/(sell|swap)\/?$/;
 
-// Questions about the notice go to the support tickets, never to an email address.
-function SupportTicketHint(): JSX.Element {
+// Report on the security incident of 18 November 2026 on the DFX website, in German and English.
+export const SECURITY_INCIDENT_URL = 'https://dfx.swiss/security-incident.html';
+
+function NoticeText(): JSX.Element {
   const { translate } = useSettingsContext();
 
   return (
     <>
-      {' '}
-      {translate('components/service-notice', 'Questions:')}{' '}
-      <Link to="/support/tickets" className="underline">
-        {translate('components/service-notice', 'Open a support ticket')}
-      </Link>
+      {translate(
+        'components/service-notice',
+        'All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.',
+      )}{' '}
+      <a href={SECURITY_INCIDENT_URL} target="_blank" rel="noopener noreferrer" className="underline">
+        {translate('components/service-notice', 'More')}
+      </a>
     </>
   );
 }
@@ -24,7 +29,6 @@ function SupportTicketHint(): JSX.Element {
 // Service notice shown on every page while FeatureFlags.serviceNotice is on. It cannot be
 // dismissed, so it is back after every reload.
 export function ServiceNoticeBanner(): JSX.Element | null {
-  const { translate } = useSettingsContext();
   const { pathname } = useLocation();
 
   if (!FeatureFlags.serviceNotice) return null;
@@ -37,11 +41,7 @@ export function ServiceNoticeBanner(): JSX.Element | null {
       className="w-full rounded-lg border-2 border-dfxRed-100 p-3 text-left"
     >
       <StyledInfoText iconColor={IconColor.RED}>
-        {translate(
-          'components/service-notice',
-          'Swapping is not yet available again. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Buying and selling on the most popular blockchains is fully operational again. Customer data was not affected by this incident.',
-        )}
-        <SupportTicketHint />
+        <NoticeText />
       </StyledInfoText>
     </div>
   ) : (
@@ -52,11 +52,7 @@ export function ServiceNoticeBanner(): JSX.Element | null {
       className="w-full rounded-md border border-dfxGray-400 bg-dfxGray-300 px-3 py-1.5 text-left"
     >
       <StyledInfoText iconColor={IconColor.DARK_GRAY} textSize={StyledInfoTextSize.XS}>
-        {translate(
-          'components/service-notice',
-          'All DFX core features are available again. Buying and selling on the most popular blockchains is fully operational again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Customer data was not affected by this incident.',
-        )}
-        <SupportTicketHint />
+        <NoticeText />
       </StyledInfoText>
     </div>
   );
