@@ -3,10 +3,8 @@ import { Link, useLocation } from 'react-router-dom';
 import { FeatureFlags } from '../config/feature-flags';
 import { useSettingsContext } from '../contexts/settings.context';
 
-// Sell and swap pages show the prominent variant; every other page shows the slim one.
-const PROMINENT_PATHS = /^\/(sell|swap)\/?$/;
-// The buy page shows its payment details below the notice, so the slim notice there adds that buying still works.
-const BUY_PATH = /^\/buy\/?$/;
+// Swapping is not back yet, so /swap shows the prominent variant; every other page shows the slim one.
+const PROMINENT_PATHS = /^\/swap\/?$/;
 
 // Questions about the notice go to the support tickets, never to an email address.
 function SupportTicketHint(): JSX.Element {
@@ -41,7 +39,7 @@ export function ServiceNoticeBanner(): JSX.Element | null {
       <StyledInfoText iconColor={IconColor.RED}>
         {translate(
           'components/service-notice',
-          'Due to a security incident affecting DFX deposit addresses, selling and swapping are temporarily unavailable. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.',
+          'Swapping is not yet available again. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Buying and selling on the most popular blockchains is fully operational again. Customer data was not affected by this incident.',
         )}
         <SupportTicketHint />
       </StyledInfoText>
@@ -56,10 +54,8 @@ export function ServiceNoticeBanner(): JSX.Element | null {
       <StyledInfoText iconColor={IconColor.DARK_GRAY} textSize={StyledInfoTextSize.XS}>
         {translate(
           'components/service-notice',
-          'Due to a security incident affecting DFX deposit addresses, selling is temporarily unavailable. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.',
+          'All DFX core features are available again. Buying and selling on the most popular blockchains is fully operational again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Customer data was not affected by this incident.',
         )}
-        {BUY_PATH.test(pathname) &&
-          ` ${translate('components/service-notice', 'Buying works as usual; just follow the details below.')}`}
         <SupportTicketHint />
       </StyledInfoText>
     </div>

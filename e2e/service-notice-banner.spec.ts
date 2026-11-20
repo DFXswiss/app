@@ -3,15 +3,14 @@ import { expect, Page, Route, test } from '@playwright/test';
 /**
  * Visual regression: service notice banner.
  *
- * Every page shows the slim notice at the top of the content column; /sell and /swap show the
- * prominent notice there instead, above the form. On /buy the slim notice adds that buying works as
- * usual and the customer follows the details below.
+ * Every page shows the slim notice at the top of the content column; /swap shows the prominent
+ * notice there instead, above the form, because swapping is not available again yet.
  *
  * Routes:
  *   - /support (slim notice)
- *   - /sell  (prominent notice)
+ *   - /sell  (slim notice)
  *   - /swap  (prominent notice)
- *   - /buy   (slim notice with the buy sentence)
+ *   - /buy   (slim notice)
  *
  * Auth is a synthetic unsigned JWT (`alg: none`, role User). Bootstrap GETs are mocked via
  * page.route, so the suite does not need a live API. A green run does not prove production auth.
@@ -19,10 +18,9 @@ import { expect, Page, Route, test } from '@playwright/test';
  */
 
 const SLIM_EN =
-  'Due to a security incident affecting DFX deposit addresses, selling is temporarily unavailable. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.';
-const BUY_EN = 'Buying works as usual; just follow the details below.';
+  'All DFX core features are available again. Buying and selling on the most popular blockchains is fully operational again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Customer data was not affected by this incident.';
 const PROMINENT_EN =
-  'Due to a security incident affecting DFX deposit addresses, selling and swapping are temporarily unavailable. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.';
+  'Swapping is not yet available again. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Buying and selling on the most popular blockchains is fully operational again. Customer data was not affected by this incident.';
 const HINT_EN = ' Questions: Open a support ticket';
 
 const ADDRESS = '0x0000000000000000000000000000000000000001';
@@ -121,24 +119,14 @@ test.describe('Service notice banner', () => {
   const cases = [
     // The slim notice is shot on the support landing page, which renders fully with these mocks.
     { path: '/support', variant: 'slim', text: `${SLIM_EN}${HINT_EN}`, file: 'service-notice-banner-01-support.png' },
-    {
-      path: '/sell',
-      variant: 'prominent',
-      text: `${PROMINENT_EN}${HINT_EN}`,
-      file: 'service-notice-banner-02-sell.png',
-    },
+    { path: '/sell', variant: 'slim', text: `${SLIM_EN}${HINT_EN}`, file: 'service-notice-banner-02-sell.png' },
     {
       path: '/swap',
       variant: 'prominent',
       text: `${PROMINENT_EN}${HINT_EN}`,
       file: 'service-notice-banner-03-swap.png',
     },
-    {
-      path: '/buy',
-      variant: 'slim',
-      text: `${SLIM_EN} ${BUY_EN}${HINT_EN}`,
-      file: 'service-notice-banner-04-buy.png',
-    },
+    { path: '/buy', variant: 'slim', text: `${SLIM_EN}${HINT_EN}`, file: 'service-notice-banner-04-buy.png' },
   ];
 
   for (const { path, variant, text, file } of cases) {
