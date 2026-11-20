@@ -24,6 +24,8 @@ const mockEditFormProps: {
   onSaved?: (warning?: string) => void;
   onCancel?: () => void;
 } = {};
+let mockFailedEditLogs: { userDataId: number; message: string }[] = [];
+const mockDismissFailedEditLog = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => ({ session: mockSession }),
@@ -126,6 +128,11 @@ jest.mock('src/components/error-hint', () => ({
   ErrorHint: ({ message }: { message: string }) => <p data-testid="error-hint">{message}</p>,
 }));
 
+jest.mock('src/util/user-data-edit-warnings', () => ({
+  useFailedEditLogs: () => mockFailedEditLogs,
+  dismissFailedEditLog: (userDataId: number) => mockDismissFailedEditLog(userDataId),
+}));
+
 jest.mock('src/hooks/clipboard.hook', () => ({
   useClipboard: () => ({ copy: mockCopy, isCopying: mockIsCopying }),
 }));
@@ -186,6 +193,8 @@ describe('UserDataPanel', () => {
       (key) => delete mockOnboardingFeeProps[key as keyof typeof mockOnboardingFeeProps],
     );
     Object.keys(mockEditFormProps).forEach((key) => delete mockEditFormProps[key as keyof typeof mockEditFormProps]);
+    mockFailedEditLogs = [];
+    mockDismissFailedEditLog.mockReset();
     delete process.env.REACT_APP_PUBLIC_URL;
   });
 
@@ -636,6 +645,40 @@ describe('UserDataPanel', () => {
         <UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={onAccountAccessChanged} />,
       );
       expect(screen.queryByText('Saved, but the KYC log entry failed: Log down')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('failed edit log warnings', () => {
+    it('shows each stored warning to an Admin and dismisses it by customer id', () => {
+      mockSession = { role: 'Admin' };
+      mockFailedEditLogs = [
+        { userDataId: 88001, message: 'Saved, but the KYC log entry failed: Log down' },
+        { userDataId: 88002, message: 'Saved, but the KYC log entry failed: Offline' },
+      ];
+      render(<UserDataPanel userData={detail()} userDataId={88001} />);
+
+      const warnings = screen.getAllByTestId('user-data-edit-failed-log');
+      expect(warnings).toHaveLength(2);
+      expect(warnings[0]).toHaveTextContent('Customer 88001: Saved, but the KYC log entry failed: Log down');
+      expect(warnings[1]).toHaveTextContent('Customer 88002: Saved, but the KYC log entry failed: Offline');
+
+      fireEvent.click(within(warnings[1]).getByRole('button', { name: 'Dismiss' }));
+      expect(mockDismissFailedEditLog).toHaveBeenCalledWith(88002);
+    });
+
+    it.each(['Support', 'Compliance'])('hides the stored warnings from %s', (role) => {
+      mockSession = { role };
+      mockFailedEditLogs = [{ userDataId: 88001, message: 'Saved, but the KYC log entry failed: Log down' }];
+      render(<UserDataPanel userData={detail()} userDataId={88001} />);
+
+      expect(screen.queryByTestId('user-data-edit-failed-log')).not.toBeInTheDocument();
+    });
+
+    it('renders nothing without stored warnings', () => {
+      mockSession = { role: 'Admin' };
+      render(<UserDataPanel userData={detail()} userDataId={88001} />);
+
+      expect(screen.queryByTestId('user-data-edit-failed-log')).not.toBeInTheDocument();
     });
   });
 });

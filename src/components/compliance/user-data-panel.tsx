@@ -15,6 +15,7 @@ import { appOrigin } from 'src/util/app-origin';
 import { display, formatBirthday, formatDate, formatDateTime, Primitive, refName } from 'src/util/compliance-helpers';
 import { canManageOnboardingFee } from 'src/util/onboarding-fee.util';
 import { canEditUserData } from 'src/util/user-data-edit.util';
+import { dismissFailedEditLog, useFailedEditLogs } from 'src/util/user-data-edit-warnings';
 
 interface UserDataPanelProps {
   userData: UserDataDetail;
@@ -229,6 +230,8 @@ export function UserDataPanel({
   const [editFormUserDataId, setEditFormUserDataId] = useState<number>();
   const [editWarning, setEditWarning] = useState<string>();
   const { session } = useAuthContext();
+  const failedEditLogs = useFailedEditLogs();
+  const mayEditUserData = canEditUserData(session?.role);
 
   // The form and its warning belong to one account: they must not carry over to another one, or
   // returning to the first account would reopen its form.
@@ -247,7 +250,7 @@ export function UserDataPanel({
   // underneath it. The reload callback is required for the edit entry point: without it the screen
   // could not show the saved values.
   const editEntryPoint =
-    userDataId !== undefined && rowIsThisAccount && onAccountAccessChanged && canEditUserData(session?.role)
+    userDataId !== undefined && rowIsThisAccount && onAccountAccessChanged && mayEditUserData
       ? { userDataId, reload: onAccountAccessChanged }
       : undefined;
   const editTarget = editEntryPoint && editEntryPoint.userDataId === editFormUserDataId ? editEntryPoint : undefined;
@@ -302,6 +305,19 @@ export function UserDataPanel({
     <>
       <div className={`${wide ? 'w-full' : 'w-1/2'} min-w-0`}>
         <div className="bg-white rounded-lg shadow-sm divide-y divide-dfxGray-300">
+          {mayEditUserData &&
+            failedEditLogs.map((entry) => (
+              <div key={entry.userDataId} data-testid="user-data-edit-failed-log" className="px-3 py-2">
+                <ErrorHint message={`Customer ${entry.userDataId}: ${entry.message}`} />
+                <button
+                  type="button"
+                  className="px-3 py-1 text-xs text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded transition-colors whitespace-nowrap"
+                  onClick={() => dismissFailedEditLog(entry.userDataId)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            ))}
           <CollapsibleSection title="UserData" initiallyOpen>
             <SectionTable rows={userDataRows(current, depositLimitNode, idNode, statusNode)} />
             {userDataId !== undefined && rowIsThisAccount && onAccountAccessChanged && (

@@ -5,6 +5,7 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { useCompliance, UserDataDetail } from 'src/hooks/compliance.hook';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { buildKycLogMessage } from 'src/util/compliance-helpers';
+import { reportFailedEditLog } from 'src/util/user-data-edit-warnings';
 import {
   EDITABLE_KYC_STATUSES,
   EDITABLE_TEXT_FIELDS,
@@ -153,6 +154,10 @@ function UserDataEditFields({
     if (mountedRef.current && userDataIdRef.current === requestedId) {
       if (warning === undefined) onSaved();
       else onSaved(warning);
+    } else if (warning !== undefined) {
+      // The form that started the save is gone or now shows another customer: the unlogged change must
+      // still be seen, so it goes to the store the panel reads.
+      reportFailedEditLog(requestedId, warning);
     }
     if (userDataIdRef.current === requestedId) {
       savingRef.current = false;

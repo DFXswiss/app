@@ -4,6 +4,7 @@ const mockStaffName: { name?: string; isLoading: boolean; error?: string } = {
 };
 const mockUpdateUserData = jest.fn();
 const mockCreateKycLog = jest.fn();
+const mockReportFailedEditLog = jest.fn();
 let mockCountries = [
   { id: 1, symbol: 'CH', name: 'Switzerland' },
   { id: 2, symbol: 'DE', name: 'Germany' },
@@ -30,6 +31,10 @@ jest.mock('src/hooks/staff-verified-name.hook', () => ({
 
 jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ countries: mockCountries }),
+}));
+
+jest.mock('src/util/user-data-edit-warnings', () => ({
+  reportFailedEditLog: (userDataId: number, message: string) => mockReportFailedEditLog(userDataId, message),
 }));
 
 jest.mock('src/components/error-hint', () => ({
@@ -146,6 +151,7 @@ describe('UserDataEditForm', () => {
     mockUpdateUserData.mockResolvedValue(undefined);
     mockCreateKycLog.mockReset();
     mockCreateKycLog.mockResolvedValue(undefined);
+    mockReportFailedEditLog.mockReset();
   });
 
   it('renders the current values and keeps Save disabled until something changes', () => {
@@ -357,6 +363,7 @@ describe('UserDataEditForm', () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith('Saved, but the KYC log entry failed: Log down'));
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(mockReportFailedEditLog).not.toHaveBeenCalled();
   });
 
   it('renders a non-Error log failure as its string form', async () => {
@@ -370,7 +377,7 @@ describe('UserDataEditForm', () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith('Saved, but the KYC log entry failed: offline'));
   });
 
-  it('ignores a log rejection after unmount', async () => {
+  it('keeps a failed log of an unmounted form in the store', async () => {
     const deferred = createDeferred<void>();
     mockCreateKycLog.mockReturnValue(deferred.promise);
     const onSaved = jest.fn();
@@ -386,9 +393,10 @@ describe('UserDataEditForm', () => {
     });
 
     expect(onSaved).not.toHaveBeenCalled();
+    expect(mockReportFailedEditLog).toHaveBeenCalledWith(88001, 'Saved, but the KYC log entry failed: late');
   });
 
-  it('ignores a log rejection for the previous account', async () => {
+  it('keeps a failed log of the previous account in the store', async () => {
     const deferred = createDeferred<void>();
     mockCreateKycLog.mockReturnValue(deferred.promise);
     const onSaved = jest.fn();
@@ -404,6 +412,7 @@ describe('UserDataEditForm', () => {
     });
 
     expect(onSaved).not.toHaveBeenCalled();
+    expect(mockReportFailedEditLog).toHaveBeenCalledWith(88001, 'Saved, but the KYC log entry failed: late');
   });
 
   it('cancels without saving', () => {
