@@ -236,6 +236,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   (`compliance-user-15`) intercepts `GET /v2/kyc/file/:uid?access=View` and answers HTTP 500 with a
   fixed message. A green run proves that the loaded dossier keeps rendering the file error in its
   preview area, not that the API rejects a real KYC-file request or returns that message.
+- **The onboarding-fee visuals answer the clerk lookup, the address list and the error themselves.**
+  `e2e/compliance.spec.ts` (`compliance-user-16` and `-17`) answer `GET /v1/support/issue/clerk` with
+  a fixed clerk name and, when the fetched dossier has no users, supply one synthetic address; `-17`
+  also intercepts `PUT /v1/userData/1005/onboardingFee` and answers HTTP 400 with
+  `Address is blocked or deleted`. A green run proves how the form renders those values, not that the
+  account has that address, that the API resolves that clerk, or that it rejects a real address.
 - **The transaction-search test writes the customer's verified name itself.**
   `e2e-stack/specs/compliance.spec.ts` (`/compliance search by transaction id …`) sets
   `user_data.verifiedName` by SQL before the search, because no identification runs in the stack. A green
@@ -491,6 +497,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `ManualReview` on a synthetic account at KYC level 0 whose `accountType` stays null. A green run
   does **not** prove how such a step reaches review; the customer KYC flow only offers `Statutes` to
   association accounts.
+- **The onboarding-fee full-stack cases write the ref, the fee setting and the starting status
+  themselves.** `e2e-stack/specs/compliance-cases.spec.ts` (`/compliance/user/:id sets and removes an
+onboarding fee …` and `… shows the blocked-address error …`) give the key-account user a `ref` and
+  write the `onboardingFeeUsedRef` setting row by SQL, restoring the setting afterwards, and set the
+  customer's status to `NA` or `Blocked` by SQL. A green run does not prove the production migration
+  that seeds the setting, how a key-account user gets its ref, or how a customer reaches that status.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
