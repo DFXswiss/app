@@ -2,9 +2,7 @@ const mockStaffName: { name?: string; isLoading: boolean; error?: string } = {
   name: 'Staff Example',
   isLoading: false,
 };
-const mockUpdateUserData = jest.fn();
-const mockCreateKycLog = jest.fn();
-const mockReportFailedEditLog = jest.fn();
+const mockMutateUserData = jest.fn();
 let mockCountries = [
   { id: 1, symbol: 'CH', name: 'Switzerland' },
   { id: 2, symbol: 'DE', name: 'Germany' },
@@ -21,8 +19,8 @@ jest.mock('@dfx.swiss/react', () => ({
   },
 }));
 
-jest.mock('src/hooks/compliance.hook', () => ({
-  useCompliance: () => ({ updateUserData: mockUpdateUserData, createKycLog: mockCreateKycLog }),
+jest.mock('src/hooks/user-data-operator-mutation.hook', () => ({
+  useUserDataOperatorMutation: () => ({ mutateUserData: mockMutateUserData }),
 }));
 
 jest.mock('src/hooks/staff-verified-name.hook', () => ({
@@ -33,33 +31,8 @@ jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ countries: mockCountries }),
 }));
 
-jest.mock('src/util/user-data-edit-warnings', () => ({
-  reportFailedEditLog: (userDataId: number, message: string) => mockReportFailedEditLog(userDataId, message),
-}));
-
 jest.mock('src/components/error-hint', () => ({
   ErrorHint: ({ message }: { message: string }) => <p data-testid="error-hint">{message}</p>,
-}));
-
-// Mirrors the real builder so the assertions read the exact message the form hands to the API.
-jest.mock('src/util/compliance-helpers', () => ({
-  buildKycLogMessage: ({
-    description,
-    clerk,
-    results,
-    comment,
-  }: {
-    description: string;
-    clerk: string;
-    results: { table: string; column: string; value: string }[];
-    comment?: string;
-  }) => {
-    const resultStr = results.map((r) => `${r.table}-${r.column}-${r.value}`).join(', ');
-    const sections = [`Services - ${description}`, `Editor: ${clerk.trim()}`, `result: ${resultStr}`];
-    const trimmed = comment?.trim();
-    if (trimmed) sections.push(`comment: ${trimmed}`);
-    return sections.join('; ');
-  },
 }));
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -147,11 +120,8 @@ describe('UserDataEditForm', () => {
       { id: 1, symbol: 'CH', name: 'Switzerland' },
       { id: 2, symbol: 'DE', name: 'Germany' },
     ];
-    mockUpdateUserData.mockReset();
-    mockUpdateUserData.mockResolvedValue(undefined);
-    mockCreateKycLog.mockReset();
-    mockCreateKycLog.mockResolvedValue(undefined);
-    mockReportFailedEditLog.mockReset();
+    mockMutateUserData.mockReset();
+    mockMutateUserData.mockResolvedValue(undefined);
   });
 
   it('renders the current values and keeps Save disabled until something changes', () => {
@@ -285,7 +255,7 @@ describe('UserDataEditForm', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
-  it('saves the changed fields first, then writes the KYC log, then reloads', async () => {
+  it('saves the changed fields in one operator mutation call with the trimmed reason', async () => {
     const onSaved = jest.fn();
     renderForm({ onSaved });
 
@@ -297,21 +267,16 @@ describe('UserDataEditForm', () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
 
-    expect(mockUpdateUserData).toHaveBeenCalledWith(88001, {
-      mail: 'e2e-new@example.com',
-      street: 'Newstrasse',
-      kycStatus: 'Rejected',
-    });
-    expect(mockCreateKycLog).toHaveBeenCalledWith(
+    expect(mockMutateUserData).toHaveBeenCalledTimes(1);
+    expect(mockMutateUserData).toHaveBeenCalledWith(
       88001,
-      'Services - UserDataEdit; Editor: Staff Example; result: userData-mail-e2e-new@example.com, ' +
-        'userData-street-Newstrasse, userData-kycStatus-Rejected; comment: Correcting the record',
+      { mail: 'e2e-new@example.com', street: 'Newstrasse', kycStatus: 'Rejected' },
+      'Correcting the record',
     );
-    expect(mockUpdateUserData.mock.invocationCallOrder[0]).toBeLessThan(mockCreateKycLog.mock.invocationCallOrder[0]);
-    expect(mockCreateKycLog.mock.invocationCallOrder[0]).toBeLessThan(onSaved.mock.invocationCallOrder[0]);
+    expect(mockMutateUserData.mock.invocationCallOrder[0]).toBeLessThan(onSaved.mock.invocationCallOrder[0]);
   });
 
-  it('saves a changed country with its log label', async () => {
+  it('saves a changed country in the same single call', async () => {
     const onSaved = jest.fn();
     renderForm({ onSaved });
 
@@ -321,15 +286,28 @@ describe('UserDataEditForm', () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
 
-    expect(mockUpdateUserData).toHaveBeenCalledWith(88001, { countryId: 2 });
-    expect(mockCreateKycLog).toHaveBeenCalledWith(
-      88001,
-      'Services - UserDataEdit; Editor: Staff Example; result: userData-countryId-Germany (DE); comment: Moved',
-    );
+    expect(mockMutateUserData).toHaveBeenCalledTimes(1);
+    expect(mockMutateUserData).toHaveBeenCalledWith(88001, { countryId: 2 }, 'Moved');
   });
 
-  it('shows a PUT error, keeps the values and writes no log', async () => {
-    mockUpdateUserData.mockRejectedValueOnce(new Error('Update refused'));
+  it('explains a 404 from the operator mutation endpoint instead of the raw message', async () => {
+    mockMutateUserData.mockRejectedValueOnce({ statusCode: 404, message: 'Not Found' });
+    const onSaved = jest.fn();
+    renderForm({ onSaved });
+    fillChange();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(
+      await screen.findByText('Editing personal data is not enabled on this environment yet.'),
+    ).toBeInTheDocument();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(input('mail').value).toBe('e2e-new@example.com');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  });
+
+  it('shows another API error unchanged, keeps the values and does not reload', async () => {
+    mockMutateUserData.mockRejectedValueOnce(new Error('Update refused'));
     const onSaved = jest.fn();
     renderForm({ onSaved });
     fillChange();
@@ -337,14 +315,13 @@ describe('UserDataEditForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByText('Update refused')).toBeInTheDocument();
-    expect(mockCreateKycLog).not.toHaveBeenCalled();
     expect(onSaved).not.toHaveBeenCalled();
     expect(input('mail').value).toBe('e2e-new@example.com');
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
   });
 
-  it('uses a generic message for a non-Error PUT rejection', async () => {
-    mockUpdateUserData.mockRejectedValueOnce('refused');
+  it('uses a generic message for a non-Error rejection', async () => {
+    mockMutateUserData.mockRejectedValueOnce('refused');
     renderForm();
     fillChange();
 
@@ -353,66 +330,14 @@ describe('UserDataEditForm', () => {
     expect(await screen.findByText('Failed to save the customer data')).toBeInTheDocument();
   });
 
-  it('hands a failed log entry back as a warning and still reloads the saved account', async () => {
-    mockCreateKycLog.mockRejectedValueOnce(new Error('Log down'));
-    const onSaved = jest.fn();
-    renderForm({ onSaved });
+  it('uses a generic message for a rejection without a value', async () => {
+    mockMutateUserData.mockRejectedValueOnce(undefined);
+    renderForm();
     fillChange();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith('Saved, but the KYC log entry failed: Log down'));
-    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
-    expect(mockReportFailedEditLog).not.toHaveBeenCalled();
-  });
-
-  it('renders a non-Error log failure as its string form', async () => {
-    mockCreateKycLog.mockRejectedValueOnce('offline');
-    const onSaved = jest.fn();
-    renderForm({ onSaved });
-    fillChange();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith('Saved, but the KYC log entry failed: offline'));
-  });
-
-  it('keeps a failed log of an unmounted form in the store', async () => {
-    const deferred = createDeferred<void>();
-    mockCreateKycLog.mockReturnValue(deferred.promise);
-    const onSaved = jest.fn();
-    const { unmount } = renderForm({ onSaved });
-    fillChange();
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(mockCreateKycLog).toHaveBeenCalledTimes(1));
-    unmount();
-
-    await act(async () => {
-      deferred.reject(new Error('late'));
-      await deferred.promise.catch(() => undefined);
-    });
-
-    expect(onSaved).not.toHaveBeenCalled();
-    expect(mockReportFailedEditLog).toHaveBeenCalledWith(88001, 'Saved, but the KYC log entry failed: late');
-  });
-
-  it('keeps a failed log of the previous account in the store', async () => {
-    const deferred = createDeferred<void>();
-    mockCreateKycLog.mockReturnValue(deferred.promise);
-    const onSaved = jest.fn();
-    const { rerender } = render(form({ onSaved }));
-    fillChange();
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(mockCreateKycLog).toHaveBeenCalledWith(88001, expect.any(String)));
-
-    rerender(form({ userDataId: 88002, onSaved }));
-    await act(async () => {
-      deferred.reject(new Error('late'));
-      await deferred.promise.catch(() => undefined);
-    });
-
-    expect(onSaved).not.toHaveBeenCalled();
-    expect(mockReportFailedEditLog).toHaveBeenCalledWith(88001, 'Saved, but the KYC log entry failed: late');
+    expect(await screen.findByText('Failed to save the customer data')).toBeInTheDocument();
   });
 
   it('cancels without saving', () => {
@@ -422,12 +347,12 @@ describe('UserDataEditForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
-    expect(mockUpdateUserData).not.toHaveBeenCalled();
+    expect(mockMutateUserData).not.toHaveBeenCalled();
   });
 
   it('saves once for two clicks and disables both controls while it runs', async () => {
     const deferred = createDeferred<void>();
-    mockUpdateUserData.mockReturnValue(deferred.promise);
+    mockMutateUserData.mockReturnValue(deferred.promise);
     const onSaved = jest.fn();
     renderForm({ onSaved });
     fillChange();
@@ -438,7 +363,7 @@ describe('UserDataEditForm', () => {
       fireEvent.click(save);
     });
 
-    expect(mockUpdateUserData).toHaveBeenCalledTimes(1);
+    expect(mockMutateUserData).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
 
@@ -451,7 +376,7 @@ describe('UserDataEditForm', () => {
 
   it('ignores a successful answer after unmount', async () => {
     const deferred = createDeferred<void>();
-    mockUpdateUserData.mockReturnValue(deferred.promise);
+    mockMutateUserData.mockReturnValue(deferred.promise);
     const onSaved = jest.fn();
     const { unmount } = renderForm({ onSaved });
     fillChange();
@@ -464,13 +389,13 @@ describe('UserDataEditForm', () => {
     });
 
     expect(onSaved).not.toHaveBeenCalled();
-    await waitFor(() => expect(mockCreateKycLog).toHaveBeenCalledTimes(1));
   });
 
   it('ignores a rejection after unmount', async () => {
     const deferred = createDeferred<void>();
-    mockUpdateUserData.mockReturnValue(deferred.promise);
-    const { unmount } = renderForm();
+    mockMutateUserData.mockReturnValue(deferred.promise);
+    const onSaved = jest.fn();
+    const { unmount } = renderForm({ onSaved });
     fillChange();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     unmount();
@@ -480,12 +405,12 @@ describe('UserDataEditForm', () => {
       await deferred.promise.catch(() => undefined);
     });
 
-    expect(mockCreateKycLog).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
   });
 
   it('drops a successful answer for the previous account', async () => {
     const deferred = createDeferred<void>();
-    mockUpdateUserData.mockReturnValue(deferred.promise);
+    mockMutateUserData.mockReturnValue(deferred.promise);
     const onSaved = jest.fn();
     const { rerender } = render(form({ onSaved }));
     fillChange();
@@ -498,12 +423,11 @@ describe('UserDataEditForm', () => {
     });
 
     expect(onSaved).not.toHaveBeenCalled();
-    await waitFor(() => expect(mockCreateKycLog).toHaveBeenCalledWith(88001, expect.any(String)));
   });
 
   it('drops a rejection for the previous account', async () => {
     const deferred = createDeferred<void>();
-    mockUpdateUserData.mockReturnValue(deferred.promise);
+    mockMutateUserData.mockReturnValue(deferred.promise);
     const { rerender } = render(form());
     fillChange();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -523,7 +447,7 @@ describe('UserDataEditForm', () => {
 
     saveForm();
 
-    expect(mockUpdateUserData).not.toHaveBeenCalled();
+    expect(mockMutateUserData).not.toHaveBeenCalled();
   });
 
   it('does not save a submit without a verified name or while the name loads', () => {
@@ -532,12 +456,12 @@ describe('UserDataEditForm', () => {
     fillChange();
 
     saveForm();
-    expect(mockUpdateUserData).not.toHaveBeenCalled();
+    expect(mockMutateUserData).not.toHaveBeenCalled();
 
     mockStaffName.name = 'Staff Example';
     mockStaffName.isLoading = true;
     rerender(form());
     saveForm();
-    expect(mockUpdateUserData).not.toHaveBeenCalled();
+    expect(mockMutateUserData).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,5 @@
 import { Country, UserRole } from '@dfx.swiss/react';
 import type { UserDataDetail } from 'src/hooks/compliance.hook';
-import type { KycLogResult } from 'src/util/compliance-helpers';
 
 export const EDITABLE_TEXT_FIELDS = [
   'mail',
@@ -19,8 +18,6 @@ export type EditableTextField = (typeof EDITABLE_TEXT_FIELDS)[number];
 export const EDITABLE_KYC_STATUSES = ['NA', 'Completed', 'Rejected', 'Terminated'] as const;
 export type EditableKycStatus = (typeof EDITABLE_KYC_STATUSES)[number];
 
-export const USER_DATA_EDIT_LOG_DESCRIPTION = 'UserDataEdit';
-
 export interface UserDataEditValues {
   text: Record<EditableTextField, string>;
   countryId?: number;
@@ -29,7 +26,6 @@ export interface UserDataEditValues {
 
 export interface UserDataEditPlan {
   payload: Record<string, string | number>;
-  results: KycLogResult[];
   errors: string[];
 }
 
@@ -70,16 +66,11 @@ function isEditableKycStatus(value: string): boolean {
 }
 
 /**
- * Compares edited values against the initial ones and builds the PUT body, the KYC-log results and
- * any validation errors. A non-empty `errors` means the caller must not save.
+ * Compares edited values against the initial ones and builds the PUT body and any validation errors.
+ * A non-empty `errors` means the caller must not save.
  */
-export function planUserDataEdit(
-  initial: UserDataEditValues,
-  edited: UserDataEditValues,
-  countries: Country[],
-): UserDataEditPlan {
+export function planUserDataEdit(initial: UserDataEditValues, edited: UserDataEditValues): UserDataEditPlan {
   const payload: Record<string, string | number> = {};
-  const results: KycLogResult[] = [];
   const errors: string[] = [];
 
   for (const field of EDITABLE_TEXT_FIELDS) {
@@ -101,20 +92,13 @@ export function planUserDataEdit(
     }
 
     payload[field] = after;
-    results.push({ table: 'userData', column: field, value: after });
   }
 
   if (edited.countryId !== initial.countryId) {
     if (edited.countryId === undefined) {
       errors.push('country cannot be cleared');
     } else {
-      const country = countries.find((entry) => entry.id === edited.countryId);
       payload.countryId = edited.countryId;
-      results.push({
-        table: 'userData',
-        column: 'countryId',
-        value: country ? `${country.name} (${country.symbol})` : String(edited.countryId),
-      });
     }
   }
 
@@ -122,8 +106,7 @@ export function planUserDataEdit(
   const afterKycStatus = edited.kycStatus.trim();
   if (beforeKycStatus !== afterKycStatus && isEditableKycStatus(afterKycStatus)) {
     payload.kycStatus = afterKycStatus;
-    results.push({ table: 'userData', column: 'kycStatus', value: afterKycStatus });
   }
 
-  return { payload, results, errors };
+  return { payload, errors };
 }

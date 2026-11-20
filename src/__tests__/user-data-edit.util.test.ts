@@ -17,7 +17,6 @@ import {
   EDITABLE_TEXT_FIELDS,
   initialEditValues,
   planUserDataEdit,
-  USER_DATA_EDIT_LOG_DESCRIPTION,
   UserDataEditValues,
 } from 'src/util/user-data-edit.util';
 
@@ -121,30 +120,22 @@ describe('initialEditValues', () => {
 
 describe('planUserDataEdit', () => {
   it('reports no change at all for identical values', () => {
-    expect(planUserDataEdit(makeValues(), makeValues(), countries)).toEqual({
+    expect(planUserDataEdit(makeValues(), makeValues())).toEqual({
       payload: {},
-      results: [],
       errors: [],
     });
   });
 
   it('treats surrounding whitespace as unchanged', () => {
-    expect(planUserDataEdit(makeValues(), makeValues({ mail: '  e2e-edit@example.com  ' }), countries)).toEqual({
+    expect(planUserDataEdit(makeValues(), makeValues({ mail: '  e2e-edit@example.com  ' }))).toEqual({
       payload: {},
-      results: [],
       errors: [],
     });
   });
 
   it('sends only the changed text fields as trimmed values', () => {
-    expect(
-      planUserDataEdit(makeValues(), makeValues({ firstname: '  Grace  ', street: 'Newstrasse' }), countries),
-    ).toEqual({
+    expect(planUserDataEdit(makeValues(), makeValues({ firstname: '  Grace  ', street: 'Newstrasse' }))).toEqual({
       payload: { firstname: 'Grace', street: 'Newstrasse' },
-      results: [
-        { table: 'userData', column: 'firstname', value: 'Grace' },
-        { table: 'userData', column: 'street', value: 'Newstrasse' },
-      ],
       errors: [],
     });
   });
@@ -152,131 +143,107 @@ describe('planUserDataEdit', () => {
   it.each(['mail', 'phone', 'firstname', 'surname', 'street', 'houseNumber', 'zip', 'location'] as const)(
     'refuses to clear %s',
     (field) => {
-      const result = planUserDataEdit(makeValues(), makeValues({ [field]: '   ' }), countries);
+      const result = planUserDataEdit(makeValues(), makeValues({ [field]: '   ' }));
       expect(result.payload).toEqual({});
-      expect(result.results).toEqual([]);
       expect(result.errors).toEqual([`${field} cannot be cleared`]);
     },
   );
 
   it('allows filling a field that was empty', () => {
-    expect(planUserDataEdit(makeValues({ location: '' }), makeValues({ location: 'Bern' }), countries)).toEqual({
+    expect(planUserDataEdit(makeValues({ location: '' }), makeValues({ location: 'Bern' }))).toEqual({
       payload: { location: 'Bern' },
-      results: [{ table: 'userData', column: 'location', value: 'Bern' }],
       errors: [],
     });
   });
 
   it.each(['not-an-email', 'a@b@c.ch', '@example.com', 'a@', 'a@example'])('rejects the invalid mail %s', (mail) => {
-    expect(planUserDataEdit(makeValues(), makeValues({ mail }), countries)).toEqual({
+    expect(planUserDataEdit(makeValues(), makeValues({ mail }))).toEqual({
       payload: {},
-      results: [],
       errors: ['mail is not a valid e-mail address'],
     });
   });
 
   it('accepts a valid changed mail', () => {
-    expect(planUserDataEdit(makeValues(), makeValues({ mail: 'new@example.com' }), countries)).toEqual({
+    expect(planUserDataEdit(makeValues(), makeValues({ mail: 'new@example.com' }))).toEqual({
       payload: { mail: 'new@example.com' },
-      results: [{ table: 'userData', column: 'mail', value: 'new@example.com' }],
       errors: [],
     });
   });
 
   it.each(['0041 79 123 45 67', '+41 79 1a3 45 67', '79 123 45 67'])('rejects the invalid phone %s', (phone) => {
-    expect(planUserDataEdit(makeValues(), makeValues({ phone }), countries)).toEqual({
+    expect(planUserDataEdit(makeValues(), makeValues({ phone }))).toEqual({
       payload: {},
-      results: [],
       errors: ['phone must start with + and the country code'],
     });
   });
 
   it('accepts a valid changed phone', () => {
-    expect(planUserDataEdit(makeValues(), makeValues({ phone: '+49 30 123456' }), countries)).toEqual({
+    expect(planUserDataEdit(makeValues(), makeValues({ phone: '+49 30 123456' }))).toEqual({
       payload: { phone: '+49 30 123456' },
-      results: [{ table: 'userData', column: 'phone', value: '+49 30 123456' }],
       errors: [],
     });
   });
 
-  it('sends a changed country as its id and logs name and symbol', () => {
-    expect(planUserDataEdit(makeValues(), makeValues({}, 2), countries)).toEqual({
+  it('sends a changed country as its id', () => {
+    expect(planUserDataEdit(makeValues(), makeValues({}, 2))).toEqual({
       payload: { countryId: 2 },
-      results: [{ table: 'userData', column: 'countryId', value: 'Germany (DE)' }],
       errors: [],
     });
   });
 
-  it('logs the bare id when the changed country is not in the country list', () => {
-    expect(planUserDataEdit(makeValues(), makeValues({}, 99), countries)).toEqual({
+  it('sends a changed country that is not in the country list as its bare id', () => {
+    expect(planUserDataEdit(makeValues(), makeValues({}, 99))).toEqual({
       payload: { countryId: 99 },
-      results: [{ table: 'userData', column: 'countryId', value: '99' }],
       errors: [],
     });
   });
 
   it('refuses to clear the country', () => {
-    expect(planUserDataEdit(makeValues(), { ...makeValues(), countryId: undefined }, countries)).toEqual({
+    expect(planUserDataEdit(makeValues(), { ...makeValues(), countryId: undefined })).toEqual({
       payload: {},
-      results: [],
       errors: ['country cannot be cleared'],
     });
   });
 
   it('does nothing when the country is unchanged', () => {
     const withoutCountry = { ...makeValues(), countryId: undefined };
-    expect(planUserDataEdit(withoutCountry, withoutCountry, countries)).toEqual({
+    expect(planUserDataEdit(withoutCountry, withoutCountry)).toEqual({
       payload: {},
-      results: [],
       errors: [],
     });
   });
 
-  it('sends a changed editable kycStatus and logs it', () => {
-    expect(planUserDataEdit(makeValues(), makeValues({}, 1, 'Rejected'), countries)).toEqual({
+  it('sends a changed editable kycStatus', () => {
+    expect(planUserDataEdit(makeValues(), makeValues({}, 1, 'Rejected'))).toEqual({
       payload: { kycStatus: 'Rejected' },
-      results: [{ table: 'userData', column: 'kycStatus', value: 'Rejected' }],
       errors: [],
     });
   });
 
   it('sends nothing when the current Check status is left unchanged', () => {
-    expect(planUserDataEdit(makeValues({}, 1, 'Check'), makeValues({}, 1, 'Check'), countries)).toEqual({
+    expect(planUserDataEdit(makeValues({}, 1, 'Check'), makeValues({}, 1, 'Check'))).toEqual({
       payload: {},
-      results: [],
       errors: [],
     });
   });
 
   it('sends nothing when the changed kycStatus is not editable through this form', () => {
-    expect(planUserDataEdit(makeValues(), makeValues({}, 1, 'Check'), countries)).toEqual({
+    expect(planUserDataEdit(makeValues(), makeValues({}, 1, 'Check'))).toEqual({
       payload: {},
-      results: [],
       errors: [],
     });
   });
 
   it('combines text, country and kycStatus changes in field order', () => {
     expect(
-      planUserDataEdit(
-        makeValues(),
-        makeValues({ mail: 'new@example.com', street: 'Newstrasse' }, 2, 'Terminated'),
-        countries,
-      ),
+      planUserDataEdit(makeValues(), makeValues({ mail: 'new@example.com', street: 'Newstrasse' }, 2, 'Terminated')),
     ).toEqual({
       payload: { mail: 'new@example.com', street: 'Newstrasse', countryId: 2, kycStatus: 'Terminated' },
-      results: [
-        { table: 'userData', column: 'mail', value: 'new@example.com' },
-        { table: 'userData', column: 'street', value: 'Newstrasse' },
-        { table: 'userData', column: 'countryId', value: 'Germany (DE)' },
-        { table: 'userData', column: 'kycStatus', value: 'Terminated' },
-      ],
       errors: [],
     });
   });
 
-  it('exposes the sheet-compatible log description and KYC status options', () => {
-    expect(USER_DATA_EDIT_LOG_DESCRIPTION).toBe('UserDataEdit');
+  it('exposes the KYC status options', () => {
     expect(EDITABLE_KYC_STATUSES).toEqual(['NA', 'Completed', 'Rejected', 'Terminated']);
   });
 });

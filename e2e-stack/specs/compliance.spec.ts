@@ -438,19 +438,15 @@ test.describe('Compliance area (overview)', () => {
     await page.getByLabel('kycStatus', { exact: true }).selectOption('Rejected');
     await page.getByLabel('Reason', { exact: true }).fill(reason);
 
-    const putResponsePromise = page.waitForResponse(
+    const mutationResponsePromise = page.waitForResponse(
       (response) =>
         response.request().method() === 'PUT' &&
-        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}`,
-    );
-    const logResponsePromise = page.waitForResponse(
-      (response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/v1/kyc/admin/log',
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/operatorMutation`,
     );
 
     await page.getByRole('button', { name: 'Save', exact: true }).click();
 
-    expect((await putResponsePromise).status()).toBe(200);
-    expect((await logResponsePromise).status()).toBe(201);
+    expect((await mutationResponsePromise).status()).toBe(200);
 
     await expect(page.getByRole('button', { name: 'Edit personal data', exact: true })).toBeVisible({
       timeout: 15000,
@@ -467,10 +463,10 @@ test.describe('Compliance area (overview)', () => {
          AND comment LIKE $2 AND comment LIKE $3 AND comment LIKE $4 AND comment LIKE $5`,
       [
         customer.userDataId,
-        '%Services - UserDataEdit%',
+        '%API UserData operator mutation%',
         '%Editor: %',
-        `%userData-mail-${newMail}%`,
         `%comment: ${reason}%`,
+        `%"mail":"${newMail}"%`,
       ],
       15000,
     );

@@ -2,7 +2,6 @@ import { useAuthContext } from '@dfx.swiss/react';
 import { ReactNode, useEffect, useState } from 'react';
 import { AccountAccessToggles } from 'src/components/compliance/account-access-toggles';
 import { CollapsibleSection } from 'src/components/compliance/collapsible-section';
-import { ErrorHint } from 'src/components/error-hint';
 import { LimitRequestModal } from 'src/components/compliance/limit-request-modal';
 import { OnboardingFeeEditor } from 'src/components/compliance/onboarding-fee-editor';
 import { ReactivateAccount } from 'src/components/compliance/reactivate-account';
@@ -15,7 +14,6 @@ import { appOrigin } from 'src/util/app-origin';
 import { display, formatBirthday, formatDate, formatDateTime, Primitive, refName } from 'src/util/compliance-helpers';
 import { canManageOnboardingFee } from 'src/util/onboarding-fee.util';
 import { canEditUserData } from 'src/util/user-data-edit.util';
-import { dismissFailedEditLog, useFailedEditLogs } from 'src/util/user-data-edit-warnings';
 
 interface UserDataPanelProps {
   userData: UserDataDetail;
@@ -228,16 +226,13 @@ export function UserDataPanel({
 }: Readonly<UserDataPanelProps>): JSX.Element {
   const [showLimitRequestModal, setShowLimitRequestModal] = useState(false);
   const [editFormUserDataId, setEditFormUserDataId] = useState<number>();
-  const [editWarning, setEditWarning] = useState<string>();
   const { session } = useAuthContext();
-  const failedEditLogs = useFailedEditLogs();
   const mayEditUserData = canEditUserData(session?.role);
 
-  // The form and its warning belong to one account: they must not carry over to another one, or
-  // returning to the first account would reopen its form.
+  // The form belongs to one account: it must not carry over to another one, or returning to the first
+  // account would reopen its form.
   useEffect(() => {
     setEditFormUserDataId(undefined);
-    setEditWarning(undefined);
   }, [userDataId]);
 
   // A reactivation answers with the account's new status row; the box shows it until the screen reloads
@@ -305,19 +300,6 @@ export function UserDataPanel({
     <>
       <div className={`${wide ? 'w-full' : 'w-1/2'} min-w-0`}>
         <div className="bg-white rounded-lg shadow-sm divide-y divide-dfxGray-300">
-          {mayEditUserData &&
-            failedEditLogs.map((entry) => (
-              <div key={entry.userDataId} data-testid="user-data-edit-failed-log" className="px-3 py-2">
-                <ErrorHint message={`Customer ${entry.userDataId}: ${entry.message}`} />
-                <button
-                  type="button"
-                  className="px-3 py-1 text-xs text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded transition-colors whitespace-nowrap"
-                  onClick={() => dismissFailedEditLog(entry.userDataId)}
-                >
-                  Dismiss
-                </button>
-              </div>
-            ))}
           <CollapsibleSection title="UserData" initiallyOpen>
             <SectionTable rows={userDataRows(current, depositLimitNode, idNode, statusNode)} />
             {userDataId !== undefined && rowIsThisAccount && onAccountAccessChanged && (
@@ -342,9 +324,8 @@ export function UserDataPanel({
               <UserDataEditForm
                 userDataId={editTarget.userDataId}
                 userData={userData}
-                onSaved={(warning) => {
+                onSaved={() => {
                   setEditFormUserDataId(undefined);
-                  setEditWarning(warning);
                   editTarget.reload();
                 }}
                 onCancel={() => setEditFormUserDataId(undefined)}
@@ -352,16 +333,12 @@ export function UserDataPanel({
             ) : (
               <>
                 <SectionTable rows={personalDataRows(userData)} />
-                {editWarning && <ErrorHint message={editWarning} />}
                 {editEntryPoint && (
                   <div className="px-3 py-2">
                     <button
                       type="button"
                       className="px-3 py-1 text-xs text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded transition-colors whitespace-nowrap"
-                      onClick={() => {
-                        setEditWarning(undefined);
-                        setEditFormUserDataId(editEntryPoint.userDataId);
-                      }}
+                      onClick={() => setEditFormUserDataId(editEntryPoint.userDataId)}
                     >
                       Edit personal data
                     </button>

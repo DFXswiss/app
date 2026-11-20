@@ -1,25 +1,26 @@
-import type { Country } from '@dfx.swiss/react';
+import type { ApiError, Country } from '@dfx.swiss/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { useCompliance, UserDataDetail } from 'src/hooks/compliance.hook';
+import type { UserDataDetail } from 'src/hooks/compliance.hook';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
-import { buildKycLogMessage } from 'src/util/compliance-helpers';
-import { reportFailedEditLog } from 'src/util/user-data-edit-warnings';
+import { useUserDataOperatorMutation } from 'src/hooks/user-data-operator-mutation.hook';
 import {
   EDITABLE_KYC_STATUSES,
   EDITABLE_TEXT_FIELDS,
   initialEditValues,
   planUserDataEdit,
-  USER_DATA_EDIT_LOG_DESCRIPTION,
   UserDataEditValues,
 } from 'src/util/user-data-edit.util';
 import { STAFF_NAME_MISSING, staffNameLoadError } from './staff-identity';
 
+// The API answers 404 while USER_DATA_OPERATOR_MUTATION_API_ENABLED is off.
+const OPERATOR_MUTATION_DISABLED = 'Editing personal data is not enabled on this environment yet.';
+
 interface Props {
   userDataId: number;
   userData: UserDataDetail;
-  onSaved: (warning?: string) => void;
+  onSaved: () => void;
   onCancel: () => void;
 }
 
@@ -64,6 +65,12 @@ export function UserDataEditForm({ userDataId, userData, onSaved, onCancel }: Re
   );
 }
 
+function saveErrorMessage(e: unknown): string {
+  const apiError = e as Partial<ApiError> | null | undefined;
+  if (apiError?.statusCode === 404) return OPERATOR_MUTATION_DISABLED;
+  return e instanceof Error ? e.message : 'Failed to save the customer data';
+}
+
 function UserDataEditFields({
   userDataId,
   userData,
@@ -71,7 +78,7 @@ function UserDataEditFields({
   onSaved,
   onCancel,
 }: Readonly<FieldsProps>): JSX.Element {
-  const { updateUserData, createKycLog } = useCompliance();
+  const { mutateUserData } = useUserDataOperatorMutation();
   const { name: clerk, isLoading: isLoadingClerk, error: clerkError } = useStaffVerifiedName();
 
   // Captured once, with the countries already loaded: the initial values must not drift apart from
@@ -100,7 +107,7 @@ function UserDataEditFields({
     setError(undefined);
   }, [userDataId]);
 
-  const plan = useMemo(() => planUserDataEdit(initial, values, countries), [initial, values, countries]);
+  const plan = useMemo(() => planUserDataEdit(initial, values), [initial, values]);
   const hasChanges = Object.keys(plan.payload).length > 0;
   const hasErrors = plan.errors.length > 0;
   const hasReason = reason.trim().length > 0;
@@ -123,10 +130,9 @@ function UserDataEditFields({
     const comment = reason.trim();
 
     try {
-      await updateUserData(requestedId, editPlan.payload);
+      await mutateUserData(requestedId, editPlan.payload, comment);
     } catch (e: unknown) {
-      if (mountedRef.current && userDataIdRef.current === requestedId)
-        setError(e instanceof Error ? e.message : 'Failed to save the customer data');
+      if (mountedRef.current && userDataIdRef.current === requestedId) setError(saveErrorMessage(e));
       if (userDataIdRef.current === requestedId) {
         savingRef.current = false;
         if (mountedRef.current) setSaving(false);
@@ -134,31 +140,7 @@ function UserDataEditFields({
       return;
     }
 
-    // The data change is already in. A failing log is handed back as a warning but must not keep the
-    // reload from showing the change that did happen.
-    let warning: string | undefined;
-    try {
-      await createKycLog(
-        requestedId,
-        buildKycLogMessage({
-          description: USER_DATA_EDIT_LOG_DESCRIPTION,
-          clerk,
-          results: editPlan.results,
-          comment,
-        }),
-      );
-    } catch (e: unknown) {
-      warning = `Saved, but the KYC log entry failed: ${e instanceof Error ? e.message : String(e)}`;
-    }
-
-    if (mountedRef.current && userDataIdRef.current === requestedId) {
-      if (warning === undefined) onSaved();
-      else onSaved(warning);
-    } else if (warning !== undefined) {
-      // The form that started the save is gone or now shows another customer: the unlogged change must
-      // still be seen, so it goes to the store the panel reads.
-      reportFailedEditLog(requestedId, warning);
-    }
+    if (mountedRef.current && userDataIdRef.current === requestedId) onSaved();
     if (userDataIdRef.current === requestedId) {
       savingRef.current = false;
       if (mountedRef.current) setSaving(false);
