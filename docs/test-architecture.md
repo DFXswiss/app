@@ -242,6 +242,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   also intercepts `PUT /v1/userData/1005/onboardingFee` and answers HTTP 400 with
   `Address is blocked or deleted`. A green run proves how the form renders those values, not that the
   account has that address, that the API resolves that clerk, or that it rejects a real address.
+- **The personal-data edit visual answers the save itself.** `e2e/compliance.spec.ts`
+  (`compliance-user-20`) intercepts `PUT /v1/userData/1005/operatorMutation` and answers HTTP 404, as
+  the API does while `USER_DATA_OPERATOR_MUTATION_API_ENABLED` is off. A green run proves how the form
+  renders that state, not that the flag is off in any environment.
 - **The transaction-search test writes the customer's verified name itself.**
   `e2e-stack/specs/compliance.spec.ts` (`/compliance search by transaction id …`) sets
   `user_data.verifiedName` by SQL before the search, because no identification runs in the stack. A green

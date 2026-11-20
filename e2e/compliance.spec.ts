@@ -227,7 +227,7 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
         .getByText('Personal Data', { exact: true })
         .evaluate((element) => element.scrollIntoView({ block: 'start' }));
 
-      await expect(page).toHaveScreenshot('compliance-user-16-edit-personal-data.png', {
+      await expect(page).toHaveScreenshot('compliance-user-18-edit-personal-data.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });
@@ -244,7 +244,41 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await expect(mailError).toBeVisible();
       await mailError.evaluate((element) => element.scrollIntoView({ block: 'center' }));
 
-      await expect(page).toHaveScreenshot('compliance-user-17-edit-personal-data-invalid.png', {
+      await expect(page).toHaveScreenshot('compliance-user-19-edit-personal-data-invalid.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows that saving personal data is not enabled', async ({ page }) => {
+      await page.route(`**/v1/userData/${TEST_USER_DATA_ID}/operatorMutation`, async (route) => {
+        if (route.request().method() === 'PUT') {
+          await route.fulfill({
+            status: 404,
+            contentType: 'application/json',
+            body: JSON.stringify({ statusCode: 404, message: 'Not Found' }),
+          });
+          return;
+        }
+        await route.fallback();
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+      await page.getByLabel('phone', { exact: true }).fill('+41791234568');
+      await page.getByLabel('Reason', { exact: true }).fill('Customer called to correct the phone number');
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+      const notEnabled = page.getByText('Editing personal data is not enabled on this environment yet.', {
+        exact: false,
+      });
+      await expect(notEnabled).toBeVisible();
+      await notEnabled.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+
+      await expect(page).toHaveScreenshot('compliance-user-20-edit-personal-data-not-enabled.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });
