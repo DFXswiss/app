@@ -18,6 +18,12 @@ const mockOnboardingFeeProps: {
   users?: unknown[];
   onChanged?: () => void;
 } = {};
+const mockEditFormProps: {
+  userDataId?: number;
+  userData?: UserDataDetail;
+  onSaved?: () => void;
+  onCancel?: () => void;
+} = {};
 
 jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => ({ session: mockSession }),
@@ -97,6 +103,22 @@ jest.mock('src/components/compliance/onboarding-fee-editor', () => ({
   },
 }));
 
+jest.mock('src/components/compliance/user-data-edit-form', () => ({
+  UserDataEditForm: (props: typeof mockEditFormProps) => {
+    Object.assign(mockEditFormProps, props);
+    return (
+      <div data-testid="user-data-edit-form">
+        <button type="button" onClick={() => props.onSaved?.()}>
+          saved edit
+        </button>
+        <button type="button" onClick={() => props.onCancel?.()}>
+          cancel edit
+        </button>
+      </div>
+    );
+  },
+}));
+
 jest.mock('src/hooks/clipboard.hook', () => ({
   useClipboard: () => ({ copy: mockCopy, isCopying: mockIsCopying }),
 }));
@@ -120,7 +142,6 @@ function detail(overrides: Partial<UserDataDetail> = {}): UserDataDetail {
     id: 88001,
     created: '2025-07-01T21:20:33.000Z',
     status: 'Deactivated',
-    riskStatus: 'NA',
     kycStatus: 'Completed',
     kycLevel: 50,
     depositLimit: 100000,
@@ -157,6 +178,7 @@ describe('UserDataPanel', () => {
     Object.keys(mockOnboardingFeeProps).forEach(
       (key) => delete mockOnboardingFeeProps[key as keyof typeof mockOnboardingFeeProps],
     );
+    Object.keys(mockEditFormProps).forEach((key) => delete mockEditFormProps[key as keyof typeof mockEditFormProps]);
     delete process.env.REACT_APP_PUBLIC_URL;
   });
 
@@ -444,6 +466,125 @@ describe('UserDataPanel', () => {
       mockSession = { role: 'Compliance' };
       rerender(<UserDataPanel userData={detail()} />);
       expect(screen.queryByRole('button', { name: 'Reactivate' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('personal data edit', () => {
+    it('offers the edit entry point to Admin', () => {
+      mockSession = { role: 'Admin' };
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.getByRole('button', { name: 'Edit personal data' })).toBeInTheDocument();
+    });
+
+    it.each(['Support', 'Compliance'])('hides the entry point from %s, whose PUT the API refuses', (role) => {
+      mockSession = { role };
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByRole('button', { name: 'Edit personal data' })).not.toBeInTheDocument();
+    });
+
+    it('hides the entry point without a reload handler, a permitted role, the current row or an account id', () => {
+      mockSession = { role: 'Admin' };
+      const { rerender } = render(<UserDataPanel userData={detail()} userDataId={88001} />);
+      expect(screen.queryByRole('button', { name: 'Edit personal data' })).not.toBeInTheDocument();
+
+      mockSession = undefined;
+      rerender(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+      expect(screen.queryByRole('button', { name: 'Edit personal data' })).not.toBeInTheDocument();
+
+      mockSession = { role: 'User' };
+      rerender(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+      expect(screen.queryByRole('button', { name: 'Edit personal data' })).not.toBeInTheDocument();
+
+      mockSession = { role: 'Admin' };
+      rerender(
+        <UserDataPanel userData={detail({ id: 88002 })} userDataId={88001} onAccountAccessChanged={jest.fn()} />,
+      );
+      expect(screen.queryByRole('button', { name: 'Edit personal data' })).not.toBeInTheDocument();
+
+      rerender(<UserDataPanel userData={detail()} onAccountAccessChanged={jest.fn()} />);
+      expect(screen.queryByRole('button', { name: 'Edit personal data' })).not.toBeInTheDocument();
+    });
+
+    it('opens the form for the current account and closes it on cancel', () => {
+      const onAccountAccessChanged = jest.fn();
+      mockSession = { role: 'Admin' };
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={onAccountAccessChanged} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Edit personal data' }));
+
+      expect(screen.getByTestId('user-data-edit-form')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Edit personal data' })).not.toBeInTheDocument();
+      expect(mockEditFormProps).toMatchObject({
+        userDataId: 88001,
+        userData: expect.objectContaining({ id: 88001 }),
+        onSaved: expect.any(Function),
+        onCancel: expect.any(Function),
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'cancel edit' }));
+
+      expect(screen.queryByTestId('user-data-edit-form')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Edit personal data' })).toBeInTheDocument();
+      expect(onAccountAccessChanged).not.toHaveBeenCalled();
+    });
+
+    it('closes the form and reloads the account after a clean save', () => {
+      const onAccountAccessChanged = jest.fn();
+      mockSession = { role: 'Admin' };
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={onAccountAccessChanged} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Edit personal data' }));
+
+      fireEvent.click(screen.getByRole('button', { name: 'saved edit' }));
+
+      expect(screen.queryByTestId('user-data-edit-form')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Edit personal data' })).toBeInTheDocument();
+      expect(onAccountAccessChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes the form when the account id changes', () => {
+      mockSession = { role: 'Admin' };
+      const onAccountAccessChanged = jest.fn();
+      const { rerender } = render(
+        <UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={onAccountAccessChanged} />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Edit personal data' }));
+      expect(screen.getByTestId('user-data-edit-form')).toBeInTheDocument();
+
+      rerender(
+        <UserDataPanel
+          userData={detail({ id: 88002 })}
+          userDataId={88002}
+          onAccountAccessChanged={onAccountAccessChanged}
+        />,
+      );
+
+      expect(screen.queryByTestId('user-data-edit-form')).not.toBeInTheDocument();
+    });
+
+    it('does not reopen the form when returning to an account', () => {
+      mockSession = { role: 'Admin' };
+      const onAccountAccessChanged = jest.fn();
+      const { rerender } = render(
+        <UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={onAccountAccessChanged} />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Edit personal data' }));
+      expect(screen.getByTestId('user-data-edit-form')).toBeInTheDocument();
+
+      rerender(
+        <UserDataPanel
+          userData={detail({ id: 88002 })}
+          userDataId={88002}
+          onAccountAccessChanged={onAccountAccessChanged}
+        />,
+      );
+      expect(screen.queryByTestId('user-data-edit-form')).not.toBeInTheDocument();
+
+      rerender(
+        <UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={onAccountAccessChanged} />,
+      );
+      expect(screen.queryByTestId('user-data-edit-form')).not.toBeInTheDocument();
     });
   });
 });
