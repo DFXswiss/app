@@ -34,17 +34,17 @@ import { FeatureFlags } from 'src/config/feature-flags';
 import { setupLanguages } from 'src/translations';
 
 const SLIM = {
-  en: 'Selling is temporarily unavailable. Do not send funds to deposit addresses you received from DFX before 18 November 2026.',
-  de: 'Verkaufen ist vorübergehend nicht möglich. Senden Sie keine Gelder an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben.',
-  fr: "La vente est temporairement indisponible. N'envoyez pas de fonds aux adresses de dépôt que vous avez reçues de DFX avant le 18 novembre 2026.",
-  it: 'La vendita è temporaneamente non disponibile. Non inviare fondi agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026.',
+  en: 'Due to a security incident affecting DFX deposit addresses, selling is temporarily unavailable. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.',
+  de: 'Wegen eines Sicherheitsvorfalls, der DFX-Einzahlungsadressen betrifft, ist Verkaufen vorübergehend nicht möglich. Senden Sie keine Crypto Tokens an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben. Käufe sind möglich. Banküberweisungen für Käufe dürfen jederzeit gesendet werden. Kundendaten und Kundengelder sind nicht betroffen. Alle Kundendaten und Kundengelder sind sicher und werden schnellstmöglich verarbeitet.',
+  fr: "En raison d'un incident de sécurité concernant les adresses de dépôt DFX, la vente est temporairement indisponible. N'envoyez pas de tokens crypto aux adresses de dépôt que vous avez reçues de DFX avant le 18 novembre 2026. Les achats sont possibles. Les virements bancaires pour les achats peuvent être envoyés à tout moment. Les données et les fonds des clients ne sont pas concernés. Toutes les données et tous les fonds des clients sont en sécurité et seront traités dans les meilleurs délais.",
+  it: 'A causa di un incidente di sicurezza che riguarda gli indirizzi di deposito DFX, la vendita è temporaneamente non disponibile. Non inviare token crypto agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026. Gli acquisti sono possibili. I bonifici bancari per gli acquisti possono essere inviati in qualsiasi momento. I dati e i fondi dei clienti non sono interessati. Tutti i dati e i fondi dei clienti sono al sicuro e verranno elaborati il prima possibile.',
 };
 
 const PROMINENT = {
-  en: 'Selling and swapping are temporarily unavailable. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.',
-  de: 'Verkaufen und Tauschen sind vorübergehend nicht möglich. Senden Sie keine Gelder an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben — diese Adressen dürfen nicht mehr verwendet werden.',
-  fr: "La vente et l'échange sont temporairement indisponibles. N'envoyez pas de fonds à une adresse de dépôt que vous avez reçue de DFX avant le 18 novembre 2026 — ces adresses ne doivent plus être utilisées.",
-  it: 'La vendita e lo scambio sono temporaneamente non disponibili. Non inviare fondi a nessun indirizzo di deposito ricevuto da DFX prima del 18 novembre 2026 — questi indirizzi non devono più essere utilizzati.',
+  en: 'Due to a security incident affecting DFX deposit addresses, selling and swapping are temporarily unavailable. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.',
+  de: 'Wegen eines Sicherheitsvorfalls, der DFX-Einzahlungsadressen betrifft, sind Verkaufen und Tauschen vorübergehend nicht möglich. Senden Sie keine Crypto Tokens an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben — diese Adressen dürfen nicht mehr verwendet werden. Käufe sind möglich. Banküberweisungen für Käufe dürfen jederzeit gesendet werden. Kundendaten und Kundengelder sind nicht betroffen. Alle Kundendaten und Kundengelder sind sicher und werden schnellstmöglich verarbeitet.',
+  fr: "En raison d'un incident de sécurité concernant les adresses de dépôt DFX, la vente et l'échange sont temporairement indisponibles. N'envoyez pas de tokens crypto à une adresse de dépôt que vous avez reçue de DFX avant le 18 novembre 2026 — ces adresses ne doivent plus être utilisées. Les achats sont possibles. Les virements bancaires pour les achats peuvent être envoyés à tout moment. Les données et les fonds des clients ne sont pas concernés. Toutes les données et tous les fonds des clients sont en sécurité et seront traités dans les meilleurs délais.",
+  it: 'A causa di un incidente di sicurezza che riguarda gli indirizzi di deposito DFX, la vendita e lo scambio sono temporaneamente non disponibili. Non inviare token crypto a nessun indirizzo di deposito ricevuto da DFX prima del 18 novembre 2026 — questi indirizzi non devono più essere utilizzati. Gli acquisti sono possibili. I bonifici bancari per gli acquisti possono essere inviati in qualsiasi momento. I dati e i fondi dei clienti non sono interessati. Tutti i dati e i fondi dei clienti sono al sicuro e verranno elaborati il prima possibile.',
 };
 
 const BUY = {
@@ -52,6 +52,14 @@ const BUY = {
   de: 'Kaufen ist ganz normal möglich, befolgen Sie einfach die Angaben unten.',
   fr: "L'achat fonctionne normalement, suivez simplement les indications ci-dessous.",
   it: "L'acquisto funziona normalmente, segui semplicemente le indicazioni qui sotto.",
+};
+
+// Appended to every notice: questions go to the support tickets, never to an email address.
+const HINT = {
+  en: ' Questions: Open a support ticket',
+  de: ' Fragen: Support-Ticket erstellen',
+  fr: ' Questions : Ouvrir un ticket de support',
+  it: ' Domande: Apri un ticket di supporto',
 };
 
 const LANGUAGES = ['en', 'de', 'fr', 'it'] as const;
@@ -120,7 +128,7 @@ describe('ServiceNoticeBanner', () => {
     expect(banner).toHaveAttribute('role', 'note');
     expect(screen.getByTestId('info-text')).toHaveAttribute('data-icon-color', 'DARK_GRAY');
     expect(screen.getByTestId('info-text')).toHaveAttribute('data-text-size', 'XS');
-    expect(banner.textContent).toBe(`${SLIM.en} ${BUY.en}`);
+    expect(banner.textContent).toBe(`${SLIM.en} ${BUY.en}${HINT.en}`);
   });
 
   it.each(['/sell', '/sell/', '/swap', '/swap/'])('shows the prominent notice on %s', (path) => {
@@ -143,15 +151,17 @@ describe('ServiceNoticeBanner', () => {
     await i18n.changeLanguage(language);
 
     const { unmount } = renderAt('/');
-    expect(screen.getByTestId('service-notice-banner').textContent).toBe(SLIM[language]);
+    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${SLIM[language]}${HINT[language]}`);
     unmount();
 
     const buy = renderAt('/buy');
-    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${SLIM[language]} ${BUY[language]}`);
+    expect(screen.getByTestId('service-notice-banner').textContent).toBe(
+      `${SLIM[language]} ${BUY[language]}${HINT[language]}`,
+    );
     buy.unmount();
 
     renderAt('/sell');
-    expect(screen.getByTestId('service-notice-banner')).toHaveTextContent(PROMINENT[language]);
+    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${PROMINENT[language]}${HINT[language]}`);
   });
 
   it.each(['/', '/buy', '/swap'])('uses Swiss spelling and the formal Sie in German on %s', async (path) => {
@@ -161,4 +171,17 @@ describe('ServiceNoticeBanner', () => {
     expect(text).not.toContain('ß');
     expect(text).not.toMatch(/\b(Du|Dein|Deine|Dir|Dich|Sende|hast)\b/i);
   });
+
+  it.each(['/', '/buy', '/sell', '/swap'])(
+    'links questions to the support tickets and names no email address on %s',
+    (path) => {
+      renderAt(path);
+
+      const banner = screen.getByTestId('service-notice-banner');
+      const link = screen.getByRole('link', { name: 'Open a support ticket' });
+      expect(banner).toContainElement(link);
+      expect(link).toHaveAttribute('href', '/support/tickets');
+      expect(banner.textContent).not.toContain('@');
+    },
+  );
 });

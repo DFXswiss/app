@@ -1,5 +1,5 @@
 import { IconColor, StyledInfoText, StyledInfoTextSize } from '@dfx.swiss/react-components';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { FeatureFlags } from '../config/feature-flags';
 import { useSettingsContext } from '../contexts/settings.context';
 
@@ -7,6 +7,21 @@ import { useSettingsContext } from '../contexts/settings.context';
 const PROMINENT_PATHS = /^\/(sell|swap)\/?$/;
 // The buy page shows its payment details below the notice, so the slim notice there adds that buying still works.
 const BUY_PATH = /^\/buy\/?$/;
+
+// Questions about the notice go to the support tickets, never to an email address.
+function SupportTicketHint(): JSX.Element {
+  const { translate } = useSettingsContext();
+
+  return (
+    <>
+      {' '}
+      {translate('components/service-notice', 'Questions:')}{' '}
+      <Link to="/support/tickets" className="underline">
+        {translate('components/service-notice', 'Open a support ticket')}
+      </Link>
+    </>
+  );
+}
 
 // Service notice shown on every page while FeatureFlags.serviceNotice is on. It cannot be
 // dismissed, so it is back after every reload.
@@ -26,8 +41,9 @@ export function ServiceNoticeBanner(): JSX.Element | null {
       <StyledInfoText iconColor={IconColor.RED}>
         {translate(
           'components/service-notice',
-          'Selling and swapping are temporarily unavailable. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.',
+          'Due to a security incident affecting DFX deposit addresses, selling and swapping are temporarily unavailable. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.',
         )}
+        <SupportTicketHint />
       </StyledInfoText>
     </div>
   ) : (
@@ -40,10 +56,11 @@ export function ServiceNoticeBanner(): JSX.Element | null {
       <StyledInfoText iconColor={IconColor.DARK_GRAY} textSize={StyledInfoTextSize.XS}>
         {translate(
           'components/service-notice',
-          'Selling is temporarily unavailable. Do not send funds to deposit addresses you received from DFX before 18 November 2026.',
+          'Due to a security incident affecting DFX deposit addresses, selling is temporarily unavailable. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.',
         )}
         {BUY_PATH.test(pathname) &&
           ` ${translate('components/service-notice', 'Buying works as usual; just follow the details below.')}`}
+        <SupportTicketHint />
       </StyledInfoText>
     </div>
   );

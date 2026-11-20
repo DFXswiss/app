@@ -185,7 +185,7 @@ describe('missing asset function', () => {
 // unnoticed addition would run the Function's content check against a path public/_headers never
 // justified for it, so both directions have to fail this test, not only a removal.
 describe('public/_routes.json include list', () => {
-  it('content-checks exactly /static/*, /widget/*, /favicon.ico, /logo.png, /robots.txt, /manifest.json, /asset-manifest.json, /version.json and /outage-notice.js, and excludes nothing', () => {
+  it('content-checks exactly /static/*, /widget/*, /favicon.ico, /logo.png, /robots.txt, /manifest.json, /asset-manifest.json and /version.json, and excludes nothing', () => {
     const expectedInclude = [
       '/static/*',
       '/widget/*',
@@ -195,7 +195,6 @@ describe('public/_routes.json include list', () => {
       '/manifest.json',
       '/asset-manifest.json',
       '/version.json',
-      '/outage-notice.js',
     ];
 
     expect([...routes.include].sort()).toEqual([...expectedInclude].sort());
