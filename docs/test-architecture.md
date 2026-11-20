@@ -10,12 +10,18 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 ## The layers this repository owns
 
-| Layer              | Location                        | What it proves                                                               | What it cannot prove                                                                 | Runs in CI                                                                                       |
-| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                                      | drafts run (forks may wait as `action_required`); suite full / related / none                    |
-| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query                         | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                |
-| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job except Scorechain is off during the run | drafts run (job `mode=none` without `ci:full`); stack only with `ci:full` / main / bare dispatch |
-| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                                             | no                                                                                               |
+| Layer               | Location                                                     | What it proves                                                                                                                                  | What it cannot prove                                                                        | Runs in CI                                                                                                                                                                       |
+| ------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit                | `src/`                                                       | the logic of a component, hook or utility, with its surroundings replaced                                                                       | that any two parts fit together                                                             | drafts run (forks may wait as `action_required`); suite full / related / none                                                                                                    |
+| Handbook deep-link  | `scripts/handbook/deep-link.js`                              | `?shot=` / `?group=` / hash isolate one handbook card in a fake document                                                                        | the browser after Basic Auth, or that nginx serves the query                                | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                                                                                                |
+| Pairing coordinator | `.github/e2e-pairing/` (`*.test.mjs`, `test_review_gate.py`) | pair resolution, review-gate handling, status attestation and fail-closed invalidation of the paired E2E coordinator, against a fake GitHub API | real GitHub permissions, App installation, runner behaviour, or the shared stack run itself | `pr.yml` on every pull request: `node --test` with 100 % lines/branches/functions for `.github/e2e-pairing/*.mjs`, and `coverage` with 100 % lines/branches for `review-gate.py` |
+| Full-stack E2E      | `e2e-stack/`                                                 | the seam between frontend, API and database: screens, contracts, persistence                                                                    | any money movement — every process-gated job except Scorechain is off during the run        | drafts run (mode=none without ci:full and without a pair); paired: local mode=paired-attested, stack once in the coordinator; else ci:full / main / bare dispatch                |
+| Visual regression   | `e2e/`                                                       | appearance against committed screenshot baselines                                                                                               | function                                                                                    | no                                                                                                                                                                               |
+
+A develop app/backend pull request that declares a pair runs the same stack once in the trusted
+coordinator instead of starting it in either repository's local job; a release pull request into
+`main` always runs the full stack. See
+[Paired app and backend pull requests](#paired-app-and-backend-pull-requests).
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
 payout, ledger booking — is **not** testable from this repository. It belongs to the integration
@@ -38,12 +44,21 @@ Measured on `develop` at `4e9544a9`, 2026-08-10, Node 20, with
 950 tests passing across 81 suites, 353 files instrumented.
 
 Read that number together with the coverage rule in `CONTRIBUTING.md`, section
-"Coverage": every file a pull request touches must reach 100 % on
-all four metrics, and CI does not enforce it. The rule is still mandatory: reviewers reject a pull
-request that leaves a touched file below 100 %, and no deviation from it can be declared or granted
-(`CONTRIBUTING.md`, section "Complete test coverage is mandatory"). With the repository at 18 %, that
-means touching a long-neglected file makes its whole coverage your obligation. Plan for it rather
-than discovering it in review.
+"Coverage": every file a pull request touches must reach 100 % on all four
+metrics. CI enforces 100 % lines, branches and functions for the pairing Node
+suite and lines and branches for the review-gate Python suite, but not for Jest.
+The rule is still mandatory: reviewers reject a pull request that leaves a
+touched file below 100 %, and no deviation from it can be declared or granted
+(`CONTRIBUTING.md`, section "Complete test coverage is mandatory"). With the
+repository at 18 %, that means touching a long-neglected file makes its whole
+coverage your obligation. Plan for it rather than discovering it in review.
+
+### Pairing coordinator — `.github/e2e-pairing/`
+
+Pairing coordinator, measured on this branch at `8fa1ca64`, 2026-11-16, Node 24.20.0: 229 Node tests
+passing, 100 % lines, branches and functions for `cli.mjs`, `github.mjs` and `pairing.mjs`; 13 Python
+review-gate tests passing, 100 % lines (99 statements) and branches (32) for `review-gate.py`, with only
+the `__main__` entry line excluded.
 
 ### Handbook deep-link — `node --test scripts/handbook/deep-link.node-test.cjs`
 
@@ -82,13 +97,97 @@ claimed route the browser never opened. That flag is declared by the run, not me
 only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
 no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
 whatever the caller's environment holds — and the CI workflow sets it when it brings the stack up (full run).
-Develop PRs without `ci:full` never set it; `ci:full`, PRs into `main`, and a bare `workflow_dispatch`
-(empty `base_ref`) force that full invocation.
+A local develop PR without `ci:full` and without a pair never sets it; `ci:full`, PRs into `main`, and
+a bare `workflow_dispatch` (empty `base_ref`) force that full invocation. A paired run sets it in the
+trusted coordinator, which executes both exact pull-request heads once.
 Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
 there.
 
 That gate is the pattern the reality declaration follows: **measure the run, do not trust the
 declaration.** Anything its parser cannot resolve is a hard failure rather than a silent omission.
+
+### Paired app and backend pull requests
+
+The trusted coordinator
+[`.github/workflows/e2e-paired.yml`](../.github/workflows/e2e-paired.yml) pairs
+one app PR with one backend PR through `e2e-companion.json`. Both files must be
+active in their own pull request's diff, name each other, and both pull requests
+must target `develop`. A row is active for `added`, `modified`, `renamed`,
+`copied`, and `changed`; `removed` and `unchanged` are inactive. Every open side's exact head must carry its own
+repository's complete A38 review state, including a first-review comment that
+names that exact head, before any paired code runs. Each side is checked with
+its repository's own pinned A38 checkout and its guard identity from
+`.github/e2e-pairing/guard-identities.json`.
+
+Resolution and publication are privileged jobs that use a dedicated GitHub App
+installed on both repositories. Execution is a separate job on an ephemeral
+GitHub-hosted `ubuntu-latest` runner with only `contents: read`; it receives no
+App token, checks out both exact heads, verifies each unmerged head against
+`refs/pull/<n>/head`, and uses the backend deploy key in only the single fetch
+step that removes it before any pull-request-controlled file executes. Before
+the shared run, the App posts `pending` on every open head with a description
+naming both full heads and the run:
+`pair app#<A>@<app head> backend#<B>@<backend head> running <run id>`. Each
+head must be exactly 40 lowercase hex characters, so a 7-character prefix never
+matches. The attestation replaces `running` with `run`; the full description
+stays under GitHub's 140-character limit. It posts
+`Full-stack E2E (paired)` on every open head of the pair. The app-side
+`verify-attestation` runs in the app's `pull_request` workflow without a token
+for the private backend repository. It binds the exact app head, the app pull
+request, the backend pull request number, and the newest App status on that app
+head; it cannot read the backend head. The backend side
+(DFXswiss/backend#6154, `scripts/e2e-pairing` `verify-attestation`) binds both
+exact heads. When the backend head moves, the backend notifier dispatches to
+the coordinator, which re-resolves and replaces the App status on the app head
+(`pending` or `failure`), so the app-side check then fails. A `pending` running
+marker is not an attestation. The coordinator polls that local run every 30
+seconds for at most 60 minutes after posting the result, then reruns its
+`Full-stack E2E` job once the run has completed. After the deadline it warns
+without replacing the posted status. It never falls back to an older success
+and never matches by wildcard, so it verifies one shared run rather than
+starting a second stack. A develop pull request that declares a pair takes
+precedence over `ci:full`: the local stack scope checks the pair first and
+records `mode=paired-attested`.
+
+A push to either side posts `pending`, reruns the local required jobs, and
+invalidates the old result. Review comments do not cancel a running shared run.
+A backend `repository_dispatch` takes the same invalidation path: its `before`
+head is a hint used to find the previous companion at that SHA. The coordinator
+cancels a run only after the re-resolved heads prove that a head of the pair
+moved. Merge order is free for merges into `develop`: a merged companion
+resolves through its immutable merge commit, and the remaining open side is
+then re-resolved, re-reviewed and re-attested. A companion closed without
+merge or merged into `main` or any other base posts `failure` on the open
+companion. If both sides are merged, nothing is run. A green paired run
+proves that the exact app and backend heads started together against a real
+Postgres database and passed the full suite, including the route gate. It
+does not prove external-provider behavior, money movement, the migration
+chain, or that the pull requests will merge without conflicts.
+The coordinator also reconciles every open paired pull request in both
+repositories every 30 minutes, on any base, and repairs divergent and stale
+pending statuses. It catches a retarget away from `develop` and any lost
+notification. After an invalidation it also reruns the local required
+`Full-stack E2E` jobs, and it replaces a running marker whose shared run ended
+without a result with a terminal `failure`, then reruns those local jobs so a
+later trigger can start a new shared run.
+Reconcile leaves a stale review-gate pending only when every open head carries
+that marker; otherwise it posts `pending`, reruns the local jobs of the open
+sides, and publishes the gate result. A close-path inspection error and an
+internal review-gate error are failures, never review-pending verdicts. The
+resolve job sets up Node 24 before any CLI step, and a final cleanup step fails
+closed after an earlier failure before the CLI runs.
+
+Administrators install the pairing GitHub App on both repositories with commit
+status read/write, Actions read/write, Contents read/write, Pull requests read,
+Issues read, and Metadata read. Both repositories set `E2E_PAIR_APP_CLIENT_ID`
+and `E2E_PAIR_APP_SLUG` as variables. The private key is **not** a repository
+secret: in `DFXswiss/app`, create the GitHub Actions environment `e2e-pairing`
+with a deployment-branch policy limited to `develop`, and store
+`E2E_PAIR_APP_PRIVATE_KEY` as an environment secret there. The `resolve` and
+`publish` jobs declare `environment: e2e-pairing`, so no pull-request workflow
+— including a same-repository pull request that edits a workflow — can read it.
+No `A38_GUARD_APP_SLUG` variable is used; the guard identity is the committed
+per-repository map.
 
 ## Reality declaration — hard requirement
 
@@ -137,6 +236,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   (`compliance-user-15`) intercepts `GET /v2/kyc/file/:uid?access=View` and answers HTTP 500 with a
   fixed message. A green run proves that the loaded dossier keeps rendering the file error in its
   preview area, not that the API rejects a real KYC-file request or returns that message.
+- **The onboarding-fee visuals answer the clerk lookup, the address list and the error themselves.**
+  `e2e/compliance.spec.ts` (`compliance-user-16` and `-17`) answer `GET /v1/support/issue/clerk` with
+  a fixed clerk name and, when the fetched dossier has no users, supply one synthetic address; `-17`
+  also intercepts `PUT /v1/userData/1005/onboardingFee` and answers HTTP 400 with
+  `Address is blocked or deleted`. A green run proves how the form renders those values, not that the
+  account has that address, that the API resolves that clerk, or that it rejects a real address.
 - **The transaction-search test writes the customer's verified name itself.**
   `e2e-stack/specs/compliance.spec.ts` (`/compliance search by transaction id …`) sets
   `user_data.verifiedName` by SQL before the search, because no identification runs in the stack. A green
@@ -392,6 +497,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `ManualReview` on a synthetic account at KYC level 0 whose `accountType` stays null. A green run
   does **not** prove how such a step reaches review; the customer KYC flow only offers `Statutes` to
   association accounts.
+- **The onboarding-fee full-stack cases write the ref, the fee setting and the starting status
+  themselves.** `e2e-stack/specs/compliance-cases.spec.ts` (`/compliance/user/:id sets and removes an
+onboarding fee …` and `… shows the blocked-address error …`) give the key-account user a `ref` and
+  write the `onboardingFeeUsedRef` setting row by SQL, restoring the setting afterwards, and set the
+  customer's status to `NA` or `Blocked` by SQL. A green run does not prove the production migration
+  that seeds the setting, how a key-account user gets its ref, or how a customer reaches that status.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
@@ -422,6 +533,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the header on `/support` and `/support/tickets`. It does not prove that the API
   returns that banner copy, that those bootstrap endpoints return real data, or
   that a live account has that ticket.
+- **The service-notice visual spec answers the bootstrap GETs and GET /v2/user itself.**
+  `e2e/service-notice-banner.spec.ts` fulfils `/v2/user` with a synthetic user and
+  fulfils the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`,
+  `/v1/bankAccount`, `/v1/country`, `/v1/setting/infoBanner`). Unmatched `/v1/**`
+  and `/v2/**` calls get `501`. The session is a synthetic unsigned JWT, so a green
+  run does not prove login or token verification. A green run proves the slim notice
+  renders on `/support`, the slim notice with the buy sentence renders on `/buy`, and the
+  prominent notice renders on `/sell` and `/swap`. It does not prove that those bootstrap
+  endpoints return real data or that the Buy, Sell and Swap forms work; the real test is the
+  service-notice test in `e2e-stack/specs/sell-swap.spec.ts`.
 - **The deleted-address visual spec answers GET /v2/user and PUT /v2/user/reactivate itself.**
   `e2e/deleted-address.spec.ts` fulfils `/v2/user` with a synthetic user whose active address
   has status `Deleted`, fulfils `PUT /v2/user/reactivate` with a synthetic 400 error, and
@@ -641,11 +762,6 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/connect-mail-redirect.test.tsx` stubs `useAuth`, session and wallet contexts, app-handling
   and `useNavigation`, and asserts the `redirectUri` passed into `signInWithMail`. A green run does not
   prove a real mail login, that the API accepts that `redirectUri`, or a real SDK session change.
-- **The connect-alby redirect unit test replaces the SDK session hooks, the Alby hook, the app contexts
-  and wallet login.** `src/__tests__/connect-alby-redirect.test.tsx` stubs session, user and wallet
-  contexts, `useAlby` and `window.location`, and asserts the Alby `redirect` query. A green run does not
-  prove a real Alby login, a real SDK session change, or the real interplay with the app router and
-  navigation.
 - **The KYC wallet-mismatch visual spec answers the user endpoint itself.**
   `e2e/kyc-wallet-mismatch.spec.ts` fulfils the user routes with a built user and the placeholder
   address `0x1111111111111111111111111111111111111111`, and does not call a live API. A green run
@@ -686,6 +802,119 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   sell form shows its normal exchange rate and payment information. A green run proves how the sell page renders
   the banner and its absence for those answers. It does not prove production auth, that the API answers
   `LikelyReturn` for a real address, or that the API returns that quote.
+- **The wallet rejection unit test answers for the wallets and their SDKs.**
+  `src/__tests__/connect-wallet-rejection.test.tsx` renders the real connect components, wallet hooks,
+  `ConnectBase` and `ConnectError` with the real web3 and viem (its mock installs Node's `TextEncoder` and
+  `TextDecoder` from `util` on the jsdom global, which has none), but replaces the injected EIP-1193 provider
+  with an object that rejects the way an injected wallet does, `@wagmi/core` with functions that throw the real
+  viem `UserRejectedRequestError` with a fixed connected account and one WalletConnect connector, the wagmi
+  config with a placeholder project id, and the Solana and Tron wallet adapters with objects that throw the real
+  adapter error classes. The wallet context, `@dfx.swiss/react` with its session contexts and copies of its
+  `AssetType` and `Blockchain` values, translation, styled controls, `SignHint` and the client-error reporter
+  are replaced as well; the app's web3 hook has a fixed chain mapping, the Solana and
+  Tron hooks are empty, `ethers.encodeBase58` returns a placeholder, device detection and the Tron wallet and
+  in-app detection are fixed, `global.fetch` rejects the WalletConnect wallet list, `console.warn` is silenced,
+  and web3's address checksum, which jsdom's `Uint8Array` breaks, returns the address unchanged. A green run
+  proves that a cancel shaped that way shows and reports nothing and goes back to the wallet selection, and that
+  other failures on the same paths are still shown and reported. It does not prove that a real wallet,
+  extension or app rejects with exactly that shape or code, that the real reporter sends the report, that the
+  wallet list loads, that a real WalletConnect connector or session is used, the chain mapping, the signature
+  encoding, the wallet and mobile detection, the SDK's enum values, that the checksum is computed, that viem
+  encodes and decodes with the browser's own `TextEncoder` and `TextDecoder` as it does with Node's, or that a
+  real login completes.
+- **The wallet cancel full-stack cases replace the wallet extensions with injected wallets.**
+  `e2e-stack/specs/fixtures/injected-wallet.ts` installs `window.ethereum` with `addInitScript`: an EIP-1193
+  object marked `isMetaMask` whose answers come from the test process through `page.exposeFunction`, which
+  rejects with a plain object (code 4001 with MetaMask's `data` for a cancel, code -32603 for a failure),
+  answers Ethereum (`0x1`) as the chain, fixed fee data (`eth_gasPrice`, `eth_maxPriorityFeePerGas`,
+  `eth_estimateGas`, `eth_getTransactionCount`, `eth_getBlockByNumber`) instead of a chain node, answers
+  `wallet_switchEthereumChain`, `wallet_addEthereumChain` and `eth_sendTransaction` as the test decides, and
+  signs the login message with the dedicated test wallet's key. `e2e-stack/specs/auth.spec.ts` uses it for three
+  MetaMask cases on `/login`, and installs in-page objects for Phantom (`window.phantom.solana`), Trust
+  (`window.trustwallet.solana` and `window.trustwallet.tronLink`) and TronLink (`window.tronLink`, older
+  protocol, and `window.tron`, newer protocol) that reject the connection with code 4001, or with another code
+  for the failure cases. `e2e-stack/specs/sell-swap.spec.ts` logs in through the injected MetaMask and lets it
+  reject the chain switch, the request to add an unknown chain (after code 4902 for the switch), or the
+  transaction of "Complete transaction in your wallet" on `/sell`. A green run proves, through the real
+  frontend, API and Postgres, that a cancelled connection in each of those wallets and a cancelled MetaMask
+  login signature return to the wallet selection with no error and no `POST /v1/log/clientError` or
+  `POST /v1/auth`, that a retry signs in and creates the user row, that a cancelled chain switch, add-chain request or
+  transaction keeps the user on the sell form without "Transaction failed", and that a failing wallet still
+  shows its error and is reported to the API. It does not prove that a real wallet extension or app rejects with
+  exactly those shapes and codes, or answers an unknown chain with 4902 before the add-chain request, that a
+  transaction reaches a chain, a signature or transaction cancel in the Solana and Tron wallets, the swap
+  screen, or WalletConnect, whose relay the harness network cannot reach.
+- **The wallet cancel visual spec answers the wallet and the API itself.** `e2e/wallet-cancel.spec.ts`
+  installs an in-page injected wallet and fulfils the bootstrap GETs; `POST /v1/log/clientError` is answered
+  with 201 and recorded. For the login page the wallet rejects the account request (code 4001 with data, and
+  code -32603). For the sell form it signs any message with a fixed signature, the sign message and the sign-in
+  are answered with a synthetic message and an unsigned JWT, the address check, the quote, the payment
+  information, the bank-account update and `GET /v2/user` are answered with synthetic data, and the wallet
+  accepts the chain switch, answers fixed fee data and rejects `eth_sendTransaction` (code 4001 with data, and
+  code -32603). Unmatched `/v1/**` and `/v2/**` calls get `501`. A green run proves how the login page renders
+  the cancelled connection (back at the wallet selection, no report) and the failed one ("Connection failed!"
+  with the wallet's message, one report), and how the sell form renders a cancelled transaction (form kept, no
+  error, no report) and a failed one ("Transaction failed"). It does not prove that a real wallet rejects that
+  way, production auth, that the API returns real bootstrap data or that quote, or that the real client-error
+  endpoint receives the report.
+- **The partner wallet-selection visual spec answers the bootstrap and the client-error report itself.**
+  `e2e/partner-wallet-selection.spec.ts` fulfils the bootstrap GETs `GET /v1/language` (German and
+  English), `GET /v1/fiat` (CHF), `GET /v1/asset` (one ETH coin), `GET /v1/bankAccount` and
+  `GET /v1/country` (empty lists), and `GET /v1/setting/infoBanner` (no banner); `POST /v1/log/clientError`
+  is answered with 201 and recorded. Any other `/v1/**` and every `/v2/**` call gets `501` instead of being
+  continued, and the app is opened with `lang=en` in the partner modes `bitcoinonly`, `kevinsoell` and
+  `lightning-wallets`. A green run proves how three screens render with those answers and no Alby tile: the
+  bitcoinonly sell wallet list, the kevinsoell sell hardware-wallet selection (reached through the Bitcoin
+  Lightning tile), and the `lightning-wallets` Bitcoin Lightning wallet list, each without "Oh, sorry,
+  something went wrong" and with no client-error report. It does not prove the API's real answers, a real
+  wallet connection, or anything beyond how these three screens render.
+- **The MetaMask rejection hook test replaces the injected provider.**
+  `src/hooks/wallets/__tests__/metamask-rejection.hook.test.ts` runs `useMetaMask` against the real web3 with
+  an in-memory EIP-1193 provider (and a legacy `sendAsync` provider) that answers or rejects each method, and
+  replaces web3's address checksum, which jsdom's `Uint8Array` breaks, the app's web3 hook with a fixed chain
+  mapping, device detection, and `@dfx.swiss/react` with copies of its `AssetType` and `Blockchain` values. A green run proves that web3 keeps the EIP-1193 code of a rejection that is not
+  an Error, while other failures keep the message web3 builds for them. It does not prove that a real wallet
+  rejects with that shape, the chain mapping, the SDK's enum values, that the checksum is computed, or that a transaction reaches a
+  chain.
+- **The MetaMask calls hook test replaces web3 and the injected provider.**
+  `src/hooks/wallets/__tests__/metamask-calls.hook.test.ts` runs `useMetaMask` against a hand-written web3
+  object, an in-memory `window.ethereum`, a replaced `timeout`, `window.location`, `navigator.userAgent` and
+  device detection, the app's web3 hook with a placeholder chain mapping, `@dfx.swiss/react` with copies of its
+  `AssetType` and `Blockchain` values, and a `setTimeout` that fires at once
+  so the two-minute status poll ends immediately. A green run proves which web3 and wallet calls the hook makes
+  and how it treats their answers. It does not prove that web3 or a real wallet behaves like those objects, the
+  chain mapping, the SDK's enum values, the real poll timing, the detection of a wallet app by its user agent, or that a page reload
+  happens.
+- **The Solana wallet hook test replaces the wallet adapters and the Solana hook.**
+  `src/hooks/wallets/__tests__/solana-wallets.hook.test.ts` runs `usePhantom` and `useTrustSol` against
+  hand-written Phantom and Trust adapter objects that answer or reject `connect`, `signMessage` and
+  `signTransaction`, a replaced `useSolana` (transaction building and broadcast), a replaced `delay`,
+  `ethers.encodeBase58` and
+  `@dfx.swiss/react` with a copy of its `AssetType` values. A green run proves how the hooks map the adapters'
+  results and errors, including the 4001 code kept as the adapter's `error`. It does not prove that the real
+  adapters or wallets answer with those shapes, that a message is signed, or that a transaction is built or
+  broadcast.
+- **The Tron wallet hook test replaces the wallet adapters and the Tron hook.**
+  `src/hooks/wallets/__tests__/tron-wallets.hook.test.ts` runs `useTronLinkTrx` and `useTrustTrx` against
+  hand-written TronLink and Trust adapter objects that answer or reject `connect`, `signMessage` and
+  `signTransaction`, replaced wallet and mobile detection, a replaced `useTron` (transaction building and
+  broadcast), a replaced `delay`, and `@dfx.swiss/react` with a copy of its `AssetType` values. A green run proves
+  how the hooks map the adapters' results and errors, including the adapters' connect message "The user rejected
+  connection." only on connect. It does not prove that the real adapters or wallets answer with those shapes or
+  that text, the detection of the extension or app, that a message is signed, or that a transaction is built or
+  broadcast.
+- **The WalletConnect hook test replaces the wagmi actions and the wallet list.**
+  `src/hooks/wallets/__tests__/wallet-connect.hook.test.ts` replaces `@wagmi/core`, the wagmi config, the
+  WalletConnect connector and its provider (whose `request` answers the chain switch as each test decides),
+  `global.fetch` for the WalletConnect wallet list, the app's web3 hook with a fixed chain-id mapping and device
+  detection, `@dfx.swiss/react` with copies of its `AssetType` and `Blockchain` values, silences `console.warn`,
+  and replaces `setTimeout` so the wait after a chain switch ends at once;
+  it keeps the real viem, whose mock installs Node's `TextEncoder` and `TextDecoder` from `util` on the jsdom
+  global, which has none. A green run proves which wagmi actions the hook calls and how it maps their results and
+  errors. It does not prove that a WalletConnect session is established, that the real connector's provider
+  forwards the switch to the wallet, that a wallet answers or rejects that way, that the wallet list API returns that JSON, the chain-id mapping, the SDK's enum values, the real wait after
+  a switch, or that viem encodes and decodes with the browser's own `TextEncoder` and `TextDecoder` as it does with
+  Node's.
 
 ## Known gaps
 

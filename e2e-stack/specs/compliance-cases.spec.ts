@@ -45,6 +45,50 @@ async function ensureStaffReady(userId: number, surname = 'Compliance'): Promise
   });
 }
 
+// The `onboardingFeeUsedRef` setting as it was before the first onboarding-fee test wrote it:
+// `undefined` = not captured yet, `null` = the row did not exist. Restored in afterAll.
+let previousOnboardingFeeRef: string | null | undefined;
+
+/**
+ * The onboarding-fee API reads `onboardingFeeUsedRef` to attribute the named address to the
+ * key-account manager. Create a customer, give it a ref, use that ref as the setting, and return it.
+ * A factory user has no ref (the API assigns one only on its own KYC path at level 50), so the ref is
+ * written here as starting state, in the API's `NNN-NNN` format and unused by any other user.
+ */
+async function seedOnboardingFeeRef(): Promise<string> {
+  const owner = await createUser({ tag: 'cmp-onboarding-ref-owner', kycLevel: 30, completePersonalData: true });
+  let ref: string | undefined;
+  for (let attempt = 0; attempt < 20 && !ref; attempt++) {
+    const candidate = `${String(Math.floor(Math.random() * 900) + 100)}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+    const taken = await queryOne<{ id: number }>(`SELECT id FROM "user" WHERE ref = $1`, [candidate]);
+    if (!taken) ref = candidate;
+  }
+  if (!ref) throw new Error('seedOnboardingFeeRef: no free ref found');
+  await queryRows(`UPDATE "user" SET ref = $1 WHERE id = $2`, [ref, owner.userId]);
+
+  if (previousOnboardingFeeRef === undefined) {
+    const row = await queryOne<{ value: string }>(`SELECT value FROM setting WHERE key = 'onboardingFeeUsedRef'`);
+    previousOnboardingFeeRef = row?.value ?? null;
+  }
+  await queryRows(
+    `INSERT INTO setting (key, value) VALUES ('onboardingFeeUsedRef', $1)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [ref],
+  );
+  return ref;
+}
+
+/** Put the `onboardingFeeUsedRef` setting back to its value before this file's tests. */
+async function restoreOnboardingFeeRef(): Promise<void> {
+  if (previousOnboardingFeeRef === undefined) return;
+  if (previousOnboardingFeeRef === null) {
+    await queryRows(`DELETE FROM setting WHERE key = 'onboardingFeeUsedRef'`);
+  } else {
+    await queryRows(`UPDATE setting SET value = $1 WHERE key = 'onboardingFeeUsedRef'`, [previousOnboardingFeeRef]);
+  }
+  previousOnboardingFeeRef = undefined;
+}
+
 /**
  * Open a StyledDropdown by its field label, then pick an option by visible label text.
  *
@@ -84,7 +128,12 @@ function styledInput(page: Page, fieldLabel: string): Locator {
 
 test.describe('Compliance area (cases)', () => {
   test.afterAll(async () => {
-    await cleanupCreatedData();
+    // Before the cleanup deletes the ref owner the setting points at.
+    try {
+      await restoreOnboardingFeeRef();
+    } finally {
+      await cleanupCreatedData();
+    }
   });
 
   // -------------------------------------------------------------------------
@@ -596,5 +645,195 @@ test.describe('Compliance area (cases)', () => {
       20000,
     );
     expect(ud.phoneCallStatus).toBe('Completed');
+  });
+
+  // -------------------------------------------------------------------------
+  // /compliance/user/:id — onboarding fee (Admin) via UI + DB proof
+  // -------------------------------------------------------------------------
+
+  test('/compliance/user/:id sets and removes an onboarding fee and attributes the address', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffReady(userId);
+
+    const ref = await seedOnboardingFeeRef();
+
+    const customer = await createUser({
+      tag: 'cmp-onboarding-fee',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    // Starting state the API transitions from: an NA account with an NA user.
+    await queryRows(`UPDATE "user" SET status = 'NA' WHERE id = $1`, [customer.userId]);
+    await queryRows(`UPDATE user_data SET status = 'NA' WHERE id = $1`, [customer.userDataId]);
+
+    const before = await queryOne<{ usedRef: string | null }>(`SELECT "usedRef" FROM "user" WHERE id = $1`, [
+      customer.userId,
+    ]);
+    expect(before?.usedRef).not.toBe(ref);
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+    await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
+    await page.locator('#onboarding-fee-amount').fill('5');
+    await page.locator('#onboarding-fee-address').selectOption(customer.address);
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    await expect(save).toBeEnabled({ timeout: 15000 });
+
+    const putResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
+    );
+    await save.click();
+    expect((await putResponse).status()).toBe(200);
+
+    await expect(
+      page.getByText(`Onboarding fee of 5 CHF set; ${customer.address} attributed to the key account manager.`, {
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: 20000 });
+
+    // Attribution and status transition, asserted from the database.
+    const userRow = await waitForRow<{ usedRef: string | null; status: string }>(
+      `SELECT "usedRef", status FROM "user" WHERE id = $1 AND status = 'Active'`,
+      [customer.userId],
+      20000,
+    );
+    expect(userRow.usedRef).toBe(ref);
+
+    const userDataRow = await waitForRow<{ status: string; individualFees: string | null }>(
+      `SELECT status, "individualFees" FROM user_data WHERE id = $1 AND status = 'Active'`,
+      [customer.userDataId],
+      20000,
+    );
+    const assignedFeeIds = (userDataRow.individualFees ?? '').split(';').filter(Boolean);
+    expect(assignedFeeIds.length).toBeGreaterThan(0);
+    const feeRow = await waitForRow<{ id: number }>(
+      `SELECT id FROM fee
+       WHERE id = ANY($1::int[]) AND label = 'Onboarding Fixed 5' AND fixed = 5 AND active = true`,
+      [assignedFeeIds.map(Number)],
+      20000,
+    );
+
+    const log = await waitForRow<{ id: number }>(
+      `SELECT id FROM support_log
+       WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 AND message LIKE $3`,
+      [
+        customer.userDataId,
+        'E2E Test Staff',
+        `Onboarding fee usedRef of user ${customer.userId} % -> ${ref}; status NA -> Active; account status NA -> Active`,
+      ],
+      20000,
+    );
+    trackRow('support_log', log.id);
+
+    // The reloaded Users tab shows the new status. That table has no usedRef column, so the
+    // attribution itself is proven by the database assertion above.
+    await page.getByRole('button', { name: /Users \(/ }).click();
+    const usersRow = page.locator('tbody tr').filter({ hasText: customer.address }).first();
+    await expect(usersRow).toContainText('Active', { timeout: 20000 });
+
+    // Remove the fee again through the UI.
+    await page.getByRole('button', { name: 'Remove onboarding fee', exact: true }).click();
+    await expect(page.getByText('Remove the onboarding fee of this account?', { exact: true })).toBeVisible();
+    const deleteResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'DELETE' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
+    );
+    await page.getByRole('button', { name: 'Remove', exact: true }).click();
+    expect((await deleteResponse).status()).toBe(200);
+    await expect(page.getByText('Onboarding fee removed.', { exact: true })).toBeVisible({ timeout: 20000 });
+
+    await expect
+      .poll(
+        async () => {
+          const row = await queryOne<{ individualFees: string | null }>(
+            `SELECT "individualFees" FROM user_data WHERE id = $1`,
+            [customer.userDataId],
+          );
+          return (row?.individualFees ?? '').split(';').filter(Boolean).includes(String(feeRow.id));
+        },
+        { timeout: 20000, message: 'the onboarding fee id must be gone from user_data.individualFees' },
+      )
+      .toBe(false);
+  });
+
+  test('/compliance/user/:id shows the blocked-address error for an onboarding fee and changes nothing', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffReady(userId);
+    await seedOnboardingFeeRef();
+
+    const customer = await createUser({
+      tag: 'cmp-onboarding-fee-blocked',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    await queryRows(`UPDATE "user" SET status = 'Blocked' WHERE id = $1`, [customer.userId]);
+
+    const beforeUser = await queryOne<{ usedRef: string | null; status: string }>(
+      `SELECT "usedRef", status FROM "user" WHERE id = $1`,
+      [customer.userId],
+    );
+    const beforeUserData = await queryOne<{ status: string; individualFees: string | null }>(
+      `SELECT status, "individualFees" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+    await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
+    await page.locator('#onboarding-fee-amount').fill('5');
+    await page.locator('#onboarding-fee-address').selectOption(customer.address);
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    await expect(save).toBeEnabled({ timeout: 15000 });
+
+    const putResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
+    );
+    await save.click();
+    expect((await putResponse).status()).toBe(400);
+
+    await expect(page.getByText('Address is blocked or deleted', { exact: true })).toBeVisible({ timeout: 20000 });
+
+    const afterUser = await queryOne<{ usedRef: string | null; status: string }>(
+      `SELECT "usedRef", status FROM "user" WHERE id = $1`,
+      [customer.userId],
+    );
+    const afterUserData = await queryOne<{ status: string; individualFees: string | null }>(
+      `SELECT status, "individualFees" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    expect(afterUser).toEqual(beforeUser);
+    expect(afterUserData).toEqual(beforeUserData);
+
+    // The refusal itself is audited: one rejection row naming the clerk, the amount, the address and
+    // the reason - and no attribution row.
+    await waitForRow(
+      `SELECT id FROM support_log
+       WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 AND message = $3 AND comment = $4`,
+      [
+        customer.userDataId,
+        'E2E Test Staff',
+        `Onboarding fee 5 CHF for ${customer.address} rejected`,
+        'Address is blocked or deleted',
+      ],
+      15000,
+    );
+    const attributionLogs = await queryRows(
+      `SELECT id FROM support_log WHERE "userDataId" = $1 AND message LIKE 'Onboarding fee usedRef of user %'`,
+      [customer.userDataId],
+    );
+    expect(attributionLogs).toEqual([]);
   });
 });

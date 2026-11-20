@@ -13,6 +13,11 @@ const mockAccountAccessProps: {
   users?: { id: number; role: string }[];
   onChanged?: () => void;
 } = {};
+const mockOnboardingFeeProps: {
+  userDataId?: number;
+  users?: unknown[];
+  onChanged?: () => void;
+} = {};
 
 jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => ({ session: mockSession }),
@@ -85,6 +90,13 @@ jest.mock('src/components/compliance/account-access-toggles', () => ({
   },
 }));
 
+jest.mock('src/components/compliance/onboarding-fee-editor', () => ({
+  OnboardingFeeEditor: (props: typeof mockOnboardingFeeProps) => {
+    Object.assign(mockOnboardingFeeProps, props);
+    return <div data-testid="onboarding-fee-editor" />;
+  },
+}));
+
 jest.mock('src/hooks/clipboard.hook', () => ({
   useClipboard: () => ({ copy: mockCopy, isCopying: mockIsCopying }),
 }));
@@ -141,6 +153,9 @@ describe('UserDataPanel', () => {
     mockReactivateProps.onReactivated = undefined;
     Object.keys(mockAccountAccessProps).forEach(
       (key) => delete mockAccountAccessProps[key as keyof typeof mockAccountAccessProps],
+    );
+    Object.keys(mockOnboardingFeeProps).forEach(
+      (key) => delete mockOnboardingFeeProps[key as keyof typeof mockOnboardingFeeProps],
     );
     delete process.env.REACT_APP_PUBLIC_URL;
   });
@@ -298,6 +313,59 @@ describe('UserDataPanel', () => {
 
       rerender(<UserDataPanel userData={detail()} userDataId={88001} canRequestLimit={false} />);
       expect(screen.queryByRole('button', { name: 'Limit Request' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('onboarding fee editor', () => {
+    it('shows the editor to an Admin with the account id, users and reload handler', () => {
+      mockSession = { role: 'Admin' };
+      const onAccountAccessChanged = jest.fn();
+      const users: UserInfo[] = [
+        { id: 42, address: '0x123', role: 'User', status: 'NA', created: '2026-10-29T10:00:00.000Z' },
+      ];
+      render(
+        <UserDataPanel
+          userData={detail()}
+          userDataId={88001}
+          users={users}
+          onAccountAccessChanged={onAccountAccessChanged}
+        />,
+      );
+
+      expect(screen.getByTestId('onboarding-fee-editor')).toBeInTheDocument();
+      expect(mockOnboardingFeeProps).toMatchObject({
+        userDataId: 88001,
+        users,
+        onChanged: onAccountAccessChanged,
+      });
+    });
+
+    it('hides the editor for a Compliance session', () => {
+      mockSession = { role: 'Compliance' };
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('onboarding-fee-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor without a reload handler', () => {
+      mockSession = { role: 'Admin' };
+      render(<UserDataPanel userData={detail()} userDataId={88001} />);
+
+      expect(screen.queryByTestId('onboarding-fee-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor when the session is unknown', () => {
+      mockSession = undefined;
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('onboarding-fee-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor when the row belongs to another account than the route', () => {
+      mockSession = { role: 'Admin' };
+      render(<UserDataPanel userData={detail({ id: 88002 })} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('onboarding-fee-editor')).not.toBeInTheDocument();
     });
   });
 

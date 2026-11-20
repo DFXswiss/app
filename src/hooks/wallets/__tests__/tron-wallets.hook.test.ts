@@ -62,6 +62,7 @@ import { Asset, AssetType } from '@dfx.swiss/react';
 import { renderHook } from '@testing-library/react';
 import BigNumber from 'bignumber.js';
 import { AbortError } from '../../../util/abort-error';
+import { UserRejectedError } from '../../../util/user-rejection';
 import { useTronLinkTrx } from '../tronlink-trx.hook';
 import { useTrustTrx } from '../trust-trx.hook';
 
@@ -242,9 +243,23 @@ describe.each([
       mockSupport.mockReturnValue(true);
       mockIsInMobileBrowser.mockReturnValue(false);
       mockInWalletApp.mockReturnValue(false);
+      adapter.connect.mockRejectedValue(new Error('Cannot connect wallet.'));
+
+      await expect(setup().connect()).rejects.toThrow('Cannot connect wallet.');
+    });
+
+    it('cancels when the wallet rejected the connection with code 4001', async () => {
+      adapter.connect.mockRejectedValue(
+        Object.assign(new Error('The user rejected connection.'), { error: { code: 4001, message: 'Rejected' } }),
+      );
+
+      await expect(setup().connect()).rejects.toBeInstanceOf(UserRejectedError);
+    });
+
+    it('cancels on the rejection message the adapter keeps without the code', async () => {
       adapter.connect.mockRejectedValue(new Error('The user rejected connection.'));
 
-      await expect(setup().connect()).rejects.toThrow('The user rejected connection.');
+      await expect(setup().connect()).rejects.toBeInstanceOf(UserRejectedError);
     });
 
     it('uses a generic message when the wallet error has none', async () => {
@@ -272,9 +287,9 @@ describe.each([
       mockSupport.mockReturnValue(false);
       mockIsInMobileBrowser.mockReturnValue(mobileMatch);
       mockInWalletApp.mockReturnValue(true);
-      adapter.connect.mockRejectedValue(new Error('The user rejected connection.'));
+      adapter.connect.mockRejectedValue(new Error('Cannot connect wallet.'));
 
-      await expect(setup().connect()).rejects.toThrow('The user rejected connection.');
+      await expect(setup().connect()).rejects.toThrow('Cannot connect wallet.');
       expect(mockDelay).not.toHaveBeenCalled();
     });
 
@@ -287,10 +302,10 @@ describe.each([
         mockSupport.mockReturnValue(false);
         mockIsInMobileBrowser.mockReturnValue(mobileMatch);
         mockInWalletApp.mockReturnValue(false);
-        throw new Error('The user rejected connection.');
+        throw new Error('Cannot connect wallet.');
       });
 
-      await expect(setup().connect()).rejects.toThrow('The user rejected connection.');
+      await expect(setup().connect()).rejects.toThrow('Cannot connect wallet.');
       expect(mockDelay).not.toHaveBeenCalledWith(5);
     });
   });
@@ -303,10 +318,24 @@ describe.each([
       expect(adapter.signMessage).toHaveBeenCalledWith('message');
     });
 
+    it('cancels when the wallet rejected the signature with code 4001', async () => {
+      adapter.signMessage.mockRejectedValue(Object.assign(new Error('Rejected'), { error: { code: 4001 } }));
+
+      await expect(setup().signMessage('TronAddress', 'message')).rejects.toBeInstanceOf(UserRejectedError);
+    });
+
     it('rethrows the signing error message', async () => {
       adapter.signMessage.mockRejectedValue(new Error('Signing rejected'));
 
       await expect(setup().signMessage('TronAddress', 'message')).rejects.toThrow('Signing rejected');
+    });
+
+    it('does not treat the connect rejection message as a cancel when signing', async () => {
+      adapter.signMessage.mockRejectedValue(new Error('The user rejected connection.'));
+
+      const signing = setup().signMessage('TronAddress', 'message');
+      await expect(signing).rejects.not.toBeInstanceOf(UserRejectedError);
+      await expect(signing).rejects.toThrow('The user rejected connection.');
     });
   });
 
@@ -338,6 +367,22 @@ describe.each([
       expect(mockCreateTokenTransaction).toHaveBeenCalledWith('from', 'to', asset, amount);
       expect(mockCreateCoinTransaction).not.toHaveBeenCalled();
       expect(mockBroadcastTransaction).toHaveBeenCalledWith('signed-token-transaction');
+    });
+
+    it('cancels with code 4001 when the wallet rejected the transaction, which keeps the user on the form', async () => {
+      adapter.signTransaction.mockRejectedValue(Object.assign(new Error('Rejected'), { error: { code: 4001 } }));
+
+      const transaction = setup().createTransaction(amount, { type: AssetType.COIN } as Asset, 'from', 'to');
+      await expect(transaction).rejects.toBeInstanceOf(UserRejectedError);
+      await expect(transaction).rejects.toHaveProperty('code', 4001);
+    });
+
+    it('does not treat the connect rejection message as a cancel in a transaction', async () => {
+      adapter.signTransaction.mockRejectedValue(new Error('The user rejected connection.'));
+
+      const transaction = setup().createTransaction(amount, { type: AssetType.COIN } as Asset, 'from', 'to');
+      await expect(transaction).rejects.not.toBeInstanceOf(UserRejectedError);
+      await expect(transaction).rejects.toThrow('The user rejected connection.');
     });
 
     it('rethrows the transaction error message', async () => {

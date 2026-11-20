@@ -266,7 +266,7 @@ function createPages(): Record<string, TestPage> {
     wallets: page('wallets', {
       tiles: [
         { id: 'mm', img: 'mm.jpg', wallet: { type: 'MetaMask', blockchain: 'Bitcoin' } },
-        { id: 'alby', img: 'alby.jpg', wallet: { type: 'Alby', blockchain: 'Bitcoin' } },
+        { id: 'phantom', img: 'phantom.jpg', wallet: { type: 'PhantomSol', blockchain: 'Solana' } },
         { id: 'link', img: 'link.jpg', next: { page: 'child' } },
         { id: 'soon', img: 'soon.jpg', disabled: true },
       ],
@@ -700,7 +700,7 @@ describe('HomeScreen', () => {
     mockState.appParams.mode = undefined;
     const { container } = setup('/connect');
     expect(image(container, 'mm.jpg')).not.toBeNull();
-    expect(image(container, 'alby.jpg')).not.toBeNull();
+    expect(image(container, 'phantom.jpg')).not.toBeNull();
     expect(screen.queryByText(/wallet:/)).not.toBeInTheDocument();
     pressBack();
     expect(mockGoBack).not.toHaveBeenCalled();
@@ -842,21 +842,21 @@ describe('HomeScreen', () => {
     mockState.appParams = { mode: 'wallets' };
     const view = setup('/');
     expect(image(view.container, 'mm.jpg')).not.toBeNull();
-    expect(image(view.container, 'alby.jpg')).not.toBeNull();
+    expect(image(view.container, 'phantom.jpg')).not.toBeNull();
     expect(image(view.container, 'link.jpg')).not.toBeNull();
 
-    mockState.appParams = { mode: 'wallets', blockchain: 'Bitcoin' };
-    mockState.blocked = 'Alby|Bitcoin';
+    mockState.appParams = { mode: 'wallets', blockchain: 'Solana' };
+    mockState.blocked = 'PhantomSol|Solana';
     redraw();
     expect(image(view.container, 'mm.jpg')).not.toBeNull();
-    expect(image(view.container, 'alby.jpg')).toBeNull();
+    expect(image(view.container, 'phantom.jpg')).toBeNull();
     expect(mockNavigate).not.toHaveBeenCalled();
 
     mockState.appParams = { mode: 'wallets', wallets: 'MetaMask' };
     mockState.blocked = undefined;
     redraw();
     expect(image(view.container, 'mm.jpg')).not.toBeNull();
-    expect(image(view.container, 'alby.jpg')).toBeNull();
+    expect(image(view.container, 'phantom.jpg')).toBeNull();
     expect(image(view.container, 'link.jpg')).not.toBeNull();
   });
 

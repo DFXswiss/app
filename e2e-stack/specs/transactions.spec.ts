@@ -1,5 +1,15 @@
 import { createHash } from 'crypto';
-import { expect, openScreen, queryOne, queryRows, required, test } from './fixtures';
+import {
+  expect,
+  expectTransactionsPaused,
+  openScreen,
+  orPaused,
+  queryOne,
+  queryRows,
+  required,
+  test,
+  TransactionsPausedError,
+} from './fixtures';
 import {
   createUser,
   createBankAccount,
@@ -65,14 +75,20 @@ test('transaction list shows buy and sell rows with expected labels and amounts'
     amount: 111,
     inputAsset: 'CHF',
   });
-  const sell = await createTransaction({
-    state: 'pending_sell',
-    tag: 'tx-list-sell',
-    userId: user.userId,
-    userDataId: user.userDataId,
-    jwt: user.jwt,
-    amount: 222,
-  });
+  // While sell is switched off at the API no sell can be created: the paused answer is checked and
+  // the buy rows are still asserted below.
+  const sellResult = await orPaused(
+    createTransaction({
+      state: 'pending_sell',
+      tag: 'tx-list-sell',
+      userId: user.userId,
+      userDataId: user.userDataId,
+      jwt: user.jwt,
+      amount: 222,
+    }),
+  );
+  if (sellResult instanceof TransactionsPausedError) expectTransactionsPaused(sellResult, 'sell');
+  const sell = sellResult instanceof TransactionsPausedError ? undefined : sellResult;
   const secondAsset = await queryOne<{ id: number }>(
     `SELECT id FROM asset WHERE buyable = true AND blockchain != 'Ethereum' ORDER BY id ASC LIMIT 1`,
   );
@@ -96,10 +112,12 @@ test('transaction list shows buy and sell rows with expected labels and amounts'
     new Date(now).toISOString(),
     buy.transactionId,
   ]);
-  await queryRows(`UPDATE transaction SET "created" = $1 WHERE id = $2`, [
-    new Date(now - 60 * 60 * 1000).toISOString(),
-    sell.transactionId,
-  ]);
+  if (sell) {
+    await queryRows(`UPDATE transaction SET "created" = $1 WHERE id = $2`, [
+      new Date(now - 60 * 60 * 1000).toISOString(),
+      sell.transactionId,
+    ]);
+  }
   await queryRows(`UPDATE transaction SET "created" = $1 WHERE id = $2`, [
     new Date(now - 2 * 60 * 60 * 1000).toISOString(),
     pendingBuy.transactionId,
@@ -122,14 +140,16 @@ test('transaction list shows buy and sell rows with expected labels and amounts'
   await expect(buyRow.getByText('Buy', { exact: true }).first()).toBeVisible();
   await expect(buyRow.getByText('Completed', { exact: true }).first()).toBeVisible();
 
-  const sellRow = page
-    .locator('div.flex.flex-row.gap-2.items-center')
-    .filter({ hasText: '222' })
-    .filter({ hasText: 'ETH' })
-    .first();
-  await expect(sellRow).toBeVisible();
-  await expect(sellRow.getByText('Sell', { exact: true }).first()).toBeVisible();
-  await expect(sellRow.getByText('DFX check pending', { exact: true }).first()).toBeVisible();
+  if (sell) {
+    const sellRow = page
+      .locator('div.flex.flex-row.gap-2.items-center')
+      .filter({ hasText: '222' })
+      .filter({ hasText: 'ETH' })
+      .first();
+    await expect(sellRow).toBeVisible();
+    await expect(sellRow.getByText('Sell', { exact: true }).first()).toBeVisible();
+    await expect(sellRow.getByText('DFX check pending', { exact: true }).first()).toBeVisible();
+  }
 
   const pendingRow = page
     .locator('div.flex.flex-row.gap-2.items-center')
@@ -146,10 +166,15 @@ test('transaction list shows buy and sell rows with expected labels and amounts'
   const idx222 = listText.indexOf('222');
   const idx333 = listText.indexOf('333');
   expect(idx111).toBeGreaterThan(-1);
-  expect(idx222).toBeGreaterThan(-1);
   expect(idx333).toBeGreaterThan(-1);
-  expect(idx111).toBeLessThan(idx222);
-  expect(idx222).toBeLessThan(idx333);
+  expect(idx111).toBeLessThan(idx333);
+  if (sell) {
+    expect(idx222).toBeGreaterThan(-1);
+    expect(idx111).toBeLessThan(idx222);
+    expect(idx222).toBeLessThan(idx333);
+  } else {
+    expect(idx222, 'no sell row while sell is switched off').toBe(-1);
+  }
 });
 
 test("transaction list does not show another user's transactions", async ({ page }) => {
@@ -217,14 +242,19 @@ test('Open invoice is shown on a completed CHF buy and hidden on pending buy and
     inputAsset: 'CHF',
     buyId: secondBuy.buyId,
   });
-  await createTransaction({
-    state: 'pending_sell',
-    tag: 'tx-inv-vis-sell',
-    userId: user.userId,
-    userDataId: user.userDataId,
-    jwt: user.jwt,
-    amount: 703,
-  });
+  // While sell is switched off at the API no sell can be created: the paused answer is checked and
+  // the two buy rows are still asserted below.
+  const sell = await orPaused(
+    createTransaction({
+      state: 'pending_sell',
+      tag: 'tx-inv-vis-sell',
+      userId: user.userId,
+      userDataId: user.userDataId,
+      jwt: user.jwt,
+      amount: 703,
+    }),
+  );
+  if (sell instanceof TransactionsPausedError) expectTransactionsPaused(sell, 'sell');
 
   await openScreen(page, '/tx', user.jwt);
 
@@ -256,6 +286,10 @@ test('Open invoice is shown on a completed CHF buy and hidden on pending buy and
   await pendingBuyRow.click();
 
   // Sell: no Open invoice.
+  if (sell instanceof TransactionsPausedError) {
+    await expect(sellRow).toHaveCount(0);
+    return;
+  }
   await sellRow.click();
   await expect(page.getByRole('button', { name: 'Open invoice' })).toHaveCount(0);
 });
@@ -546,14 +580,21 @@ test('transaction detail shows pending sell status fields', async ({ page }) => 
     kycLevel: 30,
     completePersonalData: true,
   });
-  const tx = await createTransaction({
-    state: 'pending_sell',
-    tag: 'tx-detail-sell',
-    userId: user.userId,
-    userDataId: user.userDataId,
-    jwt: user.jwt,
-    amount: 177,
-  });
+  const tx = await orPaused(
+    createTransaction({
+      state: 'pending_sell',
+      tag: 'tx-detail-sell',
+      userId: user.userId,
+      userDataId: user.userDataId,
+      jwt: user.jwt,
+      amount: 177,
+    }),
+  );
+  if (tx instanceof TransactionsPausedError) {
+    // Sell is switched off at the API: there is no sell transaction to open.
+    expectTransactionsPaused(tx, 'sell');
+    return;
+  }
 
   await openScreen(page, `/tx/${tx.uid}`, user.jwt);
 

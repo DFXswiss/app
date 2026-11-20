@@ -545,7 +545,6 @@
     "Scan with your wallet": "Scansione con il portafoglio",
     "Connect your wallet": "Collegare il portafoglio",
     "Please confirm the connection in your MetaMask.": "Confermare la connessione nella MetaMask.",
-    "Please confirm the connection in the Alby browser extension.": "Confermare la connessione nell'estensione del browser Alby.",
     "Please confirm the connection in your Phantom browser extension.": "Confermare la connessione nell'estensione del browser Phantom.",
     "Please confirm the connection in your Trust browser extension.": "Confermare la connessione nell'estensione del browser Trust.",
     "Please confirm the connection in your TronLink browser extension.": "Confermare la connessione nell'estensione del browser TronLink.",
@@ -578,8 +577,6 @@
     "Don't show this again.": "Non mostrarlo più.",
     "Please install MetaMask or Rabby!": "Installare MetaMask o Rabby!",
     "You need to install the MetaMask or Rabby browser extension to be able to use this service.": "Per poter utilizzare questo servizio è necessario installare l'estensione del browser MetaMask o Rabby.",
-    "Please install Alby!": "Installare Alby!",
-    "You need to install the Alby browser extension to be able to use this service.": "Per poter utilizzare questo servizio è necessario installare l'estensione del browser Alby.",
     "Please install Phantom!": "Installare Phantom!",
     "You need to install the Phantom browser extension to be able to use this service.": "Per poter utilizzare questo servizio è necessario installare l'estensione del browser Phantom.",
     "Please install Trust!": "Installare Trust!",
@@ -1368,5 +1365,9 @@
     "Promo redemption": "Utilizzo codice promo",
     "Invite": "Invito",
     "Promo": "Promo"
+  },
+  "components/service-notice": {
+    "All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.": "Tutte le funzionalità principali di DFX sono di nuovo disponibili. Non inviare token crypto agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026.",
+    "More": "Scopri di più"
   }
 }

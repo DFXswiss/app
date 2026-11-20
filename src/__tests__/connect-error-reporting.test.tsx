@@ -29,18 +29,18 @@ describe('ConnectError reporting', () => {
   });
 
   it('shows Connection failed! and the translated error string', () => {
-    renderAt(<ConnectError error="Please install Alby or use a desktop computer" />);
+    renderAt(<ConnectError error="Please install MetaMask or use a desktop computer" />);
 
     expect(screen.getByText('Connection failed!')).toBeInTheDocument();
-    expect(screen.getByText('Please install Alby or use a desktop computer')).toBeInTheDocument();
+    expect(screen.getByText('Please install MetaMask or use a desktop computer')).toBeInTheDocument();
   });
 
   it('reports the error as HandledError on the router route', async () => {
-    renderAt(<ConnectError error="Please install Alby or use a desktop computer" />);
+    renderAt(<ConnectError error="Please install MetaMask or use a desktop computer" />);
 
     await waitFor(() => expect(mockReportClientError).toHaveBeenCalledTimes(1));
     expect(mockReportClientError.mock.calls[0][0]).toMatchObject({
-      message: 'Please install Alby or use a desktop computer',
+      message: 'Please install MetaMask or use a desktop computer',
       name: 'HandledError',
     });
     expect(mockReportClientError.mock.calls[0][1]).toBe('/buy');

@@ -9,9 +9,6 @@ export function InstallHint({ type, onConfirm }: { type: WalletType; onConfirm: 
     case WalletType.META_MASK:
       return <MetaMaskHint onConfirm={onConfirm} />;
 
-    case WalletType.ALBY:
-      return <AlbyHint onConfirm={onConfirm} />;
-
     case WalletType.LEDGER_BTC:
     case WalletType.LEDGER_ETH:
     case WalletType.BITBOX_BTC:
@@ -84,26 +81,6 @@ function MetaMaskLink(): JSX.Element {
       <StyledLink label="metamask.io" url="https://metamask.io" dark /> /{' '}
       <StyledLink label="rabby.io" url="https://rabby.io/" dark />
     </>
-  );
-}
-
-function AlbyHint({ onConfirm }: { onConfirm: () => void }): JSX.Element {
-  const { translate } = useSettingsContext();
-
-  return (
-    <StyledVerticalStack gap={4}>
-      <h1 className="text-dfxGray-700">{translate('screens/home', 'Please install Alby!')}</h1>
-      <p className="text-dfxGray-700">
-        {translate('screens/home', 'You need to install the Alby browser extension to be able to use this service.')}{' '}
-        <Trans i18nKey="screens/home.visit">
-          Visit <StyledLink label="getalby.com" url="https://getalby.com/" dark /> for more details.
-        </Trans>
-      </p>
-
-      <div className="mx-auto">
-        <StyledButton width={StyledButtonWidth.SM} onClick={onConfirm} label={translate('general/actions', 'OK')} />
-      </div>
-    </StyledVerticalStack>
   );
 }
 

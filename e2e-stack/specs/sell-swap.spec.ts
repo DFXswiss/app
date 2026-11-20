@@ -11,11 +11,29 @@
  * Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
  * /sell also proves three wallet address-check outcomes through the real API: Ok without a banner,
  * LikelyReturn with the return banner, and Unknown (chain without Scorechain coverage) without a banner.
+ * The partner sell wallet lists (bitcoinonly, kevinsoell) are driven from their ?mode= entry page
+ * through to the hardware-wallet selection.
  */
 
 import type { Page, Response } from '@playwright/test';
 import { ethers } from 'ethers';
-import { expect, gotoWithSession, normPath, openScreen, queryRows, test, waitForRow, withDb } from './fixtures';
+import {
+  expect,
+  expectPausedQuoteOnScreen,
+  expectTransactionsPaused,
+  gotoWithSession,
+  normPath,
+  openScreen,
+  orPaused,
+  type PausableProduct,
+  queryOne,
+  queryRows,
+  test,
+  testWallet,
+  TransactionsPausedError,
+  waitForRow,
+  withDb,
+} from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -25,6 +43,7 @@ import {
   e2eMail,
   TEST_IBAN,
 } from './fixtures/factories';
+import { injectWallet, recordAuthAndErrorReports, type WalletAnswer, walletAnswers } from './fixtures/injected-wallet';
 
 // Wallet-index isolation: factories.ts's createUser() derives its wallet index from an
 // in-process counter starting at FACTORY_WALLET_INDEX_BASE (100) unless `walletIndex` is
@@ -221,6 +240,24 @@ type SellSwapUser = Awaited<ReturnType<typeof createUser>>;
 type PaymentInfosTracker = ReturnType<typeof trackPaymentInfosResponses>;
 
 /**
+ * True when the screen's payment-information request got the API's paused answer for `product`;
+ * the helper has then asserted what the screen shows for it, and the test has nothing else to prove.
+ * False when the API answered anything else: the test goes on with its usual assertions.
+ */
+async function quotePaused(page: Page, paymentInfos: PaymentInfosTracker, product: PausableProduct): Promise<boolean> {
+  return (await expectPausedQuoteOnScreen(page, () => paymentInfos.last, product)) !== undefined;
+}
+
+/** A paused product must not leave a deposit route behind for the user. */
+async function expectNoDepositRoute(userId: number, type: 'Sell' | 'Crypto'): Promise<void> {
+  const routes = await queryOne<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM deposit_route WHERE "userId" = $1 AND type = $2`,
+    [userId, type],
+  );
+  expect(routes?.count, `no ${type} deposit_route while the product is switched off`).toBe(0);
+}
+
+/**
  * Shared setup for /sell full-UI write-path and payment-panel tests: user + bank account,
  * paymentInfos response tracking (attached before navigation), form pre-fill via URL params.
  */
@@ -311,6 +348,79 @@ async function setupSwapFullUiFlow(
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
 
   return { user, paymentInfos };
+}
+
+/**
+ * Logs in through an injected MetaMask wallet (the wallet extension is an external provider), which makes it the
+ * active wallet, and opens the sell form with ETH → CHF and a bank account filled in until the payment information is
+ * shown. The wallet answers `wallet_switchEthereumChain` with `switchChain`, `wallet_addEthereumChain` with
+ * `addChain` and `eth_sendTransaction` with `sendTransaction`. Returns the wallet methods the page called, or
+ * undefined when the API answered that sell is paused (checked on screen here; there is no payment to complete).
+ */
+async function openSellWithInjectedWallet(
+  page: Page,
+  tag: string,
+  switchChain: () => WalletAnswer,
+  sendTransaction?: () => WalletAnswer,
+  addChain?: () => WalletAnswer,
+): Promise<string[] | undefined> {
+  const walletIndex = nextWalletIndex();
+  const user = await createUser({ walletIndex, tag, kycLevel: 30, completePersonalData: true, language: 'EN' });
+  await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Sell wallet BA' });
+  const wallet = testWallet(walletIndex);
+  const calls = await injectWallet(
+    page,
+    walletAnswers(wallet, {
+      connected: () => true,
+      requestAccounts: () => ({ result: [wallet.address] }),
+      switchChain,
+      addChain,
+      sendTransaction,
+    }),
+  );
+
+  await page.goto('/login?blockchain=Ethereum');
+  await page.locator('img[src*="cryptowallet"]').click({ timeout: 15000 });
+  await page.locator('img[src*="metamask"]').click();
+  await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+  // the login finishes loading the session on /buy; opening /sell before that can leave the form loading
+  await page.waitForLoadState('networkidle');
+
+  const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
+  await page.goto('/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1');
+  await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
+  if (await quotePaused(page, paymentInfos, 'sell')) return undefined;
+  const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+  const apiDetail = paymentInfos.last
+    ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
+    : 'no PUT paymentInfos response captured';
+  expect(outcome.kind, `${outcome.detail}; ${apiDetail}`).toBe('payment_info');
+  return calls;
+}
+
+/**
+ * Clicks "Complete transaction in your wallet" while the wallet cancels `method` (the chain switch or the
+ * transaction), and checks that the form stays without an error, a completion or a client-error report.
+ */
+async function expectCancelledSwitchKeepsForm(
+  page: Page,
+  calls: string[],
+  path: string,
+  method = 'wallet_switchEthereumChain',
+): Promise<void> {
+  const sent = recordAuthAndErrorReports(page);
+  const complete = page.getByRole('button', { name: 'Complete transaction in your wallet' });
+  await expect(complete).toBeEnabled({ timeout: 15000 });
+  await complete.click();
+
+  await expect.poll(() => calls.includes(method), { timeout: 15000 }).toBe(true);
+  await page.waitForTimeout(2000);
+  await expect(page.getByText(/Transaction failed/)).toHaveCount(0);
+  await expect(page.getByText(/Nice! You are all set!/)).toHaveCount(0);
+  await expect(complete).toBeEnabled();
+  expect(sent).toEqual([]);
+  expect(normPath(new URL(page.url()).pathname)).toBe(path);
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -808,7 +918,12 @@ test.describe('Sell + Swap e2e', () => {
       kycLevel: 30,
       completePersonalData: true,
     });
-    const sell = await safeCreateSell(user.jwt, { blockchain: 'Ethereum', iban: TEST_IBAN });
+    const sell = await orPaused(safeCreateSell(user.jwt, { blockchain: 'Ethereum', iban: TEST_IBAN }));
+    if (sell instanceof TransactionsPausedError) {
+      expectTransactionsPaused(sell, 'sell');
+      await expectNoDepositRoute(user.userId, 'Sell');
+      return;
+    }
     expect(sell.sellId).toBeGreaterThan(0);
 
     const row = await waitForRow<{ id: number; type: string; iban: string }>(
@@ -822,7 +937,11 @@ test.describe('Sell + Swap e2e', () => {
   test('/sell full UI flow: form params produce a Sell deposit_route', async ({ page }) => {
     // Write-path proof only: form/URL params must create a Sell deposit_route. No panel wait.
     test.setTimeout(60000);
-    const { user } = await setupSellFullUiFlow(page, 'sell-ui-write');
+    const { user, paymentInfos } = await setupSellFullUiFlow(page, 'sell-ui-write');
+    if (await quotePaused(page, paymentInfos, 'sell')) {
+      await expectNoDepositRoute(user.userId, 'Sell');
+      return;
+    }
 
     const route = await waitForRow<{ id: number; type: string }>(
       `SELECT id, type FROM deposit_route
@@ -837,6 +956,7 @@ test.describe('Sell + Swap e2e', () => {
   test('/sell full UI flow: payment panel renders after paymentInfos', async ({ page }) => {
     test.setTimeout(90000);
     const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-ui-panel');
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
 
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     const apiDetail = paymentInfos.last
@@ -862,9 +982,79 @@ test.describe('Sell + Swap e2e', () => {
     }
   });
 
+  test('/sell: a chain switch cancelled in the wallet keeps the user on the form without an error', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+    const calls = await openSellWithInjectedWallet(page, 'sell-wallet-cancel', () => ({
+      error: { code: 4001, message: 'User rejected the request.' },
+    }));
+    if (!calls) return;
+
+    await expectCancelledSwitchKeepsForm(page, calls, '/sell');
+  });
+
+  test('/sell: a transaction cancelled in the wallet keeps the user on the form without an error', async ({ page }) => {
+    test.setTimeout(120000);
+    // MetaMask's rejection of a transaction: a plain object with code 4001 and data, which web3 used to strip
+    const calls = await openSellWithInjectedWallet(
+      page,
+      'sell-wallet-tx-cancel',
+      () => ({ result: null }),
+      () => ({ error: { code: 4001, message: 'User rejected the request.', data: { location: 'confirmation' } } }),
+    );
+    if (!calls) return;
+
+    await expectCancelledSwitchKeepsForm(page, calls, '/sell', 'eth_sendTransaction');
+  });
+
+  test('/sell: a chain switch that fails in the wallet still shows that the transaction failed', async ({ page }) => {
+    test.setTimeout(120000);
+    const calls = await openSellWithInjectedWallet(page, 'sell-wallet-fail', () => ({
+      error: { code: -32603, message: 'Internal JSON-RPC error.' },
+    }));
+    if (!calls) return;
+
+    await page.getByRole('button', { name: 'Complete transaction in your wallet' }).click({ timeout: 15000 });
+    await expect.poll(() => calls.includes('wallet_switchEthereumChain'), { timeout: 15000 }).toBe(true);
+    await expect(page.getByText(/Transaction failed\. Click Retry/)).toBeVisible({ timeout: 15000 });
+  });
+
+  test('/sell: adding the chain cancelled in the wallet keeps the user on the form without an error', async ({ page }) => {
+    test.setTimeout(120000);
+    // the wallet does not know the chain (4902), so the app asks to add it, which the user cancels
+    const calls = await openSellWithInjectedWallet(
+      page,
+      'sell-wallet-add-chain-cancel',
+      () => ({ error: { code: 4902, message: 'Unrecognized chain ID.' } }),
+      undefined,
+      () => ({ error: { code: 4001, message: 'User rejected the request.' } }),
+    );
+    if (!calls) return;
+
+    await expectCancelledSwitchKeepsForm(page, calls, '/sell', 'wallet_addEthereumChain');
+  });
+
+  test('/sell: adding the chain that fails in the wallet still shows that the transaction failed', async ({ page }) => {
+    test.setTimeout(120000);
+    const calls = await openSellWithInjectedWallet(
+      page,
+      'sell-wallet-add-chain-fail',
+      () => ({ error: { code: 4902, message: 'Unrecognized chain ID.' } }),
+      undefined,
+      () => ({ error: { code: -32602, message: 'Invalid chain parameters.' } }),
+    );
+    if (!calls) return;
+
+    await page.getByRole('button', { name: 'Complete transaction in your wallet' }).click({ timeout: 15000 });
+    await expect.poll(() => calls.includes('wallet_addEthereumChain'), { timeout: 15000 }).toBe(true);
+    await expect(page.getByText(/Transaction failed\. Click Retry/)).toBeVisible({ timeout: 15000 });
+  });
+
   test('/sell: native form submit completes the transaction', async ({ page }) => {
     test.setTimeout(90000);
-    await setupSellFullUiFlow(page, 'sell-form-submit');
+    const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-form-submit');
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
     // Wallet CTA (`Complete transaction in your wallet`) is also payment_info; handleNext then
@@ -883,7 +1073,8 @@ test.describe('Sell + Swap e2e', () => {
 
   test('/sell: native form submit does not complete after spend is cleared', async ({ page }) => {
     test.setTimeout(90000);
-    await setupSellFullUiFlow(page, 'sell-form-submit-cleared');
+    const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-form-submit-cleared');
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
     const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
@@ -899,7 +1090,8 @@ test.describe('Sell + Swap e2e', () => {
 
   test('/sell: clearing the spend amount keeps the field empty (no cross-side refill)', async ({ page }) => {
     test.setTimeout(90000);
-    await setupSellFullUiFlow(page, 'sell-clear-spend');
+    const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-clear-spend');
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
 
@@ -960,7 +1152,11 @@ test.describe('Sell + Swap e2e', () => {
   test('/sell/info with valid query params: form params produce a Sell deposit_route', async ({ page }) => {
     // Write-path proof only: valid query params must create a Sell deposit_route. No panel wait.
     test.setTimeout(60000);
-    const { user } = await setupSellInfoUiFlow(page, 'sell-info-write');
+    const { user, paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-write');
+    if (await quotePaused(page, paymentInfos, 'sell')) {
+      await expectNoDepositRoute(user.userId, 'Sell');
+      return;
+    }
 
     const route = await waitForRow<{ id: number; type: string }>(
       `SELECT id, type FROM deposit_route
@@ -977,6 +1173,7 @@ test.describe('Sell + Swap e2e', () => {
   }) => {
     test.setTimeout(75000);
     const { paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-panel');
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
 
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     const apiDetail = paymentInfos.last
@@ -1015,6 +1212,76 @@ test.describe('Sell + Swap e2e', () => {
     await expect(page.getByText('You spend', { exact: true })).toBeVisible();
     await expect(page.getByText(/You get( about)?/)).toBeVisible();
     await expect(page.locator('input[inputmode="decimal"]').first()).toBeVisible();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Service notice: prominent above the form on /sell and /swap, slim everywhere else
+  // ---------------------------------------------------------------------------
+
+  test('/sell and /swap show the prominent service notice above the form; /buy and other pages show the slim one', async ({
+    page,
+  }) => {
+    const user = await createUser({
+      walletIndex: nextWalletIndex(),
+      tag: 'service-notice',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    // Both variants show the same text, followed by the More link to the security incident page.
+    const noticeText =
+      'All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. More';
+
+    for (const path of ['/sell', '/swap']) {
+      await openScreen(page, path, user.jwt);
+
+      const notice = page.getByTestId('service-notice-banner');
+      await expect(notice).toHaveCount(1);
+      await expect(notice).toHaveAttribute('data-variant', 'prominent');
+      await expect(notice).toHaveText(noticeText);
+      await expect(notice.getByRole('link', { name: 'More' })).toHaveAttribute(
+        'href',
+        'https://dfx.swiss/security-incident.html',
+      );
+
+      // Visible before any form input: the notice sits above the first amount field.
+      const amount = page.locator('input[inputmode="decimal"]').first();
+      await expect(amount).toBeVisible({ timeout: 15000 });
+      const noticeBox = await notice.boundingBox();
+      const amountBox = await amount.boundingBox();
+      expect(noticeBox).not.toBeNull();
+      expect(amountBox).not.toBeNull();
+      expect((noticeBox as { y: number }).y).toBeLessThan((amountBox as { y: number }).y);
+
+      // The form stays usable: the notice does not disable the amount field.
+      await expect(amount).toBeEnabled();
+    }
+
+    // /buy: the slim notice sits above the buy form and its payment details.
+    await openScreen(page, '/buy', user.jwt);
+    const buyNotice = page.getByTestId('service-notice-banner');
+    await expect(buyNotice).toHaveCount(1);
+    await expect(buyNotice).toHaveAttribute('data-variant', 'slim');
+    await expect(buyNotice).toHaveText(noticeText);
+    const buyAmount = page.locator('input[inputmode="decimal"]').first();
+    await expect(buyAmount).toBeVisible({ timeout: 15000 });
+    const buyNoticeBox = await buyNotice.boundingBox();
+    const buyAmountBox = await buyAmount.boundingBox();
+    expect(buyNoticeBox).not.toBeNull();
+    expect(buyAmountBox).not.toBeNull();
+    expect((buyNoticeBox as { y: number }).y).toBeLessThan((buyAmountBox as { y: number }).y);
+    await expect(buyAmount).toBeEnabled();
+
+    await openScreen(page, '/account', user.jwt);
+    const notice = page.getByTestId('service-notice-banner');
+    await expect(notice).toHaveCount(1);
+    await expect(notice).toHaveAttribute('data-variant', 'slim');
+    await expect(notice).toHaveText(noticeText);
+
+    // Not dismissable: still there after a reload.
+    await page.reload();
+    await expect(page.getByTestId('service-notice-banner')).toHaveText(noticeText, { timeout: 15000 });
   });
 
   test('/swap source assets are sellable and target assets are buyable vs GET /v1/asset', async ({ page }) => {
@@ -1093,7 +1360,12 @@ test.describe('Sell + Swap e2e', () => {
       kycLevel: 30,
       completePersonalData: true,
     });
-    const swap = await safeCreateSwap(user.jwt, { blockchain: 'Ethereum' });
+    const swap = await orPaused(safeCreateSwap(user.jwt, { blockchain: 'Ethereum' }));
+    if (swap instanceof TransactionsPausedError) {
+      expectTransactionsPaused(swap, 'swap');
+      await expectNoDepositRoute(user.userId, 'Crypto');
+      return;
+    }
     expect(swap.swapId).toBeGreaterThan(0);
 
     const row = await waitForRow<{ id: number; type: string }>(`SELECT id, type FROM deposit_route WHERE id = $1`, [
@@ -1105,7 +1377,11 @@ test.describe('Sell + Swap e2e', () => {
   test('/swap full UI flow: form params produce a Crypto deposit_route', async ({ page }) => {
     // Write-path proof only: form/URL params must create a Crypto deposit_route. No panel wait.
     test.setTimeout(60000);
-    const { user } = await setupSwapFullUiFlow(page, 'swap-ui-write');
+    const { user, paymentInfos } = await setupSwapFullUiFlow(page, 'swap-ui-write');
+    if (await quotePaused(page, paymentInfos, 'swap')) {
+      await expectNoDepositRoute(user.userId, 'Crypto');
+      return;
+    }
 
     const route = await waitForRow<{ id: number; type: string }>(
       `SELECT id, type FROM deposit_route
@@ -1120,6 +1396,7 @@ test.describe('Sell + Swap e2e', () => {
   test('/swap full UI flow: payment panel renders after paymentInfos', async ({ page }) => {
     test.setTimeout(90000);
     const { paymentInfos } = await setupSwapFullUiFlow(page, 'swap-ui-panel');
+    if (await quotePaused(page, paymentInfos, 'swap')) return;
 
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     const apiDetail = paymentInfos.last
@@ -1147,7 +1424,8 @@ test.describe('Sell + Swap e2e', () => {
 
   test('/swap: native form submit completes the transaction', async ({ page }) => {
     test.setTimeout(90000);
-    await setupSwapFullUiFlow(page, 'swap-form-submit');
+    const { paymentInfos } = await setupSwapFullUiFlow(page, 'swap-form-submit');
+    if (await quotePaused(page, paymentInfos, 'swap')) return;
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
     const completeBtn = page.getByRole('button', {
@@ -1164,7 +1442,8 @@ test.describe('Sell + Swap e2e', () => {
 
   test('/swap: native form submit does not complete after spend is cleared', async ({ page }) => {
     test.setTimeout(90000);
-    await setupSwapFullUiFlow(page, 'swap-form-submit-cleared');
+    const { paymentInfos } = await setupSwapFullUiFlow(page, 'swap-form-submit-cleared');
+    if (await quotePaused(page, paymentInfos, 'swap')) return;
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
     const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
@@ -1180,7 +1459,8 @@ test.describe('Sell + Swap e2e', () => {
 
   test('/swap: clearing the spend amount keeps the field empty (no cross-side refill)', async ({ page }) => {
     test.setTimeout(90000);
-    await setupSwapFullUiFlow(page, 'swap-clear-spend');
+    const { paymentInfos } = await setupSwapFullUiFlow(page, 'swap-clear-spend');
+    if (await quotePaused(page, paymentInfos, 'swap')) return;
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
 
@@ -1220,12 +1500,17 @@ test.describe('Sell + Swap e2e', () => {
     await createBankAccount(user.jwt, { iban: TEST_IBAN }).catch(() => {
       /* bank account may still succeed without complete personal data */
     });
+    const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
 
     await gotoWithSession(
       page,
       `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1`,
       user.jwt,
     );
+
+    // The redirect follows the API's "Ident data incomplete" answer to the quote. While sell is switched
+    // off the API refuses the quote before it looks at the personal data, so the screen shows that instead.
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
 
     // The screen either sends the user to /profile or keeps them on /sell behind an "Enter user
     // data" call to action. Staying on /sell with neither — and therefore with a payment panel
@@ -1283,5 +1568,59 @@ test.describe('Sell + Swap e2e', () => {
 
     expect(bankAccountPosts, 'an existing bank account must not be created again').toBe(0);
     expect(paymentInfos.last, 'the screen must get as far as requesting payment information').toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Partner sell wallet lists — the tiles offered after Alby's removal
+// ---------------------------------------------------------------------------
+
+test.describe('Partner sell wallet lists', () => {
+  test('bitcoinonly sell offers only the partner wallet tiles and opens the hardware wallets', async ({ page }) => {
+    test.setTimeout(90000);
+
+    await page.goto('/?mode=bitcoinonly&lang=en');
+    await page.waitForLoadState('networkidle');
+    await page.locator('img[src$="/verkaufen_en.jpg"]').click();
+
+    // bitcoinonly-sell has a single Bitcoin tile, so the app descends straight into the wallet list.
+    await expect(page.locator('img[src$="/hardwarewallets_en.jpg"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('img[src*="alby"]')).toHaveCount(0);
+
+    // The DFX app tile supports only Lightning, so the preset Bitcoin blockchain hides it here.
+    const tileImages = await page
+      .locator('img[src$="_en.jpg"]')
+      .evaluateAll((images) => images.map((image) => (image.getAttribute('src') ?? '').split('/').pop() ?? ''));
+    expect(tileImages.sort()).toEqual(['hardwarewallets_en.jpg']);
+
+    await page.locator('img[src$="/hardwarewallets_en.jpg"]').click();
+
+    // The hardware-wallet selection, still without Alby.
+    await expect(page.locator('img[src$="/bitbox_en.jpg"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('img[src$="/ledger_en.jpg"]')).toBeVisible();
+    await expect(page.locator('img[src$="/trezor_en.jpg"]')).toBeVisible();
+    await expect(page.locator('img[src*="alby"]')).toHaveCount(0);
+  });
+
+  test('kevinsoell sell offers only the hardware-wallet tile and opens the hardware wallets', async ({ page }) => {
+    test.setTimeout(90000);
+
+    await page.goto('/?mode=kevinsoell&lang=en');
+    await page.waitForLoadState('networkidle');
+    await page.locator('img[src$="/verkaufen_en.jpg"]').click();
+
+    // kevinsoell-sell also offers an ERC20 tile, so Bitcoin has to be selected explicitly.
+    await expect(page.locator('img[src$="/bitcoinlightning_en.jpg"]')).toBeVisible({ timeout: 15000 });
+    await page.locator('img[src$="/bitcoinlightning_en.jpg"]').click();
+
+    // This partner allows only the hardware-wallet tile, whose page is the only tile on the list,
+    // so the app descends one step further into the hardware-wallet selection right away.
+    await expect(page.locator('img[src$="/bitbox_en.jpg"]')).toBeVisible({ timeout: 15000 });
+    // The hardware-wallet list is exactly these three tiles.
+    const hardwareTiles = await page
+      .locator('img[src$="_en.jpg"]')
+      .evaluateAll((images) => images.map((image) => (image.getAttribute('src') ?? '').split('/').pop() ?? ''));
+    expect(hardwareTiles.sort()).toEqual(['bitbox_en.jpg', 'ledger_en.jpg', 'trezor_en.jpg']);
+    await expect(page.locator('img[src*="alby"]')).toHaveCount(0);
   });
 });

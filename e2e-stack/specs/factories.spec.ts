@@ -8,7 +8,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { required } from './fixtures';
+import { expectTransactionsPaused, orPaused, required, TransactionsPausedError } from './fixtures';
 import { queryOne, withDb } from './fixtures/db';
 import {
   cleanupCreatedData,
@@ -108,7 +108,17 @@ test.describe('e2e factories', () => {
 
   test('createSell creates a sell (deposit_route) row', async () => {
     const user = await createUser({ tag: 'spec-sell', kycLevel: 30, completePersonalData: true });
-    const sell = await createSell(user.jwt, { blockchain: 'Ethereum' });
+    const sell = await orPaused(createSell(user.jwt, { blockchain: 'Ethereum' }));
+    if (sell instanceof TransactionsPausedError) {
+      // Sell is switched off at the API: the factory reports the paused answer and writes no route.
+      expectTransactionsPaused(sell, 'sell');
+      const routes = await queryOne<{ count: number }>(
+        `SELECT COUNT(*)::int AS count FROM deposit_route WHERE "userId" = $1 AND type = 'Sell'`,
+        [user.userId],
+      );
+      expect(routes?.count).toBe(0);
+      return;
+    }
 
     expect(sell.sellId).toBeGreaterThan(0);
 
@@ -122,7 +132,17 @@ test.describe('e2e factories', () => {
 
   test('createSwap creates a crypto deposit_route row', async () => {
     const user = await createUser({ tag: 'spec-swap', kycLevel: 30, completePersonalData: true });
-    const swap = await createSwap(user.jwt, { blockchain: 'Ethereum' });
+    const swap = await orPaused(createSwap(user.jwt, { blockchain: 'Ethereum' }));
+    if (swap instanceof TransactionsPausedError) {
+      // Swap is switched off at the API: the factory reports the paused answer and writes no route.
+      expectTransactionsPaused(swap, 'swap');
+      const routes = await queryOne<{ count: number }>(
+        `SELECT COUNT(*)::int AS count FROM deposit_route WHERE "userId" = $1 AND type = 'Crypto'`,
+        [user.userId],
+      );
+      expect(routes?.count).toBe(0);
+      return;
+    }
 
     expect(swap.swapId).toBeGreaterThan(0);
 

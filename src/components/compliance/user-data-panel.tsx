@@ -3,6 +3,7 @@ import { ReactNode, useState } from 'react';
 import { AccountAccessToggles } from 'src/components/compliance/account-access-toggles';
 import { CollapsibleSection } from 'src/components/compliance/collapsible-section';
 import { LimitRequestModal } from 'src/components/compliance/limit-request-modal';
+import { OnboardingFeeEditor } from 'src/components/compliance/onboarding-fee-editor';
 import { ReactivateAccount } from 'src/components/compliance/reactivate-account';
 import type { UserDataStatusInfo } from 'src/hooks/account-reactivation.hook';
 import { useClipboard } from 'src/hooks/clipboard.hook';
@@ -10,6 +11,7 @@ import { OrganizationDetail, UserDataDetail, UserInfo } from 'src/hooks/complian
 import { canReactivateAccount, DEACTIVATED_STATUS } from 'src/util/account-reactivation.util';
 import { appOrigin } from 'src/util/app-origin';
 import { display, formatBirthday, formatDate, formatDateTime, Primitive, refName } from 'src/util/compliance-helpers';
+import { canManageOnboardingFee } from 'src/util/onboarding-fee.util';
 
 interface UserDataPanelProps {
   userData: UserDataDetail;
@@ -291,6 +293,12 @@ export function UserDataPanel({
                 onChanged={onAccountAccessChanged}
               />
             )}
+            {userDataId !== undefined &&
+              rowIsThisAccount &&
+              onAccountAccessChanged &&
+              canManageOnboardingFee(session?.role) && (
+                <OnboardingFeeEditor userDataId={userDataId} users={users} onChanged={onAccountAccessChanged} />
+              )}
           </CollapsibleSection>
 
           <CollapsibleSection title="Personal Data" initiallyOpen>
