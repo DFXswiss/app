@@ -1,0 +1,129 @@
+import { Country, UserRole } from '@dfx.swiss/react';
+import type { UserDataDetail } from 'src/hooks/compliance.hook';
+import type { KycLogResult } from 'src/util/compliance-helpers';
+
+export const EDITABLE_TEXT_FIELDS = [
+  'mail',
+  'phone',
+  'firstname',
+  'surname',
+  'street',
+  'houseNumber',
+  'zip',
+  'location',
+] as const;
+export type EditableTextField = (typeof EDITABLE_TEXT_FIELDS)[number];
+
+// KycStatus values the API accepts through PUT userData. 'Check' is NOT among them: the API rejects it
+// ("Use the audited KYC status Check transition"); the compliance review screen has the dedicated button.
+export const EDITABLE_KYC_STATUSES = ['NA', 'Completed', 'Rejected', 'Terminated'] as const;
+export type EditableKycStatus = (typeof EDITABLE_KYC_STATUSES)[number];
+
+export const USER_DATA_EDIT_LOG_DESCRIPTION = 'UserDataEdit';
+
+export interface UserDataEditValues {
+  text: Record<EditableTextField, string>;
+  countryId?: number;
+  kycStatus: string;
+}
+
+export interface UserDataEditPlan {
+  payload: Record<string, string | number>;
+  results: KycLogResult[];
+  errors: string[];
+}
+
+// PUT userData lets Support change only status, riskStatus and recallAgreementAccepted, and Compliance
+// additionally kycStatus and a few AML columns. Mail, phone, name and address are Admin-only; any other role gets 403.
+export function canEditUserData(role: UserRole | undefined): boolean {
+  return role === UserRole.ADMIN;
+}
+
+/** Values the form starts with: text fields from the detail (missing → ''), country by symbol, kycStatus. */
+export function initialEditValues(detail: UserDataDetail, countries: Country[]): UserDataEditValues {
+  const text = {} as Record<EditableTextField, string>;
+  for (const field of EDITABLE_TEXT_FIELDS) {
+    text[field] = detail[field] ?? '';
+  }
+
+  const countrySymbol = detail.country?.symbol;
+  return {
+    text,
+    countryId: countrySymbol ? countries.find((country) => country.symbol === countrySymbol)?.id : undefined,
+    kycStatus: detail.kycStatus ?? '',
+  };
+}
+
+function isValidMail(value: string): boolean {
+  const parts = value.split('@');
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+  return local.length > 0 && domain.length > 0 && domain.includes('.');
+}
+
+function isValidPhone(value: string): boolean {
+  return /^\+[0-9 ]+$/.test(value);
+}
+
+function isEditableKycStatus(value: string): boolean {
+  return (EDITABLE_KYC_STATUSES as readonly string[]).includes(value);
+}
+
+/**
+ * Compares edited values against the initial ones and builds the PUT body, the KYC-log results and
+ * any validation errors. A non-empty `errors` means the caller must not save.
+ */
+export function planUserDataEdit(
+  initial: UserDataEditValues,
+  edited: UserDataEditValues,
+  countries: Country[],
+): UserDataEditPlan {
+  const payload: Record<string, string | number> = {};
+  const results: KycLogResult[] = [];
+  const errors: string[] = [];
+
+  for (const field of EDITABLE_TEXT_FIELDS) {
+    const before = initial.text[field].trim();
+    const after = edited.text[field].trim();
+    if (before === after) continue;
+
+    if (before && !after) {
+      errors.push(`${field} cannot be cleared`);
+      continue;
+    }
+    if (field === 'mail' && !isValidMail(after)) {
+      errors.push('mail is not a valid e-mail address');
+      continue;
+    }
+    if (field === 'phone' && !isValidPhone(after)) {
+      errors.push('phone must start with + and the country code');
+      continue;
+    }
+
+    payload[field] = after;
+    results.push({ table: 'userData', column: field, value: after });
+  }
+
+  if (edited.countryId !== initial.countryId) {
+    if (edited.countryId === undefined) {
+      errors.push('country cannot be cleared');
+    } else {
+      const country = countries.find((entry) => entry.id === edited.countryId);
+      payload.countryId = edited.countryId;
+      results.push({
+        table: 'userData',
+        column: 'countryId',
+        value: country ? `${country.name} (${country.symbol})` : String(edited.countryId),
+      });
+    }
+  }
+
+  const beforeKycStatus = initial.kycStatus.trim();
+  const afterKycStatus = edited.kycStatus.trim();
+  if (beforeKycStatus !== afterKycStatus && isEditableKycStatus(afterKycStatus)) {
+    payload.kycStatus = afterKycStatus;
+    results.push({ table: 'userData', column: 'kycStatus', value: afterKycStatus });
+  }
+
+  return { payload, results, errors };
+}

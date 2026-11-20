@@ -215,6 +215,41 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       });
     });
 
+    test('shows the personal data edit form', async ({ page }) => {
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+      await expect(page.locator('#user-data-edit-mail')).toBeVisible();
+      // The dossier scrolls in its own column; start the shot at the section heading, not at the button.
+      await page
+        .getByText('Personal Data', { exact: true })
+        .evaluate((element) => element.scrollIntoView({ block: 'start' }));
+
+      await expect(page).toHaveScreenshot('compliance-user-16-edit-personal-data.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows a validation error in the personal data edit form', async ({ page }) => {
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+      await page.getByLabel('mail', { exact: true }).fill('not-an-email');
+      const mailError = page.getByText('mail is not a valid e-mail address', { exact: true });
+      await expect(mailError).toBeVisible();
+      await mailError.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+
+      await expect(page).toHaveScreenshot('compliance-user-17-edit-personal-data-invalid.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
     test('shows account access toggles in the off state', async ({ page }) => {
       await page.route(`**/v1/support/${TEST_USER_DATA_ID}`, async (route) => {
         const response = await route.fetch();

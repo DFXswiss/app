@@ -412,6 +412,91 @@ test.describe('Compliance area (overview)', () => {
     await waitForRow(`SELECT id FROM "user" WHERE id = $1 AND role = 'User'`, [customer.userId], 15000);
   });
 
+  test('/compliance/user/:id lets Admin edit personal data and the KYC status and logs the change', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffKycComplete(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-user-data-edit',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const newMail = `e2e-edit-${Date.now()}@example.com`;
+    const newStreet = 'E2E Editstrasse';
+    const reason = `e2e edit ${Date.now()}`;
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+
+    await expect(page.getByText('Personal Data', { exact: true })).toBeVisible({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+
+    await page.getByLabel('mail', { exact: true }).fill(newMail);
+    await page.getByLabel('street', { exact: true }).fill(newStreet);
+    await page.getByLabel('kycStatus', { exact: true }).selectOption('Rejected');
+    await page.getByLabel('Reason', { exact: true }).fill(reason);
+
+    const putResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}`,
+    );
+    const logResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/v1/kyc/admin/log',
+    );
+
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    expect((await putResponsePromise).status()).toBe(200);
+    expect((await logResponsePromise).status()).toBe(201);
+
+    await expect(page.getByRole('button', { name: 'Edit personal data', exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByText(newMail, { exact: true })).toBeVisible();
+
+    await waitForRow(
+      `SELECT id FROM user_data WHERE id = $1 AND mail = $2 AND street = $3 AND "kycStatus" = 'Rejected'`,
+      [customer.userDataId, newMail, newStreet],
+      15000,
+    );
+    await waitForRow(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'ManualLog'
+         AND comment LIKE $2 AND comment LIKE $3 AND comment LIKE $4 AND comment LIKE $5`,
+      [
+        customer.userDataId,
+        '%Services - UserDataEdit%',
+        '%Editor: %',
+        `%userData-mail-${newMail}%`,
+        `%comment: ${reason}%`,
+      ],
+      15000,
+    );
+  });
+
+  test('/compliance/user/:id refuses an invalid mail in the personal data edit form', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffKycComplete(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-user-data-edit-invalid',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+
+    await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+    await page.getByLabel('mail', { exact: true }).fill('not-an-email');
+    await page.getByLabel('Reason', { exact: true }).fill('Invalid mail check');
+
+    await expect(page.getByText('mail is not a valid e-mail address', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  });
+
   test('/compliance/user/:id hides account access toggles after onboarding is complete', async ({ page }) => {
     const { jwt, userId } = await loginAs('Support');
     await ensureStaffKycComplete(userId);

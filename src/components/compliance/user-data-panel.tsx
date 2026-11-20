@@ -1,10 +1,12 @@
 import { useAuthContext } from '@dfx.swiss/react';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { AccountAccessToggles } from 'src/components/compliance/account-access-toggles';
 import { CollapsibleSection } from 'src/components/compliance/collapsible-section';
+import { ErrorHint } from 'src/components/error-hint';
 import { LimitRequestModal } from 'src/components/compliance/limit-request-modal';
 import { OnboardingFeeEditor } from 'src/components/compliance/onboarding-fee-editor';
 import { ReactivateAccount } from 'src/components/compliance/reactivate-account';
+import { UserDataEditForm } from 'src/components/compliance/user-data-edit-form';
 import type { UserDataStatusInfo } from 'src/hooks/account-reactivation.hook';
 import { useClipboard } from 'src/hooks/clipboard.hook';
 import { OrganizationDetail, UserDataDetail, UserInfo } from 'src/hooks/compliance.hook';
@@ -12,6 +14,7 @@ import { canReactivateAccount, DEACTIVATED_STATUS } from 'src/util/account-react
 import { appOrigin } from 'src/util/app-origin';
 import { display, formatBirthday, formatDate, formatDateTime, Primitive, refName } from 'src/util/compliance-helpers';
 import { canManageOnboardingFee } from 'src/util/onboarding-fee.util';
+import { canEditUserData } from 'src/util/user-data-edit.util';
 
 interface UserDataPanelProps {
   userData: UserDataDetail;
@@ -223,7 +226,16 @@ export function UserDataPanel({
   onAccountAccessChanged,
 }: Readonly<UserDataPanelProps>): JSX.Element {
   const [showLimitRequestModal, setShowLimitRequestModal] = useState(false);
+  const [editFormUserDataId, setEditFormUserDataId] = useState<number>();
+  const [editWarning, setEditWarning] = useState<string>();
   const { session } = useAuthContext();
+
+  // The form and its warning belong to one account: they must not carry over to another one, or
+  // returning to the first account would reopen its form.
+  useEffect(() => {
+    setEditFormUserDataId(undefined);
+    setEditWarning(undefined);
+  }, [userDataId]);
 
   // A reactivation answers with the account's new status row; the box shows it until the screen reloads
   // the account. The row on screen must be that same account: this box stays mounted, and the screen
@@ -231,6 +243,14 @@ export function UserDataPanel({
   // button both fail closed unless the row is that id; the overlay also requires the stored answer.
   const [reactivated, setReactivated] = useState<UserDataStatusInfo>();
   const rowIsThisAccount = userData.id === userDataId;
+  // The form is keyed by the account it was opened for and reset when the route's userDataId changes
+  // underneath it. The reload callback is required for the edit entry point: without it the screen
+  // could not show the saved values.
+  const editEntryPoint =
+    userDataId !== undefined && rowIsThisAccount && onAccountAccessChanged && canEditUserData(session?.role)
+      ? { userDataId, reload: onAccountAccessChanged }
+      : undefined;
+  const editTarget = editEntryPoint && editEntryPoint.userDataId === editFormUserDataId ? editEntryPoint : undefined;
   const current: UserDataDetail =
     rowIsThisAccount && reactivated && reactivated.id === userDataId
       ? { ...userData, status: reactivated.status, deactivationDate: reactivated.deactivationDate }
@@ -302,7 +322,37 @@ export function UserDataPanel({
           </CollapsibleSection>
 
           <CollapsibleSection title="Personal Data" initiallyOpen>
-            <SectionTable rows={personalDataRows(userData)} />
+            {editTarget ? (
+              <UserDataEditForm
+                userDataId={editTarget.userDataId}
+                userData={userData}
+                onSaved={(warning) => {
+                  setEditFormUserDataId(undefined);
+                  setEditWarning(warning);
+                  editTarget.reload();
+                }}
+                onCancel={() => setEditFormUserDataId(undefined)}
+              />
+            ) : (
+              <>
+                <SectionTable rows={personalDataRows(userData)} />
+                {editWarning && <ErrorHint message={editWarning} />}
+                {editEntryPoint && (
+                  <div className="px-3 py-2">
+                    <button
+                      type="button"
+                      className="px-3 py-1 text-xs text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded transition-colors whitespace-nowrap"
+                      onClick={() => {
+                        setEditWarning(undefined);
+                        setEditFormUserDataId(editEntryPoint.userDataId);
+                      }}
+                    >
+                      Edit personal data
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </CollapsibleSection>
 
           <CollapsibleSection title="Organization Data" initiallyOpen={!!userData.organization}>
