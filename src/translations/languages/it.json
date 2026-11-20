@@ -1367,10 +1367,7 @@
     "Promo": "Promo"
   },
   "components/service-notice": {
-    "Due to a security incident affecting DFX deposit addresses, selling is temporarily unavailable. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.": "A causa di un incidente di sicurezza che riguarda gli indirizzi di deposito DFX, la vendita è temporaneamente non disponibile. Non inviare token crypto agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026. Gli acquisti sono possibili. I bonifici bancari per gli acquisti possono essere inviati in qualsiasi momento. I dati e i fondi dei clienti non sono interessati. Tutti i dati e i fondi dei clienti sono al sicuro e verranno elaborati il prima possibile.",
-    "Due to a security incident affecting DFX deposit addresses, selling and swapping are temporarily unavailable. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.": "A causa di un incidente di sicurezza che riguarda gli indirizzi di deposito DFX, la vendita e lo scambio sono temporaneamente non disponibili. Non inviare token crypto a nessun indirizzo di deposito ricevuto da DFX prima del 18 novembre 2026 — questi indirizzi non devono più essere utilizzati. Gli acquisti sono possibili. I bonifici bancari per gli acquisti possono essere inviati in qualsiasi momento. I dati e i fondi dei clienti non sono interessati. Tutti i dati e i fondi dei clienti sono al sicuro e verranno elaborati il prima possibile.",
-    "Buying works as usual; just follow the details below.": "L'acquisto funziona normalmente, segui semplicemente le indicazioni qui sotto.",
-    "Questions:": "Domande:",
-    "Open a support ticket": "Apri un ticket di supporto"
+    "All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.": "Tutte le funzionalità principali di DFX sono di nuovo disponibili. Non inviare token crypto agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026.",
+    "More": "Scopri di più"
   }
 }

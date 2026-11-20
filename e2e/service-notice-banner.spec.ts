@@ -4,26 +4,23 @@ import { expect, Page, Route, test } from '@playwright/test';
  * Visual regression: service notice banner.
  *
  * Every page shows the slim notice at the top of the content column; /sell and /swap show the
- * prominent notice there instead, above the form. On /buy the slim notice adds that buying works as
- * usual and the customer follows the details below.
+ * prominent notice there instead, above the form. Both variants show the same text with a link
+ * to the security incident page.
  *
  * Routes:
  *   - /support (slim notice)
  *   - /sell  (prominent notice)
  *   - /swap  (prominent notice)
- *   - /buy   (slim notice with the buy sentence)
+ *   - /buy   (slim notice)
  *
  * Auth is a synthetic unsigned JWT (`alg: none`, role User). Bootstrap GETs are mocked via
  * page.route, so the suite does not need a live API. A green run does not prove production auth.
  * UI language is pinned with `lang=en`. Unmatched v1/v2 calls are fulfilled with 501.
  */
 
-const SLIM_EN =
-  'Due to a security incident affecting DFX deposit addresses, selling is temporarily unavailable. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.';
-const BUY_EN = 'Buying works as usual; just follow the details below.';
-const PROMINENT_EN =
-  'Due to a security incident affecting DFX deposit addresses, selling and swapping are temporarily unavailable. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.';
-const HINT_EN = ' Questions: Open a support ticket';
+const TEXT_EN =
+  'All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.';
+const MORE_EN = ' More';
 
 const ADDRESS = '0x0000000000000000000000000000000000000001';
 
@@ -120,25 +117,20 @@ test.describe('Service notice banner', () => {
 
   const cases = [
     // The slim notice is shot on the support landing page, which renders fully with these mocks.
-    { path: '/support', variant: 'slim', text: `${SLIM_EN}${HINT_EN}`, file: 'service-notice-banner-01-support.png' },
+    { path: '/support', variant: 'slim', text: `${TEXT_EN}${MORE_EN}`, file: 'service-notice-banner-01-support.png' },
     {
       path: '/sell',
       variant: 'prominent',
-      text: `${PROMINENT_EN}${HINT_EN}`,
+      text: `${TEXT_EN}${MORE_EN}`,
       file: 'service-notice-banner-02-sell.png',
     },
     {
       path: '/swap',
       variant: 'prominent',
-      text: `${PROMINENT_EN}${HINT_EN}`,
+      text: `${TEXT_EN}${MORE_EN}`,
       file: 'service-notice-banner-03-swap.png',
     },
-    {
-      path: '/buy',
-      variant: 'slim',
-      text: `${SLIM_EN} ${BUY_EN}${HINT_EN}`,
-      file: 'service-notice-banner-04-buy.png',
-    },
+    { path: '/buy', variant: 'slim', text: `${TEXT_EN}${MORE_EN}`, file: 'service-notice-banner-04-buy.png' },
   ];
 
   for (const { path, variant, text, file } of cases) {
@@ -151,6 +143,10 @@ test.describe('Service notice banner', () => {
       const notice = page.getByTestId('service-notice-banner');
       await expect(notice).toHaveAttribute('data-variant', variant, { timeout: 15_000 });
       await expect(notice).toHaveText(text);
+      await expect(notice.getByRole('link', { name: 'More' })).toHaveAttribute(
+        'href',
+        'https://dfx.swiss/security-incident.html',
+      );
 
       await page.waitForTimeout(1000);
       await expect(page).toHaveScreenshot(file, { fullPage: true, maxDiffPixels: 1000 });

@@ -29,37 +29,22 @@ jest.mock('src/contexts/settings.context', () => {
 import { render, screen } from '@testing-library/react';
 import i18n from 'i18next';
 import { MemoryRouter } from 'react-router-dom';
-import { ServiceNoticeBanner } from 'src/components/service-notice-banner';
+import { SECURITY_INCIDENT_URL, ServiceNoticeBanner } from 'src/components/service-notice-banner';
 import { FeatureFlags } from 'src/config/feature-flags';
 import { setupLanguages } from 'src/translations';
 
-const SLIM = {
-  en: 'Due to a security incident affecting DFX deposit addresses, selling is temporarily unavailable. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.',
-  de: 'Wegen eines Sicherheitsvorfalls, der DFX-Einzahlungsadressen betrifft, ist Verkaufen vorübergehend nicht möglich. Senden Sie keine Crypto Tokens an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben. Käufe sind möglich. Banküberweisungen für Käufe dürfen jederzeit gesendet werden. Kundendaten und Kundengelder sind nicht betroffen. Alle Kundendaten und Kundengelder sind sicher und werden schnellstmöglich verarbeitet.',
-  fr: "En raison d'un incident de sécurité concernant les adresses de dépôt DFX, la vente est temporairement indisponible. N'envoyez pas de tokens crypto aux adresses de dépôt que vous avez reçues de DFX avant le 18 novembre 2026. Les achats sont possibles. Les virements bancaires pour les achats peuvent être envoyés à tout moment. Les données et les fonds des clients ne sont pas concernés. Toutes les données et tous les fonds des clients sont en sécurité et seront traités dans les meilleurs délais.",
-  it: 'A causa di un incidente di sicurezza che riguarda gli indirizzi di deposito DFX, la vendita è temporaneamente non disponibile. Non inviare token crypto agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026. Gli acquisti sono possibili. I bonifici bancari per gli acquisti possono essere inviati in qualsiasi momento. I dati e i fondi dei clienti non sono interessati. Tutti i dati e i fondi dei clienti sono al sicuro e verranno elaborati il prima possibile.',
+const TEXT = {
+  en: 'All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.',
+  de: 'Alle DFX-Core-Funktionen sind wieder verfügbar. Senden Sie keine Crypto Tokens an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben.',
+  fr: "Toutes les fonctionnalités principales de DFX sont de nouveau disponibles. N'envoyez pas de tokens crypto aux adresses de dépôt que vous avez reçues de DFX avant le 18 novembre 2026.",
+  it: 'Tutte le funzionalità principali di DFX sono di nuovo disponibili. Non inviare token crypto agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026.',
 };
 
-const PROMINENT = {
-  en: 'Due to a security incident affecting DFX deposit addresses, selling and swapping are temporarily unavailable. Do not send crypto tokens to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used. Purchases are possible. Bank transfers for purchases may be sent at any time. Customer data and customer funds are not affected. All customer data and customer funds are safe and will be processed as quickly as possible.',
-  de: 'Wegen eines Sicherheitsvorfalls, der DFX-Einzahlungsadressen betrifft, sind Verkaufen und Tauschen vorübergehend nicht möglich. Senden Sie keine Crypto Tokens an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben — diese Adressen dürfen nicht mehr verwendet werden. Käufe sind möglich. Banküberweisungen für Käufe dürfen jederzeit gesendet werden. Kundendaten und Kundengelder sind nicht betroffen. Alle Kundendaten und Kundengelder sind sicher und werden schnellstmöglich verarbeitet.',
-  fr: "En raison d'un incident de sécurité concernant les adresses de dépôt DFX, la vente et l'échange sont temporairement indisponibles. N'envoyez pas de tokens crypto à une adresse de dépôt que vous avez reçue de DFX avant le 18 novembre 2026 — ces adresses ne doivent plus être utilisées. Les achats sont possibles. Les virements bancaires pour les achats peuvent être envoyés à tout moment. Les données et les fonds des clients ne sont pas concernés. Toutes les données et tous les fonds des clients sont en sécurité et seront traités dans les meilleurs délais.",
-  it: 'A causa di un incidente di sicurezza che riguarda gli indirizzi di deposito DFX, la vendita e lo scambio sono temporaneamente non disponibili. Non inviare token crypto a nessun indirizzo di deposito ricevuto da DFX prima del 18 novembre 2026 — questi indirizzi non devono più essere utilizzati. Gli acquisti sono possibili. I bonifici bancari per gli acquisti possono essere inviati in qualsiasi momento. I dati e i fondi dei clienti non sono interessati. Tutti i dati e i fondi dei clienti sono al sicuro e verranno elaborati il prima possibile.',
-};
-
-const BUY = {
-  en: 'Buying works as usual; just follow the details below.',
-  de: 'Kaufen ist ganz normal möglich, befolgen Sie einfach die Angaben unten.',
-  fr: "L'achat fonctionne normalement, suivez simplement les indications ci-dessous.",
-  it: "L'acquisto funziona normalmente, segui semplicemente le indicazioni qui sotto.",
-};
-
-// Appended to every notice: questions go to the support tickets, never to an email address.
-const HINT = {
-  en: ' Questions: Open a support ticket',
-  de: ' Fragen: Support-Ticket erstellen',
-  fr: ' Questions : Ouvrir un ticket de support',
-  it: ' Domande: Apri un ticket di supporto',
+const MORE = {
+  en: 'More',
+  de: 'Mehr',
+  fr: 'En savoir plus',
+  it: 'Scopri di più',
 };
 
 const LANGUAGES = ['en', 'de', 'fr', 'it'] as const;
@@ -101,34 +86,29 @@ describe('ServiceNoticeBanner', () => {
     },
   );
 
-  it.each(['/', '/account', '/buy/info', '/buying', '/sell/info', '/swap/info', '/selling', '/support/tickets'])(
-    'shows the slim notice on %s',
-    (path) => {
-      renderAt(path);
-
-      const banner = screen.getByTestId('service-notice-banner');
-      expect(banner).toHaveAttribute('data-variant', 'slim');
-      expect(banner).toHaveAttribute('role', 'note');
-      expect(banner.className.split(/\s+/)).toEqual(
-        expect.arrayContaining(['w-full', 'rounded-md', 'border', 'border-dfxGray-400', 'bg-dfxGray-300']),
-      );
-      expect(screen.getByTestId('info-text')).toHaveAttribute('data-icon-color', 'DARK_GRAY');
-      expect(screen.getByTestId('info-text')).toHaveAttribute('data-text-size', 'XS');
-      expect(banner).toHaveTextContent(SLIM.en);
-      expect(banner).not.toHaveTextContent(BUY.en);
-      expect(screen.queryByText(PROMINENT.en)).not.toBeInTheDocument();
-    },
-  );
-
-  it.each(['/buy', '/buy/'])('adds the buy sentence to the slim notice on %s', (path) => {
+  it.each([
+    '/',
+    '/account',
+    '/buy',
+    '/buy/',
+    '/buy/info',
+    '/buying',
+    '/sell/info',
+    '/swap/info',
+    '/selling',
+    '/support/tickets',
+  ])('shows the slim notice on %s', (path) => {
     renderAt(path);
 
     const banner = screen.getByTestId('service-notice-banner');
     expect(banner).toHaveAttribute('data-variant', 'slim');
     expect(banner).toHaveAttribute('role', 'note');
+    expect(banner.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['w-full', 'rounded-md', 'border', 'border-dfxGray-400', 'bg-dfxGray-300']),
+    );
     expect(screen.getByTestId('info-text')).toHaveAttribute('data-icon-color', 'DARK_GRAY');
     expect(screen.getByTestId('info-text')).toHaveAttribute('data-text-size', 'XS');
-    expect(banner.textContent).toBe(`${SLIM.en} ${BUY.en}${HINT.en}`);
+    expect(banner.textContent).toBe(`${TEXT.en} ${MORE.en}`);
   });
 
   it.each(['/sell', '/sell/', '/swap', '/swap/'])('shows the prominent notice on %s', (path) => {
@@ -142,29 +122,21 @@ describe('ServiceNoticeBanner', () => {
     );
     expect(screen.getByTestId('info-text')).toHaveAttribute('data-icon-color', 'RED');
     expect(screen.getByTestId('info-text')).not.toHaveAttribute('data-text-size');
-    expect(banner).toHaveTextContent(PROMINENT.en);
-    expect(banner).not.toHaveTextContent(BUY.en);
-    expect(screen.queryByText(SLIM.en)).not.toBeInTheDocument();
+    expect(banner.textContent).toBe(`${TEXT.en} ${MORE.en}`);
   });
 
-  it.each(LANGUAGES)('translates every notice into %s', async (language) => {
+  it.each(LANGUAGES)('translates the notice and the link into %s', async (language) => {
     await i18n.changeLanguage(language);
 
     const { unmount } = renderAt('/');
-    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${SLIM[language]}${HINT[language]}`);
+    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${TEXT[language]} ${MORE[language]}`);
     unmount();
 
-    const buy = renderAt('/buy');
-    expect(screen.getByTestId('service-notice-banner').textContent).toBe(
-      `${SLIM[language]} ${BUY[language]}${HINT[language]}`,
-    );
-    buy.unmount();
-
     renderAt('/sell');
-    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${PROMINENT[language]}${HINT[language]}`);
+    expect(screen.getByTestId('service-notice-banner').textContent).toBe(`${TEXT[language]} ${MORE[language]}`);
   });
 
-  it.each(['/', '/buy', '/swap'])('uses Swiss spelling and the formal Sie in German on %s', async (path) => {
+  it.each(['/', '/sell'])('uses Swiss spelling and the formal Sie in German on %s', async (path) => {
     await i18n.changeLanguage('de');
     renderAt(path);
     const text = screen.getByTestId('service-notice-banner').textContent ?? '';
@@ -173,14 +145,18 @@ describe('ServiceNoticeBanner', () => {
   });
 
   it.each(['/', '/buy', '/sell', '/swap'])(
-    'links questions to the support tickets and names no email address on %s',
+    'links More to the security incident page in a new tab and names no email address on %s',
     (path) => {
       renderAt(path);
 
       const banner = screen.getByTestId('service-notice-banner');
-      const link = screen.getByRole('link', { name: 'Open a support ticket' });
+      const link = screen.getByRole('link', { name: 'More' });
       expect(banner).toContainElement(link);
-      expect(link).toHaveAttribute('href', '/support/tickets');
+      expect(link).toHaveAttribute('href', 'https://dfx.swiss/security-incident.html');
+      expect(link).toHaveAttribute('href', SECURITY_INCIDENT_URL);
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(screen.getAllByRole('link')).toHaveLength(1);
       expect(banner.textContent).not.toContain('@');
     },
   );

@@ -1218,7 +1218,7 @@ test.describe('Sell + Swap e2e', () => {
   // Service notice: prominent above the form on /sell and /swap, slim everywhere else
   // ---------------------------------------------------------------------------
 
-  test('/sell and /swap show the prominent service notice above the form; /buy adds the buy sentence; other pages show the slim one', async ({
+  test('/sell and /swap show the prominent service notice above the form; /buy and other pages show the slim one', async ({
     page,
   }) => {
     const user = await createUser({
@@ -1229,11 +1229,9 @@ test.describe('Sell + Swap e2e', () => {
       language: 'EN',
     });
 
-    const prominentText =
-      'Selling and swapping are temporarily unavailable. Do not send funds to any deposit address you received from DFX before 18 November 2026 — these addresses must no longer be used.';
-    const slimText =
-      'Selling is temporarily unavailable. Do not send funds to deposit addresses you received from DFX before 18 November 2026.';
-    const buyText = 'Buying works as usual; just follow the details below.';
+    // Both variants show the same text, followed by the More link to the security incident page.
+    const noticeText =
+      'All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. More';
 
     for (const path of ['/sell', '/swap']) {
       await openScreen(page, path, user.jwt);
@@ -1241,8 +1239,11 @@ test.describe('Sell + Swap e2e', () => {
       const notice = page.getByTestId('service-notice-banner');
       await expect(notice).toHaveCount(1);
       await expect(notice).toHaveAttribute('data-variant', 'prominent');
-      await expect(notice).toHaveText(prominentText);
-      await expect(page.getByText(slimText)).toHaveCount(0);
+      await expect(notice).toHaveText(noticeText);
+      await expect(notice.getByRole('link', { name: 'More' })).toHaveAttribute(
+        'href',
+        'https://dfx.swiss/security-incident.html',
+      );
 
       // Visible before any form input: the notice sits above the first amount field.
       const amount = page.locator('input[inputmode="decimal"]').first();
@@ -1257,12 +1258,12 @@ test.describe('Sell + Swap e2e', () => {
       await expect(amount).toBeEnabled();
     }
 
-    // /buy: the slim notice adds that buying works as usual, above the buy form and its payment details.
+    // /buy: the slim notice sits above the buy form and its payment details.
     await openScreen(page, '/buy', user.jwt);
     const buyNotice = page.getByTestId('service-notice-banner');
     await expect(buyNotice).toHaveCount(1);
     await expect(buyNotice).toHaveAttribute('data-variant', 'slim');
-    await expect(buyNotice).toHaveText(`${slimText} ${buyText}`);
+    await expect(buyNotice).toHaveText(noticeText);
     const buyAmount = page.locator('input[inputmode="decimal"]').first();
     await expect(buyAmount).toBeVisible({ timeout: 15000 });
     const buyNoticeBox = await buyNotice.boundingBox();
@@ -1276,11 +1277,11 @@ test.describe('Sell + Swap e2e', () => {
     const notice = page.getByTestId('service-notice-banner');
     await expect(notice).toHaveCount(1);
     await expect(notice).toHaveAttribute('data-variant', 'slim');
-    await expect(notice).toHaveText(slimText);
+    await expect(notice).toHaveText(noticeText);
 
     // Not dismissable: still there after a reload.
     await page.reload();
-    await expect(page.getByTestId('service-notice-banner')).toHaveText(slimText, { timeout: 15000 });
+    await expect(page.getByTestId('service-notice-banner')).toHaveText(noticeText, { timeout: 15000 });
   });
 
   test('/swap source assets are sellable and target assets are buyable vs GET /v1/asset', async ({ page }) => {
