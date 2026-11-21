@@ -246,6 +246,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   (`compliance-user-20`) intercepts `PUT /v1/userData/1005/operatorMutation` and answers HTTP 404, as
   the API does while `USER_DATA_OPERATOR_MUTATION_API_ENABLED` is off. A green run proves how the form
   renders that state, not that the flag is off in any environment.
+- **The risk-status visuals answer the clerk lookup and the error themselves.** `e2e/compliance.spec.ts`
+  (`compliance-user-21` and `-22`) answer `GET /v1/support/issue/clerk` with a fixed clerk name; `-22`
+  also intercepts `PUT /v1/userData/1005/riskStatus` and answers HTTP 400 with
+  `Risk status change refused`. A green run proves how the form renders those values, not that the API
+  resolves that clerk or that it refuses a real change.
 - **The transaction-search test writes the customer's verified name itself.**
   `e2e-stack/specs/compliance.spec.ts` (`/compliance search by transaction id …`) sets
   `user_data.verifiedName` by SQL before the search, because no identification runs in the stack. A green
@@ -507,6 +512,16 @@ onboarding fee …` and `… shows the blocked-address error …`) give the key-
   write the `onboardingFeeUsedRef` setting row by SQL, restoring the setting afterwards, and set the
   customer's status to `NA` or `Blocked` by SQL. A green run does not prove the production migration
   that seeds the setting, how a key-account user gets its ref, or how a customer reaches that status.
+- **The risk-status full-stack cases take the clerk's verified name and level from the harness.**
+  `e2e-stack/specs/compliance-cases.spec.ts` (`/compliance/user/:id sets a risk status …` and
+  `… keeps Save disabled without a reason …`) log in through `loginAs` and `ensureStaffReady`, which
+  write `user_data.verifiedName` and raise the staff `kycLevel` by SQL. A green run proves that the
+  API records that stored name with the change, not that an identification sets it.
+- **The risk-status error case makes the database refuse the write itself.**
+  `e2e-stack/specs/compliance-cases.spec.ts` (`/compliance/user/:id shows the error when the API cannot store
+the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses one value for that one account,
+  and drops it afterwards. A green run proves how the API and the form behave when the database refuses the
+  write, not which real database failure would cause that in production.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
@@ -783,8 +798,9 @@ onboarding fee …` and `… shows the blocked-address error …`) give the key-
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
 - **The full-stack harness answers Scorechain through the API's loc mock.** `e2e-stack/env/api.env`
-  enables only the Scorechain process (`DISABLED_PROCESSES=*,!Scorechain`) and maps the address of
-  `testWallet(7700001)` to the mock form `SanctionList` in `SCORECHAIN_LOC_MOCK`; every other address
+  enables the Scorechain and risk-status processes
+  (`DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus`) and maps the address of `testWallet(7700001)`
+  to the mock form `SanctionList` in `SCORECHAIN_LOC_MOCK`; every other address
   gets `NoRisk`. The mock answers after `SCORECHAIN_LOC_MOCK_DELAY_MS` (5 s), and the tests prove the
   form is usable before that answer arrives. `e2e-stack/specs/sell-swap.spec.ts` proves that the sell
   page shows no banner for `Ok` and the banner for `LikelyReturn`, through the real API and database.
@@ -924,9 +940,10 @@ onboarding fee …` and `… shows the blocked-address error …`) give the key-
 
 All four points below concern the full-stack harness.
 
-- **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*,!Scorechain`
-  (`e2e-stack/env/api.env`); what that switches off in the API is described in the companion document
-  there — every process-gated cron job — so the processing chain never executes;
+- **No layer here verifies a payment end to end.** The harness sets
+  `DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus` (`e2e-stack/env/api.env`); what that
+  switches off in the API is described in the companion document there — every process-gated cron
+  job — so the processing chain never executes;
   transaction states are inserted with SQL instead. What is verified is the synchronous path:
   interaction, HTTP, validation, authorisation, persistence, display. (A cron without a `process` field
   is not covered by that switch and keeps running — see the companion document in `DFXswiss/backend`.)

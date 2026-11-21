@@ -24,6 +24,11 @@ const mockEditFormProps: {
   onSaved?: () => void;
   onCancel?: () => void;
 } = {};
+const mockRiskStatusProps: {
+  userDataId?: number;
+  currentRiskStatus?: string;
+  onChanged?: () => void;
+} = {};
 
 jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => ({ session: mockSession }),
@@ -119,6 +124,13 @@ jest.mock('src/components/compliance/user-data-edit-form', () => ({
   },
 }));
 
+jest.mock('src/components/compliance/risk-status-editor', () => ({
+  RiskStatusEditor: (props: typeof mockRiskStatusProps) => {
+    Object.assign(mockRiskStatusProps, props);
+    return <div data-testid="risk-status-editor" />;
+  },
+}));
+
 jest.mock('src/hooks/clipboard.hook', () => ({
   useClipboard: () => ({ copy: mockCopy, isCopying: mockIsCopying }),
 }));
@@ -179,6 +191,9 @@ describe('UserDataPanel', () => {
       (key) => delete mockOnboardingFeeProps[key as keyof typeof mockOnboardingFeeProps],
     );
     Object.keys(mockEditFormProps).forEach((key) => delete mockEditFormProps[key as keyof typeof mockEditFormProps]);
+    Object.keys(mockRiskStatusProps).forEach(
+      (key) => delete mockRiskStatusProps[key as keyof typeof mockRiskStatusProps],
+    );
     delete process.env.REACT_APP_PUBLIC_URL;
   });
 
@@ -388,6 +403,65 @@ describe('UserDataPanel', () => {
       render(<UserDataPanel userData={detail({ id: 88002 })} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
 
       expect(screen.queryByTestId('onboarding-fee-editor')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('risk status editor', () => {
+    it.each(['Support', 'Compliance', 'Admin'])(
+      'shows the editor to a %s session with the account id, current value and reload handler',
+      (role) => {
+        mockSession = { role };
+        const onAccountAccessChanged = jest.fn();
+        render(
+          <UserDataPanel
+            userData={detail({ riskStatus: 'Blocked' })}
+            userDataId={88001}
+            onAccountAccessChanged={onAccountAccessChanged}
+          />,
+        );
+
+        expect(screen.getByTestId('risk-status-editor')).toBeInTheDocument();
+        expect(mockRiskStatusProps).toMatchObject({
+          userDataId: 88001,
+          currentRiskStatus: 'Blocked',
+          onChanged: onAccountAccessChanged,
+        });
+      },
+    );
+
+    it('hides the editor for another role', () => {
+      mockSession = { role: 'Marketing' };
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('risk-status-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor without a reload handler', () => {
+      mockSession = { role: 'Support' };
+      render(<UserDataPanel userData={detail()} userDataId={88001} />);
+
+      expect(screen.queryByTestId('risk-status-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor without an account id', () => {
+      mockSession = { role: 'Support' };
+      render(<UserDataPanel userData={detail()} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('risk-status-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor when the row belongs to another account than the route', () => {
+      mockSession = { role: 'Support' };
+      render(<UserDataPanel userData={detail({ id: 88002 })} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('risk-status-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor when the session is unknown', () => {
+      mockSession = undefined;
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('risk-status-editor')).not.toBeInTheDocument();
     });
   });
 
