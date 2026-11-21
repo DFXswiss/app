@@ -445,6 +445,65 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       });
     });
 
+    test('shows the risk status form with a selected value and a reason', async ({ page }) => {
+      await page.route('**/v1/support/issue/clerk', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ clerk: 'E2E Clerk' }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+      await page.locator('#risk-status-value').selectOption('Blocked');
+      await page.locator('#risk-status-reason').fill('E2E reason');
+      await page.waitForTimeout(500);
+
+      await expect(page).toHaveScreenshot('compliance-user-18-risk-status-form.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the API error when setting a risk status is refused', async ({ page }) => {
+      await page.route('**/v1/support/issue/clerk', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ clerk: 'E2E Clerk' }),
+        });
+      });
+      await page.route(`**/v1/userData/${TEST_USER_DATA_ID}/riskStatus`, async (route) => {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ statusCode: 400, message: 'Risk status change refused' }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+      await page.locator('#risk-status-value').selectOption('Blocked');
+      await page.locator('#risk-status-reason').fill('E2E reason');
+
+      const save = page.getByRole('button', { name: 'Save', exact: true });
+      await expect(save).toBeEnabled({ timeout: 10000 });
+      await save.click();
+      await expect(page.getByText('Risk status change refused', { exact: true })).toBeVisible({ timeout: 10000 });
+
+      await expect(page).toHaveScreenshot('compliance-user-19-risk-status-error.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
     test('shows Transactions tab', async ({ page }) => {
       await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
       await page.waitForLoadState('networkidle');
