@@ -5,6 +5,7 @@ import { CollapsibleSection } from 'src/components/compliance/collapsible-sectio
 import { LimitRequestModal } from 'src/components/compliance/limit-request-modal';
 import { OnboardingFeeEditor } from 'src/components/compliance/onboarding-fee-editor';
 import { ReactivateAccount } from 'src/components/compliance/reactivate-account';
+import { RiskStatusEditor } from 'src/components/compliance/risk-status-editor';
 import type { UserDataStatusInfo } from 'src/hooks/account-reactivation.hook';
 import { useClipboard } from 'src/hooks/clipboard.hook';
 import { OrganizationDetail, UserDataDetail, UserInfo } from 'src/hooks/compliance.hook';
@@ -12,6 +13,7 @@ import { canReactivateAccount, DEACTIVATED_STATUS } from 'src/util/account-react
 import { appOrigin } from 'src/util/app-origin';
 import { display, formatBirthday, formatDate, formatDateTime, Primitive, refName } from 'src/util/compliance-helpers';
 import { canManageOnboardingFee } from 'src/util/onboarding-fee.util';
+import { canManageRiskStatus } from 'src/util/risk-status.util';
 
 interface UserDataPanelProps {
   userData: UserDataDetail;
@@ -293,6 +295,16 @@ export function UserDataPanel({
                 onChanged={onAccountAccessChanged}
               />
             )}
+            {userDataId !== undefined &&
+              rowIsThisAccount &&
+              onAccountAccessChanged &&
+              canManageRiskStatus(session?.role) && (
+                <RiskStatusEditor
+                  userDataId={userDataId}
+                  currentRiskStatus={current.riskStatus}
+                  onChanged={onAccountAccessChanged}
+                />
+              )}
             {userDataId !== undefined &&
               rowIsThisAccount &&
               onAccountAccessChanged &&

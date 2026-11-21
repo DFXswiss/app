@@ -836,4 +836,325 @@ test.describe('Compliance area (cases)', () => {
     );
     expect(attributionLogs).toEqual([]);
   });
+
+  // -------------------------------------------------------------------------
+  // /compliance/user/:id — risk status (Support and up) via UI + DB proof
+  // -------------------------------------------------------------------------
+
+  test('/compliance/user/:id sets a risk status and the account shows it', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Support');
+    await ensureStaffReady(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-risk-status',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    const blockedReason = 'E2E risk status: blocked for review';
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+    await expect(page.locator('#risk-status-value')).toBeVisible({ timeout: 15000 });
+    await page.locator('#risk-status-value').selectOption('Blocked');
+    await page.locator('#risk-status-reason').fill(blockedReason);
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    await expect(save).toBeEnabled({ timeout: 15000 });
+
+    const putResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/riskStatus`,
+    );
+    await save.click();
+    expect((await putResponse).status()).toBe(200);
+
+    await expect(page.getByText('Risk status set to Blocked.', { exact: true })).toBeVisible({ timeout: 20000 });
+
+    // The reloaded UserData row shows the new value.
+    await expect(page.getByText('riskStatus', { exact: true }).locator('xpath=following-sibling::td')).toHaveText(
+      'Blocked',
+      { timeout: 20000 },
+    );
+    await waitForRow(
+      `SELECT id FROM user_data WHERE id = $1 AND "riskStatus" = 'Blocked'`,
+      [customer.userDataId],
+      20000,
+    );
+
+    const blockedKycLog = await waitForRow<{ id: number; comment: string }>(
+      `SELECT id, comment FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog' ORDER BY id DESC LIMIT 1`,
+      [customer.userDataId],
+      20000,
+    );
+    expect(blockedKycLog.comment).toContain('result: riskStatus: Blocked;');
+    expect(blockedKycLog.comment).toContain('Editor: E2E Test Staff;');
+    expect(blockedKycLog.comment).toContain(blockedReason);
+    trackRow('kyc_log', blockedKycLog.id);
+
+    const blockedKycLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog' ORDER BY id`,
+      [customer.userDataId],
+    );
+    expect(blockedKycLogs).toHaveLength(1);
+
+    const blockedSupportLogs = await queryRows<{ id: number; message: string; comment: string | null }>(
+      `SELECT id, message, comment FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 ORDER BY id`,
+      [customer.userDataId, 'E2E Test Staff'],
+    );
+    expect(blockedSupportLogs).toHaveLength(1);
+    expect(blockedSupportLogs[0].message).toBe(
+      'riskStatus requested previous={"riskStatus":"NA"} next={"riskStatus":"Blocked"}',
+    );
+    expect(blockedSupportLogs[0].comment).toBe(blockedReason);
+    blockedSupportLogs.forEach((row) => trackRow('support_log', row.id));
+
+    // Set Released the same way; the form shows the value the reload brought in.
+    const releasedReason = 'E2E risk status: released after review';
+    await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+    await expect(page.locator('#risk-status-value')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Current: Blocked', { exact: true })).toBeVisible();
+    await page.locator('#risk-status-value').selectOption('Released');
+    await page.locator('#risk-status-reason').fill(releasedReason);
+    const saveReleased = page.getByRole('button', { name: 'Save', exact: true });
+    await expect(saveReleased).toBeEnabled({ timeout: 15000 });
+
+    const releasedPutResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/riskStatus`,
+    );
+    await saveReleased.click();
+    expect((await releasedPutResponse).status()).toBe(200);
+
+    await expect(page.getByText('Risk status set to Released.', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('riskStatus', { exact: true }).locator('xpath=following-sibling::td')).toHaveText(
+      'Released',
+      { timeout: 20000 },
+    );
+    await waitForRow(
+      `SELECT id FROM user_data WHERE id = $1 AND "riskStatus" = 'Released'`,
+      [customer.userDataId],
+      20000,
+    );
+
+    const releasedKycLog = await waitForRow<{ id: number; comment: string }>(
+      `SELECT id, comment FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog' ORDER BY id DESC LIMIT 1`,
+      [customer.userDataId],
+      20000,
+    );
+    expect(releasedKycLog.id).not.toBe(blockedKycLog.id);
+    expect(releasedKycLog.comment).toContain('result: riskStatus: Released;');
+    expect(releasedKycLog.comment).toContain('Editor: E2E Test Staff;');
+    expect(releasedKycLog.comment).toContain(releasedReason);
+    trackRow('kyc_log', releasedKycLog.id);
+
+    const releasedKycLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog' ORDER BY id`,
+      [customer.userDataId],
+    );
+    expect(releasedKycLogs).toHaveLength(2);
+
+    const releasedSupportLogs = await queryRows<{ id: number; message: string; comment: string | null }>(
+      `SELECT id, message, comment FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 ORDER BY id`,
+      [customer.userDataId, 'E2E Test Staff'],
+    );
+    expect(releasedSupportLogs).toHaveLength(2);
+    expect(releasedSupportLogs[1].message).toBe(
+      'riskStatus requested previous={"riskStatus":"Blocked"} next={"riskStatus":"Released"}',
+    );
+    expect(releasedSupportLogs[1].comment).toBe(releasedReason);
+    releasedSupportLogs.forEach((row) => trackRow('support_log', row.id));
+  });
+
+  test('/compliance/user/:id keeps Save disabled without a reason and changes nothing', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Support');
+    await ensureStaffReady(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-risk-status-no-reason',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    const beforeUserData = await queryOne<{ riskStatus: string | null }>(
+      `SELECT "riskStatus" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    const beforeKycLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog'`,
+      [customer.userDataId],
+    );
+    const beforeSupportLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog'`,
+      [customer.userDataId],
+    );
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+    await expect(page.locator('#risk-status-value')).toBeVisible({ timeout: 15000 });
+    await page.locator('#risk-status-value').selectOption('Blocked');
+    await page.locator('#risk-status-reason').fill('   ');
+
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    await expect(save).toBeDisabled();
+
+    const afterUserData = await queryOne<{ riskStatus: string | null }>(
+      `SELECT "riskStatus" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    const afterKycLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog'`,
+      [customer.userDataId],
+    );
+    const afterSupportLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog'`,
+      [customer.userDataId],
+    );
+    expect(afterUserData).toEqual(beforeUserData);
+    expect(afterKycLogs).toEqual(beforeKycLogs);
+    expect(afterSupportLogs).toEqual(beforeSupportLogs);
+  });
+
+  for (const riskStatus of ['Suspicious', 'BlockedBuyCrypto', 'BlockedBuyFiat']) {
+    test(`/compliance/user/:id sets the risk status ${riskStatus}`, async ({ page }) => {
+      const { jwt, userId } = await loginAs('Support');
+      await ensureStaffReady(userId);
+
+      const customer = await createUser({
+        tag: `cmp-risk-status-${riskStatus.toLowerCase()}`,
+        kycLevel: 30,
+        completePersonalData: true,
+        language: 'EN',
+      });
+      const reason = `E2E risk status: ${riskStatus}`;
+
+      await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+      await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+      await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+      await page.locator('#risk-status-value').selectOption(riskStatus);
+      await page.locator('#risk-status-reason').fill(reason);
+      const save = page.getByRole('button', { name: 'Save', exact: true });
+      await expect(save).toBeEnabled({ timeout: 15000 });
+
+      const putResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PUT' &&
+          new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/riskStatus`,
+      );
+      await save.click();
+      expect((await putResponse).status()).toBe(200);
+
+      await expect(page.getByText(`Risk status set to ${riskStatus}.`, { exact: true })).toBeVisible({
+        timeout: 20000,
+      });
+      await expect(page.getByText('riskStatus', { exact: true }).locator('xpath=following-sibling::td')).toHaveText(
+        riskStatus,
+        { timeout: 20000 },
+      );
+      await waitForRow(
+        `SELECT id FROM user_data WHERE id = $1 AND "riskStatus" = $2`,
+        [customer.userDataId, riskStatus],
+        20000,
+      );
+
+      const kycLog = await waitForRow<{ id: number; comment: string }>(
+        `SELECT id, comment FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog'`,
+        [customer.userDataId],
+        20000,
+      );
+      expect(kycLog.comment).toBe(
+        `API UserData risk status; result: riskStatus: ${riskStatus}; Editor: E2E Test Staff; Reason: ${reason}`,
+      );
+      trackRow('kyc_log', kycLog.id);
+
+      const supportLogs = await queryRows<{ id: number; message: string; comment: string | null }>(
+        `SELECT id, message, comment FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2`,
+        [customer.userDataId, 'E2E Test Staff'],
+      );
+      expect(supportLogs).toHaveLength(1);
+      expect(supportLogs[0].message).toBe(
+        `riskStatus requested previous={"riskStatus":"NA"} next={"riskStatus":"${riskStatus}"}`,
+      );
+      expect(supportLogs[0].comment).toBe(reason);
+      supportLogs.forEach((row) => trackRow('support_log', row.id));
+    });
+  }
+
+  test('/compliance/user/:id shows the error when the API cannot store the risk status', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Support');
+    await ensureStaffReady(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-risk-status-refused',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const reason = 'E2E risk status: refused by the database';
+
+    // Starting state: the database refuses this one account's change, so the real API fails after its audit
+    // records, the way a failing database write does in production.
+    const constraint = `e2e_risk_status_refused_${customer.userDataId}`;
+    await queryRows(
+      `ALTER TABLE user_data ADD CONSTRAINT ${constraint} CHECK (id <> ${customer.userDataId} OR "riskStatus" <> 'Suspicious')`,
+    );
+
+    try {
+      await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+      await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+      await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+      await page.locator('#risk-status-value').selectOption('Suspicious');
+      await page.locator('#risk-status-reason').fill(reason);
+      const save = page.getByRole('button', { name: 'Save', exact: true });
+      await expect(save).toBeEnabled({ timeout: 15000 });
+
+      const putResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PUT' &&
+          new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/riskStatus`,
+      );
+      await save.click();
+      const refused = await putResponse;
+      expect(refused.status()).toBe(500);
+      const refusedBody = (await refused.json()) as { message?: unknown };
+      expect(typeof refusedBody.message).toBe('string');
+
+      // The form stays open and shows the API's message; nothing claims the change was made.
+      await expect(page.getByText(refusedBody.message as string, { exact: true })).toBeVisible({ timeout: 20000 });
+      await expect(page.locator('#risk-status-value')).toBeVisible();
+      await expect(page.getByText('Risk status set to Suspicious.', { exact: true })).toHaveCount(0);
+    } finally {
+      await queryRows(`ALTER TABLE user_data DROP CONSTRAINT IF EXISTS ${constraint}`);
+    }
+
+    const userData = await queryOne<{ riskStatus: string | null }>(`SELECT "riskStatus" FROM user_data WHERE id = $1`, [
+      customer.userDataId,
+    ]);
+    expect(userData?.riskStatus).toBe('NA');
+
+    const supportLogs = await queryRows<{ id: number; message: string }>(
+      `SELECT id, message FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 ORDER BY id`,
+      [customer.userDataId, 'E2E Test Staff'],
+    );
+    expect(supportLogs.map((row) => row.message)).toEqual([
+      'riskStatus requested previous={"riskStatus":"NA"} next={"riskStatus":"Suspicious"}',
+      'riskStatus failed ["riskStatus"]',
+    ]);
+    supportLogs.forEach((row) => trackRow('support_log', row.id));
+
+    const kycLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog'`,
+      [customer.userDataId],
+    );
+    expect(kycLogs).toHaveLength(1);
+    kycLogs.forEach((row) => trackRow('kyc_log', row.id));
+  });
 });
