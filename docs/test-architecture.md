@@ -397,6 +397,68 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   from `global.setup.ts`), or EUR. It also does not prove that the IBAN in the document is the
   one the quote showed: every quote in this environment uses the collection account and stores
   no bank selection.
+- **The exchange-rate unit test replaces the SDK and presentation components.**
+  `src/__tests__/exchange-rate.test.tsx` supplies `Utils.formatAmount` and `Utils.formatAmountCrypto`
+  and renders component-library controls as plain elements. On a sell, the title, the fiat branch of the base rate
+  and inverted sell steps use `formatFiatRate` from `src/util/significant-amount.ts`. A buy uses the mocked
+  `Utils.formatAmount` in the fiat branch, including a rate below 1. That helper never
+  calls the mocked formatter: from 1 upward, for 0, for non-finite values, and for the sell-page image of the
+  API placeholder `Number.MAX_VALUE` (`1 / Number.MAX_VALUE`, shown as `0.00`), it rebuilds
+  `Utils.formatAmount` itself (`toFixed(2)` and a space as the thousands separator); below 1 it delegates
+  to `formatSignificantAmount`. A green run does not prove the real SDK formatting or production controls.
+  It also replaces `useSettingsContext`: `translate` only substitutes placeholders in the English key.
+  A green run does not prove the de/fr/it translations or that the real keys exist in translation files.
+- **The sell-rate-steps visual spec supplies a synthetic quote.**
+  `e2e/sell-rate-steps.spec.ts` uses an unsigned synthetic session and replaces user, startup, sell
+  quote, payment info and address-check responses. A green run does not prove authentication, real
+  price steps or API fees. The case under 1 EUR per asset uses those same replacements with a
+  synthetic DEPS quote (6173.4 DEPS in, 0.97 EUR out). A green run of that case shows the quote
+  0.00015713 EUR/DEPS, the base rate 0.00016199 EUR/DEPS and the step DEPS to EUR at 0.00016199
+  EUR/DEPS on Synthetic. It does not prove authentication, real price steps or API fees either.
+- **The transaction-sell-rate visual spec supplies a synthetic completed sale.**
+  `e2e/transaction-sell-rate.spec.ts` replaces `GET /v1/transaction/single`, startup lookups,
+  `/v1/setting/infoBanner`, `/v1/transaction/unassigned`, and `/v2/user` and uses an unsigned session token. It shows the expanded rate for that fixture. It does not prove that
+  the API returns those values or that login and transaction processing work. The list variant also
+  answers `GET /v1/transaction/detail` with the synthetic completed sale. The case under 1 EUR per
+  asset fulfils the same routes with a synthetic completed sale of seeded Ethereum/DEPS (asset id
+  354, `inputChainId` `0x103747924e74708139a9400e4ab4bea79fffa380`, `inputEvmChainId` 1,
+  `inputTxUrl` on etherscan.io for the same input hash, `chargebackAsset` DEPS, `chargebackAssetId` 354) whose fee is set: input 61734 DEPS, output 9.9 EUR, `exchangeRate` 6173.4 and `rate` 6235.8.
+  Those are the five-significant-digit values of `(inputReferenceAmountMinusFee / outputAmount)` and
+  `inputAmount / outputAmount` after a 1% fee (617.34 DEPS). `fees.total` and `fees.dfx` are 617.34,
+  `fees.rate` is 0.01, and network, platform and both bank fields are 0, which is what `mapFees`
+  returns when `percentFee` is set and the reference price is 1. A green run of the detail screen
+  and of the transaction list (row expanded) shows 61734 DEPS (Ethereum), 9.9 EUR, the quote
+  0.00016036 EUR/DEPS, the base rate and the price step 0.00016199 EUR/DEPS, and the total fee
+  0.10 EUR (617.34 DEPS). It does not prove that the API returns those values.
+- **The transaction-list unit test replaces the SDK and component library.**
+  `src/__tests__/transaction-list-txinfo.test.tsx` replaces `@dfx.swiss/react` and implements
+  `Utils.formatAmountCrypto` locally the way the package does: `toPrecision`, then `toFixed`, then
+  trailing zeros stripped. The components are replacements too. Inverted sell rates do not use that
+  mock; they use `formatSignificantAmount` from `src/util/significant-amount.ts`, so a green run of
+  that case proves the helper inside the replaced screen. A green run does not prove the real SDK's
+  formatting or the real component library's rendering.
+- **The transaction-status unit test replaces the dropdown.**
+  `src/__tests__/transaction-screen-status.test.tsx` replaces `StyledDropdown` with a list that
+  calls `labelFunc` and `descriptionFunc` itself. A green run proves which labels the callbacks
+  return. It does not prove that the real `StyledDropdown` displays them.
+- **The completed sell rate full-stack case writes its starting row with SQL.**
+  `e2e-stack/specs/transactions.spec.ts` sets `inputAmount`, `outputAmount`, `inputReferenceAmount`,
+  `inputReferenceAmountMinusFee`, `outputAssetId`, `priceSteps`, `percentFee`, `totalFeeAmount`
+  and `blockchainFee` on a `buy_fiat` row; the ETH detail and list cases share this starting state. A green run
+  proves that the API returns the saved rate fields and the screen displays them as fiat per asset.
+  When the API answers that sell is paused, a green run checks only that paused answer.
+  It does not prove that transaction processing calculates or saves those rates and price steps.
+  Nor does it prove fee calculation: `percentFee`, `totalFeeAmount` and `blockchainFee` are set by SQL,
+  and the fiat fees on the screen are derived from these stored values and the stored base rate.
+- **The cheap-token sell rate full-stack case writes its starting row with SQL.**
+  `e2e-stack/specs/transactions.spec.ts` points `crypto_input.assetId` at the seeded token
+  `Ethereum/DEPS` (`migration/seed/asset.csv` in the API repository: id 354, type Token, sellable)
+  and sets `buy_fiat.inputAmount` 61734, `outputAmount` 10, `inputReferenceAmount` 61734,
+  `inputReferenceAmountMinusFee` 61734, `outputAssetId` and one price step of 6173.4. A green run
+  proves the detail screen shows `0.00016199 EUR/DEPS` for the rate, the base rate and that step.
+  When the API answers that sell is paused, a green run checks only that paused answer.
+  It does not prove that pricing, fee calculation or transaction processing produced those amounts,
+  or that DEPS trades at that rate.
 - **The transaction-invoice visual spec answers the waiting buy row itself.**
   `e2e/transaction-invoice.spec.ts` fulfils `GET /v1/transaction/detail` with a synthetic CHF
   `WaitingForPayment` buy, signs in with an unsigned client-side session token, and answers
@@ -559,6 +621,20 @@ onboarding fee …` and `… shows the blocked-address error …`) give the key-
   A green run proves the signature field shows its format error and keeps Login disabled for a
   pasted armored block. It does not prove the API's sign message or signature check; the login
   with a malformed and with a whitespace-padded signature runs in `e2e-stack/specs/auth.spec.ts`.
+- **The late refund-error case holds delivery of a real API response.**
+  `e2e-stack/specs/transactions.spec.ts` intercepts the guest refund request, fetches the real API
+  response with `route.fetch()` and delivers that response only after leaving the refund screen.
+  A green run proves that a late real refund error is not shown after navigation. It does not prove
+  the API's natural latency. The late successful response is the next entry.
+- **The late refund-success case holds delivery of a real API response.**
+  The same spec starts from a `pending_buy` (amlCheck Pending, no chargeback), the guest state
+  whose refund GET already succeeds in the ZIP case. It intercepts
+  `GET /v1/transaction/uid/:uid/:secret/refund`, fetches the real API response with `route.fetch()`
+  and delivers that body only after leaving the refund screen. A green run proves the delivered
+  response is HTTP 200, that its `expiryDate` is in the future and at most six minutes ahead, and
+  that no further GET to that route arrives until that `expiryDate` plus 15 seconds. It does not
+  prove the API's natural latency, that the visitor can submit the refund, or that two refund
+  requests of one still-mounted screen can overlap.
 - **Full-stack screen-sync regressions hold delivery of real API responses.**
   `e2e-stack/specs/screen-sync.spec.ts` intercepts `GET /v2/kyc/file/:id` and
   `GET /v1/dashboard/financial/latest`, calls `route.fetch()` against the real API, then

@@ -676,7 +676,7 @@
     "e.g. Deutsche Bank": "z.B. Deutsche Bank",
     "As soon as the transaction arrives in our wallet, we will transfer your money to your bank account.": "Sobald die Transaktion in unserem Wallet eingegangen ist, werden wir Dein Guthaben auf Dein Bankkonto überweisen.",
     "The output amount is computed as the input amount times the base rate minus the DFX fee, bank fee and the network fee. That is, {{output}} {{inputSymbol}} = {{input}} {{outputSymbol}} × {{baseRate}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}.": "Der Ausgabebetrag wird als Eingabebetrag multipliziert mit dem Basiskurs abzüglich der DFX-Gebühr, Bankgebühr und Netzwerkgebühr berechnet. Das heißt, {{output}} {{inputSymbol}} = {{input}} {{outputSymbol}} × {{baseRate}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}.",
-    "Output amount = Input amount × Base rate - DFX fee - Network fee.": "Ausgabebetrag = Eingabebetrag × Basiskurs - DFX-Gebühr - Netzwerkgebühr.",
+    "Output amount = Input amount × Base rate - Total fee.": "Ausgabebetrag = Eingabebetrag × Basiskurs - Gesamtgebühr.",
     "Warning: According to our blockchain analysis, cryptocurrencies sent from this wallet address will most likely not be processed but returned to you.": "Achtung: Laut unserer Blockchain-Analyse werden Kryptowährungen, die von dieser Wallet-Adresse gesendet werden, voraussichtlich nicht verarbeitet, sondern an Dich zurückgesendet."
   },
   "screens/swap": {
@@ -749,6 +749,7 @@
     "Transaction status": "Status der Transaktion",
     "Transaction refund": "Rückerstattung der Transaktion",
     "{{from}} to {{to}} at {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})": "{{from}} zu {{to}} bei {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})",
+    "{{from}} to {{to}} at {{price}} {{to}}/{{from}} ({{source}}, {{timestamp}})": "{{from}} zu {{to}} bei {{price}} {{to}}/{{from}} ({{source}}, {{timestamp}})",
     "No transactions yet": "Noch keine Transaktionen",
     "ID": "ID",
     "External ID": "Externe ID",
@@ -840,6 +841,7 @@
     "Export CSV": "CSV-Export",
     "Assign transaction": "Transaktion zuordnen",
     "{{from}} to {{to}} at {{price}} {{from}}/{{to}} on {{source}}": "{{from}} zu {{to}} bei {{price}} {{from}}/{{to}} auf {{source}}.",
+    "{{from}} to {{to}} at {{price}} {{to}}/{{from}} on {{source}}": "{{from}} zu {{to}} bei {{price}} {{to}}/{{from}} auf {{source}}",
     "This exchange rate is not guaranteed. The effective rate will be determined once the transactions have been received by DFX and the crypto assets can be delivered.": "Dieser Wechselkurs ist nicht garantiert. Der effektive Kurs wird ermittelt, wenn die Transaktionen bei DFX eingegangen ist und die Krypto-Assets ausgeliefert werden können.",
     "Please note that by using this service you automatically accept our terms and conditions. The effective exchange rate is fixed when the money is received and processed by DFX.": "Bitte beachte, dass Du mit der Nutzung dieses Dienstes automatisch unsere Allgemeinen Geschäftsbedingungen akzeptierst. Der effektive Wechselkurs wird festegelegt wenn das Geld bei DFX eingegangen ist und verarbeitet wird.",
     "Please note that by using this service you automatically accept our terms and conditions and authorize DFX.swiss to collect the above amount via your chosen payment method and agree that this amount cannot be canceled, recalled or refunded.": "Bitte beachte, dass Du mit der Nutzung dieses Dienstes automatisch unsere Allgemeinen Geschäftsbedingungen akzeptierst und DFX.swiss ermächtigst, den oben genannten Betrag über die von Dir gewählte Zahlungsmethode einzuziehen. Du erklärst Dich damit einverstanden, dass dieser Betrag nicht storniert, zurückgerufen oder zurückerstattet werden kann.",

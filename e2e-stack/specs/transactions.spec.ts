@@ -10,6 +10,7 @@ import {
   test,
   TransactionsPausedError,
 } from './fixtures';
+import { fulfillRealResponseAfterGate } from './fixtures/screen-sync';
 import {
   createUser,
   createBankAccount,
@@ -57,6 +58,164 @@ test('empty transaction list shows "No transactions found"', async ({ page }) =>
 
   await expect(page.getByRole('heading', { name: 'Your Transactions', exact: true })).toBeVisible();
   await expect(page.getByText('No transactions found', { exact: true })).toBeVisible();
+});
+
+test('completed sell detail displays fiat per asset for the rate and price steps', async ({ page }) => {
+  const user = await createUser({ tag: 'tx-sell-rate', kycLevel: 30, completePersonalData: true });
+  const tx = await orPaused(
+    createTransaction({
+      state: 'completed_sell',
+      tag: 'tx-sell-rate',
+      inputAsset: 'ETH',
+      userId: user.userId,
+      userDataId: user.userDataId,
+      jwt: user.jwt,
+      amount: 2,
+    }),
+  );
+  if (tx instanceof TransactionsPausedError) {
+    // Sell is switched off at the API: there is no sell transaction to open.
+    expectTransactionsPaused(tx, 'sell');
+    return;
+  }
+  const eur = required(
+    await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'EUR' LIMIT 1`),
+    'EUR must exist',
+  );
+  await queryRows(
+    `UPDATE buy_fiat SET "inputAmount" = 2, "outputAmount" = 100.01, "inputReferenceAmount" = 2,
+       "inputReferenceAmountMinusFee" = 1.9982, "outputAssetId" = $1, "priceSteps" = $2,
+       "percentFee" = 0.0008, "totalFeeAmount" = 0.0018, "blockchainFee" = 0.0002 WHERE id = $3`,
+    [
+      eur.id,
+      JSON.stringify([
+        { source: 'Synthetic', from: 'ETH', to: 'USD', price: 0.0185, timestamp: '2026-10-22T13:29:00.687Z' },
+        { source: 'Synthetic', from: 'USD', to: 'EUR', price: 1.08, timestamp: '2026-10-22T13:25:03.871Z' },
+      ]),
+      tx.buyFiatId,
+    ],
+  );
+
+  await openScreen(page, `/tx/${tx.uid}`, user.jwt);
+  await page.getByText('50.005 EUR/ETH', { exact: true }).first().click();
+  await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+  // Base rate: 1.9982 / 100.01 rounds to 0.01998 ETH/EUR; fiat fees are rounded up to cents.
+  await expect(page.getByText('0.10 EUR (0.0018 ETH)', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.09 EUR (0.0016 ETH, 0.08%)', { exact: true })).toBeVisible();
+
+  await expect(page.getByText('Output amount = Input amount × Base rate - Total fee.', { exact: true })).toBeVisible();
+  await expect(page.getByText('50.005 EUR/ETH', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('50.005 EUR/ETH', { exact: true })).toHaveCount(1);
+  await expect(page.getByText('50.05 EUR/ETH', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.019998 ETH/EUR', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/ETH to USD at 54\.054 USD\/ETH/)).toBeVisible();
+  await expect(page.getByText(/USD to EUR at 0\.92593 EUR\/USD/)).toBeVisible();
+  await expect(page.getByText(/ETH to USD at 0\.0185 ETH\/USD/)).toHaveCount(0);
+  await expect(page.getByText(/USD to EUR at 1\.08 USD\/EUR/)).toHaveCount(0);
+});
+
+test('completed sell of a cheap token displays five significant fiat digits', async ({ page }) => {
+  const user = await createUser({ tag: 'tx-sell-deps', kycLevel: 30, completePersonalData: true });
+  const tx = await orPaused(
+    createTransaction({
+      state: 'completed_sell',
+      tag: 'tx-sell-deps',
+      inputAsset: 'DEPS',
+      userId: user.userId,
+      userDataId: user.userDataId,
+      jwt: user.jwt,
+      amount: 61734,
+    }),
+  );
+  if (tx instanceof TransactionsPausedError) {
+    // Sell is switched off at the API: there is no sell transaction to open.
+    expectTransactionsPaused(tx, 'sell');
+    return;
+  }
+  const eur = required(
+    await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'EUR' LIMIT 1`),
+    'EUR must exist',
+  );
+  const deps = required(
+    await queryOne<{ id: number }>(`SELECT id FROM asset WHERE "uniqueName" = 'Ethereum/DEPS' LIMIT 1`),
+    'Ethereum/DEPS must exist in the asset seed',
+  );
+  await queryRows(`UPDATE crypto_input SET "assetId" = $1 WHERE id = $2`, [
+    deps.id,
+    required(tx.cryptoInputId, 'completed sell has a crypto input'),
+  ]);
+  await queryRows(
+    `UPDATE buy_fiat SET "inputAmount" = 61734, "inputAsset" = 'DEPS', "outputAmount" = 10,
+       "inputReferenceAmount" = 61734, "inputReferenceAmountMinusFee" = 61734, "outputAssetId" = $1,
+       "priceSteps" = $2 WHERE id = $3`,
+    [
+      eur.id,
+      JSON.stringify([
+        { source: 'Synthetic', from: 'DEPS', to: 'EUR', price: 6173.4, timestamp: '2026-10-22T13:29:00.687Z' },
+      ]),
+      required(tx.buyFiatId, 'completed sell has a buy fiat row'),
+    ],
+  );
+
+  await openScreen(page, `/tx/${tx.uid}`, user.jwt);
+  await page.getByText('0.00016199 EUR/DEPS', { exact: true }).first().click();
+  await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.00016199 EUR/DEPS', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('0.00016 EUR/DEPS', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText('DEPS to EUR at 0.00016199 EUR/DEPS (Synthetic, 2026-10-22T13:29:00.687Z)', { exact: true }),
+  ).toBeVisible();
+});
+
+test('completed sell in the list displays fiat rates and fees', async ({ page }) => {
+  const user = await createUser({ tag: 'tx-list-sell-rate', kycLevel: 30, completePersonalData: true });
+  const tx = await orPaused(
+    createTransaction({
+      state: 'completed_sell',
+      tag: 'tx-list-sell-rate',
+      inputAsset: 'ETH',
+      userId: user.userId,
+      userDataId: user.userDataId,
+      jwt: user.jwt,
+      amount: 2,
+    }),
+  );
+  if (tx instanceof TransactionsPausedError) {
+    // Sell is switched off at the API: there is no sell transaction to open.
+    expectTransactionsPaused(tx, 'sell');
+    return;
+  }
+  const eur = required(
+    await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'EUR' LIMIT 1`),
+    'EUR must exist',
+  );
+  await queryRows(
+    `UPDATE buy_fiat SET "inputAmount" = 2, "outputAmount" = 100.01, "inputReferenceAmount" = 2,
+       "inputReferenceAmountMinusFee" = 1.9982, "outputAssetId" = $1, "priceSteps" = $2,
+       "percentFee" = 0.0008, "totalFeeAmount" = 0.0018, "blockchainFee" = 0.0002 WHERE id = $3`,
+    [
+      eur.id,
+      JSON.stringify([
+        { source: 'Synthetic', from: 'ETH', to: 'USD', price: 0.0185, timestamp: '2026-10-22T13:29:00.687Z' },
+        { source: 'Synthetic', from: 'USD', to: 'EUR', price: 1.08, timestamp: '2026-10-22T13:25:03.871Z' },
+      ]),
+      tx.buyFiatId,
+    ],
+  );
+  await openScreen(page, '/tx', user.jwt);
+  await page.getByText('Completed', { exact: true }).first().click();
+  await page.getByText('50.005 EUR/ETH', { exact: true }).first().click();
+  await expect(page.getByText('Base rate', { exact: true })).toBeVisible();
+  await expect(page.getByText('50.005 EUR/ETH', { exact: true })).toHaveCount(1);
+  await expect(page.getByText('50.05 EUR/ETH', { exact: true })).toBeVisible();
+  await expect(page.getByText(/ETH to USD at 54\.054 USD\/ETH/)).toBeVisible();
+  await expect(page.getByText(/USD to EUR at 0\.92593 EUR\/USD/)).toBeVisible();
+  await expect(page.getByText(/ETH to USD at 0\.0185 ETH\/USD/)).toHaveCount(0);
+  await expect(page.getByText(/USD to EUR at 1\.08 USD\/EUR/)).toHaveCount(0);
+  await expect(page.getByText('Output amount = Input amount × Base rate - Total fee.', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.10 EUR (0.0018 ETH)', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.09 EUR (0.0016 ETH, 0.08%)', { exact: true })).toBeVisible();
+  await expect(page.getByText('0.019998 ETH/EUR', { exact: true })).toHaveCount(0);
 });
 
 test('transaction list shows buy and sell rows with expected labels and amounts', async ({ page }) => {
@@ -927,6 +1086,148 @@ test('refund form with invalid ZIP keeps submit disabled and leaves buy_crypto u
   expect(row?.chargebackAmount).toBeNull();
   expect(row?.chargebackIban).toBeNull();
   expect(row?.chargebackAllowedDateUser).toBeNull();
+});
+
+test('late refund error does not appear after leaving the refund screen', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-refund-late',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  const tx = await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-refund-late',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 190,
+    inputAsset: 'CHF',
+  });
+  await seedActionSecret(tx.uid);
+  const sql = `SELECT "chargebackAmount", "chargebackIban", "chargebackAllowedDateUser"
+    FROM buy_crypto WHERE id = $1`;
+  const before = required(await queryOne(sql, [tx.buyCryptoId]), 'completed buy row must exist');
+  const refundPath = `/v1/transaction/uid/${tx.uid}/${ACTION_SECRET}/refund`;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let routeHandled: Promise<void> | undefined;
+  let intercepted = false;
+  await page.route(`**${refundPath}`, async (route) => {
+    if (route.request().method() !== 'GET' || new URL(route.request().url()).pathname !== refundPath) {
+      await route.fallback();
+      return;
+    }
+    intercepted = true;
+    routeHandled = fulfillRealResponseAfterGate(route, gate);
+    await routeHandled;
+  });
+
+  try {
+    await page.context().clearCookies();
+    await page.goto(`/tx/${tx.uid}/${ACTION_SECRET}/refund`);
+    await expect.poll(() => intercepted).toBe(true);
+    const title = page.getByText('Transaction refund', { exact: true });
+    await expect(title).toBeVisible();
+    await title.locator('..').locator('button').first().click();
+    await expect(page).toHaveURL(new RegExp(`/tx/${tx.uid}$`));
+    await expect(page.getByText('Transaction status', { exact: true })).toBeVisible();
+    await expect(page.getByText('Completed', { exact: true })).toBeVisible();
+
+    const response = page.waitForResponse(
+      (result) => result.request().method() === 'GET' && new URL(result.url()).pathname === refundPath,
+    );
+    release();
+    const delivered = await response;
+    expect(delivered.ok()).toBe(false);
+    await delivered.finished();
+    await required(routeHandled, 'refund route must have been intercepted');
+    await page.waitForLoadState('networkidle');
+    await expect(
+      page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.', {
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    expect(await queryOne(sql, [tx.buyCryptoId])).toEqual(before);
+  } finally {
+    release();
+    if (routeHandled) await routeHandled;
+  }
+});
+
+// pending_buy is refundable: amlCheck Pending, no chargeback (transaction.controller.ts getTransactionRefund).
+// The ZIP case above already receives a successful refund GET for this state; the form renders only then.
+test('late refund success does not send another refund request after leaving the screen', async ({ page }) => {
+  test.setTimeout(600_000);
+  const user = await createUser({
+    tag: 'tx-refund-late-ok',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  const tx = await createTransaction({
+    state: 'pending_buy',
+    tag: 'tx-refund-late-ok',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 191,
+    inputAsset: 'CHF',
+  });
+  await seedActionSecret(tx.uid);
+  const refundPath = `/v1/transaction/uid/${tx.uid}/${ACTION_SECRET}/refund`;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let routeHandled: Promise<void> | undefined;
+  let refundGets = 0;
+  await page.route(`**${refundPath}`, async (route) => {
+    if (route.request().method() !== 'GET' || new URL(route.request().url()).pathname !== refundPath) {
+      await route.fallback();
+      return;
+    }
+    refundGets += 1;
+    if (refundGets === 1) {
+      routeHandled = fulfillRealResponseAfterGate(route, gate);
+      await routeHandled;
+      return;
+    }
+    await route.fallback();
+  });
+
+  try {
+    await page.context().clearCookies();
+    await page.goto(`/tx/${tx.uid}/${ACTION_SECRET}/refund`);
+    await expect.poll(() => refundGets).toBe(1);
+    const title = page.getByText('Transaction refund', { exact: true });
+    await expect(title).toBeVisible();
+    await title.locator('..').locator('button').first().click();
+    await expect(page).toHaveURL(new RegExp(`/tx/${tx.uid}$`));
+    await expect(page.getByText('Transaction status', { exact: true })).toBeVisible();
+    await expect(page.getByText(/191.*CHF|CHF.*191/)).toBeVisible();
+
+    const response = page.waitForResponse(
+      (result) => result.request().method() === 'GET' && new URL(result.url()).pathname === refundPath,
+    );
+    release();
+    const delivered = await response;
+    expect(delivered.ok()).toBe(true);
+    const body = (await delivered.json()) as { expiryDate?: string };
+    const expiryMs = new Date(body.expiryDate ?? '').getTime();
+    expect(Number.isFinite(expiryMs)).toBe(true);
+    const remainingMs = expiryMs - Date.now();
+    expect(remainingMs).toBeGreaterThan(0);
+    expect(remainingMs).toBeLessThanOrEqual(360_000);
+    await delivered.finished();
+    await required(routeHandled, 'refund route must have been intercepted');
+    const getsAtDelivery = refundGets;
+    await page.waitForTimeout(remainingMs + 15_000);
+    expect(refundGets - getsAtDelivery).toBe(0);
+  } finally {
+    release();
+    if (routeHandled) await routeHandled;
+  }
 });
 
 test('completed buy is not refundable and shows ErrorHint with DB unchanged', async ({ page }) => {

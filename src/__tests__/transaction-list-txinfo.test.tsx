@@ -35,6 +35,13 @@ jest.mock('@dfx.swiss/react', () => {
   const Utils = {
     formatIban: (v: any) => v,
     formatAmount: (n: any) => String(n),
+    formatAmountCrypto: (n: number, decimals = 5) => {
+      let r = (+n.toPrecision(decimals)).toFixed(decimals);
+      if (r.match(/\./)) {
+        r = r.replace(/\.?0+$/, '');
+      }
+      return r;
+    },
     createRules: () => ({}),
   };
 
@@ -1387,6 +1394,252 @@ describe('TxInfo priceSteps base rate info', () => {
 
     // baseRateInfo is infoText on the Base rate expansion item (built by the priceSteps map).
     expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent(/EUR to BTC at 50000 EUR\/BTC \(Kraken,/);
+  });
+});
+
+describe('TxInfo sell rates', () => {
+  it.each([
+    ['Sell', 'Output amount = Input amount × Base rate - Total fee.'],
+    ['Buy', 'Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.'],
+    ['Swap', 'Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.'],
+  ])('shows the exchange rate explanation for %s', (type, explanation) => {
+    render(<TxInfo showUserDetails={false} tx={makeListTx({ type, rate: 0.020801 }) as any} />);
+    expect(screen.getByTestId('expandable-info')).toHaveTextContent(explanation);
+  });
+
+  it('converts sell fees to fiat while retaining asset values and the DFX percentage', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            rate: 0.020801,
+            exchangeRate: 0.020124,
+            fees: {
+              total: 0.00097582,
+              dfx: 0.00089702,
+              rate: 0.0199,
+              platform: 0.0003,
+              network: 0.000078823,
+              bankFixed: 0,
+              bankVariable: 0,
+              networkStart: 0.0001,
+            },
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Total fee')).toHaveTextContent('0.05 EUR (0.00097582 DSC)');
+    expect(screen.getByTestId('expansion-DFX fee')).toHaveTextContent('0.05 EUR (0.00089702 DSC, 1.99%)');
+    expect(screen.getByTestId('expansion-Platform fee')).toHaveTextContent('0.02 EUR (0.0003 DSC)');
+    expect(screen.getByTestId('expansion-Network fee')).toHaveTextContent('0.00 EUR (0.000078823 DSC)');
+    expect(screen.getByTestId('expansion-Bank fee (fixed)')).toHaveTextContent('0.00 EUR (0 DSC)');
+    expect(screen.getByTestId('expansion-Bank fee (percent)')).toHaveTextContent('0.00 EUR (0 DSC)');
+    expect(screen.getByTestId('expansion-Network start fee')).toHaveTextContent('0.00 EUR (0.0001 DSC)');
+  });
+
+  it.each([
+    [0.004, '0.00 EUR'],
+    [0.006, '0.01 EUR'],
+    [0.0201, '0.03 EUR'],
+    [0.03, '0.03 EUR'],
+    [1000.03, '1000.03 EUR'],
+  ])('rounds fiat fee %s as %s', (fee, expected) => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            rate: 1,
+            exchangeRate: 1,
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            fees: { total: fee },
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Total fee')).toHaveTextContent(expected);
+  });
+
+  it.each([
+    ['Sell', undefined],
+    ['Sell', 0],
+    ['Sell', Infinity],
+    ['Buy', 1],
+    ['Swap', 1],
+  ])('keeps original fees for %s with rate %s', (type, exchangeRate) => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type,
+            rate: 1,
+            exchangeRate,
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            fees: { total: 0.03, dfx: 0.02, rate: 0.0199 },
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Total fee')).toHaveTextContent('0.03 DSC');
+    expect(screen.getByTestId('expansion-DFX fee')).toHaveTextContent('0.02 DSC (1.99%)');
+  });
+
+  it('does not round an exact cent up because of floating-point error', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            inputAsset: 'ZCHF',
+            outputAsset: 'CHF',
+            rate: 0.7,
+            exchangeRate: 0.7,
+            fees: { total: 0.021 },
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Total fee')).toHaveTextContent('0.03 CHF (0.021 ZCHF)');
+  });
+
+  it('converts the combined bank fee when fixed and variable fees are absent', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            rate: 1,
+            exchangeRate: 1,
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            fees: { bank: 0.0201 },
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Bank fee')).toHaveTextContent('0.03 EUR (0.0201 DSC)');
+  });
+
+  it('inverts rates and price steps for a sell still processing', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            state: 'Processing',
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            rate: 0.020801,
+            exchangeRate: 0.020801,
+            priceSteps: [{ source: 'Denario', from: 'DSC', to: 'USD', price: 0.017966, timestamp: new Date() }],
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Base rate')).toHaveTextContent('48.075 EUR/DSC');
+    expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent('55.661 USD/DSC');
+    expect(screen.getAllByText('48.075 EUR/DSC', { exact: false }).length).toBeGreaterThan(0);
+  });
+
+  it('inverts a sell rate below 0.001 with five significant digits', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            state: 'Processing',
+            inputAsset: 'DEPS',
+            outputAsset: 'EUR',
+            rate: 6173.4,
+            exchangeRate: 6173.4,
+            priceSteps: [
+              {
+                source: 'Synthetic',
+                from: 'DEPS',
+                to: 'EUR',
+                price: 6173.4,
+                timestamp: '2026-10-22T13:29:00.687Z',
+              },
+            ],
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Base rate')).toHaveTextContent('0.00016199 EUR/DEPS');
+    expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent(
+      'DEPS to EUR at 0.00016199 EUR/DEPS (Synthetic, 2026-10-22T13:29:00.687Z)',
+    );
+    expect(screen.getAllByText('0.00016199 EUR/DEPS').length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['Sell', 0.020801, '48.075 EUR/DSC', '55.661 USD/DSC'],
+    ['Buy', 0.020801, '0.020801 DSC/EUR', '0.017966 DSC/USD'],
+    ['Swap', 0.020801, '0.020801 DSC/EUR', '0.017966 DSC/USD'],
+    ['Sell', 0, '0 DSC/EUR', '0 DSC/USD'],
+    ['Sell', Infinity, 'Infinity DSC/EUR', 'Infinity DSC/USD'],
+  ])('renders %s rate %s', (type, rate, expected, expectedStep) => {
+    const price = rate === 0 || !Number.isFinite(rate) ? rate : 0.017966;
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type,
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            rate,
+            exchangeRate: rate,
+            priceSteps: [{ source: 'Denario', from: 'DSC', to: 'USD', price, timestamp: new Date() }],
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Base rate')).toHaveTextContent(expected);
+    expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent(expectedStep);
+    expect(screen.getAllByText(expected, { exact: false }).length).toBeGreaterThan(0);
+  });
+
+  it('keeps the asset-per-fiat text when a sell rate has an infinite reciprocal', () => {
+    render(
+      <TxInfo
+        showUserDetails={false}
+        tx={
+          makeListTx({
+            type: 'Sell',
+            inputAsset: 'DSC',
+            outputAsset: 'EUR',
+            rate: Number.MIN_VALUE,
+            exchangeRate: Number.MIN_VALUE,
+            priceSteps: [
+              {
+                source: 'Denario',
+                from: 'DSC',
+                to: 'USD',
+                price: Number.MIN_VALUE,
+                timestamp: '2026-10-22T13:29:00.687Z',
+              },
+            ],
+          }) as any
+        }
+      />,
+    );
+    expect(screen.getByTestId('expansion-Base rate')).toHaveTextContent(`${Number.MIN_VALUE} DSC/EUR`);
+    expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent(
+      `DSC to USD at ${Number.MIN_VALUE} DSC/USD (Denario, 2026-10-22T13:29:00.687Z)`,
+    );
   });
 });
 
