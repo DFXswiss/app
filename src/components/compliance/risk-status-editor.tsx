@@ -12,8 +12,8 @@ interface Props {
   onChanged: () => void;
 }
 
-// The endpoint answers 404 with Nest's plain NotFoundException while USER_DATA_RISK_STATUS_API_ENABLED
-// is not 'true' or the UserDataRiskStatus process is off.
+// The endpoint answers 404 with Nest's plain NotFoundException while the API's userDataRiskStatus switch
+// (its environment file) or the UserDataRiskStatus process is off.
 export const RISK_STATUS_API_OFF = 'The risk status API is switched off.';
 
 const buttonClass =

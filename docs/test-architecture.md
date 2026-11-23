@@ -947,8 +947,9 @@ All four points below concern the full-stack harness.
   transaction states are inserted with SQL instead. What is verified is the synchronous path:
   interaction, HTTP, validation, authorisation, persistence, display. (A cron without a `process` field
   is not covered by that switch and keeps running — see the companion document in `DFXswiss/backend`.)
-  The one enabled process, Scorechain, answers from the API's loc mock (`SCORECHAIN_LOC_MOCK`,
-  `SCORECHAIN_LOC_MOCK_DELAY_MS`), so no provider is called; the processing chain stays off.
+  Two processes are enabled: Scorechain answers from the API's loc mock (`SCORECHAIN_LOC_MOCK`,
+  `SCORECHAIN_LOC_MOCK_DELAY_MS`), so no provider is called, and `UserDataRiskStatus` only opens the
+  risk-status endpoint and runs no job; the processing chain stays off.
 - **The harness does not exercise the migration chain.** It builds the schema from the entities,
   because one migration requires a seed row that does not exist at migration time on a fresh
   database. Migrations are covered in `DFXswiss/backend` instead.
