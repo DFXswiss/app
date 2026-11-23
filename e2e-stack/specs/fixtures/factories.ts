@@ -429,6 +429,8 @@ export interface CreatePaymentLinkOptions {
   label?: string;
   externalId?: string;
   routeId?: number;
+  /** Opt the route owner in to anonymous invoices (paymentLinksConfig.allowAnonymousInvoices). */
+  allowAnonymousInvoices?: boolean;
 }
 
 export interface CreatePaymentLinkResult {
@@ -1438,7 +1440,12 @@ export async function createPaymentLink(
   const tag = uniqueTag(options.tag);
   const user = await userFromJwt(jwt);
 
-  await updateById('user_data', user.userDataId, { paymentLinksAllowed: true });
+  await updateById('user_data', user.userDataId, {
+    paymentLinksAllowed: true,
+    // The public recipient lookup (/invoice, /stickers) resolves a route without a login only after
+    // this opt-in; every other route answers like an unknown one.
+    ...(options.allowAnonymousInvoices ? { paymentLinksConfig: JSON.stringify({ allowAnonymousInvoices: true }) } : {}),
+  });
   await ensurePersonalDataComplete(user.userDataId);
 
   let routeId = options.routeId;

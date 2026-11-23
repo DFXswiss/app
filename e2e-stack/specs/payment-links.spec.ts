@@ -762,7 +762,19 @@ test.describe('Payment links / routes / invoice', () => {
     // blockchain to be exactly Lightning (same restriction as the ad-hoc invoice endpoint used
     // by /pl/assign above) -- a plain createSell (Ethereum) route 404s here, so use a Lightning
     // route via createPaymentLink instead, same as the other Lightning-only screens in this file.
-    const pl = await createPaymentLink(user.jwt, { tag: 'pl-invoice', label: 'e2e-invoice-recipient' });
+    // Without a login the lookup only resolves routes whose owner allowed anonymous invoices.
+    const pl = await createPaymentLink(user.jwt, {
+      tag: 'pl-invoice',
+      label: 'e2e-invoice-recipient',
+      allowAnonymousInvoices: true,
+    });
+    const hiddenUser = await createUser({
+      tag: 'pl-invoice-hidden',
+      language: 'EN',
+      kycLevel: 30,
+      completePersonalData: true,
+    });
+    const hidden = await createPaymentLink(hiddenUser.jwt, { tag: 'pl-invoice-hidden' });
 
     await page.goto('/invoice');
     await waitForPublicPath(page, '/invoice');
@@ -795,6 +807,16 @@ test.describe('Payment links / routes / invoice', () => {
     });
     await expect(page.getByText('not-a-real-recipient-e2e-xyz', { exact: false })).toBeVisible();
     // Fields re-disabled after failed validation.
+    await expect(page.getByPlaceholder('Invoice ID')).toBeDisabled({ timeout: 10000 });
+
+    // (c) a real Lightning route without the opt-in is not recognized either, so the lookup does not
+    // reveal which route ids belong to Lightning merchants.
+    await recipient.fill(String(hidden.routeId));
+    await recipient.blur();
+    await expect(page.locator('strong', { hasText: new RegExp(`^${hidden.routeId}$`) })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByText(/DFX does not recognize a recipient with the name/i)).toBeVisible();
     await expect(page.getByPlaceholder('Invoice ID')).toBeDisabled({ timeout: 10000 });
   });
 });
