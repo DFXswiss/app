@@ -7,19 +7,20 @@ import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { useUserDataOperatorMutation } from 'src/hooks/user-data-operator-mutation.hook';
 import {
   EDITABLE_KYC_STATUSES,
-  EDITABLE_TEXT_FIELDS,
+  EditableTextField,
   initialEditValues,
   planUserDataEdit,
   UserDataEditValues,
 } from 'src/util/user-data-edit.util';
 import { STAFF_NAME_MISSING, staffNameLoadError } from './staff-identity';
 
-// The API answers 404 while USER_DATA_OPERATOR_MUTATION_API_ENABLED is off.
+// The API answers 404 while its switch userDataOperatorMutation is off.
 const OPERATOR_MUTATION_DISABLED = 'Editing personal data is not enabled on this environment yet.';
 
 interface Props {
   userDataId: number;
   userData: UserDataDetail;
+  fields: readonly EditableTextField[];
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -36,7 +37,7 @@ const buttonClass =
 const secondaryButtonClass =
   'px-3 py-1 text-xs bg-white text-dfxBlue-800 border border-dfxBlue-800 rounded hover:bg-dfxGray-300 transition-colors whitespace-nowrap';
 
-export function UserDataEditForm({ userDataId, userData, onSaved, onCancel }: Readonly<Props>): JSX.Element {
+export function UserDataEditForm({ userDataId, userData, fields, onSaved, onCancel }: Readonly<Props>): JSX.Element {
   const { countries } = useSettingsContext();
 
   // The country list is fetched after the panel mounts. Editing before it arrives would lock the
@@ -58,6 +59,7 @@ export function UserDataEditForm({ userDataId, userData, onSaved, onCancel }: Re
     <UserDataEditFields
       userDataId={userDataId}
       userData={userData}
+      fields={fields}
       countries={countries}
       onSaved={onSaved}
       onCancel={onCancel}
@@ -68,12 +70,14 @@ export function UserDataEditForm({ userDataId, userData, onSaved, onCancel }: Re
 function saveErrorMessage(e: unknown): string {
   const apiError = e as Partial<ApiError> | null | undefined;
   if (apiError?.statusCode === 404) return OPERATOR_MUTATION_DISABLED;
-  return e instanceof Error ? e.message : 'Failed to save the customer data';
+  if (apiError?.message) return apiError.message;
+  return 'Failed to save the customer data';
 }
 
 function UserDataEditFields({
   userDataId,
   userData,
+  fields,
   countries,
   onSaved,
   onCancel,
@@ -107,7 +111,7 @@ function UserDataEditFields({
     setError(undefined);
   }, [userDataId]);
 
-  const plan = useMemo(() => planUserDataEdit(initial, values), [initial, values]);
+  const plan = useMemo(() => planUserDataEdit(initial, values, fields), [initial, values, fields]);
   const hasChanges = Object.keys(plan.payload).length > 0;
   const hasErrors = plan.errors.length > 0;
   const hasReason = reason.trim().length > 0;
@@ -115,7 +119,7 @@ function UserDataEditFields({
   const canSave = !!clerk && !isLoadingClerk && !saving && requiredInputsPresent;
   const currentKycStatusNotEditable = !(EDITABLE_KYC_STATUSES as readonly string[]).includes(initial.kycStatus);
 
-  function updateText(field: (typeof EDITABLE_TEXT_FIELDS)[number], value: string): void {
+  function updateText(field: EditableTextField, value: string): void {
     setValues((current) => ({ ...current, text: { ...current.text, [field]: value } }));
   }
 
@@ -155,7 +159,7 @@ function UserDataEditFields({
         save();
       }}
     >
-      {EDITABLE_TEXT_FIELDS.map((field) => (
+      {fields.map((field) => (
         <div key={field} className="flex flex-col gap-1">
           <label htmlFor={`user-data-edit-${field}`} className={labelClass}>
             {field}

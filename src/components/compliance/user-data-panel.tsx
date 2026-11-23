@@ -15,7 +15,7 @@ import { appOrigin } from 'src/util/app-origin';
 import { display, formatBirthday, formatDate, formatDateTime, Primitive, refName } from 'src/util/compliance-helpers';
 import { canManageOnboardingFee } from 'src/util/onboarding-fee.util';
 import { canManageRiskStatus } from 'src/util/risk-status.util';
-import { canEditUserData } from 'src/util/user-data-edit.util';
+import { editableTextFields } from 'src/util/user-data-edit.util';
 
 interface UserDataPanelProps {
   userData: UserDataDetail;
@@ -229,7 +229,8 @@ export function UserDataPanel({
   const [showLimitRequestModal, setShowLimitRequestModal] = useState(false);
   const [editFormUserDataId, setEditFormUserDataId] = useState<number>();
   const { session } = useAuthContext();
-  const mayEditUserData = canEditUserData(session?.role);
+  const editFields = editableTextFields(session?.role);
+  const mayEditUserData = editFields !== undefined;
 
   // The form belongs to one account: it must not carry over to another one, or returning to the first
   // account would reopen its form.
@@ -248,7 +249,7 @@ export function UserDataPanel({
   // could not show the saved values.
   const editEntryPoint =
     userDataId !== undefined && rowIsThisAccount && onAccountAccessChanged && mayEditUserData
-      ? { userDataId, reload: onAccountAccessChanged }
+      ? { userDataId, reload: onAccountAccessChanged, fields: editFields }
       : undefined;
   const editTarget = editEntryPoint && editEntryPoint.userDataId === editFormUserDataId ? editEntryPoint : undefined;
   const current: UserDataDetail =
@@ -336,6 +337,7 @@ export function UserDataPanel({
               <UserDataEditForm
                 userDataId={editTarget.userDataId}
                 userData={userData}
+                fields={editTarget.fields}
                 onSaved={() => {
                   setEditFormUserDataId(undefined);
                   editTarget.reload();

@@ -246,13 +246,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   amount list, or that it rejects a real address.
 - **The personal-data edit visual answers the save itself.** `e2e/compliance.spec.ts`
   (`compliance-user-20`) intercepts `PUT /v1/userData/1005/operatorMutation` and answers HTTP 404, as
-  the API does while `USER_DATA_OPERATOR_MUTATION_API_ENABLED` is off. A green run proves how the form
-  renders that state, not that the flag is off in any environment.
+  the API does while its switch `userDataOperatorMutation` is off. A green run proves how the form
+  renders that state, not that the switch is off in any environment.
 - **The risk-status visuals answer the clerk lookup and the error themselves.** `e2e/compliance.spec.ts`
   (`compliance-user-21` and `-22`) answer `GET /v1/support/issue/clerk` with a fixed clerk name; `-22`
   also intercepts `PUT /v1/userData/1005/riskStatus` and answers HTTP 400 with
   `Risk status change refused`. A green run proves how the form renders those values, not that the API
   resolves that clerk or that it refuses a real change.
+- **The Compliance-role visual gives the browser an unsigned session and the Admin token to the API.**
+  `e2e/compliance.spec.ts` (`compliance-user-21`) gives the browser an unsigned session with role
+  Compliance and rewrites the Authorization header of every API request to the Admin token. A green
+  run proves how the form renders for the Compliance role, not that the API accepts a Compliance
+  clerk's save (that is the full-stack test in `e2e-stack/specs/compliance.spec.ts`).
 - **The transaction-search test writes the customer's verified name itself.**
   `e2e-stack/specs/compliance.spec.ts` (`/compliance search by transaction id …`) sets
   `user_data.verifiedName` by SQL before the search, because no identification runs in the stack. A green

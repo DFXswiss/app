@@ -13,6 +13,9 @@ export const EDITABLE_TEXT_FIELDS = [
 ] as const;
 export type EditableTextField = (typeof EDITABLE_TEXT_FIELDS)[number];
 
+// Same order as EDITABLE_TEXT_FIELDS, minus the names, which stay Admin-only.
+const COMPLIANCE_TEXT_FIELDS = ['mail', 'phone', 'street', 'houseNumber', 'zip', 'location'] as const;
+
 // KycStatus values the API accepts through PUT userData. 'Check' is NOT among them: the API rejects it
 // ("Use the audited KYC status Check transition"); the compliance review screen has the dedicated button.
 export const EDITABLE_KYC_STATUSES = ['NA', 'Completed', 'Rejected', 'Terminated'] as const;
@@ -29,10 +32,23 @@ export interface UserDataEditPlan {
   errors: string[];
 }
 
-// PUT userData lets Support change only status, riskStatus and recallAgreementAccepted, and Compliance
-// additionally kycStatus and a few AML columns. Mail, phone, name and address are Admin-only; any other role gets 403.
+/** Text fields a role may edit through this form; undefined for a role without the form. */
+export function editableTextFields(role: UserRole | undefined): readonly EditableTextField[] | undefined {
+  switch (role) {
+    case UserRole.ADMIN:
+      return EDITABLE_TEXT_FIELDS;
+    case UserRole.COMPLIANCE:
+      return COMPLIANCE_TEXT_FIELDS;
+    default:
+      return undefined;
+  }
+}
+
+// PUT userData stays limited per role in the API. On the audited operatorMutation route Compliance may
+// change mail, phone, the personal address and the country as well; firstname and surname stay
+// Admin-only, and every other role gets 403.
 export function canEditUserData(role: UserRole | undefined): boolean {
-  return role === UserRole.ADMIN;
+  return editableTextFields(role) !== undefined;
 }
 
 /** Values the form starts with: text fields from the detail (missing → ''), country by symbol, kycStatus. */
@@ -66,14 +82,19 @@ function isEditableKycStatus(value: string): boolean {
 }
 
 /**
- * Compares edited values against the initial ones and builds the PUT body and any validation errors.
+ * Compares the edited values in `fields` against the initial ones and builds the PUT body and any
+ * validation errors. A field outside `fields` never enters the payload and never produces an error.
  * A non-empty `errors` means the caller must not save.
  */
-export function planUserDataEdit(initial: UserDataEditValues, edited: UserDataEditValues): UserDataEditPlan {
+export function planUserDataEdit(
+  initial: UserDataEditValues,
+  edited: UserDataEditValues,
+  fields: readonly EditableTextField[],
+): UserDataEditPlan {
   const payload: Record<string, string | number> = {};
   const errors: string[] = [];
 
-  for (const field of EDITABLE_TEXT_FIELDS) {
+  for (const field of fields) {
     const before = initial.text[field].trim();
     const after = edited.text[field].trim();
     if (before === after) continue;
