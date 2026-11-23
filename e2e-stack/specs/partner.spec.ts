@@ -27,6 +27,12 @@ import { cleanupCreatedData, createUser, trackRow } from './fixtures/factories';
 
 test.describe.configure({ mode: 'serial' });
 
+/** Open the top-right nav menu (hamburger / close icon in Navigation). */
+async function openNavMenu(page: Page): Promise<void> {
+  await page.locator('div.absolute.right-4').click();
+  await expect(page.getByRole('button', { name: /^(Logout|Login)$/ })).toBeVisible({ timeout: 10000 });
+}
+
 async function freeRef(): Promise<string> {
   for (let attempt = 0; attempt < 20; attempt++) {
     const candidate = `${String(Math.floor(Math.random() * 900) + 100)}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
@@ -132,7 +138,19 @@ test.describe('Partner onboarding fee', () => {
     await queryRows(`UPDATE "user" SET status = 'NA' WHERE id = $1`, [customer.userId]);
     await queryRows(`UPDATE user_data SET status = 'NA' WHERE id = $1`, [customer.userDataId]);
 
-    await openScreen(page, '/partner/onboarding-fee', jwt);
+    // Enter through the real navigation, so the Partner menu entry is exercised too.
+    await openScreen(page, '/account', jwt);
+    await openNavMenu(page);
+    await page.getByText('Onboarding fee', { exact: true }).first().click();
+
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), {
+        message: 'the Partner menu entry must open /partner/onboarding-fee',
+        timeout: 15000,
+      })
+      .toBe(normPath('/partner/onboarding-fee'));
+    await expect(page.getByRole('button', { name: /^(Logout|Login)$/ })).toBeHidden({ timeout: 10000 });
+
     await expect(page.getByText('Assign onboarding fee', { exact: true })).toBeVisible({ timeout: 20000 });
 
     const assign = assignSection(page);
@@ -205,7 +223,10 @@ test.describe('Partner onboarding fee', () => {
             `SELECT "individualFees" FROM user_data WHERE id = $1`,
             [customer.userDataId],
           );
-          return (row?.individualFees ?? '').split(';').filter(Boolean).includes(String(fee.id));
+          if (!row) {
+            throw new Error(`the customer's user_data row ${customer.userDataId} must still exist after removal`);
+          }
+          return (row.individualFees ?? '').split(';').filter(Boolean).includes(String(fee.id));
         },
         { timeout: 20000, message: 'the onboarding fee id must be gone from user_data.individualFees' },
       )

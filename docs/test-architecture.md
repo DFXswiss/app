@@ -236,12 +236,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   (`compliance-user-15`) intercepts `GET /v2/kyc/file/:uid?access=View` and answers HTTP 500 with a
   fixed message. A green run proves that the loaded dossier keeps rendering the file error in its
   preview area, not that the API rejects a real KYC-file request or returns that message.
-- **The onboarding-fee visuals answer the clerk lookup, the address list and the error themselves.**
-  `e2e/compliance.spec.ts` (`compliance-user-16` and `-17`) answer `GET /v1/support/issue/clerk` with
-  a fixed clerk name and, when the fetched dossier has no users, supply one synthetic address; `-17`
-  also intercepts `PUT /v1/userData/1005/onboardingFee` and answers HTTP 400 with
-  `Address is blocked or deleted`. A green run proves how the form renders those values, not that the
-  account has that address, that the API resolves that clerk, or that it rejects a real address.
+- **The onboarding-fee visuals answer the clerk lookup, the address list, the fee list and the error
+  themselves.** `e2e/compliance.spec.ts` (`compliance-user-16` and `-17`) answer
+  `GET /v1/support/issue/clerk` with a fixed clerk name, answer `GET /v1/partner/onboardingFee/amounts`
+  with the fixed list `{ "amounts": [400, 800] }`, and, when the fetched dossier has no users, supply
+  one synthetic address; `-17` also intercepts `PUT /v1/userData/1005/onboardingFee` and answers
+  HTTP 400 with `Address is blocked or deleted`. A green run proves how the form renders those values,
+  not that the account has that address, that the API resolves that clerk, that the API serves that
+  amount list, or that it rejects a real address.
 - **The personal-data edit visual answers the save itself.** `e2e/compliance.spec.ts`
   (`compliance-user-20`) intercepts `PUT /v1/userData/1005/operatorMutation` and answers HTTP 404, as
   the API does while `USER_DATA_OPERATOR_MUTATION_API_ENABLED` is off. A green run proves how the form
@@ -522,6 +524,12 @@ onboarding fee …` and `… shows the blocked-address error …`) give the key-
 the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses one value for that one account,
   and drops it afterwards. A green run proves how the API and the form behave when the database refuses the
   write, not which real database failure would cause that in production.
+- **The partner onboarding-fee full-stack cases write the role, the ref and the starting status
+  themselves.** `e2e-stack/specs/partner.spec.ts` elevates the Partner wallet's role by SQL (via
+  `loginAs`), writes the partner's `ref` by SQL and restores it afterwards, sets the customer's status
+  to `NA` by SQL, and for the conflict case writes the customer's `usedRef` to another ref by SQL. A
+  green run does not prove how an account becomes a Partner, how a partner gets its ref, or how a
+  customer becomes attributed to another referrer.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
@@ -798,14 +806,15 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
 - **The full-stack harness answers Scorechain through the API's loc mock.** `e2e-stack/env/api.env`
-  enables the Scorechain and risk-status processes
-  (`DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus`) and maps the address of `testWallet(7700001)`
-  to the mock form `SanctionList` in `SCORECHAIN_LOC_MOCK`; every other address
-  gets `NoRisk`. The mock answers after `SCORECHAIN_LOC_MOCK_DELAY_MS` (5 s), and the tests prove the
-  form is usable before that answer arrives. `e2e-stack/specs/sell-swap.spec.ts` proves that the sell
-  page shows no banner for `Ok` and the banner for `LikelyReturn`, through the real API and database.
-  A third test opens the sell page on Gnosis, which Scorechain does not cover, and proves the `Unknown`
-  answer shows no banner.
+  enables the Scorechain, risk-status and buy-gate processes
+  (`DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus,!Buy`) and maps the address of
+  `testWallet(7700001)` to the mock form `SanctionList` in `SCORECHAIN_LOC_MOCK`; every other address
+  gets `NoRisk`. `Buy` is the request gate the API checks on the buy routes, not a job, so the
+  processing chain still never executes. The mock answers after `SCORECHAIN_LOC_MOCK_DELAY_MS` (5 s),
+  and the tests prove the form is usable before that answer arrives.
+  `e2e-stack/specs/sell-swap.spec.ts` proves that the sell page shows no banner for `Ok` and the
+  banner for `LikelyReturn`, through the real API and database. A third test opens the sell page on
+  Gnosis, which Scorechain does not cover, and proves the `Unknown` answer shows no banner.
   A green run does not prove what the real Scorechain returns for an address, or that the API stays
   within its 15-second bound against the real provider.
 - **The full-stack harness stores support and KYC blobs in memory, not in object storage.** With `ENVIRONMENT=loc`, the API's
@@ -941,15 +950,16 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
 All four points below concern the full-stack harness.
 
 - **No layer here verifies a payment end to end.** The harness sets
-  `DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus` (`e2e-stack/env/api.env`); what that
+  `DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus,!Buy` (`e2e-stack/env/api.env`); what that
   switches off in the API is described in the companion document there — every process-gated cron
   job — so the processing chain never executes;
   transaction states are inserted with SQL instead. What is verified is the synchronous path:
   interaction, HTTP, validation, authorisation, persistence, display. (A cron without a `process` field
   is not covered by that switch and keeps running — see the companion document in `DFXswiss/backend`.)
-  Two processes are enabled: Scorechain answers from the API's loc mock (`SCORECHAIN_LOC_MOCK`,
-  `SCORECHAIN_LOC_MOCK_DELAY_MS`), so no provider is called, and `UserDataRiskStatus` only opens the
-  risk-status endpoint and runs no job; the processing chain stays off.
+  Three processes are enabled: Scorechain answers from the API's loc mock (`SCORECHAIN_LOC_MOCK`,
+  `SCORECHAIN_LOC_MOCK_DELAY_MS`), so no provider is called; `UserDataRiskStatus` only opens the
+  risk-status endpoint and `Buy` only opens the request gate of the buy routes, and neither runs a job;
+  the processing chain stays off.
 - **The harness does not exercise the migration chain.** It builds the schema from the entities,
   because one migration requires a seed row that does not exist at migration time on a fresh
   database. Migrations are covered in `DFXswiss/backend` instead.
