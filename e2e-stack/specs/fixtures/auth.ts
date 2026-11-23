@@ -13,7 +13,7 @@ export interface TestWallet {
  * Role values match the DB `role` column and JWT `role` claim 1:1.
  * Source: api/src/shared/auth/user-role.enum.ts lines 1–22
  *   User='User', Admin='Admin', Compliance='Compliance',
- *   Support='Support', Marketing='Marketing', RealUnit='RealUnit'.
+ *   Support='Support', Marketing='Marketing', RealUnit='RealUnit', Partner='Partner'.
  * Keys of ROLE_WALLET_INDEX keep this union in lockstep with test-data.ts.
  */
 export type TestRole = keyof typeof ROLE_WALLET_INDEX;
@@ -76,11 +76,9 @@ export async function gotoWithSession(page: Page, path: string, jwt: string): Pr
     // Compare against this call's token, not just "some token is set": a page that kept the
     // previous account's session would otherwise satisfy the wait, and the test would run as
     // whoever was logged in before — the kind of role mix-up these tests exist to catch.
-    await page.waitForFunction(
-      (expected) => window.localStorage.getItem('dfx.authenticationToken') === expected,
-      jwt,
-      { timeout: 15000 },
-    );
+    await page.waitForFunction((expected) => window.localStorage.getItem('dfx.authenticationToken') === expected, jwt, {
+      timeout: 15000,
+    });
   } catch {
     const actual = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
     throw new Error(

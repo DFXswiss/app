@@ -1,4 +1,10 @@
+import type { ApiError } from '@dfx.swiss/react';
 import { UserRole } from '@dfx.swiss/react';
+import { formatChf as formatSwissNumber } from 'src/util/utils';
+
+// The onboarding-fee endpoints are only routed while the backend enables the onboarding-fee
+// switch; until then Nest answers their paths with a bare 404.
+export const ONBOARDING_FEE_API_OFF = 'The onboarding fee API is switched off.';
 
 /**
  * Managing an onboarding fee is an Admin action. The API enforces the same rule fail-closed
@@ -7,4 +13,29 @@ import { UserRole } from '@dfx.swiss/react';
  */
 export function canManageOnboardingFee(role: UserRole | undefined): boolean {
   return role === UserRole.ADMIN;
+}
+
+/**
+ * Partner key-account managers assign fees through the same feature with their own endpoints. The
+ * API guards them with `RoleGuard(UserRole.PARTNER)`; this mirrors that rule for the UI.
+ */
+export function canUsePartnerOnboardingFee(role: UserRole | undefined): boolean {
+  return role === UserRole.PARTNER;
+}
+
+// The API client raises ApiException (an Error) with the status and the API's message. While the
+// feature switch is off, the endpoints throw Nest's plain NotFoundException, whose body message is
+// "Not Found"; a 404 with a meaning carries its own text ("Address not found"). The message is also
+// read from a plain { statusCode, message } object, which some callers reject with.
+export function onboardingFeeFailureMessage(e: unknown, fallback: string): string {
+  const apiError = e as Partial<ApiError> | null | undefined;
+  const message = typeof apiError?.message === 'string' ? apiError.message : undefined;
+  if (apiError?.statusCode === 404 && (!message || message === 'Not Found')) return ONBOARDING_FEE_API_OFF;
+  return message || fallback;
+}
+
+// Onboarding fees are fixed CHF amounts. The Swiss grouping keeps large values readable and the
+// prefix makes the currency explicit in dropdown labels and confirmation messages.
+export function formatChf(amount: number): string {
+  return `CHF ${formatSwissNumber(amount)}`;
 }

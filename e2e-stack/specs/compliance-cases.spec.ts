@@ -677,7 +677,7 @@ test.describe('Compliance area (cases)', () => {
 
     await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
     await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
-    await page.locator('#onboarding-fee-amount').fill('5');
+    await page.locator('#onboarding-fee-amount').selectOption('400');
     await page.locator('#onboarding-fee-address').selectOption(customer.address);
     const save = page.getByRole('button', { name: 'Save', exact: true });
     await expect(save).toBeEnabled({ timeout: 15000 });
@@ -691,7 +691,7 @@ test.describe('Compliance area (cases)', () => {
     expect((await putResponse).status()).toBe(200);
 
     await expect(
-      page.getByText(`Onboarding fee of 5 CHF set; ${customer.address} attributed to the key account manager.`, {
+      page.getByText(`Onboarding fee of 400 CHF set; ${customer.address} attributed to the key account manager.`, {
         exact: true,
       }),
     ).toBeVisible({ timeout: 20000 });
@@ -713,7 +713,7 @@ test.describe('Compliance area (cases)', () => {
     expect(assignedFeeIds.length).toBeGreaterThan(0);
     const feeRow = await waitForRow<{ id: number }>(
       `SELECT id FROM fee
-       WHERE id = ANY($1::int[]) AND label = 'Onboarding Fixed 5' AND fixed = 5 AND active = true`,
+       WHERE id = ANY($1::int[]) AND label = 'Onboarding Fixed 400' AND fixed = 400 AND active = true`,
       [assignedFeeIds.map(Number)],
       20000,
     );
@@ -791,7 +791,7 @@ test.describe('Compliance area (cases)', () => {
 
     await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
     await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
-    await page.locator('#onboarding-fee-amount').fill('5');
+    await page.locator('#onboarding-fee-amount').selectOption('400');
     await page.locator('#onboarding-fee-address').selectOption(customer.address);
     const save = page.getByRole('button', { name: 'Save', exact: true });
     await expect(save).toBeEnabled({ timeout: 15000 });
@@ -825,7 +825,7 @@ test.describe('Compliance area (cases)', () => {
       [
         customer.userDataId,
         'E2E Test Staff',
-        `Onboarding fee 5 CHF for ${customer.address} rejected`,
+        `Onboarding fee 400 CHF for ${customer.address} rejected`,
         'Address is blocked or deleted',
       ],
       15000,

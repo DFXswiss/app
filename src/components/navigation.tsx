@@ -247,6 +247,15 @@ function NavigationMenu({ setIsNavigationOpen, small }: NavigationMenuContentPro
                   onClose={() => setIsNavigationOpen(false)}
                 />
               )}
+              {session?.role === UserRole.PARTNER && (
+                <NavigationLink
+                  icon={IconVariant.WALLET}
+                  label={translate('screens/partner', 'Onboarding fee')}
+                  url="/partner/onboarding-fee"
+                  target="_self"
+                  onClose={() => setIsNavigationOpen(false)}
+                />
+              )}
               {session?.role === UserRole.ADMIN && (
                 <NavigationLink
                   icon={IconVariant.FILE}

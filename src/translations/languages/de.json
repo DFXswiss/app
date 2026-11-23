@@ -1367,6 +1367,24 @@
     "Invite": "Einladung",
     "Promo": "Promo"
   },
+  "screens/partner": {
+    "Onboarding fee": "Onboarding-Gebühr",
+    "Enter the wallet address of your customer and choose the onboarding fee. The customer is attributed to your referral code.": "Gib die Wallet-Adresse Deines Kunden ein und wähle die Onboarding-Gebühr. Der Kunde wird Deinem Empfehlungscode zugeordnet.",
+    "Assign onboarding fee": "Onboarding-Gebühr zuweisen",
+    "Customer address": "Kundenadresse",
+    "Select amount": "Betrag auswählen",
+    "Assign": "Zuweisen",
+    "Failed to load the onboarding fee amounts": "Die Onboarding-Gebühren konnten nicht geladen werden.",
+    "Failed to assign the onboarding fee": "Die Onboarding-Gebühr konnte nicht zugewiesen werden.",
+    "Onboarding fee of {{amount}} assigned to {{address}}.": "Onboarding-Gebühr von {{amount}} an {{address}} zugewiesen.",
+    "Remove onboarding fee": "Onboarding-Gebühr entfernen",
+    "Remove": "Entfernen",
+    "Remove the onboarding fee of {{address}}?": "Onboarding-Gebühr von {{address}} entfernen?",
+    "Removing…": "Wird entfernt…",
+    "Failed to remove the onboarding fee": "Die Onboarding-Gebühr konnte nicht entfernt werden.",
+    "Onboarding fee of {{address}} removed.": "Onboarding-Gebühr von {{address}} entfernt.",
+    "The onboarding fee API is switched off.": "Die Onboarding-Gebühren-API ist ausgeschaltet."
+  },
   "components/service-notice": {
     "All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.": "Alle DFX-Core-Funktionen sind wieder verfügbar. Senden Sie keine Crypto Tokens an Einzahlungsadressen, die Sie vor dem 18. November 2026 von DFX erhalten haben.",
     "More": "Mehr"

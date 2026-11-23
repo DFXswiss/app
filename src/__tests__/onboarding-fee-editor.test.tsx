@@ -1,16 +1,26 @@
-// Component tests for OnboardingFeeEditor: the buttons, which values reach the hook, the in-flight and
-// account-switch guards, the switched-off 404, and what the clerk sees when the API refuses or the
-// clerk has no verified name.
+// Component tests for OnboardingFeeEditor: the buttons, which values reach the hook, the in-flight
+// and account-switch guards, the fee list, the switched-off 404, and what the clerk sees when the API
+// refuses or the clerk has no verified name.
 
 const mockStaffName: { name?: string; isLoading: boolean; error?: string } = { name: 'JR', isLoading: false };
 const mockSetOnboardingFee = jest.fn();
 const mockRemoveOnboardingFee = jest.fn();
+const mockGetOnboardingFeeAmounts = jest.fn();
+
+jest.mock('@dfx.swiss/react', () => ({
+  UserRole: { PARTNER: 'Partner' },
+}));
 
 jest.mock('src/hooks/onboarding-fee.hook', () => ({
   useOnboardingFee: () => ({
     setOnboardingFee: mockSetOnboardingFee,
     removeOnboardingFee: mockRemoveOnboardingFee,
+    getOnboardingFeeAmounts: mockGetOnboardingFeeAmounts,
   }),
+}));
+
+jest.mock('src/util/utils', () => ({
+  formatChf: (value: number) => value.toLocaleString('de-CH', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
 }));
 
 jest.mock('src/hooks/staff-verified-name.hook', () => ({
@@ -22,8 +32,9 @@ jest.mock('src/components/error-hint', () => ({
 }));
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { ONBOARDING_FEE_API_OFF, OnboardingFeeEditor } from 'src/components/compliance/onboarding-fee-editor';
+import { OnboardingFeeEditor } from 'src/components/compliance/onboarding-fee-editor';
 import type { UserInfo } from 'src/hooks/compliance.hook';
+import { ONBOARDING_FEE_API_OFF } from 'src/util/onboarding-fee.util';
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -59,16 +70,25 @@ function element(props: Partial<{ userDataId: number; users: UserInfo[]; onChang
   );
 }
 
-function openSet(): void {
+function openSetButton(): void {
   fireEvent.click(screen.getByRole('button', { name: 'Set onboarding fee' }));
+}
+
+async function openSet(): Promise<void> {
+  openSetButton();
+  await screen.findByRole('option', { name: 'CHF 400' });
 }
 
 function openRemove(): void {
   fireEvent.click(screen.getByRole('button', { name: 'Remove onboarding fee' }));
 }
 
-function fillAmount(value: string): void {
-  fireEvent.change(screen.getByLabelText('Amount (CHF)'), { target: { value } });
+function amountSelect(): HTMLElement {
+  return screen.getByLabelText('Amount (CHF)');
+}
+
+function selectAmount(value: string): void {
+  fireEvent.change(amountSelect(), { target: { value } });
 }
 
 function selectAddress(value: string): void {
@@ -83,6 +103,7 @@ describe('OnboardingFeeEditor', () => {
   beforeEach(() => {
     mockSetOnboardingFee.mockReset();
     mockRemoveOnboardingFee.mockReset();
+    mockGetOnboardingFeeAmounts.mockReset().mockResolvedValue([400, 800]);
     mockStaffName.name = 'JR';
     mockStaffName.isLoading = false;
     mockStaffName.error = undefined;
@@ -97,43 +118,52 @@ describe('OnboardingFeeEditor', () => {
     expect(screen.queryByText('Remove the onboarding fee of this account?')).not.toBeInTheDocument();
   });
 
-  it('opens the set form with the clerk name and an address label that shows status and usedRef', () => {
+  it('opens the set form with the clerk name, the fee list and an address label that shows status and usedRef', async () => {
     render(element({ users: [referred, unreferred] }));
-    openSet();
+    await openSet();
 
     expect(screen.getByText('JR')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'CHF 400' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'CHF 800' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '0xabc (NA, 194-687)' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '0xdef (Active, -)' })).toBeInTheDocument();
     expect(saveButton()).toBeDisabled();
   });
 
-  it.each([
-    ['empty', ''],
-    ['zero', '0'],
-    ['negative', '-1'],
-    ['not a number', 'abc'],
-  ])('keeps Save disabled for an %s amount', (_label, value) => {
+  it('keeps Save disabled until an amount from the list and an address are selected', async () => {
     render(element());
-    openSet();
+    await openSet();
     selectAddress('0xabc');
-    fillAmount(value);
 
+    expect(saveButton()).toBeDisabled();
+
+    // A value outside the loaded list can never be saved.
+    selectAmount('999');
+    expect(saveButton()).toBeDisabled();
+
+    selectAmount('400');
+    expect(saveButton()).toBeEnabled();
+
+    selectAmount('');
     expect(saveButton()).toBeDisabled();
   });
 
-  it('keeps Save disabled until an address is selected', () => {
+  it('keeps Save disabled until an address is selected', async () => {
     render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
 
     expect(saveButton()).toBeDisabled();
+
+    selectAddress('0xabc');
+    expect(saveButton()).toBeEnabled();
   });
 
-  it('keeps Save disabled while the clerk name is still loading even if a name is present', () => {
+  it('keeps Save disabled while the clerk name is still loading even if a name is present', async () => {
     mockStaffName.isLoading = true;
     render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
 
     expect(screen.getByText('…')).toBeInTheDocument();
@@ -141,19 +171,19 @@ describe('OnboardingFeeEditor', () => {
     expect(saveButton()).toBeDisabled();
   });
 
-  it('saves the parsed amount and selected address, reports the change and closes the form', async () => {
+  it('saves the selected amount and address, reports the change and closes the form', async () => {
     mockSetOnboardingFee.mockResolvedValue(undefined);
     const onChanged = jest.fn();
     render(element({ onChanged }));
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
-    expect(mockSetOnboardingFee).toHaveBeenCalledWith(88001, { amount: 5, address: '0xabc' });
+    expect(mockSetOnboardingFee).toHaveBeenCalledWith(88001, { amount: 400, address: '0xabc' });
     expect(
-      screen.getByText('Onboarding fee of 5 CHF set; 0xabc attributed to the key account manager.'),
+      screen.getByText('Onboarding fee of 400 CHF set; 0xabc attributed to the key account manager.'),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText('Amount (CHF)')).not.toBeInTheDocument();
   });
@@ -162,8 +192,8 @@ describe('OnboardingFeeEditor', () => {
     const deferred = createDeferred<void>();
     mockSetOnboardingFee.mockReturnValue(deferred.promise);
     render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     const save = saveButton();
 
@@ -176,7 +206,7 @@ describe('OnboardingFeeEditor', () => {
     expect(mockSetOnboardingFee).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-    expect(screen.getByLabelText('Amount (CHF)')).toBeDisabled();
+    expect(amountSelect()).toBeDisabled();
     expect(screen.getByLabelText('Address')).toBeDisabled();
 
     await act(async () => {
@@ -191,8 +221,8 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockReturnValue(deferred.promise);
     const onChanged = jest.fn();
     const { unmount } = render(element({ onChanged }));
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
     unmount();
@@ -208,8 +238,8 @@ describe('OnboardingFeeEditor', () => {
     const deferredReject = createDeferred<void>();
     mockSetOnboardingFee.mockReturnValue(deferredReject.promise);
     const { unmount: unmountSecond } = render(element({ onChanged }));
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
     unmountSecond();
@@ -227,8 +257,8 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockReturnValue(deferred.promise);
     const onChanged = jest.fn();
     const { rerender } = render(element({ onChanged }));
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -245,25 +275,25 @@ describe('OnboardingFeeEditor', () => {
 
     // The lock was released by the switch: the new account can start its own update.
     mockSetOnboardingFee.mockResolvedValue(undefined);
-    openSet();
-    fillAmount('7');
+    await openSet();
+    selectAmount('800');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
-    expect(mockSetOnboardingFee).toHaveBeenLastCalledWith(88002, { amount: 7, address: '0xabc' });
+    expect(mockSetOnboardingFee).toHaveBeenLastCalledWith(88002, { amount: 800, address: '0xabc' });
   });
 
   it('does not show a late error from the previous account after the form is open on the new one', async () => {
     const deferred = createDeferred<void>();
     mockSetOnboardingFee.mockReturnValue(deferred.promise);
     const { rerender } = render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
     rerender(element({ userDataId: 88002 }));
-    openSet();
+    await openSet();
 
     await act(async () => {
       deferred.reject(new Error('Address is blocked or deleted'));
@@ -277,8 +307,8 @@ describe('OnboardingFeeEditor', () => {
   it('shows the API message when the change is refused and keeps the form open', async () => {
     mockSetOnboardingFee.mockRejectedValue(new Error('Address is blocked or deleted'));
     render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -290,8 +320,8 @@ describe('OnboardingFeeEditor', () => {
   it('shows the API message for a 404 that carries one', async () => {
     mockSetOnboardingFee.mockRejectedValue(Object.assign(new Error('Address not found'), { statusCode: 404 }));
     render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -301,8 +331,8 @@ describe('OnboardingFeeEditor', () => {
   it('says the API is switched off for a bare 404', async () => {
     mockSetOnboardingFee.mockRejectedValue({ statusCode: 404 });
     render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -313,8 +343,8 @@ describe('OnboardingFeeEditor', () => {
   it('says the API is switched off for a 404 whose message is Not Found', async () => {
     mockSetOnboardingFee.mockRejectedValue(Object.assign(new Error('Not Found'), { statusCode: 404 }));
     render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -325,8 +355,8 @@ describe('OnboardingFeeEditor', () => {
   it('shows the message of a plain error object', async () => {
     mockSetOnboardingFee.mockRejectedValue({ statusCode: 400, message: 'Address is blocked or deleted' });
     render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -336,8 +366,8 @@ describe('OnboardingFeeEditor', () => {
   it('falls back to a generic message when a plain error object has no text message', async () => {
     mockSetOnboardingFee.mockRejectedValue({ statusCode: 400, message: 42 });
     render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -347,8 +377,8 @@ describe('OnboardingFeeEditor', () => {
   it('falls back to a generic message when the set failure is not an Error', async () => {
     mockSetOnboardingFee.mockRejectedValue('boom');
     render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -359,8 +389,8 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockRejectedValue(undefined);
     const onChanged = jest.fn();
     render(element({ onChanged }));
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -368,11 +398,11 @@ describe('OnboardingFeeEditor', () => {
     expect(onChanged).not.toHaveBeenCalled();
   });
 
-  it('refuses to save without a verified clerk name and says why', () => {
+  it('refuses to save without a verified clerk name and says why', async () => {
     mockStaffName.name = undefined;
     render(element());
-    openSet();
-    fillAmount('5');
+    await openSet();
+    selectAmount('400');
     selectAddress('0xabc');
 
     expect(screen.getByText('—')).toBeInTheDocument();
@@ -382,22 +412,122 @@ describe('OnboardingFeeEditor', () => {
     expect(saveButton()).toBeDisabled();
   });
 
-  it('names the load error when the clerk name could not be fetched', () => {
+  it('names the load error when the clerk name could not be fetched', async () => {
     mockStaffName.name = undefined;
     mockStaffName.error = 'HTTP 500';
     render(element());
-    openSet();
+    await openSet();
 
     expect(screen.getByTestId('error-hint')).toHaveTextContent('Could not load your verified name: HTTP 500');
   });
 
-  it('shows the no-address hint and no Save button when the account has no users', () => {
+  it('shows the no-address hint and no Save button when the account has no users', async () => {
     render(element({ users: [] }));
-    openSet();
+    await openSet();
 
     expect(screen.getByText('This account has no address.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+  });
+
+  it('keeps the fee list and Save disabled while the amounts load, then enables them', async () => {
+    const deferred = createDeferred<number[]>();
+    mockGetOnboardingFeeAmounts.mockReturnValue(deferred.promise);
+    render(element());
+    openSetButton();
+
+    expect(amountSelect()).toBeDisabled();
+    selectAddress('0xabc');
+    expect(saveButton()).toBeDisabled();
+
+    await act(async () => {
+      deferred.resolve([400, 800]);
+      await deferred.promise;
+    });
+
+    expect(amountSelect()).toBeEnabled();
+    expect(screen.getByRole('option', { name: 'CHF 400' })).toBeInTheDocument();
+    selectAmount('400');
+    expect(saveButton()).toBeEnabled();
+  });
+
+  it('shows the error message and keeps Save disabled when the amounts cannot be loaded', async () => {
+    mockGetOnboardingFeeAmounts.mockRejectedValue(new Error('boom'));
+    render(element());
+    openSetButton();
+    selectAddress('0xabc');
+
+    expect(await screen.findByText('boom')).toBeInTheDocument();
+    expect(saveButton()).toBeDisabled();
+    expect(screen.queryByRole('option', { name: 'CHF 400' })).not.toBeInTheDocument();
+  });
+
+  it('falls back to a generic message when loading the amounts rejects without a message', async () => {
+    mockGetOnboardingFeeAmounts.mockRejectedValue({ statusCode: 500 });
+    render(element());
+    openSetButton();
+    selectAddress('0xabc');
+
+    expect(await screen.findByText('Failed to load the onboarding fee amounts')).toBeInTheDocument();
+    expect(saveButton()).toBeDisabled();
+  });
+
+  it('says the API is switched off when loading the amounts hits a bare 404', async () => {
+    mockGetOnboardingFeeAmounts.mockRejectedValue({ statusCode: 404 });
+    render(element());
+    openSetButton();
+
+    expect(await screen.findByText(ONBOARDING_FEE_API_OFF)).toBeInTheDocument();
+    expect(saveButton()).toBeDisabled();
+  });
+
+  it('ignores a successful amount load that finishes after unmount', async () => {
+    const deferred = createDeferred<number[]>();
+    mockGetOnboardingFeeAmounts.mockReturnValue(deferred.promise);
+    const { unmount } = render(element());
+    openSetButton();
+    await waitFor(() => expect(mockGetOnboardingFeeAmounts).toHaveBeenCalledTimes(1));
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    unmount();
+
+    await act(async () => {
+      deferred.resolve([400]);
+      await deferred.promise;
+    });
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(mockSetOnboardingFee).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('ignores a failed amount load that finishes after unmount', async () => {
+    const deferred = createDeferred<number[]>();
+    mockGetOnboardingFeeAmounts.mockReturnValue(deferred.promise);
+    const { unmount } = render(element());
+    openSetButton();
+    await waitFor(() => expect(mockGetOnboardingFeeAmounts).toHaveBeenCalledTimes(1));
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    unmount();
+
+    await act(async () => {
+      deferred.reject(new Error('late'));
+      await deferred.promise.catch(() => undefined);
+    });
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(mockSetOnboardingFee).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('does not fetch the amounts again when the form is reopened', async () => {
+    render(element());
+    await openSet();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    openSetButton();
+
+    expect(mockGetOnboardingFeeAmounts).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('option', { name: 'CHF 400' })).toBeInTheDocument();
   });
 
   it('opens the remove confirmation and cancels without calling the API', () => {

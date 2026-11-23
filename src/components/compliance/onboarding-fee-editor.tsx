@@ -1,9 +1,9 @@
-import type { ApiError } from '@dfx.swiss/react';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import type { UserInfo } from 'src/hooks/compliance.hook';
 import { useOnboardingFee } from 'src/hooks/onboarding-fee.hook';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
+import { formatChf, onboardingFeeFailureMessage } from 'src/util/onboarding-fee.util';
 import { STAFF_NAME_MISSING, staffNameLoadError } from './staff-identity';
 
 interface Props {
@@ -13,22 +13,8 @@ interface Props {
   onChanged: () => void;
 }
 
-// Both endpoints answer 404 with an empty body while ONBOARDING_FEE_API_ENABLED is not 'true'.
-export const ONBOARDING_FEE_API_OFF = 'The onboarding fee API is switched off.';
-
 const buttonClass =
   'px-3 py-1 text-xs text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded transition-colors whitespace-nowrap';
-
-// The API client raises ApiException (an Error) with the status and the API's message. While the
-// feature flag is off, both endpoints throw Nest's plain NotFoundException, whose body message is
-// "Not Found"; a 404 with a meaning carries its own text ("Address not found"). The message is also
-// read from a plain { statusCode, message } object, which some callers reject with.
-function failureMessage(e: unknown, fallback: string): string {
-  const apiError = e as Partial<ApiError> | null | undefined;
-  const message = typeof apiError?.message === 'string' ? apiError.message : undefined;
-  if (apiError?.statusCode === 404 && (!message || message === 'Not Found')) return ONBOARDING_FEE_API_OFF;
-  return message || fallback;
-}
 
 function userOptionLabel(user: UserInfo): string {
   return `${user.address} (${user.status}, ${user.usedRef ?? '-'})`;
@@ -38,12 +24,15 @@ function userOptionLabel(user: UserInfo): string {
 // forms behind them. The clerk is shown because the API stores that name with the change; without a
 // verified name the API refuses, so the form does not offer to save.
 export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<Props>): JSX.Element {
-  const { setOnboardingFee, removeOnboardingFee } = useOnboardingFee();
+  const { setOnboardingFee, removeOnboardingFee, getOnboardingFeeAmounts } = useOnboardingFee();
   const { name: clerk, isLoading: isLoadingClerk, error: clerkError } = useStaffVerifiedName();
 
   const [mode, setMode] = useState<'closed' | 'set' | 'remove'>('closed');
   const [amount, setAmount] = useState('');
   const [address, setAddress] = useState('');
+  const [amounts, setAmounts] = useState<number[]>();
+  const [isLoadingAmounts, setIsLoadingAmounts] = useState(false);
+  const [amountsError, setAmountsError] = useState<string>();
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
@@ -74,15 +63,33 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
     setNotice(undefined);
   }, [userDataId]);
 
-  const amountNumber = parseFloat(amount);
-  const canSaveAmount = !Number.isNaN(amountNumber) && amountNumber > 0;
+  const amountNumber = Number(amount);
+  // Only a value offered by the loaded list can be saved, so the API never receives an invented fee.
+  const canSaveAmount = !!amounts && amounts.includes(amountNumber) && amount !== '';
   const canSubmit = !!clerk && !isLoadingClerk && !isSaving && canSaveAmount && !!address;
+
+  // Loaded once per box: the list is global and does not change while the clerk stays on the page.
+  // A failed load is retried the next time the form is opened.
+  async function loadAmounts(): Promise<void> {
+    setIsLoadingAmounts(true);
+    setAmountsError(undefined);
+    try {
+      const loaded = await getOnboardingFeeAmounts();
+      if (mountedRef.current) setAmounts(loaded);
+    } catch (e: unknown) {
+      if (mountedRef.current)
+        setAmountsError(onboardingFeeFailureMessage(e, 'Failed to load the onboarding fee amounts'));
+    } finally {
+      if (mountedRef.current) setIsLoadingAmounts(false);
+    }
+  }
 
   function openSet(): void {
     setAmount('');
     setAddress('');
     setError(undefined);
     setNotice(undefined);
+    if (amounts === undefined) void loadAmounts();
     setMode('set');
   }
 
@@ -114,7 +121,7 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
       onChanged();
     } catch (e: unknown) {
       if (mountedRef.current && userDataIdRef.current === requestedId)
-        setError(failureMessage(e, 'Failed to set the onboarding fee'));
+        setError(onboardingFeeFailureMessage(e, 'Failed to set the onboarding fee'));
     } finally {
       if (userDataIdRef.current === requestedId) {
         savingRef.current = false;
@@ -140,7 +147,7 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
       onChanged();
     } catch (e: unknown) {
       if (mountedRef.current && userDataIdRef.current === requestedId)
-        setError(failureMessage(e, 'Failed to remove the onboarding fee'));
+        setError(onboardingFeeFailureMessage(e, 'Failed to remove the onboarding fee'));
     } finally {
       if (userDataIdRef.current === requestedId) {
         savingRef.current = false;
@@ -172,16 +179,20 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
             <label htmlFor="onboarding-fee-amount" className="text-xs text-dfxGray-700">
               Amount (CHF)
             </label>
-            <input
+            <select
               id="onboarding-fee-amount"
-              type="number"
-              min={0}
-              step="any"
               className="px-2 py-1.5 text-xs border border-dfxGray-400 rounded bg-white text-dfxBlue-800 w-full"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              disabled={isSaving}
-            />
+              disabled={isSaving || isLoadingAmounts}
+            >
+              <option value="">Select amount</option>
+              {(amounts ?? []).map((value) => (
+                <option key={value} value={value}>
+                  {formatChf(value)}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
             <label htmlFor="onboarding-fee-address" className="text-xs text-dfxGray-700">
@@ -207,6 +218,7 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
             <p className="px-2 py-1.5 text-xs text-dfxBlue-800">{isLoadingClerk ? '…' : (clerk ?? '—')}</p>
           </div>
         </div>
+        {amountsError && <p className="text-xs text-dfxRed-100">{amountsError}</p>}
         {!isLoadingClerk && !clerk && (
           <ErrorHint message={clerkError ? staffNameLoadError(clerkError) : STAFF_NAME_MISSING} />
         )}

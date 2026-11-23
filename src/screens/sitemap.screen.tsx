@@ -147,6 +147,10 @@ const sections: PageSection[] = [
     ],
   },
   {
+    title: 'Partner',
+    pages: [{ path: '/partner/onboarding-fee', label: 'Partner Onboarding Fee' }],
+  },
+  {
     title: 'Admin',
     pages: [{ path: '/sitemap', label: 'Sitemap' }],
   },

@@ -18,6 +18,7 @@ jest.mock('@dfx.swiss/react', () => ({
     COMPLIANCE: 'Compliance',
     MARKETING: 'Marketing',
     REALUNIT: 'RealUnit',
+    PARTNER: 'Partner',
   },
   useSessionContext: () => ({ isLoggedIn: mockIsLoggedIn }),
   useAuthContext: () => ({ session: mockSession }),
@@ -39,6 +40,7 @@ import {
   useAdminGuard,
   useComplianceGuard,
   useKycLevelGuard,
+  usePartnerGuard,
   useRealunitGuard,
   useRealunitQuotesGuard,
   useSupportDashboardGuard,
@@ -200,6 +202,26 @@ describe('guard.hook', () => {
     it('navigates when not logged in', () => {
       mockIsLoggedIn = false;
       renderHook(() => useSupportStaffGuard());
+      expect(mockNavigate).toHaveBeenCalledWith('/', { setRedirect: true });
+    });
+  });
+
+  describe('usePartnerGuard', () => {
+    it('does not navigate for PARTNER', () => {
+      mockSession = { role: UserRole.PARTNER, address: '0x1' };
+      renderHook(() => usePartnerGuard());
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('navigates for a foreign role', () => {
+      mockSession = { role: UserRole.ADMIN, address: '0x1' };
+      renderHook(() => usePartnerGuard('/denied'));
+      expect(mockNavigate).toHaveBeenCalledWith('/denied', { setRedirect: true });
+    });
+
+    it('navigates when not logged in', () => {
+      mockIsLoggedIn = false;
+      renderHook(() => usePartnerGuard());
       expect(mockNavigate).toHaveBeenCalledWith('/', { setRedirect: true });
     });
   });

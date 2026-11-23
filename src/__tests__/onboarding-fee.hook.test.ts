@@ -1,4 +1,4 @@
-// Unit tests for useOnboardingFee: the PUT/DELETE payloads and the stable function identities.
+// Unit tests for useOnboardingFee: the request payloads and the stable function identities.
 
 import { renderHook } from '@testing-library/react';
 
@@ -39,6 +39,46 @@ describe('useOnboardingFee', () => {
     expect(mockCall).toHaveBeenCalledTimes(1);
     expect(mockCall).toHaveBeenCalledWith({
       url: 'userData/88001/onboardingFee',
+      method: 'DELETE',
+    });
+  });
+
+  it('getOnboardingFeeAmounts GETs partner/onboardingFee/amounts and returns the list', async () => {
+    mockCall.mockResolvedValue({ amounts: [400, 800] });
+
+    const { result } = renderHook(() => useOnboardingFee());
+    await expect(result.current.getOnboardingFeeAmounts()).resolves.toEqual([400, 800]);
+
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'partner/onboardingFee/amounts',
+      method: 'GET',
+    });
+  });
+
+  it('setPartnerOnboardingFee calls PUT partner/onboardingFee with the amount and address', async () => {
+    mockCall.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useOnboardingFee());
+    await result.current.setPartnerOnboardingFee({ amount: 400, address: '0xabc' });
+
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'partner/onboardingFee',
+      method: 'PUT',
+      data: { amount: 400, address: '0xabc' },
+    });
+  });
+
+  it('removePartnerOnboardingFee calls DELETE partner/onboardingFee with the encoded address', async () => {
+    mockCall.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useOnboardingFee());
+    await result.current.removePartnerOnboardingFee('0xabc/def?ghi');
+
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'partner/onboardingFee?address=0xabc%2Fdef%3Fghi',
       method: 'DELETE',
     });
   });

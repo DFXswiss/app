@@ -275,6 +275,10 @@
     "title": "Abbruch im Wallet",
     "description": "Bricht der Benutzer im Wallet ab (EIP-1193-Code 4001), endet der Vorgang ohne Fehlermeldung und ohne Fehlerbericht: beim Verbinden wieder bei der Wallet-Auswahl, beim Verkauf im Formular, wo ein neuer Versuch möglich ist. Varianten: abgebrochene Verbindung zurück bei der Wallet-Auswahl; eine vom Wallet fehlgeschlagene Verbindung, die weiterhin \"Connection failed!\" mit der Meldung des Wallets zeigt; eine im Wallet abgebrochene Verkaufstransaktion, nach der das Formular ohne Fehler stehen bleibt; eine vom Wallet fehlgeschlagene Verkaufstransaktion, die weiterhin \"Transaction failed\" zeigt."
   },
+  "partner-onboarding-fee": {
+    "title": "Partner onboarding fee",
+    "description": "Der Partner-Screen /partner/onboarding-fee zum Zuweisen einer festen Onboarding-Gebühr zu einer Kundenadresse und zum Entfernen mit Bestätigung."
+  },
   "partner-wallet-selection": {
     "title": "Partner-Wallet-Auswahl",
     "description": "Die Wallet-Liste der zwei geänderten Partner-Verkaufsflüsse und die Bitcoin-Lightning-Wallet-Liste nach dem Entfernen von Alby, ohne Alby-Kachel: bitcoinonly → Verkaufen → Bitcoin mit der Wallet-Auswahl des Partners (Hardware-Wallets; die DFX-App-Kachel ist Lightning-only und wird durch die vorausgewählte Bitcoin-Blockchain ausgeblendet), kevinsoell → Verkaufen → Bitcoin, wo nur die Hardware-Wallet-Kachel erlaubt ist und die App direkt zur Hardware-Wallet-Auswahl weitergeht, sowie die Bitcoin-Lightning-Seite mit DFX-App und Kommandozeilen-Wallet."

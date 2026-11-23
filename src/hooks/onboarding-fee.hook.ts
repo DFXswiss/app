@@ -6,12 +6,20 @@ export interface SetOnboardingFeeDto {
   address: string;
 }
 
-// Adds or removes the flat onboarding fee of an account (Admin role). The PUT assigns the fee and
-// attributes the named address to the key-account manager's ref in one transaction; the API answers
-// with an empty body. Both endpoints answer 404 while ONBOARDING_FEE_API_ENABLED is not enabled.
+export interface OnboardingFeeAmounts {
+  amounts: number[];
+}
+
+// Adds or removes the flat onboarding fee of an account. The Admin endpoints work on a userData id;
+// the Partner endpoints work on a customer wallet address and attribute it to the caller's ref. The
+// PUTs assign the fee and attribute the address in one transaction; the API answers with an empty
+// body. Both groups answer 404 while the onboarding-fee switch on the backend is off.
 export function useOnboardingFee(): {
   setOnboardingFee: (userDataId: number, dto: SetOnboardingFeeDto) => Promise<void>;
   removeOnboardingFee: (userDataId: number) => Promise<void>;
+  getOnboardingFeeAmounts: () => Promise<number[]>;
+  setPartnerOnboardingFee: (dto: SetOnboardingFeeDto) => Promise<void>;
+  removePartnerOnboardingFee: (address: string) => Promise<void>;
 } {
   const { call } = useGuardedApi();
 
@@ -30,5 +38,37 @@ export function useOnboardingFee(): {
     });
   }
 
-  return useMemo(() => ({ setOnboardingFee, removeOnboardingFee }), [call]);
+  async function getOnboardingFeeAmounts(): Promise<number[]> {
+    const response = await call<OnboardingFeeAmounts>({
+      url: 'partner/onboardingFee/amounts',
+      method: 'GET',
+    });
+    return response.amounts;
+  }
+
+  async function setPartnerOnboardingFee(dto: SetOnboardingFeeDto): Promise<void> {
+    return call<void>({
+      url: 'partner/onboardingFee',
+      method: 'PUT',
+      data: dto,
+    });
+  }
+
+  async function removePartnerOnboardingFee(address: string): Promise<void> {
+    return call<void>({
+      url: `partner/onboardingFee?address=${encodeURIComponent(address)}`,
+      method: 'DELETE',
+    });
+  }
+
+  return useMemo(
+    () => ({
+      setOnboardingFee,
+      removeOnboardingFee,
+      getOnboardingFeeAmounts,
+      setPartnerOnboardingFee,
+      removePartnerOnboardingFee,
+    }),
+    [call],
+  );
 }
