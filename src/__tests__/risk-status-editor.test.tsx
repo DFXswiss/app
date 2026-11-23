@@ -289,6 +289,75 @@ describe('RiskStatusEditor', () => {
     expect(screen.getByLabelText('Risk status')).toBeInTheDocument();
   });
 
+  it('reloads the row for a late success after A -> B -> A but keeps the newer form and its lock', async () => {
+    const first = createDeferred<void>();
+    const second = createDeferred<void>();
+    mockSetRiskStatus.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const onChanged = jest.fn();
+    const { rerender } = render(element({ onChanged }));
+    open();
+    selectValue('Blocked');
+    fillReason('first');
+    fireEvent.click(saveButton());
+
+    rerender(element({ userDataId: 88002, onChanged }));
+    rerender(element({ userDataId: 88001, onChanged }));
+    open();
+    selectValue('Released');
+    fillReason('second');
+    fireEvent.click(saveButton());
+    expect(mockSetRiskStatus).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      first.resolve();
+      await first.promise;
+    });
+    // The earlier attempt changed the account that is shown again: the row reloads, nothing else moves.
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('Risk status')).toBeInTheDocument();
+    expect(screen.queryByText(/Risk status set to/)).not.toBeInTheDocument();
+    // The newer save still holds the lock.
+    const saving = screen.getByRole('button', { name: 'Saving…' });
+    expect(saving).toBeDisabled();
+    fireEvent.click(saving);
+    expect(mockSetRiskStatus).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      second.resolve();
+      await second.promise;
+    });
+    expect(onChanged).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Risk status set to Released.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Risk status')).not.toBeInTheDocument();
+  });
+
+  it('does not show a late error after A -> B -> A on the newer form', async () => {
+    const deferred = createDeferred<void>();
+    mockSetRiskStatus.mockReturnValue(deferred.promise);
+    const onChanged = jest.fn();
+    const { rerender } = render(element({ onChanged }));
+    open();
+    selectValue('Blocked');
+    fillReason('first');
+    fireEvent.click(saveButton());
+
+    rerender(element({ userDataId: 88002, onChanged }));
+    rerender(element({ userDataId: 88001, onChanged }));
+    open();
+    selectValue('Released');
+    fillReason('second');
+
+    await act(async () => {
+      deferred.reject(new Error('Risk status change refused'));
+      await deferred.promise.catch(() => undefined);
+    });
+
+    expect(screen.queryByText('Risk status change refused')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Risk status')).toBeInTheDocument();
+    expect(saveButton()).toBeEnabled();
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
   it('shows the API message when the change is refused and keeps the form open', async () => {
     mockSetRiskStatus.mockRejectedValue(new Error('Risk status change refused'));
     render(element());

@@ -59,10 +59,15 @@ export function RiskStatusEditor({ userDataId, currentRiskStatus, onChanged }: R
 
   // The screen keeps this box mounted while the clerk moves to another account (same route, new id).
   // The form belongs to the account it was opened for: it closes on the switch, and an answer that
-  // arrives for the previous account is not reported as a change of the current one.
+  // arrives for the previous account is not reported as a change of the current one. The account id
+  // alone cannot tell attempts apart (A -> B -> A ends on the same id), so every switch starts a new
+  // attempt and only the save of the current attempt may close the form, show its result or release
+  // the lock.
   const userDataIdRef = useRef(userDataId);
   userDataIdRef.current = userDataId;
+  const attemptRef = useRef(0);
   useEffect(() => {
+    attemptRef.current += 1;
     savingRef.current = false;
     setIsSaving(false);
     setIsOpen(false);
@@ -96,20 +101,26 @@ export function RiskStatusEditor({ userDataId, currentRiskStatus, onChanged }: R
     setError(undefined);
     setNotice(undefined);
     const requestedId = userDataId;
+    const attempt = attemptRef.current;
+    const isCurrent = (): boolean => mountedRef.current && attemptRef.current === attempt;
     // Save is disabled until a status is selected, so the lookup always matches. Indexing yields the
     // element type instead of the select's `''` union, without a cast.
     const value = OPERATOR_RISK_STATUSES.filter((status) => status === selectedStatus)[0];
     try {
       await setRiskStatus(requestedId, { riskStatus: value, reason: reason.trim() });
-      if (!mountedRef.current || userDataIdRef.current !== requestedId) return;
-      setIsOpen(false);
-      setNotice(`Risk status set to ${value}.`);
-      onChanged();
+      if (isCurrent()) {
+        setIsOpen(false);
+        setNotice(`Risk status set to ${value}.`);
+        onChanged();
+      } else if (mountedRef.current && userDataIdRef.current === requestedId) {
+        // An earlier attempt for the account shown again (A -> B -> A) changed it: reload the row,
+        // but leave the form and the lock of the current attempt alone.
+        onChanged();
+      }
     } catch (e: unknown) {
-      if (mountedRef.current && userDataIdRef.current === requestedId)
-        setError(failureMessage(e, 'Failed to set the risk status'));
+      if (isCurrent()) setError(failureMessage(e, 'Failed to set the risk status'));
     } finally {
-      if (userDataIdRef.current === requestedId) {
+      if (attemptRef.current === attempt) {
         savingRef.current = false;
         if (mountedRef.current) setIsSaving(false);
       }
