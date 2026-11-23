@@ -66,6 +66,10 @@ jest.mock('src/components/compliance/onboarding-fee-editor', () => ({
   OnboardingFeeEditor: () => <div data-testid="onboarding-fee-editor" />,
 }));
 
+jest.mock('src/components/compliance/risk-status-editor', () => ({
+  RiskStatusEditor: () => <div data-testid="risk-status-editor" />,
+}));
+
 jest.mock('src/components/error-hint', () => ({
   ErrorHint: ({ message }: { message: string }) => <p data-testid="error-hint">{message}</p>,
 }));
