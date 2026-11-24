@@ -17,8 +17,8 @@ A local forwarder on `127.0.0.1:3000` (started by the tests image entrypoint) al
 
 Master data (fiats, assets, countries, languages, banks, fees, one wallet) is seeded at API boot.
 `ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and sets
-`DISABLED_PROCESSES=*,!Scorechain,!Buy`. `Scorechain` and `Buy` are request-path gates, not jobs,
-so still no cron runs.
+`DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus,!Buy`. `Scorechain`, `UserDataRiskStatus`
+and `Buy` are request-path gates, not jobs, so still no cron runs.
 
 **Staff KYC clearance (elevated roles)**
 
