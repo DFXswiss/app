@@ -9,7 +9,6 @@ import { isNode } from '../util/utils';
 import { isWebComponent } from '../util/web-component-mode';
 import { InfoBannerComponent } from './info-banner';
 import { Navigation } from './navigation';
-import { ServiceNoticeBanner } from './service-notice-banner';
 
 export function Layout({ children }: PropsWithChildren): JSX.Element {
   const {
@@ -79,7 +78,6 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
               textStart || isRealunitWorkspace ? 'text-start' : 'text-center'
             } ${!(noPadding || borderless) && 'p-5'} gap-2`}
           >
-            <ServiceNoticeBanner />
             {pathname.startsWith('/support') && <InfoBannerComponent />}
             {children}
           </div>
