@@ -16,15 +16,17 @@ factories, auth, db, and the other helpers) or from a specific module such as
 A local forwarder on `127.0.0.1:3000` (started by the tests image entrypoint) also relays to the real API. That is why `http://localhost:3000` works from inside the container even though no API process runs there — code paths that hit `localhost` directly (e.g. server-built KYC-step URLs under `Environment.LOC`) need it.
 
 Master data (fiats, assets, countries, languages, banks, fees, one wallet) is seeded at API boot.
-`ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and sets `DISABLED_PROCESSES=*` (no crons).
+`ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and sets
+`DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus,!Buy`. `Scorechain`, `UserDataRiskStatus`
+and `Buy` are request-path gates, not jobs, so still no cron runs.
 
 **Staff KYC clearance (elevated roles)**
 
 Elevated API endpoints (Admin / Compliance / Support / RealUnit) also require staff KYC
 clearance: a non-empty `user_data.verifiedName` plus the account's `user_data.id` in the
 in-memory `staffKycClearance` set. `loginAs` sets `verifiedName` on every call.
-`global.setup.ts` seeds the `staffKycClearance` setting for all six harness roles once per
-test run and polls until the API's ~30s `resyncStaffKycClearance` picks it up — so elevated
+`global.setup.ts` seeds the `staffKycClearance` setting for the six roles User, Admin, Compliance,
+Support, Marketing and RealUnit once per test run (the Partner routes do not require it) and polls until the API's ~30s `resyncStaffKycClearance` picks it up — so elevated
 roles reach gated endpoints/screens instead of being redirected to `/staff-kyc-required`.
 
 **ChargebackBase fee seed**
@@ -51,7 +53,7 @@ without this workaround `PUT /v1/buy/paymentInfos` hangs or fails.
 
 **Wallet indices**
 
-- Sibling `auth.ts` reserves indices `0–6` for `loginAs` / default `testWallet`.
+- Sibling `auth.ts` reserves indices `0–7` for `loginAs` / default `testWallet`.
 - Factories use indices `100 + counter` so they never collide with role wallets.
 - The factory counter no longer starts at `0` in every process: once per process it is raised
   to a value derived from the DB (highest already-used `FACTORY_WALLET_INDEX_BASE`-relative

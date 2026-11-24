@@ -442,13 +442,20 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
           body: JSON.stringify({ clerk: 'E2E Clerk' }),
         });
       });
+      await page.route('**/v1/partner/onboardingFee/amounts', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ amounts: [400, 800] }),
+        });
+      });
 
       await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(2000);
 
       await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
-      await page.locator('#onboarding-fee-amount').fill('5');
+      await page.locator('#onboarding-fee-amount').selectOption('400');
       await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
       await page.waitForTimeout(500);
 
@@ -492,13 +499,20 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
           body: JSON.stringify({ statusCode: 400, message: 'Address is blocked or deleted' }),
         });
       });
+      await page.route('**/v1/partner/onboardingFee/amounts', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ amounts: [400, 800] }),
+        });
+      });
 
       await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(2000);
 
       await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
-      await page.locator('#onboarding-fee-amount').fill('5');
+      await page.locator('#onboarding-fee-amount').selectOption('400');
       await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
 
       const save = page.getByRole('button', { name: 'Save', exact: true });

@@ -13,7 +13,7 @@ jest.mock('src/util/web-component-mode', () => ({
 }));
 
 jest.mock('@dfx.swiss/react', () => ({
-  UserRole: { ADMIN: 'Admin', COMPLIANCE: 'Compliance', REALUNIT: 'RealUnit', SUPPORT: 'Support' },
+  UserRole: { ADMIN: 'Admin', COMPLIANCE: 'Compliance', REALUNIT: 'RealUnit', SUPPORT: 'Support', PARTNER: 'Partner' },
   useAuthContext: () => ({ session: mockSession }),
   useSessionContext: () => ({ isLoggedIn: mockIsLoggedIn, logout: mockLogout }),
   useUserContext: () => ({ hasCustody: mockHasCustody }),
@@ -353,14 +353,27 @@ describe('Navigation', () => {
       ['Compliance', ['Compliance', 'Support Dashboard', 'RealUnit']],
       ['Support', ['Support Dashboard']],
       ['RealUnit', ['RealUnit']],
+      ['Partner', ['Onboarding fee']],
       ['User', []],
     ])('shows the staff links for role %s', (role, expected) => {
       mockSession = { role };
       renderNavigation({ title: 'Login' });
       openMenu();
 
-      const staffLinks = ['Compliance', 'Support Dashboard', 'RealUnit', 'Financial', 'Sitemap'];
+      const staffLinks = ['Compliance', 'Support Dashboard', 'RealUnit', 'Financial', 'Sitemap', 'Onboarding fee'];
       expect(linkLabels().filter((label) => staffLinks.includes(label))).toEqual(expected);
+    });
+
+    it('links a Partner to the partner onboarding-fee screen', () => {
+      mockSession = { role: 'Partner' };
+      renderNavigation({ title: 'Login' });
+      openMenu();
+
+      const link = screen.getAllByTestId('nav-link').find((item) => item.textContent === 'Onboarding fee');
+      expect(link).toHaveAttribute('data-url', '/partner/onboarding-fee');
+
+      fireEvent.click(link as HTMLElement);
+      expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     });
 
     it('closes the menu from every link', () => {

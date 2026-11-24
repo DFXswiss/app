@@ -1366,6 +1366,24 @@
     "Invite": "Invito",
     "Promo": "Promo"
   },
+  "screens/partner": {
+    "Onboarding fee": "Commissione di onboarding",
+    "Enter the wallet address of your customer and choose the onboarding fee. The customer is attributed to your referral code.": "Inserisci l'indirizzo del wallet del tuo cliente e scegli la commissione di onboarding. Il cliente viene attribuito al tuo codice di referenza.",
+    "Assign onboarding fee": "Assegna la commissione di onboarding",
+    "Customer address": "Indirizzo del cliente",
+    "Select amount": "Seleziona l'importo",
+    "Assign": "Assegna",
+    "Failed to load the onboarding fee amounts": "Impossibile caricare gli importi della commissione di onboarding.",
+    "Failed to assign the onboarding fee": "Impossibile assegnare la commissione di onboarding.",
+    "Onboarding fee of {{amount}} assigned to {{address}}.": "Commissione di onboarding di {{amount}} assegnata a {{address}}.",
+    "Remove onboarding fee": "Rimuovi la commissione di onboarding",
+    "Remove": "Rimuovi",
+    "Remove the onboarding fee of {{address}}?": "Rimuovere la commissione di onboarding di {{address}}?",
+    "Removing…": "Rimozione…",
+    "Failed to remove the onboarding fee": "Impossibile rimuovere la commissione di onboarding.",
+    "Onboarding fee of {{address}} removed.": "Commissione di onboarding di {{address}} rimossa.",
+    "The onboarding fee API is switched off.": "L'API della commissione di onboarding è disattivata."
+  },
   "components/service-notice": {
     "All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.": "Tutte le funzionalità principali di DFX sono di nuovo disponibili. Non inviare token crypto agli indirizzi di deposito ricevuti da DFX prima del 18 novembre 2026.",
     "More": "Scopri di più"

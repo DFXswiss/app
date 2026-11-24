@@ -98,7 +98,8 @@ async function seedDepositAddresses(): Promise<void> {
 }
 
 /**
- * Staff KYC clearance for all six harness roles.
+ * Staff KYC clearance is seeded for the six harness roles listed below. The Partner routes do
+ * not require it.
  *
  * Elevated endpoints (Admin/Compliance/Support/RealUnit/Debug) require both a non-empty
  * user_data.verifiedName (set by loginAs) AND the account's user_data.id in the in-memory

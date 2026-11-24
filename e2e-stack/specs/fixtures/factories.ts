@@ -6,7 +6,7 @@
  * or staff-only fields such as arbitrary kycLevel / role).
  *
  * Wallet index range: factory wallets use indices starting at FACTORY_WALLET_INDEX_BASE (100)
- * plus an in-process counter. Sibling auth.ts reserves indices 0–6 for loginAs / default
+ * plus an in-process counter. Sibling auth.ts reserves indices 0–7 for loginAs / default
  * testWallet usage; starting at 100 avoids collisions under workers: 1.
  */
 
@@ -21,7 +21,7 @@ import { TEST_IBAN } from './test-data';
 // Counters & cleanup registry
 // ---------------------------------------------------------------------------
 
-/** Sibling auth reserves 0–6 for staff/role wallets; factories start well above that. */
+/** Sibling auth reserves 0–7 for staff/role wallets; factories start well above that. */
 const FACTORY_WALLET_INDEX_BASE = 100;
 
 /**
@@ -343,12 +343,7 @@ export interface CreateSwapResult {
 }
 
 export type TransactionState =
-  | 'completed_buy'
-  | 'pending_buy'
-  | 'waiting_for_payment_buy'
-  | 'completed_sell'
-  | 'pending_sell'
-  | 'bank_tx_only';
+  'completed_buy' | 'pending_buy' | 'waiting_for_payment_buy' | 'completed_sell' | 'pending_sell' | 'bank_tx_only';
 
 export interface CreateTransactionOptions {
   tag?: string;

@@ -135,6 +135,7 @@ const DashboardFinancialKundengelderLinesScreen = lazyScreen(() =>
   })),
 );
 const SitemapScreen = lazyScreen(() => import('./screens/sitemap.screen'));
+const PartnerOnboardingFeeScreen = lazyScreen(() => import('./screens/partner-onboarding-fee.screen'));
 
 setupLanguages();
 
@@ -514,6 +515,10 @@ export const Routes = [
       {
         path: 'compliance/*',
         element: withSuspense(<ComplianceNotFoundScreen />),
+      },
+      {
+        path: 'partner/onboarding-fee',
+        element: withSuspense(<PartnerOnboardingFeeScreen />),
       },
       {
         path: 'sitemap',
