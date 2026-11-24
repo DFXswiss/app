@@ -152,8 +152,8 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
     }
   }
 
-  // Ask for confirmation first: removing the fee also removes the attribution, so it is not a
-  // single-click action.
+  // Ask for confirmation first: removing takes the fee off the customer's account, so it is not a
+  // single-click action. The customer stays attributed to the partner's ref.
   function requestRemove(data: RemoveFormData): void {
     setRemoveError(undefined);
     setRemoveNotice(undefined);

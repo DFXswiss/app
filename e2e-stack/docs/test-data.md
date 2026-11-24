@@ -25,8 +25,8 @@ and `Buy` are request-path gates, not jobs, so still no cron runs.
 Elevated API endpoints (Admin / Compliance / Support / RealUnit) also require staff KYC
 clearance: a non-empty `user_data.verifiedName` plus the account's `user_data.id` in the
 in-memory `staffKycClearance` set. `loginAs` sets `verifiedName` on every call.
-`global.setup.ts` seeds the `staffKycClearance` setting for all six harness roles once per
-test run and polls until the API's ~30s `resyncStaffKycClearance` picks it up — so elevated
+`global.setup.ts` seeds the `staffKycClearance` setting for the six roles User, Admin, Compliance,
+Support, Marketing and RealUnit once per test run (the Partner routes do not require it) and polls until the API's ~30s `resyncStaffKycClearance` picks it up — so elevated
 roles reach gated endpoints/screens instead of being redirected to `/staff-kyc-required`.
 
 **ChargebackBase fee seed**
@@ -53,7 +53,7 @@ without this workaround `PUT /v1/buy/paymentInfos` hangs or fails.
 
 **Wallet indices**
 
-- Sibling `auth.ts` reserves indices `0–6` for `loginAs` / default `testWallet`.
+- Sibling `auth.ts` reserves indices `0–7` for `loginAs` / default `testWallet`.
 - Factories use indices `100 + counter` so they never collide with role wallets.
 - The factory counter no longer starts at `0` in every process: once per process it is raised
   to a value derived from the DB (highest already-used `FACTORY_WALLET_INDEX_BASE`-relative
