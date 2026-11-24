@@ -1301,74 +1301,24 @@ test.describe('Sell + Swap e2e', () => {
     await expect(page.locator('input[inputmode="decimal"]').first()).toBeVisible();
   });
 
-  // ---------------------------------------------------------------------------
-  // Service notice: prominent above the form on /sell and /swap, slim everywhere else
-  // ---------------------------------------------------------------------------
-
-  test('/sell and /swap show the prominent service notice above the form; /buy and other pages show the slim one', async ({
-    page,
-  }) => {
+  test('/sell, /swap, /buy and /account show no service notice', async ({ page }) => {
     const user = await createUser({
       walletIndex: nextWalletIndex(),
-      tag: 'service-notice',
+      tag: 'no-notice',
       kycLevel: 30,
       completePersonalData: true,
       language: 'EN',
     });
 
-    // Both variants show the same text, followed by the More link to the security incident page.
-    const noticeText =
-      'All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. More';
-
-    for (const path of ['/sell', '/swap']) {
+    for (const path of ['/sell', '/swap', '/buy']) {
       await openScreen(page, path, user.jwt);
-
-      const notice = page.getByTestId('service-notice-banner');
-      await expect(notice).toHaveCount(1);
-      await expect(notice).toHaveAttribute('data-variant', 'prominent');
-      await expect(notice).toHaveText(noticeText);
-      await expect(notice.getByRole('link', { name: 'More' })).toHaveAttribute(
-        'href',
-        'https://dfx.swiss/security-incident.html',
-      );
-
-      // Visible before any form input: the notice sits above the first amount field.
-      const amount = page.locator('input[inputmode="decimal"]').first();
-      await expect(amount).toBeVisible({ timeout: 15000 });
-      const noticeBox = await notice.boundingBox();
-      const amountBox = await amount.boundingBox();
-      expect(noticeBox).not.toBeNull();
-      expect(amountBox).not.toBeNull();
-      expect((noticeBox as { y: number }).y).toBeLessThan((amountBox as { y: number }).y);
-
-      // The form stays usable: the notice does not disable the amount field.
-      await expect(amount).toBeEnabled();
+      await expect(page.locator('input[inputmode="decimal"]').first()).toBeVisible({ timeout: 15000 });
+      await expect(page.getByTestId('service-notice-banner')).toHaveCount(0);
     }
 
-    // /buy: the slim notice sits above the buy form and its payment details.
-    await openScreen(page, '/buy', user.jwt);
-    const buyNotice = page.getByTestId('service-notice-banner');
-    await expect(buyNotice).toHaveCount(1);
-    await expect(buyNotice).toHaveAttribute('data-variant', 'slim');
-    await expect(buyNotice).toHaveText(noticeText);
-    const buyAmount = page.locator('input[inputmode="decimal"]').first();
-    await expect(buyAmount).toBeVisible({ timeout: 15000 });
-    const buyNoticeBox = await buyNotice.boundingBox();
-    const buyAmountBox = await buyAmount.boundingBox();
-    expect(buyNoticeBox).not.toBeNull();
-    expect(buyAmountBox).not.toBeNull();
-    expect((buyNoticeBox as { y: number }).y).toBeLessThan((buyAmountBox as { y: number }).y);
-    await expect(buyAmount).toBeEnabled();
-
     await openScreen(page, '/account', user.jwt);
-    const notice = page.getByTestId('service-notice-banner');
-    await expect(notice).toHaveCount(1);
-    await expect(notice).toHaveAttribute('data-variant', 'slim');
-    await expect(notice).toHaveText(noticeText);
-
-    // Not dismissable: still there after a reload.
-    await page.reload();
-    await expect(page.getByTestId('service-notice-banner')).toHaveText(noticeText, { timeout: 15000 });
+    await expect(page.getByText('Account', { exact: true }).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('service-notice-banner')).toHaveCount(0);
   });
 
   test('/swap source assets are sellable and target assets are buyable vs GET /v1/asset', async ({ page }) => {
