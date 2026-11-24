@@ -1301,21 +1301,56 @@ test.describe('Sell + Swap e2e', () => {
     await expect(page.locator('input[inputmode="decimal"]').first()).toBeVisible();
   });
 
-  test('/sell, /swap, /buy and /account show no service notice', async ({ page }) => {
+  // ---------------------------------------------------------------------------
+  // Service notice: slim above the form on /sell and /swap, absent on every other page
+  // ---------------------------------------------------------------------------
+
+  test('/sell and /swap show the slim service notice above the form; /buy and other pages show none', async ({
+    page,
+  }) => {
     const user = await createUser({
       walletIndex: nextWalletIndex(),
-      tag: 'no-notice',
+      tag: 'service-notice-sell-swap',
       kycLevel: 30,
       completePersonalData: true,
       language: 'EN',
     });
 
-    for (const path of ['/sell', '/swap', '/buy']) {
+    // The notice text, followed by the More link to the security incident page.
+    const noticeText =
+      'All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026. More';
+
+    for (const path of ['/sell', '/swap']) {
       await openScreen(page, path, user.jwt);
-      await expect(page.locator('input[inputmode="decimal"]').first()).toBeVisible({ timeout: 15000 });
-      await expect(page.getByTestId('service-notice-banner')).toHaveCount(0);
+
+      const notice = page.getByTestId('service-notice-banner');
+      await expect(notice).toHaveCount(1);
+      await expect(notice).toHaveAttribute('role', 'note');
+      await expect(notice).toHaveText(noticeText);
+      await expect(notice.getByRole('link', { name: 'More' })).toHaveAttribute(
+        'href',
+        'https://dfx.swiss/security-incident.html',
+      );
+
+      // Visible before any form input: the notice sits above the first amount field.
+      const amount = page.locator('input[inputmode="decimal"]').first();
+      await expect(amount).toBeVisible({ timeout: 15000 });
+      const noticeBox = await notice.boundingBox();
+      const amountBox = await amount.boundingBox();
+      expect(noticeBox).not.toBeNull();
+      expect(amountBox).not.toBeNull();
+      expect((noticeBox as { y: number }).y).toBeLessThan((amountBox as { y: number }).y);
+
+      // The form stays usable: the notice does not disable the amount field.
+      await expect(amount).toBeEnabled();
     }
 
+    // /buy: no notice once the buy form has rendered.
+    await openScreen(page, '/buy', user.jwt);
+    await expect(page.locator('input[inputmode="decimal"]').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('service-notice-banner')).toHaveCount(0);
+
+    // Another page: no notice once the account page has rendered.
     await openScreen(page, '/account', user.jwt);
     await expect(page.getByText('Account', { exact: true }).first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId('service-notice-banner')).toHaveCount(0);

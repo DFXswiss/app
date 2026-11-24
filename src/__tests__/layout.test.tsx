@@ -34,6 +34,10 @@ jest.mock('src/components/info-banner', () => ({
   InfoBannerComponent: () => <div data-testid="info-banner" />,
 }));
 
+jest.mock('src/components/service-notice-banner', () => ({
+  ServiceNoticeBanner: () => <div data-testid="service-notice-banner" />,
+}));
+
 jest.mock('src/components/navigation', () => {
   const { forwardRef } = jest.requireActual('react') as typeof import('react');
 
@@ -157,8 +161,9 @@ describe('Layout', () => {
     const column = contentColumn();
 
     expect(root.firstElementChild).toBe(nav);
-    expect(column.firstElementChild).toBe(banner);
-    expect(column.children[1]).toBe(page);
+    expect(column.firstElementChild).toBe(screen.getByTestId('service-notice-banner'));
+    expect(column.children[1]).toBe(banner);
+    expect(column.children[2]).toBe(page);
     expect(banner.parentElement).toBe(column);
     expect(nav.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
@@ -181,8 +186,22 @@ describe('Layout', () => {
 
     renderLayout({ path: '/account' });
     expect(screen.queryByTestId('info-banner')).not.toBeInTheDocument();
-    expect(contentColumn().firstElementChild).toBe(screen.getByTestId('page-content'));
+    expect(contentColumn().children[1]).toBe(screen.getByTestId('page-content'));
   });
+
+  it.each(['/', '/account', '/sell', '/swap', '/kyc'])(
+    'mounts the service notice once, above the page content, on %s',
+    (path) => {
+      renderLayout({ path });
+
+      const notices = screen.getAllByTestId('service-notice-banner');
+      expect(notices).toHaveLength(1);
+      expect(contentColumn().firstElementChild).toBe(notices[0]);
+      expect(
+        notices[0].compareDocumentPosition(screen.getByTestId('page-content')) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    },
+  );
 
   it('does not show the banner on a KYC route', () => {
     renderLayout({ path: '/kyc?code=abc' });

@@ -1383,5 +1383,9 @@
     "Failed to remove the onboarding fee": "Les frais d'onboarding n'ont pas pu être supprimés.",
     "Onboarding fee of {{address}} removed.": "Frais d'onboarding de {{address}} supprimés.",
     "The onboarding fee API is switched off.": "L'API des frais d'onboarding est désactivée."
+  },
+  "components/service-notice": {
+    "All DFX core features are available again. Do not send crypto tokens to deposit addresses you received from DFX before 18 November 2026.": "Toutes les fonctionnalités principales de DFX sont de nouveau disponibles. N'envoyez pas de tokens crypto aux adresses de dépôt que vous avez reçues de DFX avant le 18 novembre 2026.",
+    "More": "En savoir plus"
   }
 }
