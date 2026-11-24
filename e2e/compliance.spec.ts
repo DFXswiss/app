@@ -495,7 +495,7 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await page.waitForTimeout(2000);
 
       await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
-      await page.locator('#onboarding-fee-amount').selectOption('400');
+      await page.locator('#onboarding-fee-amount').fill('400');
       await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
       await page.waitForTimeout(500);
 
@@ -552,7 +552,7 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await page.waitForTimeout(2000);
 
       await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
-      await page.locator('#onboarding-fee-amount').selectOption('400');
+      await page.locator('#onboarding-fee-amount').fill('400');
       await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
 
       const save = page.getByRole('button', { name: 'Save', exact: true });

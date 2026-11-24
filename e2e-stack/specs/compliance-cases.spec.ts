@@ -689,7 +689,8 @@ test.describe('Compliance area (cases)', () => {
 
     await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
     await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
-    await page.locator('#onboarding-fee-amount').selectOption('400');
+    // The amount is typed like the clerk does; the suggested amounts only fill the same input.
+    await page.locator('#onboarding-fee-amount').fill('400');
     await page.locator('#onboarding-fee-address').selectOption(customer.address);
     const save = page.getByRole('button', { name: 'Save', exact: true });
     await expect(save).toBeEnabled({ timeout: 15000 });
@@ -700,10 +701,12 @@ test.describe('Compliance area (cases)', () => {
         new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
     );
     await save.click();
-    expect((await putResponse).status()).toBe(200);
+    const put = await putResponse;
+    expect(put.status()).toBe(200);
+    expect(put.request().postDataJSON()).toEqual({ amount: 400, address: customer.address });
 
     await expect(
-      page.getByText(`Onboarding fee of 400 CHF set; ${customer.address} attributed to the key account manager.`, {
+      page.getByText(`Onboarding fee of CHF 400 set; ${customer.address} attributed to the key account manager.`, {
         exact: true,
       }),
     ).toBeVisible({ timeout: 20000 });
@@ -803,7 +806,7 @@ test.describe('Compliance area (cases)', () => {
 
     await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
     await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
-    await page.locator('#onboarding-fee-amount').selectOption('400');
+    await page.locator('#onboarding-fee-amount').fill('400');
     await page.locator('#onboarding-fee-address').selectOption(customer.address);
     const save = page.getByRole('button', { name: 'Save', exact: true });
     await expect(save).toBeEnabled({ timeout: 15000 });

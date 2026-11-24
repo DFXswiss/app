@@ -8,7 +8,7 @@ import { gotoWithSession, loginAs } from '../e2e-stack/specs/fixtures/auth';
  *   - /partner/onboarding-fee (Partner only)
  *
  * Runs against a real local API (see CONTRIBUTING.md, "Visual regression tests"). The screen loads
- * the fixed fee list from the API, so the account must be a Partner: the fixture logs in the
+ * the suggested fee amounts from the API, so the account must be a Partner: the fixture logs in the
  * deterministic Partner wallet and elevates its DB role.
  *
  * Required environment (in addition to REACT_APP_API_URL for the frontend):
@@ -38,10 +38,10 @@ test.describe('Partner onboarding fee - Visual Regression Tests', () => {
     await expect(page.getByText('Assign onboarding fee', { exact: true })).toBeVisible({ timeout: 20000 });
     await expect(page.getByText('Remove onboarding fee', { exact: true })).toBeVisible();
 
-    // The trigger stays disabled until the fixed fee list arrived; wait for that state so the
+    // The suggested amounts appear as quick picks once they arrived; wait for them so the
     // screenshot does not race the load.
     const assign = page.locator('section').filter({ hasText: 'Assign onboarding fee' });
-    await expect(assign.locator('#dropDownButton')).toBeEnabled({ timeout: 20000 });
+    await expect(assign.getByRole('group', { name: 'Suggested amounts' })).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole('button', { name: 'Assign', exact: true })).toBeDisabled();
     await page.waitForTimeout(1000);
 

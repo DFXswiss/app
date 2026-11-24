@@ -1,5 +1,6 @@
-// Partner onboarding-fee screen: the fee list gate, the assign flow, the remove confirmation, the
-// double-submit and unmount guards, and every API failure the screen turns into a message.
+// Partner onboarding-fee screen: the free amount input with its range rule and suggested amounts, the
+// assign flow, the remove confirmation, the double-submit and unmount guards, and every API failure
+// the screen turns into a message.
 
 const mockGetOnboardingFeeAmounts = jest.fn();
 const mockSetPartnerOnboardingFee = jest.fn();
@@ -51,7 +52,7 @@ jest.mock('@dfx.swiss/react-components', () => {
   const Form = ({ children, ...form }: any) => React.createElement('form', null, enrich(children, form));
 
   const field = (render: (field: any) => any) =>
-    function Field({ control, name, rules, error, translate, items, labelFunc, disabled, forceEnable }: any) {
+    function Field({ control, name, rules, error, translate, label, type }: any) {
       return React.createElement(Controller, {
         control,
         name,
@@ -60,42 +61,24 @@ jest.mock('@dfx.swiss/react-components', () => {
           React.createElement(
             'div',
             null,
-            render({ ...f, name, items, labelFunc, disabled, forceEnable }),
+            render({ ...f, name, label, type }),
             error ? React.createElement('p', null, translate(error.message)) : null,
           ),
       });
     };
 
-  const StyledInput = field(({ name, value, onChange, onBlur }) =>
+  // The requested input type is exposed as data-type: a real type="number" would make jsdom drop
+  // non-numeric text before the screen's own rule could judge it.
+  const StyledInput = field(({ name, label, type, value, onChange, onBlur }) =>
     React.createElement('input', {
       'data-testid': name,
+      'data-type': type,
+      'aria-label': label,
       value: value ?? '',
       onBlur,
       onChange: (e: any) => onChange(e.target.value),
     }),
   );
-
-  const StyledDropdown = field(({ name, onChange, items, labelFunc, disabled, forceEnable }) => {
-    // Mirror the component's own gate: a list of at most one item stays disabled unless forceEnable.
-    const isDisabled = disabled || ((items ?? []).length <= 1 && !forceEnable);
-    return React.createElement(
-      'div',
-      { 'data-testid': `${name}-dropdown`, 'data-disabled': isDisabled ? 'true' : 'false' },
-      (items ?? []).map((item: any, i: number) =>
-        React.createElement(
-          'button',
-          {
-            key: i,
-            type: 'button',
-            disabled: isDisabled,
-            'data-testid': `${name}-option-${i}`,
-            onClick: () => onChange(item),
-          },
-          labelFunc(item),
-        ),
-      ),
-    );
-  });
 
   const StyledButton = ({ label, onClick, disabled, isLoading }: any) =>
     React.createElement('button', { type: 'button', onClick, disabled: disabled || isLoading }, label);
@@ -105,7 +88,6 @@ jest.mock('@dfx.swiss/react-components', () => {
   return {
     Form,
     StyledInput,
-    StyledDropdown,
     StyledButton,
     StyledVerticalStack: Stack,
     StyledButtonColor: { WHITE: 'white' },
@@ -115,10 +97,6 @@ jest.mock('@dfx.swiss/react-components', () => {
 
 jest.mock('src/components/error-hint', () => ({
   ErrorHint: ({ message }: { message: string }) => <p data-testid="error-hint">{message}</p>,
-}));
-
-jest.mock('src/contexts/layout.context', () => ({
-  useLayoutContext: () => ({ rootRef: { current: null } }),
 }));
 
 // The screen translates the shared API-off constant; the mock below maps it so the assertions see
@@ -158,7 +136,7 @@ jest.mock('src/util/utils', () => ({
   formatChf: (value: number) => value.toLocaleString('de-CH', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
 }));
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import PartnerOnboardingFeeScreen from 'src/screens/partner-onboarding-fee.screen';
 
 function createDeferred<T>() {
@@ -171,11 +149,26 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
+function suggestedAmounts(): HTMLElement {
+  return screen.getByRole('group', { name: 'Suggested amounts' });
+}
+
 async function renderLoaded(): Promise<ReturnType<typeof render>> {
   const result = render(<PartnerOnboardingFeeScreen />);
-  await screen.findByTestId('amount-option-0');
+  await screen.findByRole('group', { name: 'Suggested amounts' });
   return result;
 }
+
+function amountInput(): HTMLInputElement {
+  return screen.getByTestId('amount') as HTMLInputElement;
+}
+
+// Same grouping as the mocked number formatter, so the expectation does not hard-code the separator.
+function swiss(value: number): string {
+  return value.toLocaleString('de-CH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+const AMOUNT_INVALID_TEXT = `Enter a whole CHF amount between 1 and ${swiss(1000000)}.`;
 
 function assignAddress(): HTMLInputElement {
   return screen.getAllByTestId('address')[0] as HTMLInputElement;
@@ -191,7 +184,7 @@ function type(input: HTMLInputElement, value: string, blur = true): void {
 }
 
 function pickAmount(index: number): void {
-  fireEvent.click(screen.getByTestId(`amount-option-${index}`));
+  fireEvent.click(within(suggestedAmounts()).getAllByRole('button')[index]);
 }
 
 function assignButton(): HTMLElement {
@@ -213,7 +206,7 @@ describe('PartnerOnboardingFeeScreen', () => {
     jest.restoreAllMocks();
   });
 
-  it('shows the explanation, loads the fee list once, and keeps Assign disabled until the form is complete', async () => {
+  it('shows the explanation, loads the suggestions once, and keeps Assign disabled until the form is complete', async () => {
     render(<PartnerOnboardingFeeScreen />);
 
     expect(mockGetOnboardingFeeAmounts).toHaveBeenCalledTimes(1);
@@ -224,31 +217,126 @@ describe('PartnerOnboardingFeeScreen', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Assign onboarding fee' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Remove onboarding fee' })).toBeInTheDocument();
-    expect(screen.getByTestId('amount-dropdown')).toHaveAttribute('data-disabled', 'true');
+    expect(screen.getByLabelText('Onboarding fee (CHF)')).toBe(amountInput());
+    expect(amountInput()).toHaveAttribute('data-type', 'number');
+    expect(amountInput().value).toBe('');
     expect(assignButton()).toBeDisabled();
     expect(removeButton()).toBeDisabled();
 
-    await screen.findByTestId('amount-option-0');
+    await screen.findByRole('group', { name: 'Suggested amounts' });
 
-    await waitFor(() => expect(screen.getByTestId('amount-dropdown')).toHaveAttribute('data-disabled', 'false'));
-    expect(screen.getByText('CHF 400')).toBeInTheDocument();
-    expect(screen.getByText('CHF 800')).toBeInTheDocument();
+    const picks = within(suggestedAmounts()).getAllByRole('button');
+    expect(picks.map((button) => button.textContent)).toEqual(['CHF 400', 'CHF 800']);
+    picks.forEach((button) => expect(button).toHaveAttribute('type', 'button'));
 
     type(assignAddress(), '0xabc');
     expect(assignButton()).toBeDisabled();
 
-    pickAmount(0);
+    type(amountInput(), '400');
     expect(assignButton()).toBeEnabled();
   });
 
-  it('keeps the fee list and Assign disabled and shows the error when the amounts cannot be loaded', async () => {
+  it('enables Assign for a typed amount that is not a suggestion and sends it as a number', async () => {
+    mockSetPartnerOnboardingFee.mockResolvedValue(undefined);
+    await renderLoaded();
+
+    type(assignAddress(), '0xabc');
+    type(amountInput(), '14000');
+    expect(assignButton()).toBeEnabled();
+    fireEvent.click(assignButton());
+
+    await waitFor(() => expect(mockSetPartnerOnboardingFee).toHaveBeenCalledWith({ address: '0xabc', amount: 14000 }));
+    expect(await screen.findByText(`Onboarding fee of CHF ${swiss(14000)} assigned to 0xabc.`)).toBeInTheDocument();
+    expect(amountInput().value).toBe('');
+  });
+
+  it.each(['0', '1000001', '800.5', 'abc', '-400'])(
+    'keeps Assign disabled and names the range for the amount "%s"',
+    async (value) => {
+      await renderLoaded();
+
+      type(assignAddress(), '0xabc');
+      type(amountInput(), value);
+
+      expect(assignButton()).toBeDisabled();
+      expect(await screen.findByText(AMOUNT_INVALID_TEXT)).toBeInTheDocument();
+    },
+  );
+
+  it('asks for an amount when the touched amount is left empty', async () => {
+    await renderLoaded();
+
+    type(amountInput(), '');
+
+    expect(await screen.findByText('required')).toBeInTheDocument();
+    expect(screen.queryByText(AMOUNT_INVALID_TEXT)).not.toBeInTheDocument();
+  });
+
+  it('fills the input from a suggested amount, clears the range error and enables Assign', async () => {
+    mockSetPartnerOnboardingFee.mockResolvedValue(undefined);
+    await renderLoaded();
+
+    type(assignAddress(), '0xabc');
+    type(amountInput(), '1000001');
+    expect(await screen.findByText(AMOUNT_INVALID_TEXT)).toBeInTheDocument();
+
+    fireEvent.click(within(suggestedAmounts()).getByRole('button', { name: 'CHF 800' }));
+
+    expect(amountInput().value).toBe('800');
+    await waitFor(() => expect(screen.queryByText(AMOUNT_INVALID_TEXT)).not.toBeInTheDocument());
+    expect(assignButton()).toBeEnabled();
+
+    fireEvent.click(assignButton());
+    await waitFor(() => expect(mockSetPartnerOnboardingFee).toHaveBeenCalledWith({ address: '0xabc', amount: 800 }));
+  });
+
+  it('shows no suggestions while they load and enables Assign for a typed amount meanwhile', async () => {
+    const deferred = createDeferred<number[]>();
+    mockGetOnboardingFeeAmounts.mockReturnValue(deferred.promise);
+    render(<PartnerOnboardingFeeScreen />);
+
+    expect(screen.queryByRole('group', { name: 'Suggested amounts' })).not.toBeInTheDocument();
+    type(assignAddress(), '0xabc');
+    type(amountInput(), '14000');
+    expect(assignButton()).toBeEnabled();
+
+    await act(async () => {
+      deferred.resolve([400, 800]);
+      await deferred.promise;
+    });
+
+    expect(suggestedAmounts()).toBeInTheDocument();
+    expect(amountInput().value).toBe('14000');
+  });
+
+  it('shows no suggestions when the list is empty', async () => {
+    mockGetOnboardingFeeAmounts.mockResolvedValue([]);
+    render(<PartnerOnboardingFeeScreen />);
+
+    await waitFor(() => expect(mockGetOnboardingFeeAmounts).toHaveBeenCalledTimes(1));
+    await act(async () => undefined);
+
+    expect(screen.queryByRole('group', { name: 'Suggested amounts' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(amountInput()).toBeInTheDocument();
+  });
+
+  it('shows the error when the suggestions cannot be loaded and still assigns a typed amount', async () => {
     mockGetOnboardingFeeAmounts.mockRejectedValue(new Error('boom'));
+    mockSetPartnerOnboardingFee.mockResolvedValue(undefined);
     render(<PartnerOnboardingFeeScreen />);
 
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('boom');
-    expect(screen.getByTestId('amount-dropdown')).toHaveAttribute('data-disabled', 'true');
-    expect(screen.queryByTestId('amount-option-0')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Suggested amounts' })).not.toBeInTheDocument();
     expect(assignButton()).toBeDisabled();
+
+    type(assignAddress(), '0xabc');
+    type(amountInput(), '14000');
+    expect(assignButton()).toBeEnabled();
+    fireEvent.click(assignButton());
+
+    await waitFor(() => expect(mockSetPartnerOnboardingFee).toHaveBeenCalledWith({ address: '0xabc', amount: 14000 }));
+    expect(await screen.findByText(`Onboarding fee of CHF ${swiss(14000)} assigned to 0xabc.`)).toBeInTheDocument();
   });
 
   it('falls back to a generic message when loading the amounts rejects without a message', async () => {
@@ -256,7 +344,6 @@ describe('PartnerOnboardingFeeScreen', () => {
     render(<PartnerOnboardingFeeScreen />);
 
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('Failed to load the onboarding fee amounts');
-    expect(screen.getByTestId('amount-dropdown')).toHaveAttribute('data-disabled', 'true');
     expect(assignButton()).toBeDisabled();
   });
 
@@ -319,8 +406,9 @@ describe('PartnerOnboardingFeeScreen', () => {
     mockSetPartnerOnboardingFee.mockResolvedValue(undefined);
     await renderLoaded();
 
-    expect(screen.getByTestId('amount-dropdown')).toHaveAttribute('data-disabled', 'false');
-    expect(screen.getByTestId('amount-option-0')).toBeEnabled();
+    const picks = within(suggestedAmounts()).getAllByRole('button');
+    expect(picks).toHaveLength(1);
+    expect(picks[0]).toBeEnabled();
 
     type(assignAddress(), '0xabc');
     pickAmount(0);
@@ -381,6 +469,7 @@ describe('PartnerOnboardingFeeScreen', () => {
 
     await waitFor(() => expect(mockSetPartnerOnboardingFee).toHaveBeenCalledTimes(1));
     expect(screen.getByRole('button', { name: 'Assign' })).toBeDisabled();
+    expect(within(suggestedAmounts()).getByRole('button', { name: 'CHF 400' })).toBeDisabled();
 
     await act(async () => {
       deferred.resolve();

@@ -34,8 +34,34 @@ export function onboardingFeeFailureMessage(e: unknown, fallback: string): strin
   return message || fallback;
 }
 
-// Onboarding fees are fixed CHF amounts. The Swiss grouping keeps large values readable and the
-// prefix makes the currency explicit in dropdown labels and confirmation messages.
+// Onboarding fees are whole CHF amounts of any size within the range below. The Swiss grouping keeps
+// large values readable and the prefix makes the currency explicit in suggestions and confirmation
+// messages.
 export function formatChf(amount: number): string {
   return `CHF ${formatSwissNumber(amount)}`;
+}
+
+// Whole CHF. The API enforces the same range; the UI mirrors it so an amount it would refuse is not sent.
+export const ONBOARDING_FEE_MIN_AMOUNT = 1;
+export const ONBOARDING_FEE_MAX_AMOUNT = 1_000_000;
+
+// Plain digits only: a sign, a decimal point or comma, a thousands separator or an exponent would let
+// Number() accept input the clerk did not mean as a whole CHF amount (e.g. "1e3" or "-0").
+const WHOLE_AMOUNT = /^\d+$/;
+
+// Returns the amount for input that is a whole number of CHF within the range, otherwise undefined.
+export function parseOnboardingFeeAmount(input: string | number | undefined | null): number | undefined {
+  let amount: number;
+  if (typeof input === 'number') {
+    amount = input;
+  } else if (typeof input === 'string') {
+    const trimmed = input.trim();
+    if (!WHOLE_AMOUNT.test(trimmed)) return undefined;
+    amount = Number(trimmed);
+  } else {
+    return undefined;
+  }
+  return Number.isInteger(amount) && amount >= ONBOARDING_FEE_MIN_AMOUNT && amount <= ONBOARDING_FEE_MAX_AMOUNT
+    ? amount
+    : undefined;
 }
