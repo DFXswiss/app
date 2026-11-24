@@ -97,7 +97,6 @@ describe('ServiceNoticeBanner', () => {
     '/swap/info',
     '/selling',
     '/swapping',
-    '/sell//',
     '/support',
     '/support/tickets',
   ])('renders nothing on %s', (path) => {
@@ -107,19 +106,22 @@ describe('ServiceNoticeBanner', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it.each(['/sell', '/sell/', '/swap', '/swap/'])('shows the slim notice on %s', (path) => {
-    renderAt(path);
+  it.each(['/sell', '/sell/', '/sell//', '/Sell', '/swap', '/swap/', '/SWAP'])(
+    'shows the slim notice on %s',
+    (path) => {
+      renderAt(path);
 
-    const banner = screen.getByTestId('service-notice-banner');
-    expect(banner).toHaveAttribute('role', 'note');
-    expect(banner).not.toHaveAttribute('data-variant');
-    expect(banner.className.split(/\s+/)).toEqual(
-      expect.arrayContaining(['w-full', 'rounded-md', 'border', 'border-dfxGray-400', 'bg-dfxGray-300']),
-    );
-    expect(screen.getByTestId('info-text')).toHaveAttribute('data-icon-color', 'DARK_GRAY');
-    expect(screen.getByTestId('info-text')).toHaveAttribute('data-text-size', 'XS');
-    expect(banner.textContent).toBe(`${TEXT.en} ${MORE.en}`);
-  });
+      const banner = screen.getByTestId('service-notice-banner');
+      expect(banner).toHaveAttribute('role', 'note');
+      expect(banner).not.toHaveAttribute('data-variant');
+      expect(banner.className.split(/\s+/)).toEqual(
+        expect.arrayContaining(['w-full', 'rounded-md', 'border', 'border-dfxGray-400', 'bg-dfxGray-300']),
+      );
+      expect(screen.getByTestId('info-text')).toHaveAttribute('data-icon-color', 'DARK_GRAY');
+      expect(screen.getByTestId('info-text')).toHaveAttribute('data-text-size', 'XS');
+      expect(banner.textContent).toBe(`${TEXT.en} ${MORE.en}`);
+    },
+  );
 
   it.each(LANGUAGES)('translates the notice and the link into %s', async (language) => {
     await i18n.changeLanguage(language);

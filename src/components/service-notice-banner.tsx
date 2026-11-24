@@ -4,7 +4,8 @@ import { FeatureFlags } from '../config/feature-flags';
 import { useSettingsContext } from '../contexts/settings.context';
 
 // Sell and swap send crypto to a deposit address, so only these pages show the notice.
-const NOTICE_PATHS = /^\/(sell|swap)\/?$/;
+// The router matches paths without regard to case or trailing slashes, so the pattern does too.
+const NOTICE_PATHS = /^\/(sell|swap)\/*$/i;
 
 // Report on the security incident of 18 November 2026 on the DFX website, in German and English.
 export const SECURITY_INCIDENT_URL = 'https://dfx.swiss/security-incident.html';
