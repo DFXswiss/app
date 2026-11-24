@@ -479,6 +479,19 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`openQuoteCapableBuy` and older quote cases) updates the limit
   directly so `LIMIT_EXCEEDED` does not hide payment info. A green run does **not** prove that a
   customer reaches that limit through the product path.
+- **The full-stack wallet-AML spec SQL-inserts a wallet and moves the customer onto it.**
+  `e2e-stack/specs/sell-wallet-aml.spec.ts` (RULE_11 and wallet-exception cases) inserts a
+  `wallet` row with fixed `amlRules` / `exceptAmlRules`, then sets `user.walletId` and `user.ipCountry`
+  directly, because no partner onboarding or IP geolocation runs in the stack. A green run does **not**
+  prove that a real customer is assigned that wallet or that the API derives that IP country.
+- **The full-stack wallet-AML spec accepts the paused answer while sell is off.**
+  `e2e-stack/specs/sell-wallet-aml.spec.ts` runs against `DISABLED_PROCESSES=*` from
+  `e2e-stack/env/api.env`, so the sell quote answers `TRANSACTIONS_PAUSED` and each case asserts that answer
+  on screen instead of the wallet-AML outcome. A green run does **not** prove the wallet-AML refusal or
+  acceptance while sell is off; it proves them only while sell is on.
+- **The full-stack wallet-AML spec has no swap case.** With the API's swap product off in its loc
+  environment the swap routes are not mounted (`PUT /v1/swap/paymentInfos` answers 404), so the swap screen
+  gets no quote. A green run does **not** prove anything about the wallet-AML rules on swaps.
 - **The full-stack provisional buy spec SQL-clears `user_data.tradeApprovalDate`.**
   `e2e-stack/specs/buy.spec.ts` (`/buy and /buy/info: provisional approval …`) sets the date to `NULL`
   after creating the customer, because the factory may leave one behind. A green run does **not** prove

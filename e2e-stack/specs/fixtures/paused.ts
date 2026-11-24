@@ -67,7 +67,9 @@ export function expectTransactionsPaused(error: TransactionsPausedError, product
   expect(error.product).toBe(product);
   expect(error.response.status).toBe(503);
   expect(error.response.code).toBe(TRANSACTIONS_PAUSED);
-  expect(error.response.message.toLowerCase(), 'the paused answer names the product').toContain(product);
+  // The API sends one message for every switched-off product (TRANSACTIONS_PAUSED_MESSAGE in the API's
+  // transaction-availability.ts); the product is told by the endpoint, not by the text.
+  expect(error.response.message, 'the paused answer carries a message').not.toBe('');
 }
 
 export interface CapturedResponse {
@@ -103,7 +105,9 @@ export async function expectPausedQuoteOnScreen(
   const paused = pausedResponse(captured.status, body);
   if (!paused) return undefined;
 
-  expect(paused.message.toLowerCase(), 'the paused answer names the product').toContain(product);
+  // The API sends one message for every switched-off product (TRANSACTIONS_PAUSED_MESSAGE in the API's
+  // transaction-availability.ts); the product is told by the endpoint, not by the text.
+  expect(paused.message, 'the paused answer carries a message').not.toBe('');
   await expect(page.getByText(paused.message, { exact: true }).first()).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole('heading', { name: 'Payment Information' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Click here once you have issued the transaction/i })).toHaveCount(0);

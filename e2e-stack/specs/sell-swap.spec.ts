@@ -268,7 +268,8 @@ async function setupSellFullUiFlow(
   const user = await createUser({
     walletIndex: nextWalletIndex(),
     tag,
-    kycLevel: 30,
+    // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-wallet-aml.spec.ts).
+    kycLevel: 50,
     completePersonalData: true,
     language: 'EN',
   });
@@ -302,7 +303,8 @@ async function setupSellInfoUiFlow(
   const user = await createUser({
     walletIndex: nextWalletIndex(),
     tag,
-    kycLevel: 30,
+    // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-wallet-aml.spec.ts).
+    kycLevel: 50,
     completePersonalData: true,
     language: 'EN',
   });
@@ -334,7 +336,8 @@ async function setupSwapFullUiFlow(
   const user = await createUser({
     walletIndex: nextWalletIndex(),
     tag,
-    kycLevel: 30,
+    // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-wallet-aml.spec.ts).
+    kycLevel: 50,
     completePersonalData: true,
     language: 'EN',
   });
@@ -365,7 +368,8 @@ async function openSellWithInjectedWallet(
   addChain?: () => WalletAnswer,
 ): Promise<string[] | undefined> {
   const walletIndex = nextWalletIndex();
-  const user = await createUser({ walletIndex, tag, kycLevel: 30, completePersonalData: true, language: 'EN' });
+  // Level 50: the default wallet's RULE_3 refuses sell quotes below it (sell-wallet-aml.spec.ts).
+  const user = await createUser({ walletIndex, tag, kycLevel: 50, completePersonalData: true, language: 'EN' });
   await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Sell wallet BA' });
   const wallet = testWallet(walletIndex);
   const calls = await injectWallet(
@@ -386,7 +390,8 @@ async function openSellWithInjectedWallet(
   // the login finishes loading the session on /buy; opening /sell before that can leave the form loading
   await page.waitForLoadState('networkidle');
 
-  const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
+  // Only the sell answer: the /buy screen the login lands on can still answer its own paymentInfos request here.
+  const paymentInfos = trackPaymentInfosResponses(page, 'sell/paymentInfos');
   await page.goto('/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1');
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
