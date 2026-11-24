@@ -368,8 +368,8 @@ async function recordWalletRedirects(page: Page): Promise<URL[]> {
 }
 
 /**
- * Clicks "Complete transaction in your wallet", clicks again while the button is busy and checks that this issues no
- * second redirect, checks the redirect against the form and the user's deposit route, checks that the page did not
+ * Clicks "Complete transaction in your wallet", submits the form while the button is busy and checks that this issues
+ * no second redirect, checks the redirect against the form and the user's deposit route, checks that the page did not
  * turn into the manual-transfer page, then clicks again once the button is active and checks the second redirect.
  */
 async function expectRepeatableHandOff(
