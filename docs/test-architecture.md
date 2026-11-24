@@ -573,6 +573,15 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   the header on `/support` and `/support/tickets`. It does not prove that the API
   returns that banner copy, that those bootstrap endpoints return real data, or
   that a live account has that ticket.
+- **The service-notice visual spec answers the bootstrap GETs and GET /v2/user itself.**
+  `e2e/service-notice-banner.spec.ts` fulfils `/v2/user` with a synthetic user and
+  fulfils the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`,
+  `/v1/bankAccount`, `/v1/country`, `/v1/setting/infoBanner`). Unmatched `/v1/**`
+  and `/v2/**` calls get `501`. The session is a synthetic unsigned JWT, so a green
+  run does not prove login or token verification. A green run proves the slim notice
+  renders on `/sell` and `/swap` and no notice renders on `/buy`. It does not prove that
+  those bootstrap endpoints return real data or that the Buy, Sell and Swap forms work; the
+  real test is the service-notice test in `e2e-stack/specs/sell-swap.spec.ts`.
 - **The deleted-address visual spec answers GET /v2/user and PUT /v2/user/reactivate itself.**
   `e2e/deleted-address.spec.ts` fulfils `/v2/user` with a synthetic user whose active address
   has status `Deleted`, fulfils `PUT /v2/user/reactivate` with a synthetic 400 error, and

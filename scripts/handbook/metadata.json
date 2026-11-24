@@ -293,5 +293,9 @@
     "src/README.md": {
       "title": "NPM-Package: Export und Einbindung"
     }
+  },
+  "service-notice-banner": {
+    "title": "Service-Hinweis",
+    "description": "Schmaler Hinweis zuoberst im Inhalt, nur auf Verkaufen und Tauschen über dem Formular. Varianten: Verkaufen, Tauschen."
   }
 }
