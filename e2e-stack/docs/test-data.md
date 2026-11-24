@@ -16,7 +16,9 @@ factories, auth, db, and the other helpers) or from a specific module such as
 A local forwarder on `127.0.0.1:3000` (started by the tests image entrypoint) also relays to the real API. That is why `http://localhost:3000` works from inside the container even though no API process runs there — code paths that hit `localhost` directly (e.g. server-built KYC-step URLs under `Environment.LOC`) need it.
 
 Master data (fiats, assets, countries, languages, banks, fees, one wallet) is seeded at API boot.
-`ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and sets `DISABLED_PROCESSES=*` (no crons).
+`ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and sets
+`DISABLED_PROCESSES=*,!Scorechain,!Buy`. `Scorechain` and `Buy` are request-path gates, not jobs,
+so still no cron runs.
 
 **Staff KYC clearance (elevated roles)**
 

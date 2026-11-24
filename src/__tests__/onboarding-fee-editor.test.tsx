@@ -283,6 +283,53 @@ describe('OnboardingFeeEditor', () => {
     expect(mockSetOnboardingFee).toHaveBeenLastCalledWith(88002, { amount: 800, address: '0xabc' });
   });
 
+  it('treats the first of two saves as stale after switching away and back to the same account', async () => {
+    const first = createDeferred<void>();
+    const second = createDeferred<void>();
+    mockSetOnboardingFee.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const onChanged = jest.fn();
+    const { rerender } = render(element({ onChanged }));
+    await openSet();
+    selectAmount('400');
+    selectAddress('0xabc');
+    fireEvent.click(saveButton());
+
+    rerender(element({ userDataId: 88002, onChanged }));
+    rerender(element({ userDataId: 88001, onChanged }));
+
+    await openSet();
+    selectAmount('800');
+    selectAddress('0xabc');
+    fireEvent.click(saveButton());
+
+    expect(mockSetOnboardingFee).toHaveBeenCalledTimes(2);
+    expect(mockSetOnboardingFee).toHaveBeenLastCalledWith(88001, { amount: 800, address: '0xabc' });
+
+    await act(async () => {
+      first.resolve();
+      await first.promise;
+    });
+
+    // The first answer belongs to the earlier attempt: it reports nothing and keeps the second
+    // save's lock, so a third click starts no request.
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(screen.queryByText(/attributed to the key account manager/)).not.toBeInTheDocument();
+    const stillSaving = screen.getByRole('button', { name: 'Saving…' });
+    expect(stillSaving).toBeDisabled();
+    fireEvent.click(stillSaving);
+    expect(mockSetOnboardingFee).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      second.resolve();
+      await second.promise;
+    });
+
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByText('Onboarding fee of 800 CHF set; 0xabc attributed to the key account manager.'),
+    ).toBeInTheDocument();
+  });
+
   it('does not show a late error from the previous account after the form is open on the new one', async () => {
     const deferred = createDeferred<void>();
     mockSetOnboardingFee.mockReturnValue(deferred.promise);

@@ -223,6 +223,7 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
               full
               smallLabel
               disabled={isLoadingAmounts || !!amountsError}
+              forceEnable={!!amounts?.length}
             />
 
             {amountsError && <ErrorHint message={amountsError} />}

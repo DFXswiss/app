@@ -51,7 +51,7 @@ jest.mock('@dfx.swiss/react-components', () => {
   const Form = ({ children, ...form }: any) => React.createElement('form', null, enrich(children, form));
 
   const field = (render: (field: any) => any) =>
-    function Field({ control, name, rules, error, translate, items, labelFunc, disabled }: any) {
+    function Field({ control, name, rules, error, translate, items, labelFunc, disabled, forceEnable }: any) {
       return React.createElement(Controller, {
         control,
         name,
@@ -60,7 +60,7 @@ jest.mock('@dfx.swiss/react-components', () => {
           React.createElement(
             'div',
             null,
-            render({ ...f, name, items, labelFunc, disabled }),
+            render({ ...f, name, items, labelFunc, disabled, forceEnable }),
             error ? React.createElement('p', null, translate(error.message)) : null,
           ),
       });
@@ -75,19 +75,27 @@ jest.mock('@dfx.swiss/react-components', () => {
     }),
   );
 
-  const StyledDropdown = field(({ name, onChange, items, labelFunc, disabled }) =>
-    React.createElement(
+  const StyledDropdown = field(({ name, onChange, items, labelFunc, disabled, forceEnable }) => {
+    // Mirror the component's own gate: a list of at most one item stays disabled unless forceEnable.
+    const isDisabled = disabled || ((items ?? []).length <= 1 && !forceEnable);
+    return React.createElement(
       'div',
-      { 'data-testid': `${name}-dropdown`, 'data-disabled': disabled ? 'true' : 'false' },
+      { 'data-testid': `${name}-dropdown`, 'data-disabled': isDisabled ? 'true' : 'false' },
       (items ?? []).map((item: any, i: number) =>
         React.createElement(
           'button',
-          { key: i, type: 'button', 'data-testid': `${name}-option-${i}`, onClick: () => onChange(item) },
+          {
+            key: i,
+            type: 'button',
+            disabled: isDisabled,
+            'data-testid': `${name}-option-${i}`,
+            onClick: () => onChange(item),
+          },
           labelFunc(item),
         ),
       ),
-    ),
-  );
+    );
+  });
 
   const StyledButton = ({ label, onClick, disabled, isLoading }: any) =>
     React.createElement('button', { type: 'button', onClick, disabled: disabled || isLoading }, label);
@@ -304,6 +312,22 @@ describe('PartnerOnboardingFeeScreen', () => {
     expect(assignAddress().value).toBe('');
     expect(assignButton()).toBeDisabled();
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+  });
+
+  it('offers and assigns the only fee when the list has a single amount', async () => {
+    mockGetOnboardingFeeAmounts.mockResolvedValue([400]);
+    mockSetPartnerOnboardingFee.mockResolvedValue(undefined);
+    await renderLoaded();
+
+    expect(screen.getByTestId('amount-dropdown')).toHaveAttribute('data-disabled', 'false');
+    expect(screen.getByTestId('amount-option-0')).toBeEnabled();
+
+    type(assignAddress(), '0xabc');
+    pickAmount(0);
+    fireEvent.click(assignButton());
+
+    await waitFor(() => expect(mockSetPartnerOnboardingFee).toHaveBeenCalledWith({ address: '0xabc', amount: 400 }));
+    expect(await screen.findByText('Onboarding fee of CHF 400 assigned to 0xabc.')).toBeInTheDocument();
   });
 
   it('shows the API message and keeps the input when assigning is refused', async () => {
