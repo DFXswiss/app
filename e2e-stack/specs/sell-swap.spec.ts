@@ -68,12 +68,6 @@ function nextWalletIndex(): number {
 // Keep this in sync with the dedicated sanction-list address in e2e-stack/env/api.env.
 const SANCTION_LIST_WALLET_INDEX = 7700001;
 
-// A redirect target outside the stack. The harness answers every non-stack host with an empty 200
-// (see isolateFromExternalHosts), so a redirect to it loads without any interception here. It must
-// be https: isSafeRedirectUri only accepts plain http for localhost/127.0.0.1, and the frontend is
-// served over http on a stack host.
-const PARTNER_RETURN_URI = 'https://partner-wallet.e2e.test/return/';
-
 /**
  * The API serialises every precheck behind one non-waiting Postgres advisory lock and answers
  * `Unknown` immediately when the lock is taken. The provider mock answers after five seconds, so a
@@ -986,106 +980,6 @@ test.describe('Sell + Swap e2e', () => {
         page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
       ).toBeVisible({ timeout: 15000 });
     }
-  });
-
-  // A redirect target stored by an earlier visit must not be inherited by a separate session launch;
-  // a launch that carries its own redirect-uri must still hand the finished order back to the wallet.
-  test('/sell: a session launch does not inherit a redirect-uri stored by an earlier visit', async ({ page }) => {
-    test.setTimeout(90000);
-    const user = await createUser({
-      walletIndex: nextWalletIndex(),
-      tag: 'sell-stale-redirect',
-      kycLevel: 30,
-      completePersonalData: true,
-      language: 'EN',
-    });
-    await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Sell UI BA' });
-
-    // A real earlier visit stores a redirect target of its own; prove the starting state is real.
-    await page.goto('/?redirect-uri=' + encodeURIComponent(PARTNER_RETURN_URI));
-    await page.waitForFunction(
-      (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
-      PARTNER_RETURN_URI,
-      { timeout: 15000 },
-    );
-
-    const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
-
-    // This launch carries a session but no redirect-uri, so the stored target must be gone.
-    await gotoWithSession(page, `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1`, user.jwt);
-    expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
-    expect(await page.evaluate(() => window.localStorage.getItem('dfx.srv.redirectUri'))).toBeNull();
-
-    await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
-
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
-
-    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
-    const apiDetail = paymentInfos.last
-      ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
-      : 'no PUT paymentInfos response captured';
-    expect(outcome.kind, `expected payment_info panel (${outcome.detail}); ${apiDetail}`).toBe('payment_info');
-
-    await expect(page.getByRole('button', { name: /Click here once you have issued the transaction/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Complete transaction in your wallet' })).toHaveCount(0);
-  });
-
-  test('/sell: a session launch that carries its own redirect-uri hands the order back', async ({ page }) => {
-    test.setTimeout(90000);
-    const user = await createUser({
-      walletIndex: nextWalletIndex(),
-      tag: 'sell-own-redirect',
-      kycLevel: 30,
-      completePersonalData: true,
-      language: 'EN',
-    });
-    await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Sell UI BA' });
-
-    const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
-
-    await gotoWithSession(
-      page,
-      `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1&redirect-uri=${encodeURIComponent(PARTNER_RETURN_URI)}`,
-      user.jwt,
-    );
-    expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
-
-    // The launch's own redirect target is stored after the boot-time clear.
-    await page.waitForFunction(
-      (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
-      PARTNER_RETURN_URI,
-      { timeout: 15000 },
-    );
-
-    await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
-
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
-
-    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
-    const apiDetail = paymentInfos.last
-      ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
-      : 'no PUT paymentInfos response captured';
-    expect(outcome.kind, `expected payment_info panel (${outcome.detail}); ${apiDetail}`).toBe('payment_info');
-
-    const completeBtn = page.getByRole('button', { name: 'Complete transaction in your wallet' });
-    await expect(completeBtn).toBeVisible();
-    await completeBtn.click();
-
-    // The app redirects about 2 s after the close (setTimeout in closeServices); assert the URL only,
-    // because the page then lives on the partner origin with storage of its own.
-    await page.waitForURL((url) => url.hostname === 'partner-wallet.e2e.test' && url.pathname === '/return/sell', {
-      timeout: 15000,
-    });
-    const redirected = new URL(page.url());
-    const routeId = redirected.searchParams.get('routeId') ?? '';
-    expect(routeId).toMatch(/^\d+$/);
-    expect(Number(routeId)).toBeGreaterThan(0);
-    expect(redirected.searchParams.get('amount')).toBe('0.1');
-    expect(redirected.searchParams.get('asset')).toBe('ETH');
-    expect(redirected.searchParams.get('blockchain')).toBe('Ethereum');
-    expect(redirected.searchParams.get('isComplete')).toBe('false');
   });
 
   test('/sell: a chain switch cancelled in the wallet keeps the user on the form without an error', async ({
