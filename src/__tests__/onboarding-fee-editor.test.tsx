@@ -310,9 +310,9 @@ describe('OnboardingFeeEditor', () => {
       await first.promise;
     });
 
-    // The first answer belongs to the earlier attempt: it reports nothing and keeps the second
-    // save's lock, so a third click starts no request.
-    expect(onChanged).not.toHaveBeenCalled();
+    // The first answer belongs to the earlier attempt for the account shown again: it reloads the
+    // row but shows no notice and keeps the second save's lock, so a third click starts no request.
+    expect(onChanged).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/attributed to the key account manager/)).not.toBeInTheDocument();
     const stillSaving = screen.getByRole('button', { name: 'Saving…' });
     expect(stillSaving).toBeDisabled();
@@ -324,10 +324,32 @@ describe('OnboardingFeeEditor', () => {
       await second.promise;
     });
 
-    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(onChanged).toHaveBeenCalledTimes(2);
     expect(
       screen.getByText('Onboarding fee of 800 CHF set; 0xabc attributed to the key account manager.'),
     ).toBeInTheDocument();
+  });
+
+  it('does not report a late success after switching to another account and staying there', async () => {
+    const deferred = createDeferred<void>();
+    mockSetOnboardingFee.mockReturnValue(deferred.promise);
+    const onChanged = jest.fn();
+    const { rerender } = render(element({ onChanged }));
+    await openSet();
+    selectAmount('400');
+    selectAddress('0xabc');
+    fireEvent.click(saveButton());
+
+    rerender(element({ userDataId: 88002, onChanged }));
+
+    await act(async () => {
+      deferred.resolve();
+      await deferred.promise;
+    });
+
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(screen.queryByText(/attributed to the key account manager/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set onboarding fee' })).toBeInTheDocument();
   });
 
   it('does not show a late error from the previous account after the form is open on the new one', async () => {
@@ -639,6 +661,21 @@ describe('OnboardingFeeEditor', () => {
     });
 
     expect(onChanged).not.toHaveBeenCalled();
+
+    // The rejection path after unmount must be just as silent.
+    const deferredReject = createDeferred<void>();
+    mockRemoveOnboardingFee.mockReturnValue(deferredReject.promise);
+    const { unmount: unmountSecond } = render(element({ onChanged }));
+    openRemove();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    unmountSecond();
+
+    await act(async () => {
+      deferredReject.reject(new Error('late'));
+      await deferredReject.promise.catch(() => undefined);
+    });
+
+    expect(onChanged).not.toHaveBeenCalled();
   });
 
   it('closes the confirmation on account switch and drops a late removal for the previous account', async () => {
@@ -665,6 +702,47 @@ describe('OnboardingFeeEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
     expect(mockRemoveOnboardingFee).toHaveBeenLastCalledWith(88002);
+  });
+
+  it('treats the first of two removals as stale after switching away and back to the same account', async () => {
+    const first = createDeferred<void>();
+    const second = createDeferred<void>();
+    mockRemoveOnboardingFee.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const onChanged = jest.fn();
+    const { rerender } = render(element({ onChanged }));
+    openRemove();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    rerender(element({ userDataId: 88002, onChanged }));
+    rerender(element({ userDataId: 88001, onChanged }));
+
+    openRemove();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    expect(mockRemoveOnboardingFee).toHaveBeenCalledTimes(2);
+    expect(mockRemoveOnboardingFee).toHaveBeenLastCalledWith(88001);
+
+    await act(async () => {
+      first.resolve();
+      await first.promise;
+    });
+
+    // The first answer belongs to the earlier attempt for the account shown again: it reloads the
+    // row but shows no notice and keeps the second removal's lock, so a third click starts no request.
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Onboarding fee removed.')).not.toBeInTheDocument();
+    const stillRemoving = screen.getByRole('button', { name: 'Removing…' });
+    expect(stillRemoving).toBeDisabled();
+    fireEvent.click(stillRemoving);
+    expect(mockRemoveOnboardingFee).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      second.resolve();
+      await second.promise;
+    });
+
+    expect(onChanged).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Onboarding fee removed.')).toBeInTheDocument();
   });
 
   it('does not show a late removal error from the previous account after the confirmation is open on the new one', async () => {

@@ -49,12 +49,16 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
   }, []);
 
   // The screen keeps this box mounted while the clerk moves to another account (same route, new id).
-  // The form belongs to the account it was opened for: it closes on the switch, and every request
-  // remembers the generation it started in, so an answer for an earlier request is not reported as a
-  // change of the current one.
+  // The form belongs to the account it was opened for: it closes on the switch, and an answer that
+  // arrives for the previous account is not reported as a change of the current one. The account id
+  // alone cannot tell attempts apart (A -> B -> A ends on the same id), so every switch starts a new
+  // attempt and only the save of the current attempt may close the form, show its result or release
+  // the lock.
+  const userDataIdRef = useRef(userDataId);
+  userDataIdRef.current = userDataId;
   const attemptRef = useRef(0);
   useEffect(() => {
-    attemptRef.current++;
+    attemptRef.current += 1;
     savingRef.current = false;
     setIsSaving(false);
     setMode('closed');
@@ -114,16 +118,21 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
     setError(undefined);
     setNotice(undefined);
     const requestedId = userDataId;
-    const attempt = ++attemptRef.current;
+    const attempt = attemptRef.current;
+    const isCurrent = (): boolean => mountedRef.current && attemptRef.current === attempt;
     try {
       await setOnboardingFee(requestedId, { amount: amountNumber, address });
-      if (!mountedRef.current || attemptRef.current !== attempt) return;
-      setMode('closed');
-      setNotice(`Onboarding fee of ${amountNumber} CHF set; ${address} attributed to the key account manager.`);
-      onChanged();
+      if (isCurrent()) {
+        setMode('closed');
+        setNotice(`Onboarding fee of ${amountNumber} CHF set; ${address} attributed to the key account manager.`);
+        onChanged();
+      } else if (mountedRef.current && userDataIdRef.current === requestedId) {
+        // An earlier attempt for the account shown again (A -> B -> A) changed it: reload the row,
+        // but leave the form and the lock of the current attempt alone.
+        onChanged();
+      }
     } catch (e: unknown) {
-      if (mountedRef.current && attemptRef.current === attempt)
-        setError(onboardingFeeFailureMessage(e, 'Failed to set the onboarding fee'));
+      if (isCurrent()) setError(onboardingFeeFailureMessage(e, 'Failed to set the onboarding fee'));
     } finally {
       if (attemptRef.current === attempt) {
         savingRef.current = false;
@@ -141,16 +150,21 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
     setError(undefined);
     setNotice(undefined);
     const requestedId = userDataId;
-    const attempt = ++attemptRef.current;
+    const attempt = attemptRef.current;
+    const isCurrent = (): boolean => mountedRef.current && attemptRef.current === attempt;
     try {
       await removeOnboardingFee(requestedId);
-      if (!mountedRef.current || attemptRef.current !== attempt) return;
-      setMode('closed');
-      setNotice('Onboarding fee removed.');
-      onChanged();
+      if (isCurrent()) {
+        setMode('closed');
+        setNotice('Onboarding fee removed.');
+        onChanged();
+      } else if (mountedRef.current && userDataIdRef.current === requestedId) {
+        // An earlier attempt for the account shown again (A -> B -> A) changed it: reload the row,
+        // but leave the form and the lock of the current attempt alone.
+        onChanged();
+      }
     } catch (e: unknown) {
-      if (mountedRef.current && attemptRef.current === attempt)
-        setError(onboardingFeeFailureMessage(e, 'Failed to remove the onboarding fee'));
+      if (isCurrent()) setError(onboardingFeeFailureMessage(e, 'Failed to remove the onboarding fee'));
     } finally {
       if (attemptRef.current === attempt) {
         savingRef.current = false;
