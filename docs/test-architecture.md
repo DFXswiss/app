@@ -254,7 +254,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `Risk status change refused`. A green run proves how the form renders those values, not that the API
   resolves that clerk or that it refuses a real change.
 - **The Compliance-role visual gives the browser an unsigned session and the Admin token to the API.**
-  `e2e/compliance.spec.ts` (`compliance-user-21`) gives the browser an unsigned session with role
+  `e2e/compliance.spec.ts` (`compliance-user-23`) gives the browser an unsigned session with role
   Compliance and rewrites the Authorization header of every API request to the Admin token. A green
   run proves how the form renders for the Compliance role, not that the API accepts a Compliance
   clerk's save (that is the full-stack test in `e2e-stack/specs/compliance.spec.ts`).

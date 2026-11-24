@@ -267,7 +267,7 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
         .getByText('Personal Data', { exact: true })
         .evaluate((element) => element.scrollIntoView({ block: 'start' }));
 
-      await expect(page).toHaveScreenshot('compliance-user-21-edit-personal-data-compliance.png', {
+      await expect(page).toHaveScreenshot('compliance-user-23-edit-personal-data-compliance.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });
