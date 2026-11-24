@@ -7,7 +7,7 @@ const mockCanSendTransaction = jest.fn();
 const mockGetBalances = jest.fn();
 const mockNavigate = jest.fn();
 const mockLogout = jest.fn();
-const mockCloseServices = jest.fn();
+const mockHandOff = jest.fn();
 const mockSwitchBlockchain = jest.fn();
 const mockLayoutOptions = jest.fn();
 
@@ -293,7 +293,7 @@ jest.mock('../contexts/app-handling.context', () => ({
   CloseType: { SELL: 'Sell' },
   useAppHandlingContext: () => ({
     isInitialized: mockIsInitialized,
-    closeServices: mockCloseServices,
+    handOff: mockHandOff,
     isHandingOff: mockIsHandingOff,
   }),
 }));
@@ -872,7 +872,7 @@ describe('SellScreen', () => {
     expect(screen.queryByTestId('select-asset-BTC')).not.toBeInTheDocument();
   });
 
-  it('closes services when the wallet can send but is not connected', async () => {
+  it('hands off to the integrator when the wallet can send but is not connected', async () => {
     mockCanSendTransaction.mockReturnValue(true);
     mockActiveWallet = undefined;
     render(<SellScreen />);
@@ -880,7 +880,10 @@ describe('SellScreen', () => {
     await act(async () => {
       screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
     });
-    expect(mockCloseServices).toHaveBeenCalled();
+    expect(mockHandOff).toHaveBeenCalledTimes(1);
+    expect(mockHandOff).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'Sell', isComplete: false, sell: expect.anything() }),
+    );
     expect(mockUpdateAccount).toHaveBeenCalled();
   });
 
@@ -905,7 +908,7 @@ describe('SellScreen', () => {
       screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
       await Promise.resolve();
     });
-    expect(mockCloseServices).not.toHaveBeenCalled();
+    expect(mockHandOff).not.toHaveBeenCalled();
     expect(mockUpdateAccount).not.toHaveBeenCalled();
   });
 
@@ -919,7 +922,7 @@ describe('SellScreen', () => {
       fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
       await Promise.resolve();
     });
-    expect(mockCloseServices).not.toHaveBeenCalled();
+    expect(mockHandOff).not.toHaveBeenCalled();
     expect(mockUpdateAccount).not.toHaveBeenCalled();
   });
 

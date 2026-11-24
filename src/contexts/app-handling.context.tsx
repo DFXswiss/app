@@ -191,10 +191,19 @@ interface AppHandlingContextInterface {
   params: AppParams;
   setParams: (params: Partial<AppParams>) => void;
   closeServices: (params: CloseServicesParams, navigate: boolean) => boolean;
+  /**
+   * Hands a confirmed sell or swap to the integrator to pay: closes like
+   * `closeServices`, but redirects at once and keeps the redirect URI, so
+   * the page stays a hand-off page and can hand off again.
+   */
+  handOff: (params: SellServicesParams | SwapServicesParams) => boolean;
   redirectPath?: string;
   setRedirectPath: (path?: string) => void;
   canClose: boolean;
-  /** True for HAND_OFF_BUSY_MS after a sell or swap was handed to the integrator to pay. */
+  /**
+   * True for three seconds (HAND_OFF_BUSY_MS) after `handOff` closed by redirect,
+   * close message or widget callback.
+   */
   isHandingOff: boolean;
   service?: Service;
 }
@@ -423,8 +432,6 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   // closing
   function closeServices(params: CloseServicesParams, navigate: boolean): boolean {
     let closed = false;
-    // a sell or swap the integrator still has to pay
-    const isHandOff = (params.type === CloseType.SELL || params.type === CloseType.SWAP) && !params.isComplete;
 
     if (props.isWidget) {
       if (props.closeCallback) {
@@ -438,34 +445,58 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       }
 
       if (redirectUri) {
-        // discard unsafe URIs (e.g. javascript:) to prevent script execution and phishing redirects
-        const isSafe = isSafeRedirectUri(redirectUri);
-
         storeRedirectUri.remove();
-        // a hand-off keeps the URI for this page, so the user can hand off again
-        if (!isSafe || !isHandOff) setRedirectUri(undefined);
+        setRedirectUri(undefined);
 
-        if (isSafe) {
+        // discard unsafe URIs (e.g. javascript:) to prevent script execution and phishing redirects
+        if (isSafeRedirectUri(redirectUri)) {
           const uri = getRedirectUri(redirectUri, params);
-          if (isHandOff) {
-            (window as Window).location = uri;
-          } else {
-            setTimeout(() => ((window as Window).location = uri), 2000);
-          }
+          setTimeout(() => ((window as Window).location = uri), 2000);
           closed = true;
         }
       }
     }
 
-    if (isHandOff && closed) {
-      setIsHandingOff(true);
-      clearTimeout(handOffTimer.current);
-      handOffTimer.current = setTimeout(() => setIsHandingOff(false), HAND_OFF_BUSY_MS);
-    }
-
     if (navigate) {
       props.router.navigate('/account');
       closed = true;
+    }
+
+    return closed;
+  }
+
+  function handOff(params: SellServicesParams | SwapServicesParams): boolean {
+    let closed = false;
+
+    if (props.isWidget) {
+      if (props.closeCallback) {
+        props.closeCallback(createCloseMessageData(params));
+        closed = true;
+      }
+    } else {
+      if (isUsedByIframe) {
+        sendMessage(createCloseMessageData(params));
+        closed = true;
+      }
+
+      if (redirectUri) {
+        storeRedirectUri.remove();
+
+        // discard unsafe URIs (e.g. javascript:) to prevent script execution and phishing redirects
+        if (isSafeRedirectUri(redirectUri)) {
+          // keep the URI for this page, so the user can hand off again
+          (window as Window).location = getRedirectUri(redirectUri, params);
+          closed = true;
+        } else {
+          setRedirectUri(undefined);
+        }
+      }
+    }
+
+    if (closed) {
+      setIsHandingOff(true);
+      clearTimeout(handOffTimer.current);
+      handOffTimer.current = setTimeout(() => setIsHandingOff(false), HAND_OFF_BUSY_MS);
     }
 
     return closed;
@@ -548,6 +579,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       hasSession,
       isDfxHosted: window.location.hostname?.split('.').slice(-2).join('.') === 'dfx.swiss',
       closeServices,
+      handOff,
       isInitialized,
       params,
       setParams: setParameters,

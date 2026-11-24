@@ -95,7 +95,7 @@ export default function SwapScreen(): JSX.Element {
   useAddressGuard('/login');
 
   const { translate, translateError } = useSettingsContext();
-  const { closeServices, isHandingOff } = useAppHandlingContext();
+  const { handOff, isHandingOff } = useAppHandlingContext();
   const { blockchain: walletBlockchain, activeWallet, switchBlockchain } = useWalletContext();
   const { getBalances, sendTransaction, canSendTransaction } = useTxHelper();
   const { logout } = useSessionContext();
@@ -660,7 +660,7 @@ export default function SwapScreen(): JSX.Element {
 
     try {
       if (canSendTransaction() && !activeWallet) {
-        close(paymentInfo, false);
+        handOff({ type: CloseType.SWAP, isComplete: false, swap: paymentInfo });
         return;
       }
 
@@ -680,10 +680,6 @@ export default function SwapScreen(): JSX.Element {
     } finally {
       setIsProcessing(false);
     }
-  }
-
-  function close(swap: Swap, isComplete: boolean) {
-    closeServices({ type: CloseType.SWAP, isComplete, swap }, isComplete);
   }
 
   const rules = Utils.createRules({

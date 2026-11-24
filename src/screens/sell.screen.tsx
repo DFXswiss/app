@@ -98,7 +98,7 @@ export default function SellScreen(): JSX.Element {
   useAddressGuard('/login');
 
   const { translate, translateError, currency: prefCurrency } = useSettingsContext();
-  const { isInitialized, closeServices, isHandingOff } = useAppHandlingContext();
+  const { isInitialized, handOff, isHandingOff } = useAppHandlingContext();
   const { logout } = useSessionContext();
   const { session } = useAuthContext();
   const { width } = useWindowContext();
@@ -604,7 +604,7 @@ export default function SellScreen(): JSX.Element {
       await updateBankAccount();
 
       if (canSendTransaction() && !activeWallet) {
-        closeServices({ type: CloseType.SELL, isComplete: false, sell: paymentInfo }, false);
+        handOff({ type: CloseType.SELL, isComplete: false, sell: paymentInfo });
         return;
       }
 

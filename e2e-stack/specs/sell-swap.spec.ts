@@ -368,8 +368,9 @@ async function recordWalletRedirects(page: Page): Promise<URL[]> {
 }
 
 /**
- * Clicks "Complete transaction in your wallet", checks the redirect against the form and the user's deposit route,
- * checks that the page did not turn into the manual-transfer page, then clicks again and checks the same redirect.
+ * Clicks "Complete transaction in your wallet", clicks again while the button is busy and checks that this issues no
+ * second redirect, checks the redirect against the form and the user's deposit route, checks that the page did not
+ * turn into the manual-transfer page, then clicks again once the button is active and checks the second redirect.
  */
 async function expectRepeatableHandOff(
   page: Page,
@@ -384,6 +385,16 @@ async function expectRepeatableHandOff(
   await confirm.click();
 
   await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+  // The hand-off keeps the button busy for three seconds. A form submit in that time must not hand off again; it
+  // would redirect at once, so no further redirect may be recorded once the button is active.
+  await expect(confirm).toBeDisabled();
+  await page
+    .locator('form')
+    .first()
+    .evaluate((el) => (el as HTMLFormElement).requestSubmit());
+  await expect(confirm).toBeEnabled({ timeout: 10000 });
+  expect(redirects).toHaveLength(1);
+
   const [first] = redirects;
   expect(first.pathname).toBe(opts.path);
   const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
