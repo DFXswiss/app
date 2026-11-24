@@ -957,6 +957,10 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   forwards the switch to the wallet, that a wallet answers or rejects that way, that the wallet list API returns that JSON, the chain-id mapping, the SDK's enum values, the real wait after
   a switch, or that viem encodes and decodes with the browser's own `TextEncoder` and `TextDecoder` as it does with
   Node's.
+- **The sell and swap hand-off full-stack cases answer the integrator's redirect target themselves.**
+  `e2e-stack/specs/sell-swap.spec.ts` opens `/sell` and `/swap` with a `redirect-uri` on `wallet.e2e.test`
+  and answers every request to that host with 204. A green run does not prove that a wallet intercepts the
+  redirect, opens a send screen or sends a transaction, nor how a WebView behaves.
 
 ## Known gaps
 

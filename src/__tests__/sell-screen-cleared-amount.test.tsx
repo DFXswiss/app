@@ -7,7 +7,7 @@ const mockCanSendTransaction = jest.fn();
 const mockGetBalances = jest.fn();
 const mockNavigate = jest.fn();
 const mockLogout = jest.fn();
-const mockCloseServices = jest.fn();
+const mockHandOff = jest.fn();
 const mockSwitchBlockchain = jest.fn();
 const mockLayoutOptions = jest.fn();
 
@@ -56,6 +56,7 @@ const mockFormatIban = jest.fn((iban: string): string | undefined => iban);
 let mockWalletBlockchain: string | undefined = 'Ethereum';
 let mockPrefCurrency: { name: string } | undefined;
 let mockIsInitialized = true;
+let mockIsHandingOff = false;
 const mockSellInterface = {
   get currencies() {
     return mockCurrencies;
@@ -153,8 +154,8 @@ jest.mock('@dfx.swiss/react-components', () => {
       </div>
     ),
     SpinnerSize: { SM: 'sm', LG: 'lg' },
-    StyledButton: ({ label, onClick }: any) => (
-      <button type="button" onClick={onClick}>
+    StyledButton: ({ label, onClick, isLoading }: any) => (
+      <button type="button" onClick={onClick} aria-busy={isLoading}>
         {label}
       </button>
     ),
@@ -290,7 +291,11 @@ jest.mock('../components/sanction-hint', () => ({ SanctionHint: () => <div data-
 jest.mock('../config/labels', () => ({ addressLabel: (wallet: any) => wallet?.address ?? '' }));
 jest.mock('../contexts/app-handling.context', () => ({
   CloseType: { SELL: 'Sell' },
-  useAppHandlingContext: () => ({ isInitialized: mockIsInitialized, closeServices: mockCloseServices }),
+  useAppHandlingContext: () => ({
+    isInitialized: mockIsInitialized,
+    handOff: mockHandOff,
+    isHandingOff: mockIsHandingOff,
+  }),
 }));
 jest.mock('../contexts/layout.context', () => ({
   useLayoutContext: () => ({ scrollToTop: jest.fn(), rootRef: { current: null } }),
@@ -397,6 +402,7 @@ describe('SellScreen', () => {
     mockWalletBlockchain = 'Ethereum';
     mockPrefCurrency = chf;
     mockIsInitialized = true;
+    mockIsHandingOff = false;
     mockFormatIban.mockImplementation((iban: string) => iban);
     mockCanSendTransaction.mockReturnValue(false);
     mockGetBalances.mockResolvedValue([{ asset: eth, amount: 10 }]);
@@ -866,7 +872,7 @@ describe('SellScreen', () => {
     expect(screen.queryByTestId('select-asset-BTC')).not.toBeInTheDocument();
   });
 
-  it('closes services when the wallet can send but is not connected', async () => {
+  it('hands off to the integrator when the wallet can send but is not connected', async () => {
     mockCanSendTransaction.mockReturnValue(true);
     mockActiveWallet = undefined;
     render(<SellScreen />);
@@ -874,8 +880,50 @@ describe('SellScreen', () => {
     await act(async () => {
       screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
     });
-    expect(mockCloseServices).toHaveBeenCalled();
+    expect(mockHandOff).toHaveBeenCalledTimes(1);
+    expect(mockHandOff).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'Sell', isComplete: false, sell: expect.anything() }),
+    );
     expect(mockUpdateAccount).toHaveBeenCalled();
+  });
+
+  it('keeps the confirm button busy during a hand-off', async () => {
+    mockCanSendTransaction.mockReturnValue(true);
+    mockIsHandingOff = true;
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByRole('button', { name: 'Complete transaction in your wallet' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+  });
+
+  it('ignores a click during a hand-off', async () => {
+    mockCanSendTransaction.mockReturnValue(true);
+    mockActiveWallet = undefined;
+    mockIsHandingOff = true;
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
+      await Promise.resolve();
+    });
+    expect(mockHandOff).not.toHaveBeenCalled();
+    expect(mockUpdateAccount).not.toHaveBeenCalled();
+  });
+
+  it('ignores a form submit during a hand-off', async () => {
+    mockCanSendTransaction.mockReturnValue(true);
+    mockActiveWallet = undefined;
+    mockIsHandingOff = true;
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
+      await Promise.resolve();
+    });
+    expect(mockHandOff).not.toHaveBeenCalled();
+    expect(mockUpdateAccount).not.toHaveBeenCalled();
   });
 
   it('completes after a successful wallet send', async () => {

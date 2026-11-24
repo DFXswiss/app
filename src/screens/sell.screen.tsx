@@ -98,7 +98,7 @@ export default function SellScreen(): JSX.Element {
   useAddressGuard('/login');
 
   const { translate, translateError, currency: prefCurrency } = useSettingsContext();
-  const { isInitialized, closeServices } = useAppHandlingContext();
+  const { isInitialized, handOff, isHandingOff } = useAppHandlingContext();
   const { logout } = useSessionContext();
   const { session } = useAuthContext();
   const { width } = useWindowContext();
@@ -570,7 +570,15 @@ export default function SellScreen(): JSX.Element {
 
   function onSubmit(_data?: FormData) {
     if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
-    if (!paymentInfo || !isQuoteFinal || kycError || errorMessage || customAmountError?.hideInfos || isProcessing)
+    if (
+      !paymentInfo ||
+      !isQuoteFinal ||
+      kycError ||
+      errorMessage ||
+      customAmountError?.hideInfos ||
+      isProcessing ||
+      isHandingOff
+    )
       return;
     if (selectedAsset?.category === AssetCategory.PRIVATE && !flags?.includes('private')) return;
     void handleNext(paymentInfo);
@@ -596,7 +604,7 @@ export default function SellScreen(): JSX.Element {
       await updateBankAccount();
 
       if (canSendTransaction() && !activeWallet) {
-        closeServices({ type: CloseType.SELL, isComplete: false, sell: paymentInfo }, false);
+        handOff({ type: CloseType.SELL, isComplete: false, sell: paymentInfo });
         return;
       }
 
@@ -819,7 +827,7 @@ export default function SellScreen(): JSX.Element {
                             disabled={!isQuoteFinal}
                             caps={false}
                             className="mt-4"
-                            isLoading={isProcessing}
+                            isLoading={isProcessing || isHandingOff}
                           />
                         </div>
                       </>

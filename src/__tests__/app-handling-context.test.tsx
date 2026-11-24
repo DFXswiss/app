@@ -96,6 +96,34 @@ function storedQueryParams(): AppParams | undefined {
   return value ? JSON.parse(value) : undefined;
 }
 
+const originalLocation = window.location;
+let assigned: string | undefined;
+
+function recordLocation() {
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    get: () => originalLocation,
+    set: (value: string) => (assigned = value),
+  });
+}
+
+function restoreLocation() {
+  Object.defineProperty(window, 'location', { configurable: true, writable: true, value: originalLocation });
+}
+
+function advance(ms: number) {
+  act(() => {
+    jest.advanceTimersByTime(ms);
+  });
+}
+
+async function renderWithRedirectUri(redirectUri: string) {
+  localStorage.setItem(REDIRECT_URI_KEY, redirectUri);
+  const result = await renderProvider();
+  recordLocation();
+  return result;
+}
+
 describe('AppHandlingContextProvider', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -348,6 +376,19 @@ describe('AppHandlingContextProvider', () => {
       expect(closeCallback).toHaveBeenLastCalledWith({ type: CloseType.CANCEL });
     });
 
+    it('does not mark an open sell or swap as a hand-off', async () => {
+      const closeCallback = jest.fn();
+      await renderProvider({ isWidget: true, params: { wallet: 'Partner' }, closeCallback });
+
+      expect(ctx.closeServices({ type: CloseType.SELL, isComplete: false, sell }, false)).toBe(true);
+      expect(closeCallback).toHaveBeenLastCalledWith({ type: CloseType.SELL, isComplete: false, sell });
+      expect(ctx.isHandingOff).toBe(false);
+
+      expect(ctx.closeServices({ type: CloseType.SWAP, isComplete: false, swap }, false)).toBe(true);
+      expect(closeCallback).toHaveBeenLastCalledWith({ type: CloseType.SWAP, isComplete: false, swap });
+      expect(ctx.isHandingOff).toBe(false);
+    });
+
     it('does not close a widget without a callback unless it navigates', async () => {
       await renderProvider({ isWidget: true, params: { wallet: 'Partner' } });
 
@@ -372,9 +413,6 @@ describe('AppHandlingContextProvider', () => {
     });
 
     describe('redirect', () => {
-      const originalLocation = window.location;
-      let assigned: string | undefined;
-
       beforeEach(() => {
         jest.useFakeTimers();
         assigned = undefined;
@@ -382,74 +420,249 @@ describe('AppHandlingContextProvider', () => {
 
       afterEach(() => {
         jest.useRealTimers();
-        Object.defineProperty(window, 'location', { configurable: true, writable: true, value: originalLocation });
+        restoreLocation();
       });
 
-      async function closeWith(redirectUri: string, params: Parameters<Context['closeServices']>[0]) {
-        localStorage.setItem(REDIRECT_URI_KEY, redirectUri);
-        await renderProvider();
+      function close(params: Parameters<Context['closeServices']>[0]): boolean {
         let closed = false;
         act(() => {
           closed = ctx.closeServices(params, false);
         });
-
-        Object.defineProperty(window, 'location', {
-          configurable: true,
-          get: () => originalLocation,
-          set: (value: string) => (assigned = value),
-        });
-        act(() => {
-          jest.advanceTimersByTime(2000);
-        });
-
         return closed;
+      }
+
+      async function closeWith(redirectUri: string, params: Parameters<Context['closeServices']>[0]) {
+        await renderWithRedirectUri(redirectUri);
+
+        return close(params);
       }
 
       it('redirects a buy to <uri>/buy and forgets the redirect URI', async () => {
         expect(await closeWith('https://partner.example/done', { type: CloseType.BUY, isComplete: true })).toBe(true);
+        advance(1999);
+        expect(assigned).toBeUndefined();
+        advance(1);
 
         expect(assigned).toBe('https://partner.example/done/buy');
         expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
         expect(ctx.canClose).toBe(false);
       });
 
-      it('adds the sell details to the redirect', async () => {
-        await closeWith('https://partner.example/', { type: CloseType.SELL, isComplete: false, sell });
+      it('redirects an open sell after two seconds and forgets the redirect URI', async () => {
+        const closed = await closeWith('https://partner.example/', { type: CloseType.SELL, isComplete: false, sell });
+
+        expect(closed).toBe(true);
+        advance(1999);
+        expect(assigned).toBeUndefined();
+        advance(1);
 
         expect(assigned).toBe(
           'https://partner.example/sell?routeId=7&amount=0.5&asset=BTC&blockchain=Bitcoin&isComplete=false',
         );
+        expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+        expect(ctx.canClose).toBe(false);
+        expect(ctx.isHandingOff).toBe(false);
+      });
+
+      it('redirects an open swap after two seconds and forgets the redirect URI', async () => {
+        expect(await closeWith('mywallet://', { type: CloseType.SWAP, isComplete: false, swap })).toBe(true);
+        advance(1999);
+        expect(assigned).toBeUndefined();
+        advance(1);
+
+        expect(assigned).toBe('mywallet://swap/?routeId=8&amount=1.5&asset=ETH&blockchain=Ethereum&isComplete=false');
+        expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+        expect(ctx.canClose).toBe(false);
+        expect(ctx.isHandingOff).toBe(false);
+      });
+
+      it('redirects a completed sell after two seconds and forgets the redirect URI', async () => {
+        await closeWith('https://partner.example/', { type: CloseType.SELL, isComplete: true, sell });
+        advance(1999);
+        expect(assigned).toBeUndefined();
+        advance(1);
+
+        expect(assigned).toBe(
+          'https://partner.example/sell?routeId=7&amount=0.5&asset=BTC&blockchain=Bitcoin&isComplete=true',
+        );
+        expect(ctx.canClose).toBe(false);
+        expect(ctx.isHandingOff).toBe(false);
       });
 
       it('adds the swap details to a deep link redirect', async () => {
         await closeWith('mywallet://', { type: CloseType.SWAP, isComplete: true, swap });
+        advance(1999);
+        expect(assigned).toBeUndefined();
+        advance(1);
 
         expect(assigned).toBe('mywallet://swap/?routeId=8&amount=1.5&asset=ETH&blockchain=Ethereum&isComplete=true');
       });
 
       it('appends the type to the path of a deep link redirect', async () => {
         await closeWith('mywallet:/callback', { type: CloseType.BUY, isComplete: true });
+        advance(1999);
+        expect(assigned).toBeUndefined();
+        advance(1);
 
         expect(assigned).toBe('mywallet:/callback/buy/');
       });
 
       it('redirects a payment to the redirect URI as is', async () => {
         await closeWith('mywallet:', { type: CloseType.PAYMENT });
+        advance(1999);
+        expect(assigned).toBeUndefined();
+        advance(1);
 
         expect(assigned).toBe('mywallet:');
       });
 
       it('discards an unsafe stored redirect URI', async () => {
         expect(await closeWith('javascript:alert(1)', { type: CloseType.CANCEL })).toBe(false);
+        advance(2000);
 
         expect(assigned).toBeUndefined();
         expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+        expect(ctx.canClose).toBe(false);
       });
     });
   });
 
+  describe('handOff', () => {
+    const sellUri = 'https://partner.example/sell?routeId=7&amount=0.5&asset=BTC&blockchain=Bitcoin&isComplete=false';
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      assigned = undefined;
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+      restoreLocation();
+    });
+
+    function handOff(params: Parameters<Context['handOff']>[0]): boolean {
+      let closed = false;
+      act(() => {
+        closed = ctx.handOff(params);
+      });
+      return closed;
+    }
+
+    it('starts without a hand-off', async () => {
+      await renderProvider();
+
+      expect(ctx.isHandingOff).toBe(false);
+    });
+
+    it('redirects a sell at once and keeps the redirect URI for this page', async () => {
+      await renderWithRedirectUri('https://partner.example/');
+
+      expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(true);
+      expect(assigned).toBe(sellUri);
+      expect(ctx.canClose).toBe(true);
+      expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+      expect(ctx.isHandingOff).toBe(true);
+      expect(mockRouterNavigate).not.toHaveBeenCalled();
+
+      assigned = undefined;
+      expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(true);
+      expect(assigned).toBe(sellUri);
+    });
+
+    it('redirects a swap to a deep link at once', async () => {
+      await renderWithRedirectUri('mywallet://');
+
+      expect(handOff({ type: CloseType.SWAP, isComplete: false, swap })).toBe(true);
+      expect(assigned).toBe('mywallet://swap/?routeId=8&amount=1.5&asset=ETH&blockchain=Ethereum&isComplete=false');
+      expect(ctx.canClose).toBe(true);
+    });
+
+    it('ends the hand-off state after three seconds', async () => {
+      await renderWithRedirectUri('https://partner.example/');
+      handOff({ type: CloseType.SELL, isComplete: false, sell });
+
+      advance(2999);
+      expect(ctx.isHandingOff).toBe(true);
+      advance(1);
+      expect(ctx.isHandingOff).toBe(false);
+    });
+
+    it('restarts the three seconds on another hand-off', async () => {
+      await renderWithRedirectUri('https://partner.example/');
+      handOff({ type: CloseType.SELL, isComplete: false, sell });
+      advance(2000);
+      handOff({ type: CloseType.SELL, isComplete: false, sell });
+
+      advance(2999);
+      expect(ctx.isHandingOff).toBe(true);
+      advance(1);
+      expect(ctx.isHandingOff).toBe(false);
+    });
+
+    it('stops the hand-off timer on unmount', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        const result = await renderWithRedirectUri('https://partner.example/');
+        handOff({ type: CloseType.SELL, isComplete: false, sell });
+        result.unmount();
+
+        expect(jest.getTimerCount()).toBe(0);
+        advance(3000);
+        expect(consoleError).not.toHaveBeenCalled();
+      } finally {
+        consoleError.mockRestore();
+      }
+    });
+
+    it('discards an unsafe stored redirect URI', async () => {
+      await renderWithRedirectUri('javascript:alert(1)');
+
+      expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(false);
+      advance(3000);
+
+      expect(assigned).toBeUndefined();
+      expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+      expect(ctx.canClose).toBe(false);
+      expect(ctx.isHandingOff).toBe(false);
+    });
+
+    it('hands off through the widget callback', async () => {
+      const closeCallback = jest.fn();
+      await renderProvider({ isWidget: true, params: { wallet: 'Partner' }, closeCallback });
+
+      expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(true);
+      expect(closeCallback).toHaveBeenLastCalledWith({ type: CloseType.SELL, isComplete: false, sell });
+      expect(ctx.isHandingOff).toBe(true);
+      expect(mockRouterNavigate).not.toHaveBeenCalled();
+    });
+
+    it('does not hand off a widget without a callback', async () => {
+      await renderProvider({ isWidget: true, params: { wallet: 'Partner' } });
+
+      expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(false);
+      expect(ctx.isHandingOff).toBe(false);
+      expect(mockRouterNavigate).not.toHaveBeenCalled();
+    });
+
+    it('posts the hand-off to the parent frame', async () => {
+      mockIsUsedByIframe = true;
+      await renderProvider();
+
+      expect(handOff({ type: CloseType.SWAP, isComplete: false, swap })).toBe(true);
+      expect(mockSendMessage).toHaveBeenCalledWith({ type: CloseType.SWAP, isComplete: false, swap });
+      expect(ctx.isHandingOff).toBe(true);
+    });
+
+    it('does nothing standalone without a frame or redirect URI', async () => {
+      await renderProvider();
+
+      expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(false);
+      expect(ctx.isHandingOff).toBe(false);
+      expect(mockRouterNavigate).not.toHaveBeenCalled();
+    });
+  });
+
   it('reports a dfx.swiss host', async () => {
-    const originalLocation = window.location;
     Object.defineProperty(window, 'location', {
       configurable: true,
       value: { ...originalLocation, search: '', hostname: 'app.dfx.swiss' },

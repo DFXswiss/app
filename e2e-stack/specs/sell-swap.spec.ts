@@ -264,6 +264,7 @@ async function expectNoDepositRoute(userId: number, type: 'Sell' | 'Crypto'): Pr
 async function setupSellFullUiFlow(
   page: Page,
   tag: string,
+  extraQuery = '',
 ): Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
   const user = await createUser({
     walletIndex: nextWalletIndex(),
@@ -283,7 +284,7 @@ async function setupSellFullUiFlow(
   // regression test at the end of this file (select existing, do not recreate). Do not wait for
   // 'networkidle' either: pricing effects keep the network busy on this screen, so content-based
   // waits are what gate these tests.
-  await gotoWithSession(page, `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1`, user.jwt);
+  await gotoWithSession(page, `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1${extraQuery}`, user.jwt);
   expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
 
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
@@ -332,6 +333,7 @@ async function setupSellInfoUiFlow(
 async function setupSwapFullUiFlow(
   page: Page,
   tag: string,
+  extraQuery = '',
 ): Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
   const user = await createUser({
     walletIndex: nextWalletIndex(),
@@ -345,12 +347,78 @@ async function setupSwapFullUiFlow(
   const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
 
   // Same rationale as the /sell case above: skip 'networkidle', rely on content waits.
-  await gotoWithSession(page, `/swap?asset-in=ETH&amount-in=0.1`, user.jwt);
+  await gotoWithSession(page, `/swap?asset-in=ETH&amount-in=0.1${extraQuery}`, user.jwt);
   expect(normPath(new URL(page.url()).pathname)).toBe('/swap');
 
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
 
   return { user, paymentInfos };
+}
+
+const WALLET_REDIRECT_QUERY = `&redirect-uri=${encodeURIComponent('https://wallet.e2e.test/return/')}`;
+
+/**
+ * Answers every request to the integrator's redirect target with 204, so the page stays open, and returns the list
+ * of URLs the page was sent to.
+ */
+async function recordWalletRedirects(page: Page): Promise<URL[]> {
+  const redirects: URL[] = [];
+  await page.route('https://wallet.e2e.test/**', async (route) => {
+    redirects.push(new URL(route.request().url()));
+    await route.fulfill({ status: 204 });
+  });
+  return redirects;
+}
+
+/**
+ * Clicks "Complete transaction in your wallet", submits the form while the button is busy and checks that this issues
+ * no second redirect, checks the redirect against the form and the user's deposit route, checks that the page did not
+ * turn into the manual-transfer page, then clicks again once the button is active and checks the second redirect.
+ */
+async function expectRepeatableHandOff(
+  page: Page,
+  redirects: URL[],
+  opts: { path: string; assetInput: string; userId: number; routeType: 'Sell' | 'Crypto' },
+): Promise<void> {
+  const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+  expect(outcome.kind, outcome.detail).toBe('payment_info');
+
+  const confirm = page.getByRole('button', { name: 'Complete transaction in your wallet' });
+  await expect(confirm).toBeEnabled({ timeout: 15000 });
+  await confirm.click();
+
+  await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+  // The hand-off keeps the button busy for three seconds. A form submit in that time must not hand off again; it
+  // would redirect at once, so no further redirect may be recorded once the button is active.
+  await expect(confirm).toBeDisabled();
+  await page
+    .locator('form')
+    .first()
+    .evaluate((el) => (el as HTMLFormElement).requestSubmit());
+  await expect(confirm).toBeEnabled({ timeout: 10000 });
+  expect(redirects).toHaveLength(1);
+
+  const [first] = redirects;
+  expect(first.pathname).toBe(opts.path);
+  const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
+  expect(first.searchParams.get('amount')).toBe(await spend.inputValue());
+  expect(first.searchParams.get('asset')).toBe(await page.locator(`input[name="${opts.assetInput}"]`).inputValue());
+  const blockchain = first.searchParams.get('blockchain');
+  expect(blockchain).toBeTruthy();
+  await expect(page.getByText(blockchain as string, { exact: true }).first()).toBeVisible();
+  expect(first.searchParams.get('isComplete')).toBe('false');
+  const route = await waitForRow<{ id: number }>(
+    `SELECT id FROM deposit_route WHERE "userId" = $1 AND type = $2 ORDER BY id DESC LIMIT 1`,
+    [opts.userId, opts.routeType],
+  );
+  expect(first.searchParams.get('routeId')).toBe(String(route.id));
+
+  await expect(page.getByRole('button', { name: 'Click here once you have issued the transaction' })).toHaveCount(0);
+
+  await expect(confirm).toBeEnabled({ timeout: 10000 });
+  await confirm.click();
+  await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(2);
+  expect(redirects[1].searchParams.get('routeId')).toBe(String(route.id));
 }
 
 /**
@@ -1056,6 +1124,20 @@ test.describe('Sell + Swap e2e', () => {
     await expect(page.getByText(/Transaction failed\. Click Retry/)).toBeVisible({ timeout: 15000 });
   });
 
+  test('/sell: confirming with a redirect URI redirects with the sell route and can be repeated', async ({ page }) => {
+    test.setTimeout(90000);
+    const { user, paymentInfos } = await setupSellFullUiFlow(page, 'sell-hand-off', WALLET_REDIRECT_QUERY);
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    const redirects = await recordWalletRedirects(page);
+
+    await expectRepeatableHandOff(page, redirects, {
+      path: '/return/sell',
+      assetInput: 'asset',
+      userId: user.userId,
+      routeType: 'Sell',
+    });
+  });
+
   test('/sell: native form submit completes the transaction', async ({ page }) => {
     test.setTimeout(90000);
     const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-form-submit');
@@ -1425,6 +1507,20 @@ test.describe('Sell + Swap e2e', () => {
         page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
       ).toBeVisible({ timeout: 15000 });
     }
+  });
+
+  test('/swap: confirming with a redirect URI redirects with the swap route and can be repeated', async ({ page }) => {
+    test.setTimeout(90000);
+    const { user, paymentInfos } = await setupSwapFullUiFlow(page, 'swap-hand-off', WALLET_REDIRECT_QUERY);
+    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    const redirects = await recordWalletRedirects(page);
+
+    await expectRepeatableHandOff(page, redirects, {
+      path: '/return/swap',
+      assetInput: 'sourceAsset',
+      userId: user.userId,
+      routeType: 'Crypto',
+    });
   });
 
   test('/swap: native form submit completes the transaction', async ({ page }) => {

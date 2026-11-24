@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useChange } from 'src/hooks/change.hook';
@@ -14,6 +15,8 @@ import { useIframe } from '../hooks/iframe.hook';
 import { useStore } from '../hooks/store.hook';
 import { isSafeRedirectUri, relativeUrl, url } from '../util/utils';
 import { useBalanceContext } from './balance.context';
+
+const HAND_OFF_BUSY_MS = 3000;
 
 // --- INTERFACES --- //
 // CAUTION: params need to be added to index-widget.tsx
@@ -188,9 +191,20 @@ interface AppHandlingContextInterface {
   params: AppParams;
   setParams: (params: Partial<AppParams>) => void;
   closeServices: (params: CloseServicesParams, navigate: boolean) => boolean;
+  /**
+   * Hands a confirmed sell or swap to the integrator to pay: closes like
+   * `closeServices`, but redirects at once and keeps the redirect URI, so
+   * the page stays a hand-off page and can hand off again.
+   */
+  handOff: (params: SellServicesParams | SwapServicesParams) => boolean;
   redirectPath?: string;
   setRedirectPath: (path?: string) => void;
   canClose: boolean;
+  /**
+   * True for three seconds (HAND_OFF_BUSY_MS) after `handOff` closed by redirect,
+   * close message or widget callback.
+   */
+  isHandingOff: boolean;
   service?: Service;
 }
 
@@ -232,6 +246,8 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasSession, setHasSession] = useState(false);
   const [redirectUri, setRedirectUri] = useState<string>();
+  const [isHandingOff, setIsHandingOff] = useState(false);
+  const handOffTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [params, setParams] = useState<AppParams>({});
   const [redirectPath, setRedirectPath] = useState<string | undefined>(() => {
     try {
@@ -257,6 +273,10 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   // runs once on mount, when redirectUri is still unset
   useEffect(() => {
     setRedirectUri(storeRedirectUri.get());
+  }, []);
+
+  useEffect(() => {
+    return () => clearTimeout(handOffTimer.current);
   }, []);
 
   // parameters
@@ -445,6 +465,43 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
     return closed;
   }
 
+  function handOff(params: SellServicesParams | SwapServicesParams): boolean {
+    let closed = false;
+
+    if (props.isWidget) {
+      if (props.closeCallback) {
+        props.closeCallback(createCloseMessageData(params));
+        closed = true;
+      }
+    } else {
+      if (isUsedByIframe) {
+        sendMessage(createCloseMessageData(params));
+        closed = true;
+      }
+
+      if (redirectUri) {
+        storeRedirectUri.remove();
+
+        // discard unsafe URIs (e.g. javascript:) to prevent script execution and phishing redirects
+        if (isSafeRedirectUri(redirectUri)) {
+          // keep the URI for this page, so the user can hand off again
+          (window as Window).location = getRedirectUri(redirectUri, params);
+          closed = true;
+        } else {
+          setRedirectUri(undefined);
+        }
+      }
+    }
+
+    if (closed) {
+      setIsHandingOff(true);
+      clearTimeout(handOffTimer.current);
+      handOffTimer.current = setTimeout(() => setIsHandingOff(false), HAND_OFF_BUSY_MS);
+    }
+
+    return closed;
+  }
+
   function getRedirectUri(baseUri: string, params: CloseServicesParams): string {
     let uri = new URL(baseUri);
 
@@ -522,6 +579,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       hasSession,
       isDfxHosted: window.location.hostname?.split('.').slice(-2).join('.') === 'dfx.swiss',
       closeServices,
+      handOff,
       isInitialized,
       params,
       setParams: setParameters,
@@ -536,6 +594,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       redirectPath,
       setRedirectPath,
       canClose: redirectUri != null,
+      isHandingOff,
       service: props.service,
     }),
     [
@@ -544,6 +603,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       props.service,
       isUsedByIframe,
       redirectUri,
+      isHandingOff,
       isInitialized,
       params,
       redirectPath,

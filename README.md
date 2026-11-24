@@ -216,6 +216,8 @@ If a redirect URI was provided (`redirect-uri` parameter), the user will be redi
   - `blockchain`: transfer blockchain
   - `isComplete`: is `true`, if blockchain transaction is already executed
 
+On the sell and swap pages (`/sell`, `/swap`), a sell or swap the integrator still has to pay (`isComplete` is `false`) is redirected as soon as the user confirms. The page keeps the redirect URI after that redirect. If the page stays open, for example because an in-app browser intercepts the redirect, it behaves as it did before the redirect: the user can confirm again after a short wait, and every later close redirects as well. An integrator must therefore expect more than one redirect, possibly with other parameters.
+
 #### Close Message
 
 The following data format is used for the close message ([Iframe](#iframe), [web component](#web-component) or [React component](#react-component) integration).
