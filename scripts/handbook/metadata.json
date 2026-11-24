@@ -276,7 +276,7 @@
     "description": "Bricht der Benutzer im Wallet ab (EIP-1193-Code 4001), endet der Vorgang ohne Fehlermeldung und ohne Fehlerbericht: beim Verbinden wieder bei der Wallet-Auswahl, beim Verkauf im Formular, wo ein neuer Versuch möglich ist. Varianten: abgebrochene Verbindung zurück bei der Wallet-Auswahl; eine vom Wallet fehlgeschlagene Verbindung, die weiterhin \"Connection failed!\" mit der Meldung des Wallets zeigt; eine im Wallet abgebrochene Verkaufstransaktion, nach der das Formular ohne Fehler stehen bleibt; eine vom Wallet fehlgeschlagene Verkaufstransaktion, die weiterhin \"Transaction failed\" zeigt."
   },
   "partner-onboarding-fee": {
-    "title": "Partner onboarding fee",
+    "title": "Partner-Onboarding-Gebühr",
     "description": "Der Partner-Screen /partner/onboarding-fee zum Zuweisen einer festen Onboarding-Gebühr zu einer Kundenadresse und zum Entfernen mit Bestätigung."
   },
   "partner-wallet-selection": {
