@@ -17,6 +17,7 @@ import { useOnboardingFee } from 'src/hooks/onboarding-fee.hook';
 import {
   ONBOARDING_FEE_API_OFF,
   ONBOARDING_FEE_MAX_AMOUNT,
+  ONBOARDING_FEE_MIN_AMOUNT,
   formatChf,
   onboardingFeeFailureMessage,
   parseOnboardingFeeAmount,
@@ -136,12 +137,14 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
     return message === ONBOARDING_FEE_API_OFF ? translate('screens/partner', ONBOARDING_FEE_API_OFF) : message;
   }
 
-  // The range sentence is ours and carries the bound, so it is translated here; every other key goes
-  // through the shared translator like on the remove form.
+  // The range sentence is ours and carries the bounds, so it is translated here; every other key goes
+  // through the shared translator like on the remove form. Both bounds come from the shared constants
+  // so the sentence cannot drift from the rule that enforces them.
   function translateAssignError(key: string): string {
     if (key !== AMOUNT_INVALID) return translateError(key);
+    const min = formatSwissNumber(ONBOARDING_FEE_MIN_AMOUNT);
     const max = formatSwissNumber(ONBOARDING_FEE_MAX_AMOUNT);
-    return translate('screens/partner', 'Enter a whole CHF amount between 1 and {{max}}.', { max });
+    return translate('screens/partner', 'Enter a whole CHF amount between {{min}} and {{max}}.', { min, max });
   }
 
   // A suggestion fills the input like typing would, including the validation that clears an error.
@@ -150,15 +153,16 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
   }
 
   async function handleAssign(data: AssignFormData): Promise<void> {
-    if (savingRef.current) return;
+    // The submit only runs after the amount rule passed; the check keeps an unparsed amount from
+    // ever reaching the API without asserting the type away.
+    const amount = parseOnboardingFeeAmount(data.amount);
+    if (savingRef.current || amount === undefined) return;
     savingRef.current = true;
 
     setIsSaving(true);
     setAssignError(undefined);
     setAssignNotice(undefined);
     const address = data.address.trim();
-    // The submit only runs after the amount rule passed, so the input parses.
-    const amount = parseOnboardingFeeAmount(data.amount) as number;
     try {
       await setPartnerOnboardingFee({ address, amount });
       if (!mountedRef.current) return;
@@ -221,7 +225,7 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
       <p className="text-dfxGray-700">
         {translate(
           'screens/partner',
-          'Enter the wallet address of your customer and choose the onboarding fee. The customer is attributed to your referral code.',
+          'Enter the wallet address of your customer and the onboarding fee. The customer is attributed to your referral code.',
         )}
       </p>
 
@@ -239,9 +243,11 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
           <StyledVerticalStack gap={4} full>
             <StyledInput name="address" label={translate('screens/partner', 'Customer address')} full smallLabel />
 
+            {/* A text field, not type="number": the browser reports a partly typed number such as "1."
+                as an empty value, which would show "required" instead of the range sentence. */}
             <StyledInput
               name="amount"
-              type="number"
+              type="text"
               label={translate('screens/partner', 'Onboarding fee (CHF)')}
               full
               smallLabel

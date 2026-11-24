@@ -122,7 +122,9 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
 
   // Only reachable through the Save button, which is disabled until canSubmit holds.
   async function handleSet(): Promise<void> {
-    if (savingRef.current) return;
+    // canSubmit, which enables the only caller, requires a parsed amount; the check keeps an unparsed
+    // amount from ever reaching the API without asserting the type away.
+    if (savingRef.current || amountNumber === undefined) return;
     savingRef.current = true;
 
     setIsSaving(true);
@@ -131,8 +133,7 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
     const requestedId = userDataId;
     const attempt = attemptRef.current;
     const isCurrent = (): boolean => mountedRef.current && attemptRef.current === attempt;
-    // canSubmit, which enables the only caller, requires a parsed amount.
-    const savedAmount = amountNumber as number;
+    const savedAmount = amountNumber;
     try {
       await setOnboardingFee(requestedId, { amount: savedAmount, address });
       if (isCurrent()) {

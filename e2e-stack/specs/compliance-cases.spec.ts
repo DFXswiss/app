@@ -689,8 +689,9 @@ test.describe('Compliance area (cases)', () => {
 
     await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
     await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
-    // The amount is typed like the clerk does; the suggested amounts only fill the same input.
-    await page.locator('#onboarding-fee-amount').fill('400');
+    // The amount is typed like the clerk does. 14000 is not one of the suggested amounts, so the
+    // case proves that the Admin route accepts and stores an agreed free amount.
+    await page.locator('#onboarding-fee-amount').fill('14000');
     await page.locator('#onboarding-fee-address').selectOption(customer.address);
     const save = page.getByRole('button', { name: 'Save', exact: true });
     await expect(save).toBeEnabled({ timeout: 15000 });
@@ -703,13 +704,14 @@ test.describe('Compliance area (cases)', () => {
     await save.click();
     const put = await putResponse;
     expect(put.status()).toBe(200);
-    expect(put.request().postDataJSON()).toEqual({ amount: 400, address: customer.address });
+    expect(put.request().postDataJSON()).toEqual({ amount: 14000, address: customer.address });
 
-    await expect(
-      page.getByText(`Onboarding fee of CHF 400 set; ${customer.address} attributed to the key account manager.`, {
-        exact: true,
-      }),
-    ).toBeVisible({ timeout: 20000 });
+    // The notice shows the amount with the Swiss thousands separator; the separator character
+    // depends on the browser's locale data, so only its position is fixed here.
+    const notice = new RegExp(
+      `^Onboarding fee of CHF 14.000 set; ${customer.address} attributed to the key account manager\\.$`,
+    );
+    await expect(page.getByText(notice)).toBeVisible({ timeout: 20000 });
 
     // Attribution and status transition, asserted from the database.
     const userRow = await waitForRow<{ usedRef: string | null; status: string }>(
@@ -728,7 +730,7 @@ test.describe('Compliance area (cases)', () => {
     expect(assignedFeeIds.length).toBeGreaterThan(0);
     const feeRow = await waitForRow<{ id: number }>(
       `SELECT id FROM fee
-       WHERE id = ANY($1::int[]) AND label = 'Onboarding Fixed 400' AND fixed = 400 AND active = true`,
+       WHERE id = ANY($1::int[]) AND label = 'Onboarding Fixed 14000' AND fixed = 14000 AND active = true`,
       [assignedFeeIds.map(Number)],
       20000,
     );

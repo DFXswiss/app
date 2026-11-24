@@ -1,7 +1,7 @@
 /**
  * /partner/onboarding-fee — Partner key-account managers assign an onboarding fee of any whole CHF
- * amount to a customer wallet and remove it again. The amount is typed; the suggested amounts only
- * fill the input.
+ * amount to a customer wallet and remove it again. The amount is typed or filled from a suggested
+ * amount; the first case clicks a suggestion, the free-amount case types one.
  *
  * The screen is guarded with usePartnerGuard. The API attributes the named address to the logged-in
  * partner's ref as part of the assignment; the DB assertions below prove that attribution, the fee
@@ -148,7 +148,13 @@ test.describe('Partner onboarding fee', () => {
     await expect(page.getByText('Assign onboarding fee', { exact: true })).toBeVisible({ timeout: 20000 });
 
     const assign = assignSection(page);
-    await fillAssignForm(assign, customer.address, '400');
+    // The amount comes from the quick pick, not from typing: the click must fill the input, and the
+    // request body below proves the picked value is what the screen sends.
+    await styledInput(assign, 'Customer address').fill(customer.address);
+    const pick = assign.getByRole('button', { name: 'CHF 400', exact: true });
+    await expect(pick).toBeVisible({ timeout: 20000 });
+    await pick.click();
+    await expect(styledInput(assign, 'Onboarding fee (CHF)')).toHaveValue('400');
 
     const putResponse = page.waitForResponse(
       (response) =>

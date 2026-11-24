@@ -67,8 +67,8 @@ jest.mock('@dfx.swiss/react-components', () => {
       });
     };
 
-  // The requested input type is exposed as data-type: a real type="number" would make jsdom drop
-  // non-numeric text before the screen's own rule could judge it.
+  // The requested input type is exposed as data-type so a test can assert it: the screen must ask for
+  // a text field, because a number field would drop a partly typed value before its rule judged it.
   const StyledInput = field(({ name, label, type, value, onChange, onBlur }) =>
     React.createElement('input', {
       'data-testid': name,
@@ -168,7 +168,7 @@ function swiss(value: number): string {
   return value.toLocaleString('de-CH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-const AMOUNT_INVALID_TEXT = `Enter a whole CHF amount between 1 and ${swiss(1000000)}.`;
+const AMOUNT_INVALID_TEXT = `Enter a whole CHF amount between ${swiss(1)} and ${swiss(1000000)}.`;
 
 function assignAddress(): HTMLInputElement {
   return screen.getAllByTestId('address')[0] as HTMLInputElement;
@@ -212,13 +212,13 @@ describe('PartnerOnboardingFeeScreen', () => {
     expect(mockGetOnboardingFeeAmounts).toHaveBeenCalledTimes(1);
     expect(
       screen.getByText(
-        'Enter the wallet address of your customer and choose the onboarding fee. The customer is attributed to your referral code.',
+        'Enter the wallet address of your customer and the onboarding fee. The customer is attributed to your referral code.',
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Assign onboarding fee' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Remove onboarding fee' })).toBeInTheDocument();
     expect(screen.getByLabelText('Onboarding fee (CHF)')).toBe(amountInput());
-    expect(amountInput()).toHaveAttribute('data-type', 'number');
+    expect(amountInput()).toHaveAttribute('data-type', 'text');
     expect(amountInput().value).toBe('');
     expect(assignButton()).toBeDisabled();
     expect(removeButton()).toBeDisabled();
@@ -250,7 +250,9 @@ describe('PartnerOnboardingFeeScreen', () => {
     expect(amountInput().value).toBe('');
   });
 
-  it.each(['0', '1000001', '800.5', 'abc', '-400'])(
+  // The partly typed values ("1.", "1e", "-") are the ones a number field would report as empty; the
+  // text field keeps them, so the visitor sees the range sentence rather than "required".
+  it.each(['0', '1000001', '800.5', 'abc', '-400', '1.', '1e', '-'])(
     'keeps Assign disabled and names the range for the amount "%s"',
     async (value) => {
       await renderLoaded();
@@ -259,7 +261,9 @@ describe('PartnerOnboardingFeeScreen', () => {
       type(amountInput(), value);
 
       expect(assignButton()).toBeDisabled();
+      expect(amountInput().value).toBe(value);
       expect(await screen.findByText(AMOUNT_INVALID_TEXT)).toBeInTheDocument();
+      expect(screen.queryByText('required')).not.toBeInTheDocument();
     },
   );
 
