@@ -173,6 +173,8 @@ export function clearLoginSessionStorage(): void {
   storageRemove('localStorage', 'dfx.authenticationToken');
   storageRemove('localStorage', 'dfx.srv.activeWallet');
   storageRemove('localStorage', 'dfx.srv.queryParams');
+  // A redirect target stored by an earlier visit must not be inherited by a new session launch.
+  storageRemove('localStorage', 'dfx.srv.redirectUri');
   storageClear('sessionStorage');
 }
 
