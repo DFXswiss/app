@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useChange } from 'src/hooks/change.hook';
@@ -14,6 +15,8 @@ import { useIframe } from '../hooks/iframe.hook';
 import { useStore } from '../hooks/store.hook';
 import { isSafeRedirectUri, relativeUrl, url } from '../util/utils';
 import { useBalanceContext } from './balance.context';
+
+const HAND_OFF_BUSY_MS = 3000;
 
 // --- INTERFACES --- //
 // CAUTION: params need to be added to index-widget.tsx
@@ -191,6 +194,8 @@ interface AppHandlingContextInterface {
   redirectPath?: string;
   setRedirectPath: (path?: string) => void;
   canClose: boolean;
+  /** True for HAND_OFF_BUSY_MS after a sell or swap was handed to the integrator to pay. */
+  isHandingOff: boolean;
   service?: Service;
 }
 
@@ -232,6 +237,8 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasSession, setHasSession] = useState(false);
   const [redirectUri, setRedirectUri] = useState<string>();
+  const [isHandingOff, setIsHandingOff] = useState(false);
+  const handOffTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [params, setParams] = useState<AppParams>({});
   const [redirectPath, setRedirectPath] = useState<string | undefined>(() => {
     try {
@@ -257,6 +264,10 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   // runs once on mount, when redirectUri is still unset
   useEffect(() => {
     setRedirectUri(storeRedirectUri.get());
+  }, []);
+
+  useEffect(() => {
+    return () => clearTimeout(handOffTimer.current);
   }, []);
 
   // parameters
@@ -412,6 +423,8 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   // closing
   function closeServices(params: CloseServicesParams, navigate: boolean): boolean {
     let closed = false;
+    // a sell or swap the integrator still has to pay
+    const isHandOff = (params.type === CloseType.SELL || params.type === CloseType.SWAP) && !params.isComplete;
 
     if (props.isWidget) {
       if (props.closeCallback) {
@@ -425,16 +438,29 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       }
 
       if (redirectUri) {
-        storeRedirectUri.remove();
-        setRedirectUri(undefined);
-
         // discard unsafe URIs (e.g. javascript:) to prevent script execution and phishing redirects
-        if (isSafeRedirectUri(redirectUri)) {
+        const isSafe = isSafeRedirectUri(redirectUri);
+
+        storeRedirectUri.remove();
+        // a hand-off keeps the URI for this page, so the user can hand off again
+        if (!isSafe || !isHandOff) setRedirectUri(undefined);
+
+        if (isSafe) {
           const uri = getRedirectUri(redirectUri, params);
-          setTimeout(() => ((window as Window).location = uri), 2000);
+          if (isHandOff) {
+            (window as Window).location = uri;
+          } else {
+            setTimeout(() => ((window as Window).location = uri), 2000);
+          }
           closed = true;
         }
       }
+    }
+
+    if (isHandOff && closed) {
+      setIsHandingOff(true);
+      clearTimeout(handOffTimer.current);
+      handOffTimer.current = setTimeout(() => setIsHandingOff(false), HAND_OFF_BUSY_MS);
     }
 
     if (navigate) {
@@ -536,6 +562,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       redirectPath,
       setRedirectPath,
       canClose: redirectUri != null,
+      isHandingOff,
       service: props.service,
     }),
     [
@@ -544,6 +571,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       props.service,
       isUsedByIframe,
       redirectUri,
+      isHandingOff,
       isInitialized,
       params,
       redirectPath,

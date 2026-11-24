@@ -95,7 +95,7 @@ export default function SwapScreen(): JSX.Element {
   useAddressGuard('/login');
 
   const { translate, translateError } = useSettingsContext();
-  const { closeServices } = useAppHandlingContext();
+  const { closeServices, isHandingOff } = useAppHandlingContext();
   const { blockchain: walletBlockchain, activeWallet, switchBlockchain } = useWalletContext();
   const { getBalances, sendTransaction, canSendTransaction } = useTxHelper();
   const { logout } = useSessionContext();
@@ -613,7 +613,15 @@ export default function SwapScreen(): JSX.Element {
 
   function onSubmit(_data?: FormData) {
     if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
-    if (!paymentInfo || !isQuoteFinal || kycError || errorMessage || customAmountError?.hideInfos || isProcessing)
+    if (
+      !paymentInfo ||
+      !isQuoteFinal ||
+      kycError ||
+      errorMessage ||
+      customAmountError?.hideInfos ||
+      isProcessing ||
+      isHandingOff
+    )
       return;
     if (
       (selectedSourceAsset?.category === AssetCategory.PRIVATE ||
@@ -884,7 +892,7 @@ export default function SwapScreen(): JSX.Element {
                             disabled={!isQuoteFinal}
                             caps={false}
                             className="mt-4"
-                            isLoading={isProcessing}
+                            isLoading={isProcessing || isHandingOff}
                           />
                         </div>
                       </>

@@ -41,6 +41,7 @@ let mockActiveWallet: string | undefined;
 let mockFlags: string | undefined;
 let mockHideTarget = true;
 let mockWalletBlockchain: string | undefined = 'Ethereum';
+let mockIsHandingOff = false;
 const mockGetAsset = (list: any[], name?: string) =>
   name ? (list ?? []).find((a: any) => a.name === name || a.uniqueName === name) : undefined;
 const mockGetAssets = () => mockAssets;
@@ -132,8 +133,8 @@ jest.mock('@dfx.swiss/react-components', () => {
       </div>
     ),
     SpinnerSize: { SM: 'sm', LG: 'lg' },
-    StyledButton: ({ label, onClick }: any) => (
-      <button type="button" onClick={onClick}>
+    StyledButton: ({ label, onClick, isLoading }: any) => (
+      <button type="button" onClick={onClick} aria-busy={isLoading}>
         {label}
       </button>
     ),
@@ -254,7 +255,11 @@ jest.mock('../components/sanction-hint', () => ({ SanctionHint: () => <div data-
 jest.mock('../config/labels', () => ({ addressLabel: (wallet: any) => wallet?.address ?? '' }));
 jest.mock('../contexts/app-handling.context', () => ({
   CloseType: { SWAP: 'Swap' },
-  useAppHandlingContext: () => ({ isInitialized: true, closeServices: mockCloseServices }),
+  useAppHandlingContext: () => ({
+    isInitialized: true,
+    closeServices: mockCloseServices,
+    isHandingOff: mockIsHandingOff,
+  }),
 }));
 jest.mock('../contexts/layout.context', () => ({
   useLayoutContext: () => ({ scrollToTop: jest.fn(), rootRef: { current: null } }),
@@ -354,6 +359,7 @@ describe('SwapScreen', () => {
     mockFlags = undefined;
     mockHideTarget = true;
     mockWalletBlockchain = 'Ethereum';
+    mockIsHandingOff = false;
     mockCanSendTransaction.mockReturnValue(false);
     mockGetBalances.mockResolvedValue([
       { asset: eth, amount: 10 },
@@ -786,6 +792,43 @@ describe('SwapScreen', () => {
       screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
     });
     expect(mockCloseServices).toHaveBeenCalled();
+  });
+
+  it('keeps the confirm button busy during a hand-off', async () => {
+    mockCanSendTransaction.mockReturnValue(true);
+    mockIsHandingOff = true;
+    render(<SwapScreen />);
+    await flushQuote();
+    expect(screen.getByRole('button', { name: 'Complete transaction in your wallet' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+  });
+
+  it('ignores a click during a hand-off', async () => {
+    mockCanSendTransaction.mockReturnValue(true);
+    mockActiveWallet = undefined;
+    mockIsHandingOff = true;
+    render(<SwapScreen />);
+    await flushQuote();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
+      await Promise.resolve();
+    });
+    expect(mockCloseServices).not.toHaveBeenCalled();
+  });
+
+  it('ignores a form submit during a hand-off', async () => {
+    mockCanSendTransaction.mockReturnValue(true);
+    mockActiveWallet = undefined;
+    mockIsHandingOff = true;
+    render(<SwapScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
+      await Promise.resolve();
+    });
+    expect(mockCloseServices).not.toHaveBeenCalled();
   });
 
   it('completes after a successful wallet send', async () => {
