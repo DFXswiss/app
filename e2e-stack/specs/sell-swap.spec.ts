@@ -268,7 +268,8 @@ async function setupSellFullUiFlow(
   const user = await createUser({
     walletIndex: nextWalletIndex(),
     tag,
-    kycLevel: 30,
+    // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-swap-wallet-aml.spec.ts).
+    kycLevel: 50,
     completePersonalData: true,
     language: 'EN',
   });
@@ -302,7 +303,8 @@ async function setupSellInfoUiFlow(
   const user = await createUser({
     walletIndex: nextWalletIndex(),
     tag,
-    kycLevel: 30,
+    // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-swap-wallet-aml.spec.ts).
+    kycLevel: 50,
     completePersonalData: true,
     language: 'EN',
   });
@@ -334,7 +336,8 @@ async function setupSwapFullUiFlow(
   const user = await createUser({
     walletIndex: nextWalletIndex(),
     tag,
-    kycLevel: 30,
+    // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-swap-wallet-aml.spec.ts).
+    kycLevel: 50,
     completePersonalData: true,
     language: 'EN',
   });
@@ -365,7 +368,8 @@ async function openSellWithInjectedWallet(
   addChain?: () => WalletAnswer,
 ): Promise<string[] | undefined> {
   const walletIndex = nextWalletIndex();
-  const user = await createUser({ walletIndex, tag, kycLevel: 30, completePersonalData: true, language: 'EN' });
+  // Level 50: the default wallet's RULE_3 refuses sell quotes below it (sell-swap-wallet-aml.spec.ts).
+  const user = await createUser({ walletIndex, tag, kycLevel: 50, completePersonalData: true, language: 'EN' });
   await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Sell wallet BA' });
   const wallet = testWallet(walletIndex);
   const calls = await injectWallet(
