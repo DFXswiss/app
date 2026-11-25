@@ -507,6 +507,31 @@ async function expectHandOffAfterReload(
   await expect(manualTransfer).toHaveCount(0);
 }
 
+/** The hash the injected wallet answers for a transaction it accepts; no chain is behind it. */
+const SENT_TX_HASH = `0x${'ab'.repeat(32)}`;
+
+/** A mined, successful receipt for `hash`, the answer a chain node gives once the transaction is in a block. */
+function minedReceipt(hash: string, from: string, to: unknown): WalletAnswer {
+  return {
+    result: {
+      transactionHash: hash,
+      transactionIndex: '0x0',
+      blockHash: `0x${'cd'.repeat(32)}`,
+      blockNumber: '0x1',
+      from,
+      to,
+      cumulativeGasUsed: '0x5208',
+      gasUsed: '0x5208',
+      effectiveGasPrice: '0x3b9aca00',
+      contractAddress: null,
+      logs: [],
+      logsBloom: `0x${'00'.repeat(256)}`,
+      status: '0x1',
+      type: '0x2',
+    },
+  };
+}
+
 /**
  * Logs in through an injected MetaMask wallet (the wallet extension is an external provider), which makes it the
  * active wallet, and opens the sell form with ETH → CHF and a bank account filled in until the payment information is
@@ -521,21 +546,41 @@ async function openSellWithInjectedWallet(
   sendTransaction?: () => WalletAnswer,
   addChain?: () => WalletAnswer,
 ): Promise<string[] | undefined> {
+  return (await openSellWithInjectedWalletAs(page, tag, switchChain, sendTransaction, addChain))?.calls;
+}
+
+/**
+ * `openSellWithInjectedWallet`, which also appends `query` to the sell URL it opens and returns the user's id next to
+ * the wallet methods the page called.
+ */
+async function openSellWithInjectedWalletAs(
+  page: Page,
+  tag: string,
+  switchChain: () => WalletAnswer,
+  sendTransaction?: () => WalletAnswer,
+  addChain?: () => WalletAnswer,
+  query = '',
+): Promise<{ calls: string[]; userId: number } | undefined> {
   const walletIndex = nextWalletIndex();
   // Level 50: the default wallet's RULE_3 refuses sell quotes below it (sell-wallet-aml.spec.ts).
   const user = await createUser({ walletIndex, tag, kycLevel: 50, completePersonalData: true, language: 'EN' });
   await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Sell wallet BA' });
   const wallet = testWallet(walletIndex);
-  const calls = await injectWallet(
-    page,
-    walletAnswers(wallet, {
-      connected: () => true,
-      requestAccounts: () => ({ result: [wallet.address] }),
-      switchChain,
-      addChain,
-      sendTransaction,
-    }),
-  );
+  const answers = walletAnswers(wallet, {
+    connected: () => true,
+    requestAccounts: () => ({ result: [wallet.address] }),
+    switchChain,
+    addChain,
+    sendTransaction,
+  });
+  // web3 waits for the receipt of a transaction the wallet accepted; there is no chain behind the wallet, so it
+  // answers the receipt as mined. Only a test whose wallet accepts the transaction reaches this request.
+  let sentTo: unknown = null;
+  const calls = await injectWallet(page, (method, params) => {
+    if (method === 'eth_sendTransaction') sentTo = (params[0] as { to?: unknown } | undefined)?.to ?? null;
+    if (method === 'eth_getTransactionReceipt') return minedReceipt(String(params[0]), wallet.address, sentTo);
+    return answers(method, params);
+  });
 
   await page.goto('/login?blockchain=Ethereum');
   await page.locator('img[src*="cryptowallet"]').click({ timeout: 15000 });
@@ -546,7 +591,7 @@ async function openSellWithInjectedWallet(
 
   // Only the sell answer: the /buy screen the login lands on can still answer its own paymentInfos request here.
   const paymentInfos = trackPaymentInfosResponses(page, 'sell/paymentInfos');
-  await page.goto('/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1');
+  await page.goto(`/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1${query}`);
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
   if (await quotePaused(page, paymentInfos, 'sell')) return undefined;
@@ -555,7 +600,7 @@ async function openSellWithInjectedWallet(
     ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
     : 'no PUT paymentInfos response captured';
   expect(outcome.kind, `${outcome.detail}; ${apiDetail}`).toBe('payment_info');
-  return calls;
+  return { calls, userId: user.userId };
 }
 
 /**
@@ -1265,6 +1310,58 @@ test.describe('Sell + Swap e2e', () => {
     } finally {
       await next.close();
     }
+  });
+
+  test('/sell: closing a sell the wallet sent redirects once as complete with the route and the order', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+    const opened = await openSellWithInjectedWalletAs(
+      page,
+      'sell-wallet-complete-redirect',
+      () => ({ result: null }),
+      () => ({ result: SENT_TX_HASH }),
+      undefined,
+      WALLET_REDIRECT_QUERY,
+    );
+    if (!opened) return;
+    const { calls, userId } = opened;
+    const redirects = await recordWalletRedirects(page);
+
+    // The active wallet sends the transaction itself, so confirming does not hand off to the redirect URI.
+    await page.getByRole('button', { name: 'Complete transaction in your wallet' }).click({ timeout: 15000 });
+    await expect.poll(() => calls.includes('eth_sendTransaction'), { timeout: 15000 }).toBe(true);
+    await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByText('Transaction hash')).toBeVisible();
+    expect(redirects).toHaveLength(0);
+
+    // Close on the completion screen calls closeServices as complete and opens /account; it redirects 2 s later.
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/account');
+
+    const [redirect] = redirects;
+    expect(redirect.pathname).toBe('/return/sell');
+    expect(redirect.searchParams.get('isComplete')).toBe('true');
+    const route = await waitForRow<{ id: number }>(
+      `SELECT id FROM deposit_route WHERE "userId" = $1 AND type = $2 ORDER BY id DESC LIMIT 1`,
+      [userId, 'Sell'],
+    );
+    expect(redirect.searchParams.get('routeId')).toBe(String(route.id));
+    // orderUid names the payment info the wallet paid: the user's newest transaction request on this route
+    const request = await waitForRow<{ uid: string }>(
+      `SELECT uid FROM transaction_request WHERE "userId" = $1 AND "routeId" = $2 ORDER BY id DESC LIMIT 1`,
+      [userId, route.id],
+    );
+    expect(request.uid).toBeTruthy();
+    expect(redirect.searchParams.get('orderUid')).toBe(request.uid);
+
+    // closeServices gives up the redirect URI, unlike a hand-off, so nothing redirects a second time.
+    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBeNull();
+    await page.waitForTimeout(3000);
+    expect(redirects).toHaveLength(1);
   });
 
   test('/sell: native form submit completes the transaction', async ({ page }) => {

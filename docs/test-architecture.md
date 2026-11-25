@@ -881,7 +881,9 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   protocol, and `window.tron`, newer protocol) that reject the connection with code 4001, or with another code
   for the failure cases. `e2e-stack/specs/sell-swap.spec.ts` logs in through the injected MetaMask and lets it
   reject the chain switch, the request to add an unknown chain (after code 4902 for the switch), or the
-  transaction of "Complete transaction in your wallet" on `/sell`. A green run proves, through the real
+  transaction of "Complete transaction in your wallet" on `/sell`; in one case it accepts the transaction with a
+  fixed hash and answers `eth_getTransactionReceipt` with a mined, successful receipt instead of a chain node.
+  A green run proves, through the real
   frontend, API and Postgres, that a cancelled connection in each of those wallets and a cancelled MetaMask
   login signature return to the wallet selection with no error and no `POST /v1/log/clientError` or
   `POST /v1/auth`, that a retry signs in and creates the user row, that a cancelled chain switch, add-chain request or
@@ -964,7 +966,9 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
 - **The sell and swap hand-off full-stack cases answer the integrator's redirect target themselves.**
   `e2e-stack/specs/sell-swap.spec.ts` opens `/sell` and `/swap` with a `redirect-uri` on `wallet.e2e.test`
   and answers every request to that host with 204. The reload cases there confirm once, reload the page with
-  `page.reload()` and confirm again, all on that answered host. A green run does not prove that a wallet
+  `page.reload()` and confirm again, all on that answered host. The completed-sell case there lets the injected
+  MetaMask accept the transaction and closes the completion screen, whose redirect two seconds later goes to that
+  answered host as well. A green run does not prove that a wallet
   intercepts the redirect, opens a send screen or sends a transaction, nor how a WebView behaves, nor how a
   wallet's WebView reloads a page.
 - **The sell redirect-session full-stack case opens the later page as a second page with `?session=`.**
