@@ -34,7 +34,7 @@ export function loginRedirectParams(
 ): URLSearchParams {
   if (!isWidget) {
     const params = personalIbanOnlyParams(search);
-    const redirectUri = storageGet('localStorage', 'dfx.srv.redirectUri');
+    const redirectUri = storageGet('sessionStorage', 'dfx.srv.redirectUri');
     if (redirectUri && isSafeRedirectUri(redirectUri)) params.set('redirect-uri', redirectUri);
     return params;
   }

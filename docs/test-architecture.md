@@ -973,6 +973,12 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   (`src/util/boot-standalone.ts`), so it has no redirect URI in a new or a reused WebView alike; a page opened
   without those parameters in the same WebView keeps the redirect URI of that session. A green run does not
   prove how a real wallet's WebView handles `sessionStorage`.
+- **The mail-login redirect full-stack case opens the login link as a second page and answers the redirect
+  itself.** The new-tab case in `e2e-stack/specs/auth.spec.ts` starts `/login/mail` with `PARTNER_RETURN_URI`
+  (`e2e-stack/specs/fixtures/partner-redirect.ts`) as `redirect-uri`, reads the login link from the
+  `notification` row and opens it in a new page of the same browser context; the harness answers the partner host
+  with an empty 200. A green run does not prove how a real mail client or
+  browser opens the link, nor how a wallet handles the redirect.
 
 ## Known gaps
 

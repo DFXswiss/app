@@ -689,10 +689,23 @@ describe('AppHandlingContextProvider', () => {
       expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(true);
       expect(assigned).toBe(sellUri);
       expect(ctx.canClose).toBe(true);
-      expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+      expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBe('https://partner.example/');
       expect(ctx.isHandingOff).toBe(true);
       expect(mockRouterNavigate).not.toHaveBeenCalled();
 
+      assigned = undefined;
+      expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(true);
+      expect(assigned).toBe(sellUri);
+    });
+
+    it('a reload after a hand-off keeps the hand-off page', async () => {
+      const result = await renderWithRedirectUri('https://partner.example/');
+      handOff({ type: CloseType.SELL, isComplete: false, sell });
+      result.unmount();
+
+      await renderProvider();
+
+      expect(ctx.canClose).toBe(true);
       assigned = undefined;
       expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(true);
       expect(assigned).toBe(sellUri);

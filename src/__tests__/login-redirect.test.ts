@@ -3,7 +3,7 @@ jest.mock('@dfx.swiss/react', () => ({}));
 import { loginCallbackPath, loginRedirectParams, loginTarget } from '../util/login-redirect';
 
 describe('loginRedirectParams', () => {
-  beforeEach(() => window.localStorage.clear());
+  beforeEach(() => window.sessionStorage.clear());
 
   it('forwards only personal-iban from the page query when not a widget', () => {
     const params = loginRedirectParams({ isWidget: false }, '?user=a@example.com&personal-iban=frick&x=1');
@@ -43,7 +43,7 @@ describe('loginRedirectParams', () => {
   });
 
   it('forwards the stored partner redirect-uri when not a widget', () => {
-    window.localStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/return/');
+    window.sessionStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/return/');
 
     const params = loginRedirectParams({ isWidget: false }, '');
 
@@ -52,7 +52,7 @@ describe('loginRedirectParams', () => {
   });
 
   it('forwards personal-iban and the stored redirect-uri together when not a widget', () => {
-    window.localStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/return/');
+    window.sessionStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/return/');
 
     const params = loginRedirectParams({ isWidget: false }, '?personal-iban=frick');
 
@@ -62,7 +62,7 @@ describe('loginRedirectParams', () => {
   });
 
   it('does not forward an unsafe stored redirect-uri when not a widget', () => {
-    window.localStorage.setItem('dfx.srv.redirectUri', 'javascript:alert(1)');
+    window.sessionStorage.setItem('dfx.srv.redirectUri', 'javascript:alert(1)');
 
     const params = loginRedirectParams({ isWidget: false }, '');
 
@@ -70,7 +70,7 @@ describe('loginRedirectParams', () => {
   });
 
   it('does not forward an empty stored redirect-uri when not a widget', () => {
-    window.localStorage.setItem('dfx.srv.redirectUri', '');
+    window.sessionStorage.setItem('dfx.srv.redirectUri', '');
 
     const params = loginRedirectParams({ isWidget: false }, '');
 
@@ -78,7 +78,7 @@ describe('loginRedirectParams', () => {
   });
 
   it('does not forward the stored redirect-uri when embedded', () => {
-    window.localStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/return/');
+    window.sessionStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/return/');
 
     const params = loginRedirectParams({ isWidget: true }, '');
 
@@ -96,6 +96,12 @@ describe('loginRedirectParams', () => {
     } finally {
       getItemSpy.mockRestore();
     }
+  });
+
+  it('does not forward a redirect-uri from the page query', () => {
+    const params = loginRedirectParams({ isWidget: false }, '?redirect-uri=https://x.example');
+
+    expect([...params.keys()]).toEqual([]);
   });
 });
 

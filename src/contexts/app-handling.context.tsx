@@ -502,14 +502,13 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       }
 
       if (redirectUri) {
-        storeRedirectUri.remove();
-
         // discard unsafe URIs (e.g. javascript:) to prevent script execution and phishing redirects
         if (isSafeRedirectUri(redirectUri)) {
-          // keep the URI for this page, so the user can hand off again
+          // keep the URI for this page and session, so the user can hand off again, also after a reload
           (window as Window).location = getRedirectUri(redirectUri, params);
           closed = true;
         } else {
+          storeRedirectUri.remove();
           setRedirectUri(undefined);
         }
       }

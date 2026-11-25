@@ -273,10 +273,46 @@ describe('useStore', () => {
 
       expect(() => renderHook(() => useStore())).not.toThrow();
       const { result } = renderHook(() => useStore());
-      expect(result.current.redirectUri.get()).toBeUndefined();
-      expect(() => result.current.redirectUri.set('x')).not.toThrow();
-      expect(() => result.current.redirectUri.remove()).not.toThrow();
+      expect(result.current.balances.get()).toBeUndefined();
+      expect(() => result.current.balances.set('x')).not.toThrow();
+      expect(() => result.current.balances.remove()).not.toThrow();
       expect(() => result.current.redirectUri.removeLegacy()).not.toThrow();
+    });
+
+    it('redirectUri does not throw when window.sessionStorage is blocked', () => {
+      const original = window.sessionStorage;
+      const quota = new DOMException('Quota exceeded', 'QuotaExceededError');
+      try {
+        Object.defineProperty(window, 'sessionStorage', {
+          get() {
+            throw new DOMException('Denied', 'SecurityError');
+          },
+          configurable: true,
+        });
+
+        const { result } = renderHook(() => useStore());
+        expect(result.current.redirectUri.get()).toBeUndefined();
+        expect(() => result.current.redirectUri.set('https://example.com')).not.toThrow();
+        expect(() => result.current.redirectUri.remove()).not.toThrow();
+
+        Object.defineProperty(window, 'sessionStorage', {
+          value: {
+            getItem: () => null,
+            setItem: () => {
+              throw quota;
+            },
+            removeItem: () => undefined,
+            clear: () => undefined,
+          },
+          configurable: true,
+        });
+
+        expect(() => result.current.redirectUri.set('https://example.com')).not.toThrow();
+        expect(result.current.redirectUri.get()).toBeUndefined();
+        expect(() => result.current.redirectUri.remove()).not.toThrow();
+      } finally {
+        Object.defineProperty(window, 'sessionStorage', { configurable: true, value: original });
+      }
     });
 
     it.each(['undefined', '<!doctype html>', '{kaputt'])(
@@ -305,7 +341,7 @@ describe('useStore', () => {
       });
 
       const { result } = renderHook(() => useStore());
-      expect(() => result.current.redirectUri.set('x')).not.toThrow();
+      expect(() => result.current.balances.set('x')).not.toThrow();
       expect(() => result.current.queryParams.set({ mode: 'buy' } as any)).not.toThrow();
     });
 
