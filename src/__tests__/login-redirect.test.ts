@@ -3,6 +3,8 @@ jest.mock('@dfx.swiss/react', () => ({}));
 import { loginRedirectParams, loginTarget } from '../util/login-redirect';
 
 describe('loginRedirectParams', () => {
+  beforeEach(() => window.localStorage.clear());
+
   it('forwards only personal-iban from the page query when not a widget', () => {
     const params = loginRedirectParams({ isWidget: false }, '?user=a@example.com&personal-iban=frick&x=1');
     expect(params.get('personal-iban')).toBe('frick');
@@ -38,6 +40,62 @@ describe('loginRedirectParams', () => {
     expect(params.has('personal-iban')).toBe(true);
     expect(params.get('personal-iban')).toBe('');
     expect(params.toString()).toBe('personal-iban=');
+  });
+
+  it('forwards the stored partner redirect-uri when not a widget', () => {
+    window.localStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/return/');
+
+    const params = loginRedirectParams({ isWidget: false }, '');
+
+    expect(params.get('redirect-uri')).toBe('https://partner.example/return/');
+    expect([...params.keys()]).toEqual(['redirect-uri']);
+  });
+
+  it('forwards personal-iban and the stored redirect-uri together when not a widget', () => {
+    window.localStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/return/');
+
+    const params = loginRedirectParams({ isWidget: false }, '?personal-iban=frick');
+
+    expect([...params.keys()]).toEqual(['personal-iban', 'redirect-uri']);
+    expect(params.get('personal-iban')).toBe('frick');
+    expect(params.get('redirect-uri')).toBe('https://partner.example/return/');
+  });
+
+  it('does not forward an unsafe stored redirect-uri when not a widget', () => {
+    window.localStorage.setItem('dfx.srv.redirectUri', 'javascript:alert(1)');
+
+    const params = loginRedirectParams({ isWidget: false }, '');
+
+    expect([...params.keys()]).toEqual([]);
+  });
+
+  it('does not forward an empty stored redirect-uri when not a widget', () => {
+    window.localStorage.setItem('dfx.srv.redirectUri', '');
+
+    const params = loginRedirectParams({ isWidget: false }, '');
+
+    expect([...params.keys()]).toEqual([]);
+  });
+
+  it('does not forward the stored redirect-uri when embedded', () => {
+    window.localStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/return/');
+
+    const params = loginRedirectParams({ isWidget: true }, '');
+
+    expect([...params.keys()]).toEqual([]);
+  });
+
+  it('does not throw or forward a redirect-uri when reading storage throws', () => {
+    const getItemSpy = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage blocked');
+    });
+
+    try {
+      const params = loginRedirectParams({ isWidget: false }, '');
+      expect([...params.keys()]).toEqual([]);
+    } finally {
+      getItemSpy.mockRestore();
+    }
   });
 });
 

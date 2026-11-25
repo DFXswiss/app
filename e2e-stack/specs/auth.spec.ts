@@ -16,8 +16,10 @@ import {
   completeMailLogin,
   expect,
   gotoWithSession,
+  headerBackButton,
   normPath,
   openScreen,
+  PARTNER_RETURN_URI,
   queryOne,
   queryRows,
   requestMailLogin,
@@ -947,6 +949,73 @@ test.describe('Auth area e2e', () => {
     expect(normPath(new URL(page.url()).pathname)).toBe('/connect');
 
     await waitForRow<{ id: number; mail: string }>(`SELECT id, mail FROM user_data WHERE mail = $1`, [email], 20000);
+  });
+
+  // A mail login leaves the page and returns as a new launch with a session. The partner redirect-uri
+  // the visitor arrived with must survive that round trip, so the order can still be handed back.
+  test('/login/mail keeps the partner redirect-uri through the mail-login return', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const email = testEmail('auth-mail-redirect');
+
+    await page.goto('/login/mail?redirect-uri=' + encodeURIComponent(PARTNER_RETURN_URI));
+    await page.waitForFunction(
+      (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+      PARTNER_RETURN_URI,
+      { timeout: 15000 },
+    );
+
+    await expect(page.getByPlaceholder('example@mail.com')).toBeVisible({ timeout: 15000 });
+    await page.getByPlaceholder('example@mail.com').fill(email);
+
+    const mailPost = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === 'POST' && new URL(request.url()).pathname === '/v1/auth/mail';
+    });
+    await page.getByRole('button', { name: 'Next' }).click();
+    const response = await mailPost;
+    expect(response.ok(), `POST /v1/auth/mail returned ${response.status()}`).toBe(true);
+
+    const sent: unknown = response.request().postDataJSON();
+    if (sent === null || typeof sent !== 'object' || Array.isArray(sent)) {
+      throw new Error('POST /v1/auth/mail body is not an object');
+    }
+    const redirectUri = (sent as { redirectUri?: unknown }).redirectUri;
+    if (typeof redirectUri !== 'string') throw new Error('the login page should send redirectUri');
+    const callback = new URL(redirectUri);
+    expect(callback.pathname).toBe('/buy');
+    expect(callback.searchParams.get('redirect-uri')).toBe(PARTNER_RETURN_URI);
+
+    const row = await waitForRow<{ data: string }>(
+      `SELECT n.data
+       FROM notification n
+       JOIN user_data ud ON ud.id = n."userDataId"
+       WHERE ud.mail = $1 AND n.context = 'Login'
+       ORDER BY n.id DESC LIMIT 1`,
+      [email],
+      20000,
+    );
+    await page.goto(loginUrlFromNotification(row.data));
+
+    // The return is a new launch with a session: the boot clear ran, and the callback's redirect-uri
+    // stored the partner target again.
+    await expect
+      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+        timeout: 30000,
+      })
+      .toBeTruthy();
+    await page.waitForFunction(
+      (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+      PARTNER_RETURN_URI,
+      { timeout: 15000 },
+    );
+
+    // Visitor-visible: the home screen still offers the way back, and it leads to the partner.
+    await page.goto('/');
+    const back = headerBackButton(page);
+    await expect(back).toBeVisible({ timeout: 15000 });
+    await back.click();
+    await page.waitForURL((url) => url.href === PARTNER_RETURN_URI, { timeout: 15000 });
   });
 
   // ---------------------------------------------------------------------------

@@ -5,14 +5,16 @@
  * Does not claim individual screen routes (see registry/cross-cutting.ts — empty claims).
  */
 
-import type { Locator, Page, Route } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import { ethers } from 'ethers';
 import {
   decodeJwtPayload,
   expect,
   gotoWithSession,
+  headerBackButton,
   normPath,
   openScreen,
+  PARTNER_RETURN_URI,
   queryOne,
   test,
   testWallet,
@@ -21,23 +23,9 @@ import { cleanupCreatedData, createUser } from './fixtures/factories';
 
 test.describe.configure({ mode: 'serial' });
 
-// A redirect target outside the stack. The harness answers every non-stack host with an empty 200
-// (see isolateFromExternalHosts), so a redirect to it loads without any interception here. It must
-// be https: isSafeRedirectUri only accepts plain http for localhost/127.0.0.1, and the frontend is
-// served over http on a stack host.
-const PARTNER_RETURN_URI = 'https://partner-wallet.e2e.test/return/';
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * The header back button. It has no accessible name; it is the only `absolute left-4` button in
- * the navigation bar (see BackButton in src/components/navigation.tsx).
- */
-function headerBackButton(page: Page): Locator {
-  return page.locator('div.h-14 > button.absolute.left-4');
-}
 
 function apiBase(): string {
   return process.env.E2E_API_URL ?? 'http://api:3000';
