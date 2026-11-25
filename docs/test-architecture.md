@@ -965,6 +965,11 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   `e2e-stack/specs/sell-swap.spec.ts` opens `/sell` and `/swap` with a `redirect-uri` on `wallet.e2e.test`
   and answers every request to that host with 204. A green run does not prove that a wallet intercepts the
   redirect, opens a send screen or sends a transaction, nor how a WebView behaves.
+- **The sell redirect-session full-stack case stands in for the wallet's new WebView with a second page.**
+  The case in `e2e-stack/specs/sell-swap.spec.ts` that leaves `/sell` with a `redirect-uri` without confirming
+  opens `/buy` in a new page of the same browser context, which shares `localStorage` and the login but starts
+  with an empty `sessionStorage`. A green run does not prove that a real wallet opens a new WebView, with a new
+  `sessionStorage`, for a later page; a wallet that reuses the same WebView keeps the redirect URI of that session.
 
 ## Known gaps
 
