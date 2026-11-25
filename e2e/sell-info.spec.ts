@@ -1,8 +1,19 @@
 import { expect, Page, Route, test } from '@playwright/test';
-import { BlockchainType, getCachedAuth } from './helpers/auth-cache';
 
 const IBAN = 'CH9300762011623852957';
 const ADDRESS = '0x1111111111111111111111111111111111111111';
+
+function jwt(): string {
+  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+    account: 1,
+    user: 1,
+    address: ADDRESS,
+    role: 'User',
+    blockchains: ['Ethereum'],
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })}.synthetic`;
+}
 
 const CHF_FIAT = {
   id: 1,
@@ -127,20 +138,13 @@ async function installRoutes(page: Page, error: 'AmountTooLow' | 'KycRequired'):
 }
 
 test.describe('Sell Info - UI Flow', () => {
-  async function getToken(
-    request: Parameters<Parameters<typeof test>[1]>[0]['request'],
-    walletType: BlockchainType = 'evm',
-  ): Promise<string> {
-    const auth = await getCachedAuth(request, walletType);
-    return auth.token;
-  }
+  const token = jwt();
 
-  test('shows the minimum amount and a Close button', async ({ page, request }) => {
-    const token = await getToken(request);
+  test('shows the minimum amount and a Close button', async ({ page }) => {
     await installRoutes(page, 'AmountTooLow');
 
     await page.goto(
-      `/sell/info?session=${token}&blockchain=Ethereum&asset-in=ETH&asset-out=CHF&amount-in=0.01&bank-account=${IBAN}&lang=en`,
+      `/sell/info?session=${encodeURIComponent(token)}&blockchain=Ethereum&asset-in=ETH&asset-out=CHF&amount-in=0.01&bank-account=${IBAN}&lang=en`,
     );
 
     await expect(page.getByText(/Entered amount is below minimum deposit of [\d.,\s]+ ETH/)).toBeVisible({
@@ -153,12 +157,11 @@ test.describe('Sell Info - UI Flow', () => {
     });
   });
 
-  test('shows the KYC hint', async ({ page, request }) => {
-    const token = await getToken(request);
+  test('shows the KYC hint', async ({ page }) => {
     await installRoutes(page, 'KycRequired');
 
     await page.goto(
-      `/sell/info?session=${token}&blockchain=Ethereum&asset-in=ETH&asset-out=CHF&amount-in=0.01&bank-account=${IBAN}&lang=en`,
+      `/sell/info?session=${encodeURIComponent(token)}&blockchain=Ethereum&asset-in=ETH&asset-out=CHF&amount-in=0.01&bank-account=${IBAN}&lang=en`,
     );
 
     await expect(

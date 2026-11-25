@@ -848,12 +848,13 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   sell form shows its normal exchange rate and payment information. A green run proves how the sell page renders
   the banner and its absence for those answers. It does not prove production auth, that the API answers
   `LikelyReturn` for a real address, or that the API returns that quote.
-- **The sell-info visuals answer the API themselves.** `e2e/sell-info.spec.ts` logs in through `getCachedAuth`, then
-  fulfils the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+- **The sell-info visuals answer the API themselves.** `e2e/sell-info.spec.ts` passes a synthetic unsigned JWT
+  (`alg: none`, role User, Ethereum wallet address, expiry one hour ahead) as `session`, so it needs no live login,
+  and fulfils the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
   `/v1/setting/infoBanner`, `/v2/user`), `PUT /v1/sell/paymentInfos` with a quote carrying `AmountTooLow` or
   `KycRequired`, and `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get `501`. A green run proves
-  how `/sell/info` renders those two answers. It does not prove that the API returns them for a given amount or
-  account, or that the client-error endpoint stores the report.
+  how `/sell/info` renders those two answers. It does not prove production auth, that the API returns them for a
+  given amount or account, or that the client-error endpoint stores the report.
 - **The wallet rejection unit test answers for the wallets and their SDKs.**
   `src/__tests__/connect-wallet-rejection.test.tsx` renders the real connect components, wallet hooks,
   `ConnectBase` and `ConnectError` with the real web3 and viem (its mock installs Node's `TextEncoder` and
