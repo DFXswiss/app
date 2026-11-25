@@ -217,7 +217,7 @@ If a redirect URI was provided (`redirect-uri` parameter), the user will be redi
   - `isComplete`: is `true`, if blockchain transaction is already executed
   - `orderUid`: uid of the order the user confirmed; the order's status page is `https://app.dfx.swiss/tx/<orderUid>` and `GET /v1/transaction/single?order-uid=<orderUid>` returns the full transaction with the user's session token and a public summary without it
 
-On the sell and swap pages (`/sell`, `/swap`), a sell or swap the integrator still has to pay (`isComplete` is `false`) is redirected as soon as the user confirms. The page keeps the redirect URI after that redirect, also across a reload in the same browser session. If the page stays open, for example because an in-app browser intercepts the redirect, it behaves as it did before the redirect: the user can confirm again after a short wait, and every later close redirects as well. An integrator must therefore expect more than one redirect, possibly with other parameters.
+On the sell and swap pages (`/sell`, `/swap`), a sell or swap the integrator still has to pay (`isComplete` is `false`) is redirected as soon as the user confirms. The page keeps the redirect URI after that redirect, also across a reload in the same browser session. If the page stays open, for example because an in-app browser intercepts the redirect, it behaves as it did before the redirect: the user can confirm again after a short wait and each further confirmation redirects; another close (for example a cancel) redirects once and then drops the redirect URI. An integrator must therefore expect more than one redirect, possibly with other parameters.
 
 #### Close Message
 
