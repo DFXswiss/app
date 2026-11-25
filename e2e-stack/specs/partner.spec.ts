@@ -305,6 +305,113 @@ test.describe('Partner onboarding fee', () => {
     trackRow('support_log', log.id);
   });
 
+  test('refuses an amount outside the allowed range and assigns the upper bound', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Partner');
+    const ref = await seedRef(userId);
+
+    const customer = await createUser({
+      tag: 'partner-onboarding-fee-range',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    // Starting state the API transitions from: an NA account with an NA user.
+    await queryRows(`UPDATE "user" SET status = 'NA' WHERE id = $1`, [customer.userId]);
+    await queryRows(`UPDATE user_data SET status = 'NA' WHERE id = $1`, [customer.userDataId]);
+
+    // Every request the page sends is recorded, so the refusal is proven by the absence of a PUT and
+    // not only by the disabled button.
+    const requests: { method: string; pathname: string }[] = [];
+    page.on('request', (request) => {
+      requests.push({ method: request.method(), pathname: new URL(request.url()).pathname });
+    });
+
+    await openScreen(page, '/partner/onboarding-fee', jwt);
+    await expect(page.getByText('Assign onboarding fee', { exact: true })).toBeVisible({ timeout: 20000 });
+
+    const assign = assignSection(page);
+    const amountInput = styledInput(assign, 'Onboarding fee (CHF)');
+    const assignButton = assign.getByRole('button', { name: 'Assign', exact: true });
+    // The screen fills the bounds with the Swiss grouping; the separator character depends on the
+    // browser's locale data, so only its position is fixed here.
+    const rangeSentence = /^Enter a whole CHF amount between 1 and 1.000.000\.$/;
+
+    // The form validates on blur first, so the amount field is left before the sentence is expected.
+    await fillAssignForm(assign, customer.address, '0');
+    await amountInput.blur();
+    await expect(assign.getByText(rangeSentence)).toBeVisible({ timeout: 10000 });
+    await expect(assignButton).toBeDisabled();
+
+    await amountInput.fill('1000001');
+    await amountInput.blur();
+    await expect(assign.getByText(rangeSentence)).toBeVisible({ timeout: 10000 });
+    await expect(assignButton).toBeDisabled();
+
+    const refusedPuts = requests.filter(
+      (request) => request.method === 'PUT' && request.pathname === '/v1/partner/onboardingFee',
+    );
+    expect(refusedPuts).toEqual([]);
+
+    const refusedUser = await queryOne<{ status: string }>(`SELECT status FROM "user" WHERE id = $1`, [
+      customer.userId,
+    ]);
+    expect(refusedUser?.status).toBe('NA');
+    const refusedUserData = await queryOne<{ status: string; individualFees: string | null }>(
+      `SELECT status, "individualFees" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    expect(refusedUserData?.status).toBe('NA');
+    expect((refusedUserData?.individualFees ?? '').split(';').filter(Boolean)).toEqual([]);
+
+    // The upper bound itself is a valid amount: the screen sends it and the real API stores it.
+    await amountInput.fill('1000000');
+    await amountInput.blur();
+    await expect(assign.getByText(rangeSentence)).toHaveCount(0);
+    await expect(assignButton).toBeEnabled({ timeout: 10000 });
+
+    const putResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' && new URL(response.url()).pathname === '/v1/partner/onboardingFee',
+    );
+    await assignButton.click();
+    const put = await putResponse;
+    expect(put.status()).toBe(200);
+    expect(put.request().postDataJSON()).toEqual({ address: customer.address, amount: 1000000 });
+
+    const notice = new RegExp(`^Onboarding fee of CHF 1.000.000 assigned to ${customer.address}\\.$`);
+    await expect(page.getByText(notice)).toBeVisible({ timeout: 20000 });
+
+    const userRow = await waitForRow<{ usedRef: string | null; status: string }>(
+      `SELECT "usedRef", status FROM "user" WHERE id = $1 AND status = 'Active'`,
+      [customer.userId],
+      20000,
+    );
+    expect(userRow.usedRef).toBe(ref);
+
+    const userDataRow = await waitForRow<{ status: string; individualFees: string | null }>(
+      `SELECT status, "individualFees" FROM user_data WHERE id = $1 AND status = 'Active'`,
+      [customer.userDataId],
+      20000,
+    );
+    const feeIds = (userDataRow.individualFees ?? '').split(';').filter(Boolean);
+    expect(feeIds.length).toBeGreaterThan(0);
+    await waitForRow<{ id: number }>(
+      `SELECT id FROM fee
+       WHERE id = ANY($1::int[]) AND label = 'Onboarding Fixed 1000000' AND fixed = 1000000 AND active = true`,
+      [feeIds.map(Number)],
+      20000,
+    );
+
+    const log = await waitForMatchingRow<{ id: number; message: string | null }>(
+      `SELECT id, message FROM support_log
+       WHERE "userDataId" = $1 AND clerk = $2`,
+      [customer.userDataId, 'E2E Test Staff'],
+      (row) => decryptPii(row.message)?.startsWith('Onboarding fee') ?? false,
+      20000,
+    );
+    trackRow('support_log', log.id);
+  });
+
   test('refuses to assign a fee to a customer another key-account manager already owns', async ({ page }) => {
     const { jwt, userId } = await loginAs('Partner');
     await seedRef(userId);

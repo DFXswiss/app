@@ -535,7 +535,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   association accounts.
 - **The onboarding-fee full-stack cases write the ref, the fee setting and the starting status
   themselves.** `e2e-stack/specs/compliance-cases.spec.ts` (`/compliance/user/:id sets and removes an
-onboarding fee …` and `… shows the blocked-address error …`) give the key-account user a `ref` and
+onboarding fee …`, `… refuses an onboarding fee outside the allowed range …` and `… shows the
+  blocked-address error …`) give the key-account user a `ref` and
   write the `onboardingFeeUsedRef` setting row by SQL, restoring the setting afterwards, and set the
   customer's status to `NA` or `Blocked` by SQL. A green run does not prove the production migration
   that seeds the setting, how a key-account user gets its ref, or how a customer reaches that status.

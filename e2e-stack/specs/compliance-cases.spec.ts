@@ -779,6 +779,72 @@ test.describe('Compliance area (cases)', () => {
       .toBe(false);
   });
 
+  test('/compliance/user/:id refuses an onboarding fee outside the allowed range and sends nothing', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffReady(userId);
+    await seedOnboardingFeeRef();
+
+    const customer = await createUser({
+      tag: 'cmp-onboarding-fee-range',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    // Starting state the API transitions from: an NA account with an NA user.
+    await queryRows(`UPDATE "user" SET status = 'NA' WHERE id = $1`, [customer.userId]);
+    await queryRows(`UPDATE user_data SET status = 'NA' WHERE id = $1`, [customer.userDataId]);
+
+    // Every request the page sends is recorded, so the refusal is proven by the absence of a PUT and
+    // not only by the disabled button.
+    const requests: { method: string; pathname: string }[] = [];
+    page.on('request', (request) => {
+      requests.push({ method: request.method(), pathname: new URL(request.url()).pathname });
+    });
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+    const amountInput = page.locator('#onboarding-fee-amount');
+    await expect(amountInput).toBeVisible({ timeout: 15000 });
+    // The address is chosen first and the clerk is loaded, so the amount is what keeps Save disabled,
+    // which the positive control at the end of this case proves.
+    await page.locator('#onboarding-fee-address').selectOption(customer.address);
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    // The editor writes the maximum with the Swiss grouping; the separator character depends on the
+    // browser's locale data, so only its position is fixed here.
+    const rangeHint = /^Enter a whole CHF amount between 1 and 1.000.000\.$/;
+
+    await amountInput.fill('0');
+    await expect(page.getByText(rangeHint)).toBeVisible({ timeout: 10000 });
+    await expect(save).toBeDisabled();
+
+    await amountInput.fill('1000001');
+    await expect(page.getByText(rangeHint)).toBeVisible({ timeout: 10000 });
+    await expect(save).toBeDisabled();
+
+    const refusedPuts = requests.filter(
+      (request) =>
+        request.method === 'PUT' && request.pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
+    );
+    expect(refusedPuts).toEqual([]);
+
+    const userData = await queryOne<{ individualFees: string | null }>(
+      `SELECT "individualFees" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    expect(userData).toBeTruthy();
+    expect((userData?.individualFees ?? '').split(';').filter(Boolean)).toEqual([]);
+
+    // Positive control: with the same address and clerk a valid amount enables Save, so the disabled
+    // button above was caused by the amount alone. Save is not clicked.
+    await amountInput.fill('1000000');
+    await expect(page.getByText(rangeHint)).toHaveCount(0);
+    await expect(save).toBeEnabled({ timeout: 15000 });
+  });
+
   test('/compliance/user/:id shows the blocked-address error for an onboarding fee and changes nothing', async ({
     page,
   }) => {
