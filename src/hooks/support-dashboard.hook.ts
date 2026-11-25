@@ -60,6 +60,7 @@ export interface SupportIssueInternalLimitRequestData {
   acceptedLimit?: number;
   investmentDate: string;
   fundOrigin: string;
+  fundOriginText?: string;
   decision?: string;
 }
 

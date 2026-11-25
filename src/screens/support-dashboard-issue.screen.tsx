@@ -549,6 +549,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                   <InfoRow label="Accepted" value={`${issueData.limitRequest.acceptedLimit.toLocaleString()} CHF`} />
                 )}
                 <InfoRow label="Fund Origin" value={issueData.limitRequest.fundOrigin} />
+                {issueData.limitRequest.fundOriginText && (
+                  <InfoRow label="Fund Origin Details" value={issueData.limitRequest.fundOriginText} />
+                )}
                 <InfoRow label="Investment Date" value={issueData.limitRequest.investmentDate} />
                 {issueData.limitRequest.decision && (
                   <InfoRow label="Decision" value={statusBadge(issueData.limitRequest.decision)} />
