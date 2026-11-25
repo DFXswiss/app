@@ -1,6 +1,6 @@
 jest.mock('@dfx.swiss/react', () => ({}));
 
-import { loginRedirectParams, loginTarget } from '../util/login-redirect';
+import { loginCallbackPath, loginRedirectParams, loginTarget } from '../util/login-redirect';
 
 describe('loginRedirectParams', () => {
   beforeEach(() => window.localStorage.clear());
@@ -122,5 +122,31 @@ describe('loginTarget', () => {
   it('treats an empty redirectPath as unset', () => {
     expect(loginTarget('', '/login')).toBe('/buy');
     expect(loginTarget('', '/connect')).toBeUndefined();
+  });
+});
+
+describe('loginCallbackPath', () => {
+  const redirectParams = new URLSearchParams('redirect-uri=https%3A%2F%2Fpartner.example%2F');
+
+  it('returns a set target unchanged without a redirect-uri', () => {
+    expect(loginCallbackPath('/buy', new URLSearchParams())).toBe('/buy');
+  });
+
+  it('returns a set target unchanged with a redirect-uri', () => {
+    expect(loginCallbackPath('/buy', redirectParams)).toBe('/buy');
+  });
+
+  it('returns /account without a target when the params carry a redirect-uri', () => {
+    expect(loginCallbackPath(undefined, redirectParams)).toBe('/account');
+  });
+
+  it('returns undefined without a target and without a redirect-uri', () => {
+    expect(loginCallbackPath(undefined, new URLSearchParams())).toBeUndefined();
+    expect(loginCallbackPath(undefined, new URLSearchParams('personal-iban=frick'))).toBeUndefined();
+  });
+
+  it('treats an empty target as no target', () => {
+    expect(loginCallbackPath('', redirectParams)).toBe('/account');
+    expect(loginCallbackPath('', new URLSearchParams())).toBeUndefined();
   });
 });

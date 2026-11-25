@@ -16,6 +16,14 @@ export function loginTarget(redirectPath: string | undefined, pathname: string):
   return undefined;
 }
 
+// The page a login that leaves the page returns to. A login target wins. Without one the API returns to
+// `/account` on its own, but then nothing carries the partner `redirect-uri`, which the return's boot clears;
+// so a callback that has to carry `redirect-uri` goes to that same `/account` page.
+export function loginCallbackPath(target: string | undefined, params: URLSearchParams): string | undefined {
+  if (target) return target;
+  return params.has('redirect-uri') ? '/account' : undefined;
+}
+
 // Callback params for a login that leaves the page: `personal-iban` and, standalone only, the stored partner
 // `redirect-uri`, because the return is a new page load whose boot clears the stored target. A value that fails
 // `isSafeRedirectUri` is not forwarded. Embedded as a Web Component the selector is the widget attribute and the

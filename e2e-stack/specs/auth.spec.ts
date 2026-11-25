@@ -1018,6 +1018,75 @@ test.describe('Auth area e2e', () => {
     await page.waitForURL((url) => url.href === PARTNER_RETURN_URI, { timeout: 15000 });
   });
 
+  // A mail login opened from the home screen has no login target, so its callback goes to /account.
+  test('mail login from the home screen keeps the partner redirect-uri through the return', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const email = testEmail('auth-mail-home-redirect');
+
+    await page.goto('/?mode=login&redirect-uri=' + encodeURIComponent(PARTNER_RETURN_URI));
+    await page.waitForFunction(
+      (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+      PARTNER_RETURN_URI,
+      { timeout: 15000 },
+    );
+
+    await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible({ timeout: 15000 });
+    await page.locator('img[src*="mail"]').first().click();
+
+    await expect(page.getByPlaceholder('example@mail.com')).toBeVisible({ timeout: 15000 });
+    await page.getByPlaceholder('example@mail.com').fill(email);
+
+    const mailPost = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === 'POST' && new URL(request.url()).pathname === '/v1/auth/mail';
+    });
+    await page.getByRole('button', { name: 'Next' }).click();
+    const response = await mailPost;
+    expect(response.ok(), `POST /v1/auth/mail returned ${response.status()}`).toBe(true);
+
+    const sent: unknown = response.request().postDataJSON();
+    if (sent === null || typeof sent !== 'object' || Array.isArray(sent)) {
+      throw new Error('POST /v1/auth/mail body is not an object');
+    }
+    const redirectUri = (sent as { redirectUri?: unknown }).redirectUri;
+    if (typeof redirectUri !== 'string') throw new Error('the login page should send redirectUri');
+    const callback = new URL(redirectUri);
+    expect(callback.pathname).toBe('/account');
+    expect(callback.searchParams.get('redirect-uri')).toBe(PARTNER_RETURN_URI);
+
+    const row = await waitForRow<{ data: string }>(
+      `SELECT n.data
+       FROM notification n
+       JOIN user_data ud ON ud.id = n."userDataId"
+       WHERE ud.mail = $1 AND n.context = 'Login'
+       ORDER BY n.id DESC LIMIT 1`,
+      [email],
+      20000,
+    );
+    await page.goto(loginUrlFromNotification(row.data));
+
+    // The return is a new launch with a session: the boot clear ran, and the callback's redirect-uri
+    // stored the partner target again.
+    await expect
+      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+        timeout: 30000,
+      })
+      .toBeTruthy();
+    await page.waitForFunction(
+      (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+      PARTNER_RETURN_URI,
+      { timeout: 15000 },
+    );
+
+    // Visitor-visible: the home screen still offers the way back, and it leads to the partner.
+    await page.goto('/');
+    const back = headerBackButton(page);
+    await expect(back).toBeVisible({ timeout: 15000 });
+    await back.click();
+    await page.waitForURL((url) => url.href === PARTNER_RETURN_URI, { timeout: 15000 });
+  });
+
   // ---------------------------------------------------------------------------
   // /mail-login
   // ---------------------------------------------------------------------------
