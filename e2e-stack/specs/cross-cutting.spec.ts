@@ -11,8 +11,10 @@ import {
   decodeJwtPayload,
   expect,
   gotoWithSession,
+  headerBackButton,
   normPath,
   openScreen,
+  PARTNER_RETURN_URI,
   queryOne,
   test,
   testWallet,
@@ -324,6 +326,51 @@ test.describe('Cross-cutting', () => {
       await expectParamStripped(page, 'session');
       await expectParamStripped(page, 'redirect');
       await expect(page.getByText('Settings', { exact: true }).first()).toBeVisible({ timeout: 15000 });
+    });
+
+    // A redirect target stored by an earlier visit must not be inherited by a separate session launch;
+    // a launch that carries its own redirect-uri must still be able to close back to it.
+    test('session launch does not inherit a redirect-uri stored by an earlier visit', async ({ page }) => {
+      const user = await createUser({ tag: 'cc-stale-redirect', language: 'EN' });
+
+      // A real earlier visit stores a redirect target of its own; prove the starting state is real.
+      await page.goto('/?redirect-uri=' + encodeURIComponent(PARTNER_RETURN_URI));
+      await page.waitForFunction(
+        (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+        PARTNER_RETURN_URI,
+        { timeout: 15000 },
+      );
+      // With the target stored, the home screen offers the way back to it.
+      await expect(headerBackButton(page)).toBeVisible({ timeout: 15000 });
+
+      // This launch carries a session but no redirect-uri, so the stored target must be gone.
+      await gotoWithSession(page, '/', user.jwt);
+      expect(normPath(new URL(page.url()).pathname)).toBe('/');
+      expect(await page.evaluate(() => window.localStorage.getItem('dfx.srv.redirectUri'))).toBeNull();
+      await expect(page.locator('img[alt="logo"]')).toBeVisible({ timeout: 15000 });
+      await expect(headerBackButton(page)).toHaveCount(0);
+    });
+
+    test('session launch with its own redirect-uri closes back to it', async ({ page }) => {
+      const user = await createUser({ tag: 'cc-own-redirect', language: 'EN' });
+
+      await gotoWithSession(page, '/?redirect-uri=' + encodeURIComponent(PARTNER_RETURN_URI), user.jwt);
+      expect(normPath(new URL(page.url()).pathname)).toBe('/');
+      // The launch's own redirect target is stored after the boot-time clear.
+      await page.waitForFunction(
+        (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+        PARTNER_RETURN_URI,
+        { timeout: 15000 },
+      );
+      await expectParamStripped(page, 'redirect-uri');
+
+      const back = headerBackButton(page);
+      await expect(back).toBeVisible({ timeout: 15000 });
+      await back.click();
+
+      // Closing navigates about 2 s later (setTimeout in closeServices); assert the URL only, because
+      // the page then lives on the partner origin with storage of its own.
+      await page.waitForURL((url) => url.href === PARTNER_RETURN_URI, { timeout: 15000 });
     });
 
     test('lang param changes UI language and is stripped', async ({ page }) => {
