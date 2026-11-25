@@ -305,7 +305,7 @@ async function setupSellInfoUiFlow(
   tag: string,
   extraQuery = '',
   amountIn = '0.1',
-):Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
+): Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
   const user = await createUser({
     walletIndex: nextWalletIndex(),
     tag,
@@ -1536,12 +1536,7 @@ test.describe('Sell + Swap e2e', () => {
     expect(Number(spec?.minVolume ?? 0), 'up.sh must have seeded an ETH In minimum volume').toBeGreaterThan(0);
 
     // /sell/info picks its asset from the available chains, which `blockchains` limits to the seeded minimum's chain.
-    const { paymentInfos } = await setupSellInfoUiFlow(
-      page,
-      'sell-info-min',
-      '&blockchains=Ethereum',
-      '0.000001',
-    );
+    const { paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-min', '&blockchains=Ethereum', '0.000001');
     if (await quotePaused(page, paymentInfos, 'sell')) return;
 
     await expect(page.getByText(/Entered amount is below minimum deposit of [\d.,\s]+ ETH/)).toBeVisible({
