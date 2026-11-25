@@ -38,10 +38,14 @@ jest.mock('src/components/error-hint', () => ({
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { UserDataEditForm } from 'src/components/compliance/user-data-edit-form';
 import type { UserDataDetail } from 'src/hooks/compliance.hook';
+import { EDITABLE_TEXT_FIELDS, EditableTextField } from 'src/util/user-data-edit.util';
+
+const COMPLIANCE_FIELDS = ['mail', 'phone', 'street', 'houseNumber', 'zip', 'location'] as const;
 
 interface FormProps {
   userDataId: number;
   userData: UserDataDetail;
+  fields: readonly EditableTextField[];
   onSaved: jest.Mock;
   onCancel: jest.Mock;
 }
@@ -68,6 +72,7 @@ function form(props: Partial<FormProps> = {}) {
     <UserDataEditForm
       userDataId={props.userDataId ?? 88001}
       userData={props.userData ?? userData()}
+      fields={props.fields ?? EDITABLE_TEXT_FIELDS}
       onSaved={props.onSaved ?? jest.fn()}
       onCancel={props.onCancel ?? jest.fn()}
     />
@@ -146,6 +151,40 @@ describe('UserDataEditForm', () => {
     expect(screen.getByText('Check is set on the compliance review screen (KYC Status Check).')).toBeInTheDocument();
 
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  it('renders only the allowed fields for Compliance, without firstname and surname', () => {
+    renderForm({ fields: COMPLIANCE_FIELDS });
+
+    expect(input('mail').value).toBe('e2e-edit@example.com');
+    expect(input('phone').value).toBe('+41 79 123 45 67');
+    expect(input('street').value).toBe('Teststrasse');
+    expect(input('houseNumber').value).toBe('7');
+    expect(input('zip').value).toBe('6300');
+    expect(input('location').value).toBe('Zug');
+
+    expect(screen.queryByLabelText('firstname')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('surname')).not.toBeInTheDocument();
+    expect(select('country')).toBeInTheDocument();
+    expect(select('kycStatus')).toBeInTheDocument();
+  });
+
+  it('saves only the allowed keys for Compliance', async () => {
+    const onSaved = jest.fn();
+    renderForm({ fields: COMPLIANCE_FIELDS, onSaved });
+
+    typeInto('mail', 'e2e-new@example.com');
+    typeInto('street', 'Newstrasse');
+    typeInto('Reason', 'Correcting the record');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+
+    expect(mockMutateUserData).toHaveBeenCalledWith(
+      88001,
+      { mail: 'e2e-new@example.com', street: 'Newstrasse' },
+      'Correcting the record',
+    );
   });
 
   it('offers an empty country option only when the account has no country', () => {
@@ -304,6 +343,22 @@ describe('UserDataEditForm', () => {
     expect(onSaved).not.toHaveBeenCalled();
     expect(input('mail').value).toBe('e2e-new@example.com');
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  });
+
+  it('shows the API message for a 403 when the backend does not allow the edit yet', async () => {
+    mockMutateUserData.mockRejectedValueOnce({
+      statusCode: 403,
+      message: 'Compliance may not edit firstname or surname',
+    });
+    const onSaved = jest.fn();
+    renderForm({ fields: COMPLIANCE_FIELDS, onSaved });
+    fillChange();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Compliance may not edit firstname or surname')).toBeInTheDocument();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(input('mail').value).toBe('e2e-new@example.com');
   });
 
   it('shows another API error unchanged, keeps the values and does not reload', async () => {

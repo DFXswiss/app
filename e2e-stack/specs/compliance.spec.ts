@@ -472,6 +472,73 @@ test.describe('Compliance area (overview)', () => {
     );
   });
 
+  test('/compliance/user/:id lets Compliance edit mail and address without the names and logs the change', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-user-data-edit-compliance',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const newMail = `e2e-edit-compliance-${Date.now()}@example.com`;
+    const newStreet = 'E2E Compliance Strasse';
+    const reason = `e2e compliance edit ${Date.now()}`;
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+
+    await expect(page.getByText('Personal Data', { exact: true })).toBeVisible({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+
+    await expect(page.getByLabel('mail', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('street', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('firstname', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('surname', { exact: true })).toHaveCount(0);
+
+    await page.getByLabel('mail', { exact: true }).fill(newMail);
+    await page.getByLabel('street', { exact: true }).fill(newStreet);
+    await page.getByLabel('Reason', { exact: true }).fill(reason);
+
+    const mutationResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/operatorMutation`,
+    );
+
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    expect((await mutationResponsePromise).status()).toBe(200);
+
+    await expect(page.getByRole('button', { name: 'Edit personal data', exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByText(newMail, { exact: true })).toBeVisible();
+
+    // The two editable fields landed, and the names the Compliance role never sent stayed as seeded.
+    await waitForRow(
+      `SELECT id FROM user_data WHERE id = $1 AND mail = $2 AND street = $3
+         AND firstname = 'E2E' AND surname = 'Tester'`,
+      [customer.userDataId, newMail, newStreet],
+      15000,
+    );
+    await waitForRow(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'ManualLog'
+         AND comment LIKE $2 AND comment LIKE $3 AND comment LIKE $4 AND comment LIKE $5
+         AND comment NOT LIKE '%"firstname"%' AND comment NOT LIKE '%"surname"%'`,
+      [
+        customer.userDataId,
+        '%API UserData operator mutation%',
+        '%Editor: E2E Test Staff%',
+        `%comment: ${reason}%`,
+        `%"mail":"${newMail}"%`,
+      ],
+      15000,
+    );
+  });
+
   test('/compliance/user/:id refuses an invalid mail in the personal data edit form', async ({ page }) => {
     const { jwt, userId } = await loginAs('Admin');
     await ensureStaffKycComplete(userId);

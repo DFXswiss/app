@@ -21,6 +21,7 @@ const mockOnboardingFeeProps: {
 const mockEditFormProps: {
   userDataId?: number;
   userData?: UserDataDetail;
+  fields?: readonly string[];
   onSaved?: () => void;
   onCancel?: () => void;
 } = {};
@@ -544,18 +545,43 @@ describe('UserDataPanel', () => {
   });
 
   describe('personal data edit', () => {
-    it('offers the edit entry point to Admin', () => {
-      mockSession = { role: 'Admin' };
+    it.each(['Admin', 'Compliance'])('offers the edit entry point to %s', (role) => {
+      mockSession = { role };
       render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
 
       expect(screen.getByRole('button', { name: 'Edit personal data' })).toBeInTheDocument();
     });
 
-    it.each(['Support', 'Compliance'])('hides the entry point from %s, whose PUT the API refuses', (role) => {
+    it.each(['Support', 'User'])('hides the entry point from %s, whose PUT the API refuses', (role) => {
       mockSession = { role };
       render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
 
       expect(screen.queryByRole('button', { name: 'Edit personal data' })).not.toBeInTheDocument();
+    });
+
+    it('gives the form the fields of the role', () => {
+      mockSession = { role: 'Compliance' };
+      const { unmount } = render(
+        <UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Edit personal data' }));
+      expect(mockEditFormProps.fields).toEqual(['mail', 'phone', 'street', 'houseNumber', 'zip', 'location']);
+      unmount();
+
+      mockSession = { role: 'Admin' };
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Edit personal data' }));
+      expect(mockEditFormProps.fields).toEqual([
+        'mail',
+        'phone',
+        'firstname',
+        'surname',
+        'street',
+        'houseNumber',
+        'zip',
+        'location',
+      ]);
     });
 
     it('hides the entry point without a reload handler, a permitted role, the current row or an account id', () => {

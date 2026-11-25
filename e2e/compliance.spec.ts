@@ -1,4 +1,4 @@
-import { test, expect, APIRequestContext } from '@playwright/test';
+import { test, expect, APIRequestContext, Route } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createTestCredentials } from './test-wallet';
@@ -228,6 +228,46 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
         .evaluate((element) => element.scrollIntoView({ block: 'start' }));
 
       await expect(page).toHaveScreenshot('compliance-user-18-edit-personal-data.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the personal data edit form to Compliance without the names', async ({ page }) => {
+      // The browser's role guard reads the role from an unsigned token; the API never sees it, because
+      // every API request below is forwarded with the real Admin token.
+      const adminPayload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as Record<
+        string,
+        unknown
+      >;
+      const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+      const complianceToken = `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+        account: adminPayload.account,
+        user: adminPayload.user,
+        role: 'Compliance',
+        exp: adminPayload.exp,
+      })}.unsigned`;
+
+      const continueAsAdmin = (route: Route) =>
+        route.continue({ headers: { ...route.request().headers(), authorization: `Bearer ${token}` } });
+      await page.route('**/v1/**', continueAsAdmin);
+      await page.route('**/v2/**', continueAsAdmin);
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${complianceToken}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+      await expect(page.locator('#user-data-edit-mail')).toBeVisible();
+      await expect(page.locator('#user-data-edit-street')).toBeVisible();
+      await expect(page.locator('#user-data-edit-firstname')).toHaveCount(0);
+      await expect(page.locator('#user-data-edit-surname')).toHaveCount(0);
+      // The dossier scrolls in its own column; start the shot at the section heading, not at the button.
+      await page
+        .getByText('Personal Data', { exact: true })
+        .evaluate((element) => element.scrollIntoView({ block: 'start' }));
+
+      await expect(page).toHaveScreenshot('compliance-user-23-edit-personal-data-compliance.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });
