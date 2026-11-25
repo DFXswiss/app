@@ -297,13 +297,15 @@ async function setupSellFullUiFlow(
 
 /**
  * Shared setup for /sell/info write-path and payment-panel tests: user + bank account,
- * paymentInfos tracking, navigation with valid query params (no networkidle). `extraQuery` is appended to that URL.
+ * paymentInfos tracking, navigation with valid query params (no networkidle). `extraQuery` is appended to that URL;
+ * `amountIn` is the ETH amount in it.
  */
 async function setupSellInfoUiFlow(
   page: Page,
   tag: string,
   extraQuery = '',
-): Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
+  amountIn = '0.1',
+):Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
   const user = await createUser({
     walletIndex: nextWalletIndex(),
     tag,
@@ -321,7 +323,7 @@ async function setupSellInfoUiFlow(
   // (by design, so it can auto-advance to the completion screen) — content-based waits gate this.
   await gotoWithSession(
     page,
-    `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}${extraQuery}`,
+    `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=${amountIn}&bank-account=${encodeURIComponent(TEST_IBAN)}${extraQuery}`,
     user.jwt,
   );
   expect(normPath(new URL(page.url()).pathname)).toBe('/sell/info');
@@ -1519,6 +1521,35 @@ test.describe('Sell + Swap e2e', () => {
     await expect(
       txDetails.or(page.getByRole('heading', { name: 'Payment Information' })).first(),
     ).toBeVisible();
+  });
+
+  test('/sell/info: amount below minimum shows the minimum and a Close button instead of a spinner', async ({
+    page,
+  }) => {
+    test.setTimeout(75000);
+
+    // Seeded by scripts/up.sh before the API's final start, like the CHF minimum of the buy case.
+    const spec = await queryOne<{ minVolume: string | number }>(
+      `SELECT "minVolume" FROM transaction_specification
+       WHERE system = 'Ethereum' AND asset = 'ETH' AND direction = 'In' LIMIT 1`,
+    );
+    expect(Number(spec?.minVolume ?? 0), 'up.sh must have seeded an ETH In minimum volume').toBeGreaterThan(0);
+
+    // /sell/info picks its asset from the available chains, which `blockchains` limits to the seeded minimum's chain.
+    const { paymentInfos } = await setupSellInfoUiFlow(
+      page,
+      'sell-info-min',
+      '&blockchains=Ethereum',
+      '0.000001',
+    );
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
+
+    await expect(page.getByText(/Entered amount is below minimum deposit of [\d.,\s]+ ETH/)).toBeVisible({
+      timeout: 25000,
+    });
+    await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
+    await expect(page.locator('[role="status"], .animate-spin')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Payment Information' })).toHaveCount(0);
   });
 
   test('/sell/info: confirming with a redirect URI redirects once with the sell route and the order', async ({

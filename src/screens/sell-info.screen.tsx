@@ -168,8 +168,8 @@ export default function SellInfoScreen(): JSX.Element {
     };
     if (amountIn) {
       request.amount = +amountIn;
-    } else if (amountOut) {
-      request.targetAmount = +amountOut;
+    } else {
+      request.targetAmount = Number(amountOut);
     }
 
     setIsLoading(true);
@@ -184,6 +184,9 @@ export default function SellInfoScreen(): JSX.Element {
   }
 
   function validateSell(sell: Sell): Sell | undefined {
+    setCustomAmountError(undefined);
+    setKycError(undefined);
+
     switch (sell.error) {
       case TransactionError.AMOUNT_TOO_LOW:
         setCustomAmountError(
@@ -219,9 +222,6 @@ export default function SellInfoScreen(): JSX.Element {
         setKycError(sell.error);
         return undefined;
     }
-
-    setCustomAmountError(undefined);
-    setKycError(undefined);
 
     return sell;
   }
@@ -269,8 +269,6 @@ export default function SellInfoScreen(): JSX.Element {
             color={StyledButtonColor.STURDY_WHITE}
           />
         </StyledVerticalStack>
-      ) : !paymentInfo ? (
-        <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : customAmountError ? (
         <>
           <StyledInfoText invertedIcon>{customAmountError}</StyledInfoText>
@@ -282,6 +280,8 @@ export default function SellInfoScreen(): JSX.Element {
         </>
       ) : kycError ? (
         <QuoteErrorHint type={TransactionType.SELL} error={kycError} />
+      ) : !paymentInfo ? (
+        <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : (
         bankAccount &&
         paymentInfo && (

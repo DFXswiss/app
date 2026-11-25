@@ -999,6 +999,7 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   `src/__tests__/sell-info-screen.test.tsx` renders the real screen, countdown and completion component against
   stubbed `@dfx.swiss/react` hooks, components, app parameters, transaction helper and app-handling context, with
   fake timers. A green run proves which quote the screen passes to `closeServices` and when it asks for a new one.
+  It also proves that an amount or KYC error in a quote replaces the payment view and that the amount error cancels.
   It does not prove that the API returns or expires such a quote, that a wallet sends, or that a redirect happens.
 
 ## Known gaps

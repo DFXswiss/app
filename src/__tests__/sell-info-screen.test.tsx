@@ -492,4 +492,44 @@ describe('SellInfoScreen', () => {
     expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: confirmLabel })).not.toBeInTheDocument();
   });
+
+  it('shows the minimum amount for a quote below it and cancels on close', async () => {
+    mockReceiveFor.mockResolvedValue(quote(1, { error: 'AmountTooLow' }));
+    await renderScreen();
+    expect(screen.getByText('Entered amount is below minimum deposit of {{amount}} {{currency}}')).toBeInTheDocument();
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+
+    await clickButton('Close');
+    expect(mockCloseServices).toHaveBeenCalledTimes(1);
+    expect(mockCloseServices).toHaveBeenCalledWith({ type: 'cancel' }, false);
+  });
+
+  it('shows the maximum amount for a quote above it', async () => {
+    mockReceiveFor.mockResolvedValue(quote(1, { error: 'AmountTooHigh' }));
+    await renderScreen();
+    expect(screen.getByText('Entered amount is above maximum deposit of {{amount}} {{currency}}')).toBeInTheDocument();
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+  });
+
+  it('shows the quote error hint for a quote that requires KYC', async () => {
+    mockReceiveFor.mockResolvedValue(quote(1, { error: 'KycRequired' }));
+    await renderScreen();
+    expect(screen.getByTestId('quote-error')).toHaveTextContent('KycRequired');
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+  });
+
+  it('replaces the minimum amount with the quote error hint when the next quote requires KYC', async () => {
+    const minimumText = 'Entered amount is below minimum deposit of {{amount}} {{currency}}';
+    mockReceiveFor.mockResolvedValueOnce(quote(1, { error: 'AmountTooLow' }));
+    const { rerender } = await renderScreen();
+    expect(screen.getByText(minimumText)).toBeInTheDocument();
+
+    mockReceiveFor.mockResolvedValueOnce(quote(2, { error: 'KycRequired' }));
+    mockAppParams = baseAppParams({ amountIn: '0.2' });
+    rerender(<SellInfoScreen />);
+    await flush();
+    expect(mockReceiveFor).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('quote-error')).toHaveTextContent('KycRequired');
+    expect(screen.queryByText(minimumText)).not.toBeInTheDocument();
+  });
 });
