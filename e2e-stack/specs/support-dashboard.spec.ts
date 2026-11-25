@@ -5,12 +5,16 @@
  *
  * Covers role denial for plain customers, screen-specific render assertions, and write paths
  * (create issue, update state, staff reply, notes, templates, transfer of a support attachment into
- * the KYC file) verified in Postgres.
+ * the KYC file, staff reply with a file) verified in Postgres, the attachment preview and download, and
+ * inserting a template into a reply.
  */
 
-import type { Page } from '@playwright/test';
+import type { Page, Response } from '@playwright/test';
+import * as fs from 'fs';
 import {
+  apiDelete,
   apiGet,
+  apiPost,
   expect,
   gotoWithSession,
   loginAs,
@@ -38,6 +42,27 @@ const EXPLICIT_DENIAL_ROUTES = ['/support/dashboard', '/notes', '/templates', '/
 
 const MINIMAL_PDF_BASE64 =
   'JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAzMDAgMTQ0XSA+PgplbmRvYmoKdHJhaWxlcgo8PCAvU2l6ZSA0IC9Sb290IDEgMCBSID4+CjsKJSVFT0YK';
+
+const MINIMAL_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+function waitForMessageFile(
+  page: Page,
+  issueUid: string,
+  messageId: number,
+  access: 'View' | 'Download',
+): Promise<Response> {
+  return page.waitForResponse(
+    (res) =>
+      res.request().method() === 'GET' &&
+      res.url().endsWith(`/support/issue/${issueUid}/message/${messageId}/file?access=${access}`),
+  );
+}
+
+async function messageFileBase64(response: Response): Promise<string> {
+  const { data } = (await response.json()) as { data: { data: number[] } };
+  return Buffer.from(data.data).toString('base64');
+}
 
 async function waitForPath(page: Page, expected: string, message: string, timeout = 15000): Promise<void> {
   await expect.poll(() => normPath(new URL(page.url()).pathname), { message, timeout }).toBe(normPath(expected));
@@ -424,6 +449,200 @@ test.describe('Support dashboard (staff)', () => {
     expect(transferred.fileName?.endsWith(attachmentName)).toBe(true);
     expect(transferred.kycFileId).toBe(message.kycFileId);
     expect(transferred.kycFileName).toBe(message.kycFileName);
+  });
+
+  // FilePreviewPanel embeds a PDF and leaves saving to the browser's PDF toolbar, so only other formats
+  // get a Download button; the next test downloads an image.
+  test('/support/dashboard/issue/:id previews a PDF attachment', async ({ page }) => {
+    const { jwt } = await loginAs('Compliance');
+    const customer = await createUser({ tag: 'supdash-pdf-cust', language: 'EN' });
+    const attachmentName = `e2e-preview-${Date.now()}.pdf`;
+    const seeded = await createSupportIssue(customer.jwt, {
+      tag: 'supdash-pdf-seed',
+      type: 'GenericIssue',
+      name: 'PDF preview seed',
+      message: 'Customer uploaded a PDF.',
+      file: `data:application/pdf;base64,${MINIMAL_PDF_BASE64}`,
+      fileName: attachmentName,
+    });
+    const messageId = required(seeded.messageId, 'createSupportIssue must return the attachment message id');
+
+    await openScreen(page, `/support/dashboard/issue/${seeded.supportIssueId}`, jwt);
+
+    await expect(page.getByRole('heading', { name: 'File Preview', exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Click a file to preview', { exact: true })).toBeVisible();
+
+    const attachmentButton = page.getByRole('button').filter({ hasText: attachmentName });
+    await expect(attachmentButton).toBeVisible({ timeout: 15000 });
+    const storedName = (await attachmentButton.innerText()).trim();
+
+    const viewResponse = waitForMessageFile(page, seeded.uid, messageId, 'View');
+    await attachmentButton.click();
+    expect(await messageFileBase64(await viewResponse)).toBe(MINIMAL_PDF_BASE64);
+
+    // The stored name replaces the panel label.
+    await expect(page.getByRole('heading', { name: storedName, exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'File Preview', exact: true })).toHaveCount(0);
+    await expect(page.locator('embed[type="application/pdf"]')).toHaveAttribute('src', /^blob:/);
+    await expect(page.getByRole('button', { name: 'Download', exact: true })).toHaveCount(0);
+  });
+
+  test('/support/dashboard/issue/:id previews and downloads an image attachment', async ({ page }) => {
+    const { jwt } = await loginAs('Compliance');
+    const customer = await createUser({ tag: 'supdash-img-cust', language: 'EN' });
+    const attachmentName = `e2e-preview-${Date.now()}.png`;
+    const seeded = await createSupportIssue(customer.jwt, {
+      tag: 'supdash-img-seed',
+      type: 'GenericIssue',
+      name: 'Image preview seed',
+      message: 'Customer uploaded an image.',
+      file: `data:image/png;base64,${MINIMAL_PNG_BASE64}`,
+      fileName: attachmentName,
+    });
+    const messageId = required(seeded.messageId, 'createSupportIssue must return the attachment message id');
+
+    await openScreen(page, `/support/dashboard/issue/${seeded.supportIssueId}`, jwt);
+
+    const attachmentButton = page.getByRole('button').filter({ hasText: attachmentName });
+    await expect(attachmentButton).toBeVisible({ timeout: 15000 });
+    const storedName = (await attachmentButton.innerText()).trim();
+    expect(storedName.endsWith(attachmentName)).toBe(true);
+
+    const viewResponse = waitForMessageFile(page, seeded.uid, messageId, 'View');
+    await attachmentButton.click();
+    await viewResponse;
+    await expect(page.getByRole('heading', { name: storedName, exact: true })).toBeVisible();
+    const image = page.getByRole('img', { name: storedName, exact: true });
+    await expect(image).toBeVisible();
+    await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
+
+    // The download is its own audited API call, not a save of the preview blob.
+    const downloadResponse = waitForMessageFile(page, seeded.uid, messageId, 'Download');
+    const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
+    await page.getByRole('button', { name: 'Download', exact: true }).click();
+    await downloadResponse;
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(storedName);
+    expect(fs.readFileSync(await download.path()).toString('base64')).toBe(MINIMAL_PNG_BASE64);
+  });
+
+  test('/support/dashboard/issue/:id inserts a template resolved with the customer data', async ({ page }) => {
+    const { jwt } = await loginAs('Support');
+    const customer = await createUser({ tag: 'supdash-tmpl-cust', language: 'EN' });
+    const customerMail = required(customer.mail, 'created customer must have a mail address');
+    const seeded = await createSupportIssue(customer.jwt, {
+      tag: 'supdash-tmpl-seed',
+      type: 'GenericIssue',
+      name: 'Template insert seed',
+      message: 'Customer message for the template test',
+    });
+    const templateName = `E2E insert template ${Date.now()}`;
+    // German only: the picker falls back to it for every customer language.
+    const template = await apiPost<{ id: number }>(
+      'support/template',
+      {
+        name: templateName,
+        contents: { de: 'Konto $userData.id, Mail $userData.mail, Ticket $issue.uid' },
+      },
+      { jwt },
+    );
+
+    try {
+      await openScreen(page, `/support/dashboard/issue/${seeded.supportIssueId}`, jwt);
+
+      const msgBox = page.getByPlaceholder('Type a message... (Enter = neue Zeile, Cmd/Ctrl+Enter = senden)');
+      await expect(msgBox).toBeVisible({ timeout: 15000 });
+      await expect(msgBox).toHaveValue('');
+
+      // userData.id and userData.mail come from getUserData(accountId); the issue payload carries no mail.
+      const resolved = `Konto ${customer.userDataId}, Mail ${customerMail}, Ticket ${seeded.uid}`;
+      const pickerTitle = page.getByText('Vorlage auswählen', { exact: true });
+
+      const insertTemplate = async (): Promise<void> => {
+        await page.getByTitle('Vorlage einfügen', { exact: true }).click();
+        await expect(pickerTitle).toBeVisible({ timeout: 15000 });
+        await page.getByPlaceholder('Vorlage suchen...').fill(templateName);
+        await page.getByRole('button').filter({ hasText: templateName }).click();
+        await page.getByRole('button', { name: 'Einfügen', exact: true }).click();
+        await expect(pickerTitle).toHaveCount(0);
+      };
+
+      await insertTemplate();
+      await expect(msgBox).toHaveValue(resolved);
+
+      // The second opening reuses the loaded customer data and appends to the existing text.
+      await insertTemplate();
+      await expect(msgBox).toHaveValue(`${resolved}\n${resolved}`);
+    } finally {
+      await apiDelete(`support/template/${template.id}`, { jwt });
+    }
+  });
+
+  test('/support/dashboard/issue/:id attaches, removes, re-attaches and sends the same file', async ({ page }) => {
+    const { jwt } = await loginAs('Support');
+    const customer = await createUser({ tag: 'supdash-file-cust', language: 'EN' });
+    const seeded = await createSupportIssue(customer.jwt, {
+      tag: 'supdash-file-seed',
+      type: 'GenericIssue',
+      name: 'Staff attachment seed',
+      message: 'Customer message for the staff attachment test',
+    });
+    const issueId = seeded.supportIssueId;
+    const fileName = `e2e-staff-file-${Date.now()}.pdf`;
+    const file = {
+      name: fileName,
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(MINIMAL_PDF_BASE64, 'base64'),
+    };
+
+    await openScreen(page, `/support/dashboard/issue/${issueId}`, jwt);
+
+    const messagesPanel = page.locator('div.bg-white.rounded-lg.shadow-sm.p-4').filter({
+      has: page.getByRole('heading', { name: /Messages/ }),
+    });
+    const fileInput = messagesPanel.locator('input[type="file"]');
+    const selectedFileCount = (): Promise<number> =>
+      fileInput.evaluate((input: HTMLInputElement) => input.files?.length ?? -1);
+    const chip = messagesPanel.locator('span.truncate').filter({ hasText: fileName });
+    const sendButton = messagesPanel.getByRole('button', { name: 'Send', exact: true });
+
+    await fileInput.setInputFiles(file);
+    await expect(chip).toHaveText(fileName);
+    expect(await selectedFileCount()).toBe(1);
+
+    await chip.locator('xpath=following-sibling::button').click();
+    await expect(chip).toHaveCount(0);
+    // setInputFiles always dispatches change, while a browser stays silent when the input still holds the
+    // same file. The emptied input is therefore the proof that a visitor can choose the file again.
+    await expect.poll(selectedFileCount, { message: 'removing the file must empty the file input' }).toBe(0);
+
+    await fileInput.setInputFiles(file);
+    await expect(chip).toHaveCount(1);
+
+    const staffMessage = `E2E staff attachment ${Date.now()}`;
+    await page.getByPlaceholder('Type a message... (Enter = neue Zeile, Cmd/Ctrl+Enter = senden)').fill(staffMessage);
+    await expect(sendButton).toBeEnabled({ timeout: 15000 });
+    await sendButton.click();
+
+    const row = await waitForRow<{ issueId: number; message: string; fileUrl: string | null }>(
+      `SELECT "issueId" AS "issueId", message, "fileUrl" AS "fileUrl"
+       FROM support_message
+       WHERE "issueId" = $1 AND message = $2
+       LIMIT 1`,
+      [issueId, staffMessage],
+      20000,
+    );
+    expect(row.issueId).toBe(issueId);
+    expect(row.message).toBe(staffMessage);
+    expect(row.fileUrl).toContain(fileName);
+
+    await expect(messagesPanel.getByText(staffMessage, { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(chip).toHaveCount(0);
+    await expect.poll(selectedFileCount, { message: 'sending must empty the file input' }).toBe(0);
+    expect(await fileInput.inputValue()).toBe('');
+
+    await fileInput.setInputFiles(file);
+    await expect(chip).toHaveText(fileName);
   });
 
   test('/support/user/:id loads the customer email for staff', async ({ page }) => {
