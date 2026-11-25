@@ -295,11 +295,12 @@ async function setupSellFullUiFlow(
 
 /**
  * Shared setup for /sell/info write-path and payment-panel tests: user + bank account,
- * paymentInfos tracking, navigation with valid query params (no networkidle).
+ * paymentInfos tracking, navigation with valid query params (no networkidle). `extraQuery` is appended to that URL.
  */
 async function setupSellInfoUiFlow(
   page: Page,
   tag: string,
+  extraQuery = '',
 ): Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
   const user = await createUser({
     walletIndex: nextWalletIndex(),
@@ -318,7 +319,7 @@ async function setupSellInfoUiFlow(
   // (by design, so it can auto-advance to the completion screen) — content-based waits gate this.
   await gotoWithSession(
     page,
-    `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}`,
+    `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}${extraQuery}`,
     user.jwt,
   );
   expect(normPath(new URL(page.url()).pathname)).toBe('/sell/info');
@@ -1504,6 +1505,52 @@ test.describe('Sell + Swap e2e', () => {
     await expect(
       txDetails.or(page.getByRole('heading', { name: 'Payment Information' })).first(),
     ).toBeVisible();
+  });
+
+  test('/sell/info: confirming with a redirect URI redirects once with the sell route and the order', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    const { user, paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-redirect', WALLET_REDIRECT_QUERY);
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    const redirects = await recordWalletRedirects(page);
+
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    const apiDetail = paymentInfos.last
+      ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
+      : 'no PUT paymentInfos response captured';
+    expect(outcome.kind, `${outcome.detail}; ${apiDetail}`).toBe('payment_info');
+
+    // Without an active wallet, the redirect URI is what offers the wallet button; confirming calls closeServices.
+    const confirm = page.getByRole('button', { name: 'Complete transaction in your wallet' });
+    await expect(confirm).toBeEnabled({ timeout: 15000 });
+    await confirm.click();
+
+    // closeServices sends the page to the redirect URI 2 s after the click, not at once, and does not navigate.
+    expect(redirects).toHaveLength(0);
+    await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/sell/info');
+
+    const [redirect] = redirects;
+    expect(redirect.pathname).toBe('/return/sell');
+    expect(redirect.searchParams.get('isComplete')).toBe('false');
+    const route = await waitForRow<{ id: number }>(
+      `SELECT id FROM deposit_route WHERE "userId" = $1 AND type = $2 ORDER BY id DESC LIMIT 1`,
+      [user.userId, 'Sell'],
+    );
+    expect(redirect.searchParams.get('routeId')).toBe(String(route.id));
+    // orderUid names the confirmed payment info: the user's newest transaction request on this route
+    const request = await waitForRow<{ uid: string }>(
+      `SELECT uid FROM transaction_request WHERE "userId" = $1 AND "routeId" = $2 ORDER BY id DESC LIMIT 1`,
+      [user.userId, route.id],
+    );
+    expect(request.uid).toBeTruthy();
+    expect(redirect.searchParams.get('orderUid')).toBe(request.uid);
+
+    // closeServices gives up the redirect URI, unlike a hand-off, so nothing redirects a second time.
+    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBeNull();
+    await page.waitForTimeout(3000);
+    expect(redirects).toHaveLength(1);
   });
 
   // ---------------------------------------------------------------------------

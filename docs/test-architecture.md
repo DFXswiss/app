@@ -964,11 +964,12 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   a switch, or that viem encodes and decodes with the browser's own `TextEncoder` and `TextDecoder` as it does with
   Node's.
 - **The sell and swap hand-off full-stack cases answer the integrator's redirect target themselves.**
-  `e2e-stack/specs/sell-swap.spec.ts` opens `/sell` and `/swap` with a `redirect-uri` on `wallet.e2e.test`
-  and answers every request to that host with 204. The reload cases there confirm once, reload the page with
-  `page.reload()` and confirm again, all on that answered host. The completed-sell case there lets the injected
-  MetaMask accept the transaction and closes the completion screen, whose redirect two seconds later goes to that
-  answered host as well. A green run does not prove that a wallet
+  `e2e-stack/specs/sell-swap.spec.ts` opens `/sell`, `/sell/info` and `/swap` with a `redirect-uri` on
+  `wallet.e2e.test` and answers every request to that host with 204. The reload cases there confirm once, reload
+  the page with `page.reload()` and confirm again, all on that answered host. The completed-sell case there lets
+  the injected MetaMask accept the transaction and closes the completion screen, whose redirect two seconds later
+  goes to that answered host as well. The `/sell/info` case confirms without an active wallet, whose redirect two
+  seconds later goes to that answered host too. A green run does not prove that a wallet
   intercepts the redirect, opens a send screen or sends a transaction, nor how a WebView behaves, nor how a
   wallet's WebView reloads a page.
 - **The sell redirect-session full-stack case opens the later page as a second page with `?session=`.**
