@@ -826,8 +826,7 @@ test.describe('Compliance area (cases)', () => {
     await expect(save).toBeDisabled();
 
     const refusedPuts = requests.filter(
-      (request) =>
-        request.method === 'PUT' && request.pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
+      (request) => request.method === 'PUT' && request.pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
     );
     expect(refusedPuts).toEqual([]);
 
