@@ -19,6 +19,9 @@ import { TEST_IBAN } from '../e2e-stack/specs/fixtures/test-data';
  *   E2E_FRONTEND_URL   Frontend base URL, e.g. http://localhost:3001
  *   E2E_PG_HOST        host of the local API database, e.g. localhost
  *   E2E_PG_PASSWORD    password of the local API database
+ *   E2E_PII_ENCRYPTION_KEYS
+ *                      key ring of the local API, same value as its PII_ENCRYPTION_KEYS (the mail
+ *                      login code is stored encrypted in notification.data)
  * Optional: E2E_PG_PORT / E2E_PG_USER / E2E_PG_DATABASE (harness defaults 5432 / sa / dfx).
  * The harness dependencies must be installed (`npm ci --prefix e2e-stack`). Without the required
  * variables the harness fixtures would fall back to the Docker-network hosts of the full-stack
@@ -28,7 +31,7 @@ import { TEST_IBAN } from '../e2e-stack/specs/fixtures/test-data';
  * Swiss sample IBAN.
  */
 
-const REQUIRED_ENV = ['E2E_API_URL', 'E2E_FRONTEND_URL', 'E2E_PG_HOST', 'E2E_PG_PASSWORD'];
+const REQUIRED_ENV = ['E2E_API_URL', 'E2E_FRONTEND_URL', 'E2E_PG_HOST', 'E2E_PG_PASSWORD', 'E2E_PII_ENCRYPTION_KEYS'];
 
 async function openAddBankAccountAsMailOnlyUser(page: Page, lang: string): Promise<void> {
   const email = `kyc-only-${randomBytes(4).toString('hex')}@example.com`;

@@ -10,7 +10,7 @@ function piiKey(keyId: string): Buffer {
   const ring = process.env.E2E_PII_ENCRYPTION_KEYS;
   if (!ring) {
     throw new Error(
-      'decryptPii: E2E_PII_ENCRYPTION_KEYS is not set, but the database returned an encrypted value (expected to be set via compose.tests.yml, matching PII_ENCRYPTION_KEYS in env/api.env)',
+      'decryptPii: E2E_PII_ENCRYPTION_KEYS is not set, but the database returned an encrypted value (expected to be set via compose.tests.yml in the stack, matching PII_ENCRYPTION_KEYS in env/api.env, or to the PII_ENCRYPTION_KEYS of the local API when a spec runs against a local API)',
     );
   }
 
