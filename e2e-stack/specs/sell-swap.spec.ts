@@ -43,6 +43,7 @@ import {
   createSwap,
   createUser,
   e2eMail,
+  type KycLevelValue,
   TEST_IBAN,
 } from './fixtures/factories';
 import { injectWallet, recordAuthAndErrorReports, type WalletAnswer, walletAnswers } from './fixtures/injected-wallet';
@@ -305,12 +306,13 @@ async function setupSellInfoUiFlow(
   tag: string,
   extraQuery = '',
   amountIn = '0.1',
+  // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-wallet-aml.spec.ts).
+  kycLevel: KycLevelValue = 50,
 ): Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
   const user = await createUser({
     walletIndex: nextWalletIndex(),
     tag,
-    // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-wallet-aml.spec.ts).
-    kycLevel: 50,
+    kycLevel,
     completePersonalData: true,
     language: 'EN',
   });
@@ -1523,10 +1525,10 @@ test.describe('Sell + Swap e2e', () => {
     ).toBeVisible();
   });
 
-  test('/sell/info: amount below minimum shows the minimum and a Close button instead of a spinner', async ({
+  test('/sell/info: amount below minimum shows the minimum instead of a spinner and Close redirects once to the plain URI', async ({
     page,
   }) => {
-    test.setTimeout(75000);
+    test.setTimeout(90000);
 
     // Seeded by scripts/up.sh before the API's final start, like the CHF minimum of the buy case.
     const spec = await queryOne<{ minVolume: string | number }>(
@@ -1536,15 +1538,46 @@ test.describe('Sell + Swap e2e', () => {
     expect(Number(spec?.minVolume ?? 0), 'up.sh must have seeded an ETH In minimum volume').toBeGreaterThan(0);
 
     // /sell/info picks its asset from the available chains, which `blockchains` limits to the seeded minimum's chain.
-    const { paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-min', '&blockchains=Ethereum', '0.000001');
+    const { paymentInfos } = await setupSellInfoUiFlow(
+      page,
+      'sell-info-min',
+      `&blockchains=Ethereum${WALLET_REDIRECT_QUERY}`,
+      '0.000001',
+    );
     if (await quotePaused(page, paymentInfos, 'sell')) return;
+    const redirects = await recordWalletRedirects(page);
 
     await expect(page.getByText(/Entered amount is below minimum deposit of [\d.,\s]+ ETH/)).toBeVisible({
       timeout: 25000,
     });
-    await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
+    const close = page.getByRole('button', { name: 'Close', exact: true });
+    await expect(close).toBeVisible();
     await expect(page.locator('[role="status"], .animate-spin')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Payment Information' })).toHaveCount(0);
+
+    await close.click();
+    await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+    expect(redirects[0].toString()).toBe(WALLET_REDIRECT_URI);
+
+    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBeNull();
+    await page.waitForTimeout(3000);
+    expect(redirects).toHaveLength(1);
+  });
+
+  test('/sell/info: KYC level 30 shows the KYC hint instead of a spinner or payment information', async ({ page }) => {
+    test.setTimeout(75000);
+    const { paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-kyc', '', '0.1', 30);
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
+
+    await expect(
+      page.getByText(
+        'This transaction is only possible with a verified account. Please complete our KYC (Know-Your-Customer) process.',
+      ),
+    ).toBeVisible({ timeout: 25000 });
+    await expect(page.getByRole('button', { name: 'Complete KYC', exact: true })).toBeVisible();
+    await expect(page.locator('[role="status"], .animate-spin')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Payment Information' })).toHaveCount(0);
+    await expect(page.getByText('Transaction Details', { exact: true })).toHaveCount(0);
   });
 
   test('/sell/info: confirming with a redirect URI redirects once with the sell route and the order', async ({

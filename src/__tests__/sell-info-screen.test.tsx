@@ -348,6 +348,10 @@ describe('SellInfoScreen', () => {
       { type: 'sell', isComplete: false, sell: expect.objectContaining({ uid: 'uid-1' }) },
       false,
     );
+
+    await expireQuote();
+    expect(mockReceiveFor).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('payment-info')).toHaveTextContent('uid-2');
   });
 
   it('completes without sending when the wallet can no longer send', async () => {

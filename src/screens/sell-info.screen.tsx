@@ -227,12 +227,12 @@ export default function SellInfoScreen(): JSX.Element {
   }
 
   async function handleNext(paymentInfo: Sell): Promise<void> {
-    setIsProcessing(true);
-
     if (canSendTransaction() && !activeWallet) {
       closeServices({ type: CloseType.SELL, isComplete: false, sell: paymentInfo }, false);
       return;
     }
+
+    setIsProcessing(true);
 
     try {
       if (canSendTransaction()) await sendTransaction(paymentInfo).then(setSellTxId);
