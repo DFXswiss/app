@@ -175,6 +175,31 @@ test.describe('Support dashboard (staff)', () => {
     await expect(page.getByText(issue.name, { exact: true })).toBeVisible({ timeout: 15000 });
   });
 
+  // The internal limit-request mail no longer carries the customer's source of funds (DFXswiss/backend#6279);
+  // compliance reads it on the issue screen.
+  test('/support/dashboard/issue/:id shows the source of funds of a limit request in the customer\'s words', async ({
+    page,
+  }) => {
+    const fundOriginText = `Salary from ten years of work ${Date.now()}`;
+    const created = await createLimitRequest({ tag: 'supdash-limit-origin', fundOriginText });
+    const issueId = required(
+      created.supportIssueId ??
+        (
+          await queryOne<{ id: number }>(`SELECT id FROM support_issue WHERE uid = $1`, [
+            required(created.supportIssueUid, 'createLimitRequest must return supportIssueId or supportIssueUid'),
+          ])
+        )?.id,
+      'createLimitRequest must leave a support_issue row',
+    );
+
+    const { jwt } = await loginAs('Compliance');
+    await openScreen(page, `/support/dashboard/issue/${issueId}`, jwt);
+
+    const row = page.getByRole('row').filter({ has: page.getByText('Fund Origin Details:', { exact: true }) });
+    await expect(row).toBeVisible({ timeout: 15000 });
+    await expect(row.getByText(fundOriginText, { exact: true })).toBeVisible();
+  });
+
   test('/support/dashboard/create creates an issue for a searched customer', async ({ page }) => {
     const { jwt } = await loginAs('Support');
     const customer = await createUser({ tag: 'supdash-create-cust', language: 'EN' });
