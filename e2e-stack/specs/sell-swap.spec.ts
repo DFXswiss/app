@@ -355,7 +355,25 @@ async function setupSwapFullUiFlow(
   return { user, paymentInfos };
 }
 
-const WALLET_REDIRECT_QUERY = `&redirect-uri=${encodeURIComponent('https://wallet.e2e.test/return/')}`;
+const WALLET_REDIRECT_URI = 'https://wallet.e2e.test/return/';
+const WALLET_REDIRECT_QUERY = `&redirect-uri=${encodeURIComponent(WALLET_REDIRECT_URI)}`;
+const REDIRECT_URI_KEY = 'dfx.srv.redirectUri';
+
+/** The layout's back button (src/components/navigation.tsx); it carries an icon only, no accessible name. */
+function layoutBackButton(page: Page) {
+  return page.locator('button.absolute.left-4');
+}
+
+/** The redirect URI the page keeps in localStorage, directly or inside the stored query parameters. */
+async function redirectUriInLocalStorage(page: Page): Promise<{ key: string | null; queryParams: unknown }> {
+  return page.evaluate((key) => {
+    const raw = window.localStorage.getItem('dfx.srv.queryParams');
+    return {
+      key: window.localStorage.getItem(key),
+      queryParams: raw ? (JSON.parse(raw) as { redirectUri?: unknown }).redirectUri : undefined,
+    };
+  }, REDIRECT_URI_KEY);
+}
 
 /**
  * Answers every request to the integrator's redirect target with 204, so the page stays open, and returns the list
@@ -412,6 +430,14 @@ async function expectRepeatableHandOff(
     [opts.userId, opts.routeType],
   );
   expect(first.searchParams.get('routeId')).toBe(String(route.id));
+  // orderUid names the confirmed payment info: the user's newest transaction request on this route
+
+  const request = await waitForRow<{ uid: string }>(
+    `SELECT uid FROM transaction_request WHERE "userId" = $1 AND "routeId" = $2 ORDER BY id DESC LIMIT 1`,
+    [opts.userId, route.id],
+  );
+  expect(request.uid).toBeTruthy();
+  expect(first.searchParams.get('orderUid')).toBe(request.uid);
 
   await expect(page.getByRole('button', { name: 'Click here once you have issued the transaction' })).toHaveCount(0);
 
@@ -1136,6 +1162,35 @@ test.describe('Sell + Swap e2e', () => {
       userId: user.userId,
       routeType: 'Sell',
     });
+  });
+
+  test('/sell: a redirect URI left without confirming is not offered in a new session', async ({ page }) => {
+    test.setTimeout(90000);
+    const { user } = await setupSellFullUiFlow(page, 'sell-redirect-session', WALLET_REDIRECT_QUERY);
+
+    // The hand-off page keeps the redirect URI for its own session, not in localStorage.
+    await expect
+      .poll(() => page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY))
+      .toBe(WALLET_REDIRECT_URI);
+    expect(await redirectUriInLocalStorage(page)).toEqual({ key: null, queryParams: undefined });
+
+    // The user leaves without confirming; in the same session the page still offers the way back to the wallet.
+    await page.goto('/');
+    await expect(layoutBackButton(page)).toBeVisible({ timeout: 15000 });
+
+    // A new page shares localStorage (and the login) with the first one but starts with its own empty
+    // sessionStorage, as a new WebView does. The wallet opens /buy there without a redirect URI.
+    const next = await page.context().newPage();
+    try {
+      await openScreen(next, '/buy', user.jwt);
+      expect(await redirectUriInLocalStorage(next)).toEqual({ key: null, queryParams: undefined });
+      expect(await next.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBeNull();
+
+      await openScreen(next, '/', user.jwt);
+      await expect(layoutBackButton(next)).toHaveCount(0);
+    } finally {
+      await next.close();
+    }
   });
 
   test('/sell: native form submit completes the transaction', async ({ page }) => {

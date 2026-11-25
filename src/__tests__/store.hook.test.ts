@@ -26,9 +26,47 @@ describe('useStore', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'localStorage', { value: localStorageMock, configurable: true });
     localStorageMock.clear();
+    sessionStorage.clear();
   });
 
   describe('redirectUri', () => {
+    it('keeps the redirectUri in sessionStorage, not in localStorage', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.redirectUri.set('https://example.com/redirect');
+      });
+
+      expect(sessionStorage.getItem('dfx.srv.redirectUri')).toBe('https://example.com/redirect');
+      expect(localStorageMock.getItem('dfx.srv.redirectUri')).toBeNull();
+
+      act(() => {
+        result.current.redirectUri.remove();
+      });
+
+      expect(sessionStorage.getItem('dfx.srv.redirectUri')).toBeNull();
+    });
+
+    it('does not read a redirectUri an older version left in localStorage', () => {
+      localStorageMock.setItem('dfx.srv.redirectUri', 'https://example.com/old');
+      const { result } = renderHook(() => useStore());
+
+      expect(result.current.redirectUri.get()).toBeUndefined();
+    });
+
+    it('removes the redirectUri an older version left in localStorage', () => {
+      localStorageMock.setItem('dfx.srv.redirectUri', 'https://example.com/old');
+      sessionStorage.setItem('dfx.srv.redirectUri', 'https://example.com/current');
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.redirectUri.removeLegacy();
+      });
+
+      expect(localStorageMock.getItem('dfx.srv.redirectUri')).toBeNull();
+      expect(result.current.redirectUri.get()).toBe('https://example.com/current');
+    });
+
     it('should set and get redirectUri', () => {
       const { result } = renderHook(() => useStore());
       
@@ -238,6 +276,7 @@ describe('useStore', () => {
       expect(result.current.redirectUri.get()).toBeUndefined();
       expect(() => result.current.redirectUri.set('x')).not.toThrow();
       expect(() => result.current.redirectUri.remove()).not.toThrow();
+      expect(() => result.current.redirectUri.removeLegacy()).not.toThrow();
     });
 
     it.each(['undefined', '<!doctype html>', '{kaputt'])(

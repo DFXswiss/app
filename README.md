@@ -204,7 +204,7 @@ In case of a sell or swap, the service returns the information (`isComplete`) as
 
 #### Redirect
 
-If a redirect URI was provided (`redirect-uri` parameter), the user will be redirected to this URI on cancel or completion. Depending on the type of closing, a suffix will be appended to the URI and parameters will be provided.
+If a redirect URI was provided (`redirect-uri` parameter), the user will be redirected to this URI on cancel or completion. Depending on the type of closing, a suffix will be appended to the URI and parameters will be provided. The redirect URI is kept for the current browser session only (`sessionStorage`): a page opened in a new session without `redirect-uri` does not redirect.
 
 - Cancel: redirected to `{redirect-url}`
 - Buy: redirected to `{redirect-url}/buy`
@@ -215,6 +215,7 @@ If a redirect URI was provided (`redirect-uri` parameter), the user will be redi
   - `asset`: asset to send
   - `blockchain`: transfer blockchain
   - `isComplete`: is `true`, if blockchain transaction is already executed
+  - `orderUid`: uid of the order the user confirmed; the order's status page is `https://app.dfx.swiss/tx/<orderUid>` and `GET /v1/transaction/single?order-uid=<orderUid>` returns it
 
 On the sell and swap pages (`/sell`, `/swap`), a sell or swap the integrator still has to pay (`isComplete` is `false`) is redirected as soon as the user confirms. The page keeps the redirect URI after that redirect. If the page stays open, for example because an in-app browser intercepts the redirect, it behaves as it did before the redirect: the user can confirm again after a short wait, and every later close redirects as well. An integrator must therefore expect more than one redirect, possibly with other parameters.
 
