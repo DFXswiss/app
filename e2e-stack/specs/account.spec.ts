@@ -14,6 +14,7 @@
 import type { Page } from '@playwright/test';
 import {
   completeMailLogin,
+  decryptPii,
   expect,
   gotoWithSession,
   normPath,
@@ -58,7 +59,7 @@ async function waitForVerificationCode(
     [userDataId, context],
     timeoutMs,
   );
-  return codeFromNotificationData(row.data);
+  return codeFromNotificationData(decryptPii(row.data));
 }
 
 /** Complete mail 2FA on the already-open /2fa screen (same page/IP for later check2fa). */

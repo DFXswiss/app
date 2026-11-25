@@ -42,6 +42,10 @@ services:
       # mismatch produces addresses/keys that silently disagree deep in a buy/forwarding path.
       # It is a fixed, deterministic, throwaway test mnemonic, never used for real funds.
       E2E_EVM_DEPOSIT_SEED: ${E2E_EVM_DEPOSIT_SEED:-away under gun lens ice mean sketch absent stand evoke cigar clever}
+      # This default MUST stay in sync with PII_ENCRYPTION_KEYS in env/api.env — the specs decrypt with
+      # it what the API encrypted at rest (fixtures/pii.ts). Same format: <keyId>:<base64 of 32 bytes>,
+      # comma-separated. It is a fixed throwaway key (32 zero bytes), not a real credential.
+      E2E_PII_ENCRYPTION_KEYS: ${E2E_PII_ENCRYPTION_KEYS:-e2e:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
       E2E_WIDGET_URL: ${E2E_WIDGET_URL:-http://frontend-widget}
     volumes:
       - e2e-test-results:/work/test-results

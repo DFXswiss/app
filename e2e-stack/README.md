@@ -130,6 +130,17 @@ The harness does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` other
 
 The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (override listen port with `E2E_LOOPBACK_PORT`, upstream with `E2E_API_URL`) that relays to the real API service. Under `Environment.LOC` the API builds some URLs (notably KYC-step endpoints) as `http://localhost:3000/...` because it assumes frontend and API share a host; without the forwarder, the browser inside the Playwright container would hit itself and fail with `net::ERR_CONNECTION_REFUSED`.
 
+### Encrypted columns
+
+The API encrypts some columns at rest, for example `notification.data`, `support_log.message`,
+`kyc_step.comment` and `support_message.fileUrl`; the authoritative list is
+`src/shared/pii/pii-encrypted-columns.ts` in the backend repository. SQL returns `enc:v1:…` for them.
+Tests read such a column only through `decryptPii` (`fixtures/pii.ts`) and never compare it in SQL:
+select the rows by unencrypted columns and compare the decrypted value in the test, waiting with
+`waitForMatchingRow` (`fixtures/db.ts`) where needed. Values without the prefix are plaintext, so
+fixtures may still insert plaintext. The key comes from `E2E_PII_ENCRYPTION_KEYS`, set in
+`compose.tests.yml`, and must match `PII_ENCRYPTION_KEYS` in `env/api.env`.
+
 ### Paused sell and swap
 
 The API can switch sell or swap transactions off. While one is off, the endpoints that create or

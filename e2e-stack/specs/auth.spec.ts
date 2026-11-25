@@ -14,6 +14,7 @@ import type { Page } from '@playwright/test';
 import { ethers } from 'ethers';
 import {
   completeMailLogin,
+  decryptPii,
   expect,
   gotoWithSession,
   headerBackButton,
@@ -83,7 +84,7 @@ async function waitForVerificationCode(
     [userDataId, context],
     timeoutMs,
   );
-  return codeFromNotificationData(row.data);
+  return codeFromNotificationData(decryptPii(row.data));
 }
 
 /** Complete the mail-based /2fa screen for a customer account (same browser IP for later check2fa). */
@@ -936,7 +937,7 @@ test.describe('Auth area e2e', () => {
       if (frame !== page.mainFrame()) return;
       visited.push(normPath(new URL(frame.url()).pathname));
     });
-    await page.goto(loginUrlFromNotification(row.data));
+    await page.goto(loginUrlFromNotification(decryptPii(row.data)));
 
     await expect.poll(() => visited.includes('/buy'), { timeout: 30000 }).toBe(true);
     await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 30000 }).toBe('/connect');
@@ -995,7 +996,7 @@ test.describe('Auth area e2e', () => {
       [email],
       20000,
     );
-    await page.goto(loginUrlFromNotification(row.data));
+    await page.goto(loginUrlFromNotification(decryptPii(row.data)));
 
     // The return is a new launch with a session: the boot clear ran, and the callback's redirect-uri
     // stored the partner target again.
@@ -1064,7 +1065,7 @@ test.describe('Auth area e2e', () => {
       [email],
       20000,
     );
-    await page.goto(loginUrlFromNotification(row.data));
+    await page.goto(loginUrlFromNotification(decryptPii(row.data)));
 
     // The return is a new launch with a session: the boot clear ran, and the callback's redirect-uri
     // stored the partner target again.
@@ -1121,7 +1122,7 @@ test.describe('Auth area e2e', () => {
     );
 
     let otp: string | null = null;
-    const parsed = JSON.parse(row.data) as { texts?: Array<{ params?: { url?: string } }> };
+    const parsed = JSON.parse(decryptPii(row.data)) as { texts?: Array<{ params?: { url?: string } }> };
     for (const entry of parsed.texts ?? []) {
       const url = entry?.params?.url;
       if (typeof url === 'string') {

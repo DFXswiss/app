@@ -15,7 +15,19 @@
  */
 
 import type { Locator, Page } from '@playwright/test';
-import { expect, loginAs, normPath, openScreen, queryOne, queryRows, test, waitForRow, withDb } from './fixtures';
+import {
+  decryptPii,
+  expect,
+  loginAs,
+  normPath,
+  openScreen,
+  queryOne,
+  queryRows,
+  test,
+  waitForMatchingRow,
+  waitForRow,
+  withDb,
+} from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -246,7 +258,7 @@ test.describe('Compliance area (cases)', () => {
       [step.kycStepId],
       20000,
     );
-    expect(after.comment).toBe('Falsches Dokument');
+    expect(decryptPii(after.comment)).toBe('Falsches Dokument');
   });
 
   // -------------------------------------------------------------------------
@@ -718,14 +730,14 @@ test.describe('Compliance area (cases)', () => {
       20000,
     );
 
-    const log = await waitForRow<{ id: number }>(
-      `SELECT id FROM support_log
-       WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 AND message LIKE $3`,
-      [
-        customer.userDataId,
-        'E2E Test Staff',
-        `Onboarding fee usedRef of user ${customer.userId} % -> ${ref}; status NA -> Active; account status NA -> Active`,
-      ],
+    const attributionMessage = new RegExp(
+      `^Onboarding fee usedRef of user ${customer.userId} [\\s\\S]* -> ${ref}; status NA -> Active; account status NA -> Active$`,
+    );
+    const log = await waitForMatchingRow<{ id: number; message: string | null }>(
+      `SELECT id, message FROM support_log
+       WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2`,
+      [customer.userDataId, 'E2E Test Staff'],
+      (row) => attributionMessage.test(decryptPii(row.message) ?? ''),
       20000,
     );
     trackRow('support_log', log.id);
@@ -819,20 +831,19 @@ test.describe('Compliance area (cases)', () => {
 
     // The refusal itself is audited: one rejection row naming the clerk, the amount, the address and
     // the reason - and no attribution row.
-    await waitForRow(
-      `SELECT id FROM support_log
-       WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 AND message = $3 AND comment = $4`,
-      [
-        customer.userDataId,
-        'E2E Test Staff',
-        `Onboarding fee 400 CHF for ${customer.address} rejected`,
-        'Address is blocked or deleted',
-      ],
+    await waitForMatchingRow<{ id: number; message: string | null }>(
+      `SELECT id, message FROM support_log
+       WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 AND comment = $3`,
+      [customer.userDataId, 'E2E Test Staff', 'Address is blocked or deleted'],
+      (row) => decryptPii(row.message) === `Onboarding fee 400 CHF for ${customer.address} rejected`,
       15000,
     );
-    const attributionLogs = await queryRows(
-      `SELECT id FROM support_log WHERE "userDataId" = $1 AND message LIKE 'Onboarding fee usedRef of user %'`,
+    const supportLogs = await queryRows<{ id: number; message: string | null }>(
+      `SELECT id, message FROM support_log WHERE "userDataId" = $1`,
       [customer.userDataId],
+    );
+    const attributionLogs = supportLogs.filter((row) =>
+      decryptPii(row.message)?.startsWith('Onboarding fee usedRef of user '),
     );
     expect(attributionLogs).toEqual([]);
   });
@@ -905,7 +916,7 @@ test.describe('Compliance area (cases)', () => {
       [customer.userDataId, 'E2E Test Staff'],
     );
     expect(blockedSupportLogs).toHaveLength(1);
-    expect(blockedSupportLogs[0].message).toBe(
+    expect(decryptPii(blockedSupportLogs[0].message)).toBe(
       'riskStatus requested previous={"riskStatus":"NA"} next={"riskStatus":"Blocked"}',
     );
     expect(blockedSupportLogs[0].comment).toBe(blockedReason);
@@ -962,7 +973,7 @@ test.describe('Compliance area (cases)', () => {
       [customer.userDataId, 'E2E Test Staff'],
     );
     expect(releasedSupportLogs).toHaveLength(2);
-    expect(releasedSupportLogs[1].message).toBe(
+    expect(decryptPii(releasedSupportLogs[1].message)).toBe(
       'riskStatus requested previous={"riskStatus":"Blocked"} next={"riskStatus":"Released"}',
     );
     expect(releasedSupportLogs[1].comment).toBe(releasedReason);
@@ -1079,7 +1090,7 @@ test.describe('Compliance area (cases)', () => {
         [customer.userDataId, 'E2E Test Staff'],
       );
       expect(supportLogs).toHaveLength(1);
-      expect(supportLogs[0].message).toBe(
+      expect(decryptPii(supportLogs[0].message)).toBe(
         `riskStatus requested previous={"riskStatus":"NA"} next={"riskStatus":"${riskStatus}"}`,
       );
       expect(supportLogs[0].comment).toBe(reason);
@@ -1144,7 +1155,7 @@ test.describe('Compliance area (cases)', () => {
       `SELECT id, message FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 ORDER BY id`,
       [customer.userDataId, 'E2E Test Staff'],
     );
-    expect(supportLogs.map((row) => row.message)).toEqual([
+    expect(supportLogs.map((row) => decryptPii(row.message))).toEqual([
       'riskStatus requested previous={"riskStatus":"NA"} next={"riskStatus":"Suspicious"}',
       'riskStatus failed ["riskStatus"]',
     ]);

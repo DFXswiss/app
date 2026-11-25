@@ -15,6 +15,7 @@ import {
   apiDelete,
   apiGet,
   apiPost,
+  decryptPii,
   expect,
   gotoWithSession,
   loginAs,
@@ -436,7 +437,7 @@ test.describe('Support dashboard (staff)', () => {
     );
     expect(message.kycFileId, 'the attachment must be linked to a real kyc_file row').toBeTruthy();
     expect(message.kycFileName).toMatch(/^\d{8}_\d{6}-gesellschafterliste-\d+\.pdf$/);
-    expect(message.fileUrl).toContain(encodeURIComponent(attachmentName));
+    expect(decryptPii(message.fileUrl)).toContain(encodeURIComponent(attachmentName));
     expect(message.kycUserDataId, 'the KYC file must belong to the seeded customer').toBe(customer.userDataId);
 
     const thread = await apiGet<{
@@ -634,7 +635,7 @@ test.describe('Support dashboard (staff)', () => {
     );
     expect(row.issueId).toBe(issueId);
     expect(row.message).toBe(staffMessage);
-    expect(row.fileUrl).toContain(fileName);
+    expect(decryptPii(row.fileUrl)).toContain(fileName);
 
     await expect(messagesPanel.getByText(staffMessage, { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(chip).toHaveCount(0);

@@ -9,6 +9,7 @@ export * from './factories';
 export * from './mail';
 export * from './partner-redirect';
 export * from './paused';
+export * from './pii';
 export * from './routes';
 export * from './screen-sync';
 export * from './test-data';

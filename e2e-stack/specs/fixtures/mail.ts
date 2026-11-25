@@ -1,4 +1,5 @@
 import { queryOne, waitForRow } from './db';
+import { decryptPii } from './pii';
 
 function apiBase(): string {
   return process.env.E2E_API_URL ?? 'http://api:3000';
@@ -53,7 +54,8 @@ export async function requestMailLogin(email: string, redirectUri?: string): Pro
  *
  * The OTP is NOT in a dedicated column and is NOT in the in-process mailKeyList Map.
  * signInByMail embeds the OTP into loginUrl = .../mail-login?otp=<uuid>, then notificationService.sendMail
- * persists a notification row (context='Login') whose `data` JSON contains texts[].params.url with that URL.
+ * persists a notification row (context='Login') whose `data` JSON (encrypted at rest, see ./pii) contains
+ * texts[].params.url with that URL.
  *
  * Only considers notifications with id greater than the baseline recorded by the matching
  * requestMailLogin call (or 0 if that was never called for this email in this process), so a
@@ -76,9 +78,10 @@ export async function completeMailLogin(email: string): Promise<string> {
     [email, baseline],
   );
 
+  const data = decryptPii(row.data);
   let parsed: { texts?: Array<{ params?: { url?: string } }> };
   try {
-    parsed = JSON.parse(row.data) as typeof parsed;
+    parsed = JSON.parse(data) as typeof parsed;
   } catch (e) {
     throw new Error(`completeMailLogin: failed to JSON.parse notification.data: ${e}`);
   }

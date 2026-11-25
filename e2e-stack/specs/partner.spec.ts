@@ -13,6 +13,7 @@
 
 import type { Locator, Page } from '@playwright/test';
 import {
+  decryptPii,
   expect,
   gotoWithSession,
   loginAs,
@@ -21,6 +22,7 @@ import {
   queryOne,
   queryRows,
   test,
+  waitForMatchingRow,
   waitForRow,
 } from './fixtures';
 import { cleanupCreatedData, createUser, trackRow } from './fixtures/factories';
@@ -191,10 +193,11 @@ test.describe('Partner onboarding fee', () => {
     );
 
     // The backend audits the attribution and the assignment names the partner as the clerk.
-    const log = await waitForRow<{ id: number }>(
-      `SELECT id FROM support_log
-       WHERE "userDataId" = $1 AND clerk = $2 AND message LIKE 'Onboarding fee%'`,
+    const log = await waitForMatchingRow<{ id: number; message: string | null }>(
+      `SELECT id, message FROM support_log
+       WHERE "userDataId" = $1 AND clerk = $2`,
       [customer.userDataId, 'E2E Test Staff'],
+      (row) => decryptPii(row.message)?.startsWith('Onboarding fee') ?? false,
       20000,
     );
     trackRow('support_log', log.id);
