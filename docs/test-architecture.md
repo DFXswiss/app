@@ -972,16 +972,13 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   seconds later goes to that answered host too. A green run does not prove that a wallet
   intercepts the redirect, opens a send screen or sends a transaction, nor how a WebView behaves, nor how a
   wallet's WebView reloads a page.
-- **The sell redirect-session full-stack case opens the later page as a second page with `?session=`.**
-  The case in `e2e-stack/specs/sell-swap.spec.ts` that leaves `/sell` with a `redirect-uri` without confirming
-  opens `/buy` through `gotoWithSession` (`e2e-stack/specs/fixtures/auth.ts`) in a new page of the same browser
-  context, which shares `localStorage` and the login but starts with an empty `sessionStorage`. A page opened
-  with `session`, or with `address` and `signature`, and without `redirect-uri` clears `sessionStorage` at boot
-  (`src/util/boot-standalone.ts`), so it has no redirect URI in a new or a reused WebView alike; a page opened
-  with those parameters and `redirect-uri`, such as the mail login callback (`loginRedirectParams` in
-  `src/util/login-redirect.ts`), clears `sessionStorage` and stores that redirect URI again; a page opened
-  without those parameters in the same WebView keeps the redirect URI of that session. A green run does not
-  prove how a real wallet's WebView handles `sessionStorage`.
+- **The sell redirect-session full-stack case opens the later page as a second page of the same browser
+  context.** The case in `e2e-stack/specs/sell-swap.spec.ts` that leaves `/sell` with a `redirect-uri` without
+  confirming opens `/buy` and then `/` with a plain `goto`, without `session`, `address`/`signature` or
+  `redirect-uri`, in a new page that shares `localStorage` and the login token but starts with an empty
+  `sessionStorage`. It does not cover a launch with `session` (the cases in
+  `e2e-stack/specs/cross-cutting.spec.ts` do). A green run does not prove how a real wallet's WebView handles
+  `sessionStorage`.
 - **The mail-login redirect full-stack case opens the login link as a second page and answers the redirect
   itself.** The new-tab case in `e2e-stack/specs/auth.spec.ts` starts `/login/mail` with `PARTNER_RETURN_URI`
   (`e2e-stack/specs/fixtures/partner-redirect.ts`) as `redirect-uri`, reads the login link from the
