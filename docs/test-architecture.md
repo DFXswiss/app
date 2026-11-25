@@ -963,14 +963,18 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   Node's.
 - **The sell and swap hand-off full-stack cases answer the integrator's redirect target themselves.**
   `e2e-stack/specs/sell-swap.spec.ts` opens `/sell` and `/swap` with a `redirect-uri` on `wallet.e2e.test`
-  and answers every request to that host with 204. A green run does not prove that a wallet intercepts the
-  redirect, opens a send screen or sends a transaction, nor how a WebView behaves.
+  and answers every request to that host with 204. The reload cases there confirm once, reload the page with
+  `page.reload()` and confirm again, all on that answered host. A green run does not prove that a wallet
+  intercepts the redirect, opens a send screen or sends a transaction, nor how a WebView behaves, nor how a
+  wallet's WebView reloads a page.
 - **The sell redirect-session full-stack case opens the later page as a second page with `?session=`.**
   The case in `e2e-stack/specs/sell-swap.spec.ts` that leaves `/sell` with a `redirect-uri` without confirming
   opens `/buy` through `gotoWithSession` (`e2e-stack/specs/fixtures/auth.ts`) in a new page of the same browser
   context, which shares `localStorage` and the login but starts with an empty `sessionStorage`. A page opened
-  with `session`, or with `address` and `signature`, clears `sessionStorage` at boot
+  with `session`, or with `address` and `signature`, and without `redirect-uri` clears `sessionStorage` at boot
   (`src/util/boot-standalone.ts`), so it has no redirect URI in a new or a reused WebView alike; a page opened
+  with those parameters and `redirect-uri`, such as the mail login callback (`loginRedirectParams` in
+  `src/util/login-redirect.ts`), clears `sessionStorage` and stores that redirect URI again; a page opened
   without those parameters in the same WebView keeps the redirect URI of that session. A green run does not
   prove how a real wallet's WebView handles `sessionStorage`.
 - **The mail-login redirect full-stack case opens the login link as a second page and answers the redirect

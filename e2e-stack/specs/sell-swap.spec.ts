@@ -448,6 +448,66 @@ async function expectRepeatableHandOff(
 }
 
 /**
+ * Clicks "Complete transaction in your wallet" and waits for the redirect, reloads the page from the address the app
+ * left in the address bar, confirms again and checks that the reloaded page hands off again with the route and the
+ * order instead of falling back to the manual transfer.
+ */
+async function expectHandOffAfterReload(
+  page: Page,
+  redirects: URL[],
+  opts: { screen: string; path: string; userId: number; routeType: 'Sell' | 'Crypto' },
+): Promise<void> {
+  const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+  expect(outcome.kind, outcome.detail).toBe('payment_info');
+
+  const confirm = page.getByRole('button', { name: 'Complete transaction in your wallet' });
+  await expect(confirm).toBeEnabled({ timeout: 15000 });
+  await confirm.click();
+  await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+  expect(redirects[0].pathname).toBe(opts.path);
+
+  // The reload opens what the address bar holds. The app removed its parameters there, so the reloaded page carries
+  // neither the login nor the redirect URI and does not clear sessionStorage at boot; the redirect URI has to come
+  // from the session store, where the hand-off kept it.
+  const reloadUrl = new URL(page.url());
+  expect(normPath(reloadUrl.pathname)).toBe(opts.screen);
+  expect(reloadUrl.searchParams.has('session')).toBe(false);
+  expect(reloadUrl.searchParams.has('redirect-uri')).toBe(false);
+  expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBe(WALLET_REDIRECT_URI);
+
+  await page.reload();
+  expect(normPath(new URL(page.url()).pathname)).toBe(opts.screen);
+  await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+  const reloaded = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+  expect(reloaded.kind, reloaded.detail).toBe('payment_info');
+
+  const manualTransfer = page.getByRole('button', { name: 'Click here once you have issued the transaction' });
+  await expect(manualTransfer).toHaveCount(0);
+
+  const confirmAgain = page.getByRole('button', { name: 'Complete transaction in your wallet' });
+  await expect(confirmAgain).toBeEnabled({ timeout: 15000 });
+  await confirmAgain.click();
+  await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(2);
+
+  const second = redirects[1];
+  expect(second.pathname).toBe(opts.path);
+  const route = await waitForRow<{ id: number }>(
+    `SELECT id FROM deposit_route WHERE "userId" = $1 AND type = $2 ORDER BY id DESC LIMIT 1`,
+    [opts.userId, opts.routeType],
+  );
+  expect(second.searchParams.get('routeId')).toBe(String(route.id));
+  // orderUid names the payment info confirmed after the reload: the user's newest transaction request on this route
+  const request = await waitForRow<{ uid: string }>(
+    `SELECT uid FROM transaction_request WHERE "userId" = $1 AND "routeId" = $2 ORDER BY id DESC LIMIT 1`,
+    [opts.userId, route.id],
+  );
+  expect(request.uid).toBeTruthy();
+  expect(second.searchParams.get('orderUid')).toBe(request.uid);
+
+  await expect(manualTransfer).toHaveCount(0);
+}
+
+/**
  * Logs in through an injected MetaMask wallet (the wallet extension is an external provider), which makes it the
  * active wallet, and opens the sell form with ETH → CHF and a bank account filled in until the payment information is
  * shown. The wallet answers `wallet_switchEthereumChain` with `switchChain`, `wallet_addEthereumChain` with
@@ -1164,6 +1224,20 @@ test.describe('Sell + Swap e2e', () => {
     });
   });
 
+  test('/sell: after a hand-off, a reload hands off again instead of the manual transfer', async ({ page }) => {
+    test.setTimeout(120000);
+    const { user, paymentInfos } = await setupSellFullUiFlow(page, 'sell-hand-off-reload', WALLET_REDIRECT_QUERY);
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    const redirects = await recordWalletRedirects(page);
+
+    await expectHandOffAfterReload(page, redirects, {
+      screen: '/sell',
+      path: '/return/sell',
+      userId: user.userId,
+      routeType: 'Sell',
+    });
+  });
+
   test('/sell: a redirect URI left without confirming is not offered in a new session', async ({ page }) => {
     test.setTimeout(90000);
     const { user } = await setupSellFullUiFlow(page, 'sell-redirect-session', WALLET_REDIRECT_QUERY);
@@ -1558,6 +1632,20 @@ test.describe('Sell + Swap e2e', () => {
     await expectRepeatableHandOff(page, redirects, {
       path: '/return/swap',
       assetInput: 'sourceAsset',
+      userId: user.userId,
+      routeType: 'Crypto',
+    });
+  });
+
+  test('/swap: after a hand-off, a reload hands off again instead of the manual transfer', async ({ page }) => {
+    test.setTimeout(120000);
+    const { user, paymentInfos } = await setupSwapFullUiFlow(page, 'swap-hand-off-reload', WALLET_REDIRECT_QUERY);
+    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    const redirects = await recordWalletRedirects(page);
+
+    await expectHandOffAfterReload(page, redirects, {
+      screen: '/swap',
+      path: '/return/swap',
       userId: user.userId,
       routeType: 'Crypto',
     });
