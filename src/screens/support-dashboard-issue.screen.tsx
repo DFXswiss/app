@@ -230,10 +230,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setUserTransactions([]);
   }, [issueData?.account.id]);
 
-  async function openTemplatePicker(): Promise<void> {
+  async function openTemplatePicker(accountId: number): Promise<void> {
     const gen = requestGenRef.current;
-    const accountId = issueData?.account.id;
-    if (accountId == null || isUserDataLoading) return;
     if (userDataDetail) {
       setTemplatePickerOpen(true);
       return;
@@ -270,9 +268,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  async function handleUpdate(): Promise<void> {
-    if (!id || updatingIssueIdsRef.current.has(id)) return;
-    const requestId = id;
+  // The Update button is disabled while this ticket's update is in flight, also after A→B→A.
+  async function handleUpdate(requestId: string): Promise<void> {
     updatingIssueIdsRef.current.add(requestId);
     setIsUpdating(true);
     setActionError(undefined);
@@ -342,7 +339,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
       if (idRef.current !== sendIssueId) return;
       setSelectedFiles([]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      clearFileInput();
       loadMessages();
     } catch (e: unknown) {
       writeDraft(sendIssueId, draft);
@@ -354,6 +351,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       sendingIssueIdsRef.current.delete(sendIssueId);
       if (idRef.current === sendIssueId) setIsSending(false);
     }
+  }
+
+  // Lets the same file be chosen again. The input is gone when a send finishes after the screen unmounted.
+  function clearFileInput(): void {
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   function handleTemplateInsert(content: string): void {
@@ -372,12 +374,12 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setMessageText((prev) => (prev ? `${prev}\n${resolved}` : resolved));
   }
 
-  async function openFile(msg: SupportMessageInfo): Promise<void> {
-    if (!issueData?.uid || !msg.fileName || !id) return;
+  async function openFile(uid: string, msg: SupportMessageInfo): Promise<void> {
+    if (!msg.fileName) return;
     const gen = requestGenRef.current;
     const seq = ++filePreviewSeqRef.current;
     try {
-      const { data, contentType } = await getMessageFile(issueData.uid, msg.id, 'View');
+      const { data, contentType } = await getMessageFile(uid, msg.id, 'View');
       if (requestGenRef.current !== gen || filePreviewSeqRef.current !== seq) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
@@ -396,11 +398,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     }
   }
 
-  async function downloadPreview(): Promise<void> {
-    if (!issueData?.uid || !filePreview || !id) return;
+  async function downloadPreview(uid: string): Promise<void> {
+    if (!filePreview) return;
     const gen = requestGenRef.current;
     try {
-      const { data, contentType } = await getMessageFile(issueData.uid, filePreview.messageId, 'Download');
+      const { data, contentType } = await getMessageFile(uid, filePreview.messageId, 'Download');
       if (requestGenRef.current !== gen) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
@@ -549,6 +551,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                   <InfoRow label="Accepted" value={`${issueData.limitRequest.acceptedLimit.toLocaleString()} CHF`} />
                 )}
                 <InfoRow label="Fund Origin" value={issueData.limitRequest.fundOrigin} />
+                {issueData.limitRequest.fundOriginText && (
+                  <InfoRow label="Fund Origin Details" value={issueData.limitRequest.fundOriginText} />
+                )}
                 <InfoRow label="Investment Date" value={issueData.limitRequest.investmentDate} />
                 {issueData.limitRequest.decision && (
                   <InfoRow label="Decision" value={statusBadge(issueData.limitRequest.decision)} />
@@ -607,7 +612,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                 value={updateDepartment}
                 onChange={(e) => setUpdateDepartment(e.target.value)}
               >
-                {!issueData?.department && <option value="">-</option>}
+                {!issueData.department && <option value="">-</option>}
                 {ASSIGNABLE_DEPARTMENTS.map((d) => (
                   <option key={d} value={d}>
                     {d}
@@ -622,7 +627,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                 value={updateClerk}
                 onChange={(e) => setUpdateClerk(e.target.value)}
               >
-                {!issueData?.clerk && <option value="">-</option>}
+                {!issueData.clerk && <option value="">-</option>}
                 {updateClerk && !clerks.includes(updateClerk) && (
                   <option key={updateClerk} value={updateClerk}>
                     {updateClerk}
@@ -637,24 +642,22 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             </div>
             <button
               className="px-4 py-1.5 bg-dfxBlue-400 text-white rounded text-xs hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
-              onClick={handleUpdate}
+              onClick={() => handleUpdate(id)}
               disabled={isUpdating}
             >
               {isUpdating ? 'Updating...' : 'Update'}
             </button>
-            {id && issueData.id === +id && (
-              <TicketNotePanel
-                key={id}
-                userDataId={issueData.account.id}
-                issueId={+id}
-                draft={noteDraft}
-                onDraftChange={(next) => {
-                  // Stale onCreated from another ticket (or an A→B→A round-trip) must not wipe a newer draft.
-                  if (next === undefined && noteGenRef.current !== noteGenAtRender) return;
-                  setNoteDraft(next);
-                }}
-              />
-            )}
+            <TicketNotePanel
+              key={id}
+              userDataId={issueData.account.id}
+              issueId={+id}
+              draft={noteDraft}
+              onDraftChange={(next) => {
+                // Stale onCreated from another ticket (or an A→B→A round-trip) must not wipe a newer draft.
+                if (next === undefined && noteGenRef.current !== noteGenAtRender) return;
+                setNoteDraft(next);
+              }}
+            />
           </div>
         </div>
 
@@ -678,7 +681,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             <SupportMessageList
               key={id}
               messages={messages}
-              onOpenFile={(msg) => openFile(msg as SupportMessageInfo)}
+              onOpenFile={(msg) => openFile(issueData.uid, msg as SupportMessageInfo)}
             />
           </div>
 
@@ -695,7 +698,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                     className="text-dfxGray-700 hover:text-dfxRed-100"
                     onClick={() => {
                       setSelectedFiles((prev) => prev.filter((_, idx) => idx !== i));
-                      if (fileInputRef.current) fileInputRef.current.value = '';
+                      clearFileInput();
                     }}
                   >
                     &times;
@@ -725,8 +728,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             </button>
             <button
               className="px-2 py-2 text-dfxGray-700 hover:text-dfxBlue-800 transition-colors disabled:opacity-30"
-              onClick={() => void openTemplatePicker()}
-              disabled={isUserDataLoading || issueData?.account.id == null}
+              onClick={() => void openTemplatePicker(issueData.account.id)}
+              disabled={isUserDataLoading}
               title={isUserDataLoading ? 'Lade Userdaten...' : 'Vorlage einfügen'}
             >
               <svg
@@ -813,7 +816,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             if (filePreview) URL.revokeObjectURL(filePreview.url);
             setFilePreview(undefined);
           }}
-          onDownload={downloadPreview}
+          onDownload={() => downloadPreview(issueData.uid)}
         />
       </div>
 

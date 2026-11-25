@@ -393,6 +393,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   in-app tag, a customer message without an origin and a staff reply that carries an origin. A green
   run proves the messages panel renders those tags. It does not prove that the API stores `origin`,
   that a mail opened the ticket, or that the session is a real staff login.
+- **The staff limit-request visual spec answers the issue payload itself.**
+  `e2e/support-limit-request.spec.ts` fulfils the issue data with and without `fundOriginText`, the
+  messages, clerks, clerk mapping and activity with fixtures. A green run proves that the limit-request
+  panel renders those fixtures with and without the source-of-funds row. It does not prove that the API
+  stores, decrypts or returns `fundOriginText`; the test in
+  `e2e-stack/specs/support-dashboard.spec.ts` proves that.
 - **The support-issue receiver-IBAN spec pins KYC level and account mail on GET /v2/user.**
   `e2e/support-issue-receiver-iban.spec.ts` rewrites that response so `kyc.level` is high enough for
   the screen guard and `mail` is present if the cached wallet session has none. A green visual run
@@ -817,6 +823,16 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   markup. A green run proves those stubs exercise the profile, address, referral and PDF branches.
   It does not prove a live user, a live transaction list, a real address switch, or that the
   production components render.
+- **The support-issue screen panels test replaces the API hooks, the session, the router and the child
+  components.** `src/__tests__/support-dashboard-issue.screen.panels.test.tsx` replaces
+  `@dfx.swiss/react` (session and enums), the component library, `useParams`, the guard, navigation,
+  layout, split-pane, draft and staff-name hooks, the settings context, the support-dashboard and
+  compliance API hooks, and the formatting, draft, placeholder, file and shortcut helpers. The info
+  panels, message list, file preview, limit-request decision form, note panel, template pickers and
+  error hint are stand-ins that expose their callbacks; the blob URL functions are stubbed. A green run
+  proves that the screen follows those stubs through its branches. It does not prove a real API,
+  session or navigation, or that the real child components or helpers work; the real tests are in
+  `e2e-stack/specs/support-dashboard.spec.ts`.
 - **The order form coverage test replaces the order hook and the SDK.**
   `src/__tests__/order-interface.test.tsx` supplies a hand-built order state and replaces the SDK
   enums, the order hook, the debounce hook and the payment-info component. A green run proves the

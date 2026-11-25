@@ -227,6 +227,10 @@
     "title": "Support-Dashboard",
     "description": "Support-Dashboard: Übersicht und Detailansichten; Limit-Requests-Tab neben Open."
   },
+  "support-limit-request": {
+    "title": "Support-Ticket Limit-Antrag",
+    "description": "Ticket eines Limit-Antrags im Support-Dashboard: beantragtes Limit, Mittelherkunft und, wenn der Kunde sie beschrieben hat, die Mittelherkunft in seinen Worten (Fund Origin Details); die interne Mail trägt sie nicht mehr."
+  },
   "support-dashboard-overview": {
     "title": "Support-Dashboard Übersicht",
     "description": "Support-Dashboard-Übersicht und Statistiken."

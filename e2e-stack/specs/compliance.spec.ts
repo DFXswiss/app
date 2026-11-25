@@ -14,6 +14,7 @@
 
 import {
   apiGet,
+  decryptPii,
   expect,
   extractAppRoutes,
   gotoWithSession,
@@ -24,6 +25,7 @@ import {
   queryRows,
   resolveAppSourcePath,
   test,
+  waitForMatchingRow,
   waitForRow,
   withDb,
 } from './fixtures';
@@ -615,9 +617,10 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByRole('button', { name: 'Reset', exact: true })).toHaveCount(0);
     await expect(page.getByText('Canceled', { exact: true }).first()).toBeVisible();
 
-    await waitForRow(
-      `SELECT id FROM kyc_step WHERE id = $1 AND status = 'Canceled' AND comment = $2`,
-      [step.kycStepId, `Reset: ${reason}`],
+    await waitForMatchingRow<{ id: number; comment: string | null }>(
+      `SELECT id, comment FROM kyc_step WHERE id = $1 AND status = 'Canceled'`,
+      [step.kycStepId],
+      (row) => decryptPii(row.comment) === `Reset: ${reason}`,
       15000,
     );
     await waitForRow(
