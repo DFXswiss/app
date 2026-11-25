@@ -153,9 +153,7 @@ test.describe('Support dashboard (staff)', () => {
     await expect(page.getByRole('button', { name: /^Completed \(/ })).toBeVisible();
   });
 
-  test('/support/dashboard/all Limit Requests tab lists a LimitRequest without Open type filter', async ({
-    page,
-  }) => {
+  test('/support/dashboard/all Limit Requests tab lists a LimitRequest without Open type filter', async ({ page }) => {
     const created = await createLimitRequest({ tag: 'supdash-limit-tab' });
     const issueRow = created.supportIssueId
       ? await queryOne<{ id: number; name: string }>(`SELECT id, name FROM support_issue WHERE id = $1`, [
@@ -177,7 +175,7 @@ test.describe('Support dashboard (staff)', () => {
 
   // The internal limit-request mail no longer carries the customer's source of funds (DFXswiss/backend#6279);
   // compliance reads it on the issue screen.
-  test('/support/dashboard/issue/:id shows the source of funds of a limit request in the customer\'s words', async ({
+  test("/support/dashboard/issue/:id shows the source of funds of a limit request in the customer's words", async ({
     page,
   }) => {
     const fundOriginText = `Salary from ten years of work ${Date.now()}`;
@@ -342,10 +340,10 @@ test.describe('Support dashboard (staff)', () => {
     await expect
       .poll(
         async () =>
-          queryOne<{ id: number }>(
-            `SELECT id FROM support_message WHERE "issueId" = $1 AND message = $2 LIMIT 1`,
-            [issueId, staffReplyKeyboard],
-          ),
+          queryOne<{ id: number }>(`SELECT id FROM support_message WHERE "issueId" = $1 AND message = $2 LIMIT 1`, [
+            issueId,
+            staffReplyKeyboard,
+          ]),
         { message: 'Enter must not create a support_message row', timeout: 3000 },
       )
       .toBeUndefined();

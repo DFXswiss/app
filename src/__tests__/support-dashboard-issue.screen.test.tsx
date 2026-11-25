@@ -257,26 +257,6 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
     jest.restoreAllMocks();
   });
 
-  // The internal limit-request mail no longer carries the customer's source of funds; compliance reads it here.
-  it('shows the source of funds in the customer\'s words for a limit request', async () => {
-    mockGetIssueData.mockResolvedValue(
-      issue(1, {
-        type: 'LimitRequest',
-        limitRequest: {
-          id: 4,
-          limit: 100000,
-          investmentDate: 'Now',
-          fundOrigin: 'Savings',
-          fundOriginText: 'Salary from ten years of work',
-        },
-      }),
-    );
-
-    render(<SupportDashboardIssueScreen />);
-
-    expect(await screen.findByText('Salary from ten years of work')).toBeInTheDocument();
-  });
-
   it('hides ticket A load errors on the first render after switching to ticket B', async () => {
     mockGetIssueData.mockRejectedValueOnce(new Error('ticket A exploded'));
     const { rerender } = render(<SupportDashboardIssueScreen />);
