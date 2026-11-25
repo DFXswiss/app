@@ -619,7 +619,7 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
       await page.waitForTimeout(500);
 
-      await expect(page).toHaveScreenshot('compliance-user-23-onboarding-fee-invalid-amount.png', {
+      await expect(page).toHaveScreenshot('compliance-user-24-onboarding-fee-invalid-amount.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });

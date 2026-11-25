@@ -237,13 +237,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixed message. A green run proves that the loaded dossier keeps rendering the file error in its
   preview area, not that the API rejects a real KYC-file request or returns that message.
 - **The onboarding-fee visuals answer the clerk lookup, the address list, the suggested amounts and the error
-  themselves.** `e2e/compliance.spec.ts` (`compliance-user-16` and `-17`) answer
+  themselves.** `e2e/compliance.spec.ts` (`compliance-user-16`, `-17` and `-24`) answer
   `GET /v1/support/issue/clerk` with a fixed clerk name, answer `GET /v1/partner/onboardingFee/amounts`
   with the suggested amounts `{ "amounts": [400, 800] }`, and, when the fetched dossier has no users, supply
   one synthetic address; `-17` also intercepts `PUT /v1/userData/1005/onboardingFee` and answers
   HTTP 400 with `Address is blocked or deleted`. A green run proves how the form renders those values,
   not that the account has that address, that the API resolves that clerk, that the API serves those
-  suggested amounts, or that it rejects a real address.
+  suggested amounts, or that it rejects a real address. For `-24`, a green run proves that the form shows
+  the range hint and a disabled Save for a typed `0`, not that the API refuses that amount.
 - **The personal-data edit visual answers the save itself.** `e2e/compliance.spec.ts`
   (`compliance-user-20`) intercepts `PUT /v1/userData/1005/operatorMutation` and answers HTTP 404, as
   the API does while its switch `userDataOperatorMutation` is off. A green run proves how the form
