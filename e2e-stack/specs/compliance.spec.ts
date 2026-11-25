@@ -37,6 +37,7 @@ import {
   createSupportIssue,
   createTransaction,
   createUser,
+  trackRow,
 } from './fixtures/factories';
 
 test.describe.configure({ mode: 'serial' });
@@ -560,6 +561,132 @@ test.describe('Compliance area (overview)', () => {
 
     await expect(page.getByText('mail is not a valid e-mail address', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  });
+
+  test('/compliance/user/:id lets Compliance merge two accounts with a reason and logs it on both', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    // The kept account needs the higher KYC level; the form and the API both refuse the other way round.
+    const master = await createUser({
+      tag: 'cmp-merge-master',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const slave = await createUser({
+      tag: 'cmp-merge-slave',
+      kycLevel: 20,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const reason = `e2e merge ${Date.now()}`;
+
+    await openScreen(page, `/compliance/user/${master.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Merge accounts', exact: true }).click();
+    await page.locator('#account-merge-other-id').fill(String(slave.userDataId));
+    await page.getByRole('button', { name: 'Load', exact: true }).click();
+
+    await expect(page.getByText('Other account', { exact: true })).toBeVisible({ timeout: 15000 });
+    const mergeTable = page.locator('table').filter({ has: page.getByText('This account', { exact: true }) });
+    await expect(mergeTable.getByRole('cell', { name: String(master.userDataId), exact: true })).toBeVisible();
+    await expect(mergeTable.getByRole('cell', { name: String(slave.userDataId), exact: true })).toBeVisible();
+    await expect(page.getByRole('radio', { name: `Keep this account (${master.userDataId})` })).toBeChecked();
+    await expect(page.getByRole('radio', { name: `Keep other account (${slave.userDataId})` })).not.toBeChecked();
+
+    await page.locator('#account-merge-reason').fill(reason);
+    const mergeButton = page.getByRole('button', { name: 'Merge', exact: true });
+    await expect(mergeButton).toBeEnabled({ timeout: 15000 });
+
+    const mergeResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${master.userDataId}/operatorMerge`,
+    );
+    await mergeButton.click();
+    expect((await mergeResponsePromise).status()).toBe(200);
+
+    // The kept account is the one on screen, so the panel reloads it and the form closes.
+    await expect(page.locator('#account-merge-other-id')).toHaveCount(0, { timeout: 20000 });
+    await expect(page.getByRole('button', { name: 'Merge accounts', exact: true })).toBeVisible({ timeout: 20000 });
+
+    await waitForRow(`SELECT id FROM user_data WHERE id = $1 AND status = 'Merged'`, [slave.userDataId], 20000);
+
+    for (const userDataId of [master.userDataId, slave.userDataId]) {
+      const kycLog = await waitForRow<{ id: number; comment: string | null; result: string | null }>(
+        `SELECT id, comment, result FROM kyc_log
+         WHERE "userDataId" = $1 AND type = 'MergeLog' ORDER BY id DESC LIMIT 1`,
+        [userDataId],
+        20000,
+      );
+      expect(kycLog.comment).toContain(reason);
+      expect(kycLog.result).toContain('clerk=E2E Test Staff');
+      trackRow('kyc_log', kycLog.id);
+    }
+
+    for (const userDataId of [master.userDataId, slave.userDataId]) {
+      const supportLog = await waitForRow<{ id: number; message: string; comment: string | null }>(
+        `SELECT id, message, comment FROM support_log
+         WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2
+           AND message LIKE 'operatorMerge applied%' ORDER BY id DESC LIMIT 1`,
+        [userDataId, 'E2E Test Staff'],
+        20000,
+      );
+      expect(supportLog.comment).toBe(reason);
+      trackRow('support_log', supportLog.id);
+    }
+  });
+
+  test('/compliance/user/:id refuses to keep the account with the lower KYC level', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const master = await createUser({
+      tag: 'cmp-merge-low-kyc',
+      kycLevel: 20,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const higher = await createUser({
+      tag: 'cmp-merge-high-kyc',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    const mergeRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'PUT' && new URL(request.url()).pathname.endsWith('/operatorMerge')) {
+        mergeRequests.push(request.url());
+      }
+    });
+
+    await openScreen(page, `/compliance/user/${master.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Merge accounts', exact: true }).click();
+    await page.locator('#account-merge-other-id').fill(String(higher.userDataId));
+    await page.getByRole('button', { name: 'Load', exact: true }).click();
+    await expect(page.getByText('Other account', { exact: true })).toBeVisible({ timeout: 15000 });
+
+    // The form preselects the account with the higher level; picking the lower one must be refused.
+    await expect(page.getByRole('radio', { name: `Keep other account (${higher.userDataId})` })).toBeChecked();
+    await page.getByRole('radio', { name: `Keep this account (${master.userDataId})` }).check();
+    await page.locator('#account-merge-reason').fill('Keep the lower level account');
+
+    await expect(
+      page.getByText(
+        `The account that stays (${master.userDataId}) has KYC level 20; the other account has 30. ` +
+          'Keep the account with the higher KYC level.',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Merge', exact: true })).toBeDisabled();
+    expect(mergeRequests).toEqual([]);
   });
 
   test('/compliance/user/:id hides account access toggles after onboarding is complete', async ({ page }) => {
