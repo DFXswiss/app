@@ -295,10 +295,11 @@ test.describe('Partner onboarding fee', () => {
       20000,
     );
 
-    const log = await waitForRow<{ id: number }>(
-      `SELECT id FROM support_log
-       WHERE "userDataId" = $1 AND clerk = $2 AND message LIKE 'Onboarding fee%'`,
+    const log = await waitForMatchingRow<{ id: number; message: string | null }>(
+      `SELECT id, message FROM support_log
+       WHERE "userDataId" = $1 AND clerk = $2`,
       [customer.userDataId, 'E2E Test Staff'],
+      (row) => decryptPii(row.message)?.startsWith('Onboarding fee') ?? false,
       20000,
     );
     trackRow('support_log', log.id);
