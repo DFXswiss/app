@@ -76,6 +76,7 @@ export default function SellInfoScreen(): JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [paymentInfo, setPaymentInfo] = useState<Sell>();
   const [showsCompletion, setShowsCompletion] = useState(false);
+  const [confirmedPaymentInfo, setConfirmedPaymentInfo] = useState<Sell>();
   const [asset, setAsset] = useState<Asset>();
   const [currency, setCurrency] = useState<Fiat>();
   const [bankAccount, setBankAccount] = useState<BankAccount>();
@@ -129,6 +130,7 @@ export default function SellInfoScreen(): JSX.Element {
       getTransactionByRequestId(paymentInfo.id)
         .then((tx) => {
           setSellTxId(tx.inputTxId);
+          setConfirmedPaymentInfo(paymentInfo);
           setShowsCompletion(true);
           clearInterval(checkTransactionInterval);
         })
@@ -143,8 +145,8 @@ export default function SellInfoScreen(): JSX.Element {
   }, [paymentInfo, isLoading]);
 
   useEffect(() => {
-    if (remainingSeconds <= 1) fetchData();
-  }, [remainingSeconds]);
+    if (remainingSeconds <= 1 && !isProcessing && !showsCompletion) fetchData();
+  }, [remainingSeconds, isProcessing]);
 
   useEffect(() => fetchData(), [asset, currency, bankAccount, amountIn, amountOut]);
 
@@ -234,6 +236,7 @@ export default function SellInfoScreen(): JSX.Element {
 
     try {
       if (canSendTransaction()) await sendTransaction(paymentInfo).then(setSellTxId);
+      setConfirmedPaymentInfo(paymentInfo);
       setShowsCompletion(true);
     } finally {
       setIsProcessing(false);
@@ -252,8 +255,8 @@ export default function SellInfoScreen(): JSX.Element {
 
   return (
     <>
-      {showsCompletion && paymentInfo ? (
-        <SellCompletion paymentInfo={paymentInfo} navigateOnClose={false} txId={sellTxId} />
+      {showsCompletion && confirmedPaymentInfo ? (
+        <SellCompletion paymentInfo={confirmedPaymentInfo} navigateOnClose={false} txId={sellTxId} />
       ) : errorMessage ? (
         <StyledVerticalStack center className="text-center">
           <ErrorHint message={errorMessage} />

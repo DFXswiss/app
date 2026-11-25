@@ -8,6 +8,7 @@ const mockGetBalances = jest.fn();
 const mockNavigate = jest.fn();
 const mockLogout = jest.fn();
 const mockHandOff = jest.fn();
+const mockCloseServices = jest.fn();
 const mockSwitchBlockchain = jest.fn();
 const mockLayoutOptions = jest.fn();
 
@@ -140,7 +141,11 @@ jest.mock('@dfx.swiss/react-components', () => {
 
   return {
     AssetIconVariant: {},
+    CopyButton: () => null,
+    DfxIcon: () => null,
     IconColor: { RED: 'Red' },
+    IconSize: {},
+    IconVariant: {},
     Form: ({ children, control, onSubmit }: any) => (
       <div>
         {enrich(children, control)}
@@ -278,9 +283,16 @@ jest.mock('../components/payment/address-switch', () => ({
     </div>
   ),
 }));
-jest.mock('../components/payment/sell-completion', () => ({
-  SellCompletion: () => <div data-testid="sell-completion" />,
-}));
+jest.mock('../components/payment/sell-completion', () => {
+  const { SellCompletion } = jest.requireActual('../components/payment/sell-completion');
+  return {
+    SellCompletion: (props: any) => (
+      <div data-testid="sell-completion">
+        <SellCompletion {...props} />
+      </div>
+    ),
+  };
+});
 jest.mock('../components/private-asset-hint', () => ({
   PrivateAssetHint: () => <div data-testid="private-asset-hint" />,
 }));
@@ -294,6 +306,7 @@ jest.mock('../contexts/app-handling.context', () => ({
   useAppHandlingContext: () => ({
     isInitialized: mockIsInitialized,
     handOff: mockHandOff,
+    closeServices: mockCloseServices,
     isHandingOff: mockIsHandingOff,
   }),
 }));
@@ -937,6 +950,47 @@ describe('SellScreen', () => {
       await Promise.resolve();
     });
     expect(screen.getByTestId('sell-completion')).toBeInTheDocument();
+  });
+
+  it('closes with the confirmed order when the amount changes while the wallet send is pending', async () => {
+    let resolveSend: (value: unknown) => void = () => undefined;
+    mockCanSendTransaction.mockReturnValue(true);
+    mockActiveWallet = 'mm';
+    mockSendTransaction.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    mockReceiveFor.mockImplementation((req: any) => {
+      const quote = quoteFor(req);
+      return Promise.resolve({ ...quote, uid: `uid-${quote.amount}` });
+    });
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
+      await Promise.resolve();
+    });
+    expect(mockSendTransaction).toHaveBeenCalledWith(expect.objectContaining({ uid: 'uid-0.1' }));
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '0.2' } });
+    });
+    await flushQuote();
+    expect(screen.getByTestId('payment-info')).toHaveTextContent('0.2');
+    await act(async () => {
+      resolveSend('0xtx');
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('sell-completion')).toBeInTheDocument();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Close' }).click();
+    });
+    expect(mockCloseServices).toHaveBeenCalledTimes(1);
+    expect(mockCloseServices).toHaveBeenCalledWith(
+      { type: 'Sell', isComplete: true, sell: expect.objectContaining({ uid: 'uid-0.1', amount: 0.1 }) },
+      true,
+    );
   });
 
   it('swallows a wallet rejection (4001)', async () => {

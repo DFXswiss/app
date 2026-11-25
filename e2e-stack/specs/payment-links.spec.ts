@@ -23,6 +23,7 @@ import {
   normPath,
   openScreen,
   orPaused,
+  PARTNER_RETURN_URI,
   queryOne,
   queryRows,
   test,
@@ -715,6 +716,30 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByText('CANCELLED', { exact: true })).toHaveCount(0);
     await expect(page.getByText('EXPIRED', { exact: true })).toHaveCount(0);
     await expect(page.getByText(/By using this service, the outstanding claim/i)).toBeVisible();
+  });
+
+  test('/pl/result: redirects to the redirect-uri once; opened again without it, it neither announces nor redirects', async ({
+    page,
+  }) => {
+    const hint = page.getByText('You will be redirected to the site shortly', { exact: true });
+
+    // The redirect follows about 2 s after the screen rendered, so nothing but the hint is waited for before it.
+    await page.goto(`/pl/result?status=Completed&redirect-uri=${encodeURIComponent(PARTNER_RETURN_URI)}`, {
+      waitUntil: 'commit',
+    });
+    await expect(hint).toBeVisible({ timeout: 15000 });
+    await page.waitForURL((url) => url.href === PARTNER_RETURN_URI, { timeout: 15000 });
+
+    // Same tab, same sessionStorage: the close gave up the redirect URI.
+    await page.goto('/pl/result');
+    await waitForPublicPath(page, '/pl/result');
+    await expect(page.getByText(/By using this service, the outstanding claim/i)).toBeVisible();
+    await expect(hint).toHaveCount(0);
+    expect(await page.evaluate(() => window.sessionStorage.getItem('dfx.srv.redirectUri'))).toBeNull();
+
+    await page.waitForTimeout(3000);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/pl/result');
+    await expect(hint).toHaveCount(0);
   });
 
   // =========================================================================

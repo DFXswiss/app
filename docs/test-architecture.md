@@ -968,7 +968,10 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   `wallet.e2e.test` and answers every request to that host with 204. The reload cases there confirm once, reload
   the page with `page.reload()` and confirm again, all on that answered host. The completed-sell case there lets
   the injected MetaMask accept the transaction and closes the completion screen, whose redirect two seconds later
-  goes to that answered host as well. The `/sell/info` case confirms without an active wallet, whose redirect two
+  goes to that answered host as well. The completed-swap case there logs in with the command-line wallet, clicks
+  the issued-transaction button without any transaction being sent, and closes the completion screen, whose
+  redirect two seconds later goes to that answered host as well; while the API has swap switched off, it ends at
+  the paused answer. The `/sell/info` case confirms without an active wallet, whose redirect two
   seconds later goes to that answered host too. A green run does not prove that a wallet
   intercepts the redirect, opens a send screen or sends a transaction, nor how a WebView behaves, nor how a
   wallet's WebView reloads a page.
@@ -976,15 +979,27 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   context.** The case in `e2e-stack/specs/sell-swap.spec.ts` that leaves `/sell` with a `redirect-uri` without
   confirming opens `/buy` and then `/` with a plain `goto`, without `session`, `address`/`signature` or
   `redirect-uri`, in a new page that shares `localStorage` and the login token but starts with an empty
-  `sessionStorage`. It does not cover a launch with `session` (the cases in
+  `sessionStorage`. The case registers `isolateFromExternalHosts` on that page as well, so every host outside the
+  stack is answered with an empty 200 there too. It does not cover a launch with `session` (the cases in
   `e2e-stack/specs/cross-cutting.spec.ts` do). A green run does not prove how a real wallet's WebView handles
   `sessionStorage`.
 - **The mail-login redirect full-stack case opens the login link as a second page and answers the redirect
   itself.** The new-tab case in `e2e-stack/specs/auth.spec.ts` starts `/login/mail` with `PARTNER_RETURN_URI`
   (`e2e-stack/specs/fixtures/partner-redirect.ts`) as `redirect-uri`, reads the login link from the
-  `notification` row and opens it in a new page of the same browser context; the harness answers the partner host
-  with an empty 200. A green run does not prove how a real mail client or
-  browser opens the link, nor how a wallet handles the redirect.
+  `notification` row and opens it in a new page of the same browser context. The `page` fixture registers
+  `isolateFromExternalHosts` (`e2e-stack/specs/fixtures/index.ts`) on its own page only, so the case registers it
+  on the new page before the first `goto`; it answers the partner host with an empty 200 there. A green run does
+  not prove how a real mail client or browser opens the link, nor how a wallet handles the redirect.
+- **The payment-link result redirect full-stack case answers the redirect itself and names the status in the
+  URL.** The case in `e2e-stack/specs/payment-links.spec.ts` opens `/pl/result` with `status=Completed` and
+  `PARTNER_RETURN_URI` as `redirect-uri`, without a payment; the harness answers the partner host
+  with an empty 200. A green run does not prove that a payment completes, that a payment app opens that URL, nor
+  how a partner site handles the redirect.
+- **The sell-info unit test replaces the SDK, the app contexts and the wallet.**
+  `src/__tests__/sell-info-screen.test.tsx` renders the real screen, countdown and completion component against
+  stubbed `@dfx.swiss/react` hooks, components, app parameters, transaction helper and app-handling context, with
+  fake timers. A green run proves which quote the screen passes to `closeServices` and when it asks for a new one.
+  It does not prove that the API returns or expires such a quote, that a wallet sends, or that a redirect happens.
 
 ## Known gaps
 

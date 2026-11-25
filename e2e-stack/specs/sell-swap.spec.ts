@@ -23,6 +23,7 @@ import {
   expectTransactionsPaused,
   gotoWithSession,
   headerBackButton,
+  isolateFromExternalHosts,
   normPath,
   openScreen,
   orPaused,
@@ -1297,6 +1298,7 @@ test.describe('Sell + Swap e2e', () => {
     // redirect URI, so boot clears nothing and the page logs in with the stored token.
     const next = await page.context().newPage();
     try {
+      await isolateFromExternalHosts(next);
       const userResponsePromise = next.waitForResponse(
         (response) => response.request().method() === 'GET' && /\/v[12]\/user$/.test(new URL(response.url()).pathname),
         { timeout: 20000 },
@@ -1805,6 +1807,95 @@ test.describe('Sell + Swap e2e', () => {
       userId: user.userId,
       routeType: 'Crypto',
     });
+  });
+
+  test('/swap: closing a swap issued outside the app redirects once as complete with the route and the order', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+    const user = await createUser({
+      walletIndex: nextWalletIndex(),
+      tag: 'swap-cli-complete-redirect',
+      // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-wallet-aml.spec.ts).
+      kycLevel: 50,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.locator('img[src*="cryptowallet"]').click({ timeout: 15000 });
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(user.wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(user.wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+    // the login finishes loading the session on /buy; opening /swap before that can leave the form loading
+    await page.waitForLoadState('networkidle');
+
+    // Only the swap answer: the /buy screen the login lands on can still answer its own paymentInfos request here.
+    const paymentInfos = trackPaymentInfosResponses(page, 'swap/paymentInfos');
+    await page.goto(`/swap?asset-in=ETH&amount-in=0.1${WALLET_REDIRECT_QUERY}`);
+    await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 30000 });
+    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    const redirects = await recordWalletRedirects(page);
+
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    const apiDetail = paymentInfos.last
+      ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
+      : 'no PUT paymentInfos response captured';
+    expect(outcome.kind, `${outcome.detail}; ${apiDetail}`).toBe('payment_info');
+
+    // The app cannot send with the command-line wallet, so confirming neither hands off nor sends.
+    const issued = page.getByRole('button', { name: 'Click here once you have issued the transaction' });
+    await expect(issued).toBeEnabled({ timeout: 15000 });
+    await issued.click();
+    await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toBeVisible({
+      timeout: 15000,
+    });
+    expect(redirects).toHaveLength(0);
+
+    // Close on the completion screen calls closeServices as complete and opens /account; it redirects 2 s later.
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/account');
+
+    const [redirect] = redirects;
+    expect(redirect.pathname).toBe('/return/swap');
+    expect(redirect.searchParams.get('isComplete')).toBe('true');
+    const route = await waitForRow<{ id: number }>(
+      `SELECT id FROM deposit_route WHERE "userId" = $1 AND type = $2 ORDER BY id DESC LIMIT 1`,
+      [user.userId, 'Crypto'],
+    );
+    expect(redirect.searchParams.get('routeId')).toBe(String(route.id));
+    // orderUid names the confirmed payment info: the user's newest transaction request on this route
+    const request = await waitForRow<{ uid: string }>(
+      `SELECT uid FROM transaction_request WHERE "userId" = $1 AND "routeId" = $2 ORDER BY id DESC LIMIT 1`,
+      [user.userId, route.id],
+    );
+    expect(request.uid).toBeTruthy();
+    expect(redirect.searchParams.get('orderUid')).toBe(request.uid);
+
+    // closeServices gives up the redirect URI, unlike a hand-off, so nothing redirects a second time.
+    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBeNull();
+    await page.waitForTimeout(3000);
+    expect(redirects).toHaveLength(1);
   });
 
   test('/swap: native form submit completes the transaction', async ({ page }) => {

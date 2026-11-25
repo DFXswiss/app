@@ -137,6 +137,7 @@ export default function SellScreen(): JSX.Element {
   const [balances, setBalances] = useState<AssetBalance[]>();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isTxDone, setTxDone] = useState<boolean>(false);
+  const [confirmedPaymentInfo, setConfirmedPaymentInfo] = useState<Sell>();
   const [sellTxId, setSellTxId] = useState<string>();
   const [bankAccountSelection, setBankAccountSelection] = useState(false);
   const [showsSwitchScreen, setShowsSwitchScreen] = useState(false);
@@ -611,6 +612,7 @@ export default function SellScreen(): JSX.Element {
       if (canSendTransaction()) {
         await sendTransaction(paymentInfo).then(setSellTxId);
       }
+      setConfirmedPaymentInfo(paymentInfo);
       setTxDone(true);
     } catch (error: any) {
       // User rejected in wallet - silently return, user stays on form
@@ -641,8 +643,8 @@ export default function SellScreen(): JSX.Element {
     <>
       {showsSwitchScreen ? (
         <AddressSwitch onClose={(r) => (r ? onAddressSwitch() : setShowsSwitchScreen(false))} />
-      ) : paymentInfo && isTxDone ? (
-        <SellCompletion paymentInfo={paymentInfo} navigateOnClose={true} txId={sellTxId} />
+      ) : isTxDone && confirmedPaymentInfo ? (
+        <SellCompletion paymentInfo={confirmedPaymentInfo} navigateOnClose={true} txId={sellTxId} />
       ) : (
         <form
           className="w-full"
