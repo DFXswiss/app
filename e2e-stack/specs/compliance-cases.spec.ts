@@ -687,8 +687,33 @@ test.describe('Compliance area (cases)', () => {
     await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
     await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
 
+    // Opening the form is what loads the suggested amounts, so the listener is registered before the
+    // click; registered afterwards, a fast answer could be missed.
+    const amountsResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname === '/v1/partner/onboardingFee/amounts',
+    );
     await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+    const amountsAnswer = await amountsResponse;
+    expect(amountsAnswer.status()).toBe(200);
+    const { amounts } = (await amountsAnswer.json()) as { amounts: number[] };
+    // An empty answer would make the comparison below pass without proving that a list is offered.
+    expect(amounts.length).toBeGreaterThan(0);
     await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
+
+    // The field offers exactly the amounts of the real API, in its order; the option values are the
+    // numbers rendered as attribute strings. toHaveCount waits until the list has rendered.
+    await expect(page.locator('#onboarding-fee-amount')).toHaveAttribute('list', 'onboarding-fee-amount-suggestions');
+    const suggestionOptions = page.locator('#onboarding-fee-amount-suggestions option');
+    await expect(suggestionOptions).toHaveCount(amounts.length, { timeout: 15000 });
+    const offered = await suggestionOptions.evaluateAll((options) =>
+      options.map((option) => option.getAttribute('value')),
+    );
+    expect(offered).toEqual(amounts.map(String));
+    // Makes the comment below true against the real API: 14000 is a free amount, not a suggestion.
+    expect(offered).not.toContain('14000');
+
     // The amount is typed like the clerk does. 14000 is not one of the suggested amounts, so the
     // case proves that the Admin route accepts and stores an agreed free amount.
     await page.locator('#onboarding-fee-amount').fill('14000');
