@@ -37,7 +37,7 @@ import { usePolling } from 'src/hooks/polling';
 import { useSessionStore } from 'src/hooks/session-store.hook';
 import { Evm } from 'src/util/evm';
 import { Lnurl } from 'src/util/lnurl';
-import { fetchJson, url } from 'src/util/utils';
+import { fetchJson, isDfxOwnedPaymentUrl, url } from 'src/util/utils';
 import { useAppParams } from '../hooks/app-params.hook';
 import { Timer, useCountdown } from '../hooks/countdown.hook';
 import { useNavigation } from '../hooks/navigation.hook';
@@ -184,8 +184,19 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
     }
 
     let apiUrl: string | undefined = sessionApiUrl.current;
+    let rejectedForeignLnurl = false;
     if (lightningUrlParam) {
-      apiUrl = Lnurl.decode(lightningUrlParam);
+      const decoded = Lnurl.decode(lightningUrlParam);
+      // The LNURL decodes to a URL we are about to fetch — only follow it when it points at a
+      // DFX-owned origin. A foreign origin (crafted LNURL) is rejected with a clear error and never
+      // fetched, so the link cannot steer the client at an attacker-controlled server.
+      if (decoded && !isDfxOwnedPaymentUrl(decoded)) {
+        setError('Invalid payment link');
+        apiUrl = undefined;
+        rejectedForeignLnurl = true;
+      } else {
+        apiUrl = decoded;
+      }
     } else if (isPaymentInvoiceRequest(urlParams)) {
       apiUrl = url({
         base: Api.url,
@@ -199,7 +210,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
 
     if (sessionApiUrl.current) {
       fetchPayRequest(sessionApiUrl.current);
-    } else {
+    } else if (!rejectedForeignLnurl) {
       navigate('/', { replace: true });
     }
 

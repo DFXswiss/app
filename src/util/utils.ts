@@ -1,4 +1,5 @@
 import { Asset, Fiat, KycFile, UserAddress, Utils } from '@dfx.swiss/react';
+import { Api } from 'src/config/api';
 import { CustodyAsset, CustodyAssetBalance } from 'src/dto/safe.dto';
 
 export function isDefined<T>(item: T | undefined): item is T {
@@ -141,6 +142,32 @@ export function isSafeRedirectUri(uri: string): boolean {
   // allowlist: custom deep link schemes of wallet apps (e.g. bitcoin:, lightning:, mywallet://...),
   // restricted to well-formed RFC 3986 schemes that passed the hard block above, see adaptUri
   return validSchemePattern.test(protocol);
+}
+
+// A payment-link LNURL (/pl?lightning=<LNURL>) decodes to an arbitrary URL that the app then fetches.
+// Restrict that fetch target to DFX-owned origins so a crafted LNURL cannot point the client at an
+// attacker-controlled server (data exfiltration / phishing pay flows). "DFX-owned" means either the
+// API backend this build is configured against (Api.url — a dfx.swiss host in dev/prod, the local API
+// during development) or the dfx.swiss host family over HTTPS. Everything else is rejected.
+export function isDfxOwnedPaymentUrl(value: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+
+  // the configured API backend for this build
+  try {
+    if (Api.url && parsed.origin === new URL(Api.url).origin) return true;
+  } catch {
+    // Api.url unset or not a valid URL → no extra origin is allowed
+  }
+
+  // the dfx.swiss host family (HTTPS only); the leading dot stops look-alikes like evil-dfx.swiss
+  if (parsed.protocol !== 'https:') return false;
+  const host = parsed.hostname.toLowerCase();
+  return host === 'dfx.swiss' || host.endsWith('.dfx.swiss');
 }
 
 export function isNode(e: EventTarget | null): e is Node {
