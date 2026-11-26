@@ -2,6 +2,8 @@
 // 401; the launch signature signs in again and the request is sent once more, so the caller (the SDK) never sees the
 // 401 and does not log out. Every other 401 reaches the caller unchanged, which logs out as before.
 
+jest.mock('../util/client-error', () => ({ reportClientError: jest.fn() }));
+
 import { installSessionRenewal, launchCredentials } from '../util/session-renewal';
 
 function jwt(payload: object): string {
@@ -79,6 +81,41 @@ describe('installSessionRenewal', () => {
     expect(mockFetch).toHaveBeenLastCalledWith(USER_URL, { method: 'GET', headers: renewedHeaders(MASTER_SESSION) });
   });
 
+  it('signs in again when the session carries the checksummed launch address in lower case', async () => {
+    const checksummed = { ...CREDENTIALS, address: '0x52908400098527886E0F7030069857D2E4169EE7' };
+    launchCredentials.set(checksummed);
+    const renewed = answer(200);
+    mockFetch.mockResolvedValueOnce(answer(401)).mockResolvedValueOnce(renewed);
+
+    const session = jwt({ address: checksummed.address.toLowerCase(), account: 1 });
+    const result = await window.fetch(USER_URL, authorized(session));
+
+    expect(result).toBe(renewed);
+    expect(mockRenew).toHaveBeenCalledWith(checksummed);
+    expect(mockFetch).toHaveBeenLastCalledWith(USER_URL, { method: 'GET', headers: renewedHeaders(MASTER_SESSION) });
+  });
+
+  it('returns the 401 when a case-sensitive launch address differs from the session address in case', async () => {
+    launchCredentials.set({ ...CREDENTIALS, address: '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2' });
+    const rejected = answer(401);
+    mockFetch.mockResolvedValueOnce(rejected);
+
+    const session = jwt({ address: '1bvbmseystwetqtfn5au4m4gfg7xjanvn2', account: 1 });
+
+    expect(await window.fetch(USER_URL, authorized(session))).toBe(rejected);
+    expect(mockRenew).not.toHaveBeenCalled();
+  });
+
+  it('signs in again for a request given as a URL object', async () => {
+    const renewed = answer(200);
+    const url = new URL(USER_URL);
+    mockFetch.mockResolvedValueOnce(answer(401)).mockResolvedValueOnce(renewed);
+
+    expect(await window.fetch(url, authorized(SLAVE_SESSION))).toBe(renewed);
+    expect(mockRenew).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenLastCalledWith(url, { method: 'GET', headers: renewedHeaders(MASTER_SESSION) });
+  });
+
   it('passes a response that is not a 401 through untouched', async () => {
     const ok = answer(200);
     mockFetch.mockResolvedValueOnce(ok);
@@ -100,6 +137,8 @@ describe('installSessionRenewal', () => {
 
   it.each([
     ['a session of another address', authorized(OTHER_SESSION)],
+    ['a session of another hex address', authorized(jwt({ address: '0xabc', account: 4 }))],
+    ['a session without an address', authorized(jwt({ account: 5 }))],
     ['a session that is no JWT', { headers: { Authorization: 'Bearer not-a-jwt' } }],
     ['no bearer session', { headers: { Authorization: 'Basic credentials' } }],
     ['no headers', {}],

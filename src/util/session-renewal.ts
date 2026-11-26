@@ -43,6 +43,20 @@ function tokenAddress(token: string): string | undefined {
   }
 }
 
+const HEX_ADDRESS = /^0x[0-9a-f]+$/i;
+
+// A hex (EVM) address is case-insensitive: the launch URL carries the checksummed form, the session may carry another
+// case. Base58 addresses (Bitcoin legacy, Solana, Tron, Monero) are case-sensitive and must match exactly.
+function isSameAddress(sessionAddress: string | undefined, launchAddress: string): boolean {
+  return (
+    sessionAddress === launchAddress ||
+    (sessionAddress !== undefined &&
+      HEX_ADDRESS.test(sessionAddress) &&
+      HEX_ADDRESS.test(launchAddress) &&
+      sessionAddress.toLowerCase() === launchAddress.toLowerCase())
+  );
+}
+
 // When the API rejects a session of the launch address with 401 (the account was merged into another one), the
 // launch signature signs in again and the rejected request is sent once more with the new session, so the SDK never
 // sees the 401 and does not log out. One re-login per rejected session; a failed one returns the original 401.
@@ -55,7 +69,7 @@ export function installSessionRenewal(renew: Renew): () => void {
     if (pending) return pending;
 
     const credentials = launchCredentials.get();
-    if (!credentials || tokenAddress(token) !== credentials.address) return undefined;
+    if (!credentials || !isSameAddress(tokenAddress(token), credentials.address)) return undefined;
 
     const renewal = renew(credentials).catch(() => undefined);
     renewals.set(token, renewal);
@@ -66,13 +80,14 @@ export function installSessionRenewal(renew: Renew): () => void {
     const response = await originalFetch(input, init);
     if (response.status !== 401 || AUTH_PATH.test(requestUrl(input))) return response;
 
-    const authorization = headerList(init?.headers).find(isAuthorization)?.[1];
+    const headers = headerList(init?.headers);
+    const authorization = headers.find(isAuthorization)?.[1];
     const renewal = authorization?.startsWith('Bearer ') && renewalFor(authorization.slice('Bearer '.length));
     const token = renewal && (await renewal);
     if (!token) return response;
 
-    const headers = headerList(init?.headers).filter((header) => !isAuthorization(header));
-    return originalFetch(input, { ...init, headers: [...headers, ['Authorization', `Bearer ${token}`]] });
+    const otherHeaders = headers.filter((header) => !isAuthorization(header));
+    return originalFetch(input, { ...init, headers: [...otherHeaders, ['Authorization', `Bearer ${token}`]] });
   };
 
   return () => {

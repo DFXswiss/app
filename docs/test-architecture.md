@@ -925,8 +925,9 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
 - **The re-login after a merge is proven by unit tests against a replaced `fetch`.**
   `src/__tests__/session-renewal.test.ts` and the session-renewal cases of `src/__tests__/wallet-context.test.tsx`
   answer `window.fetch` with synthetic 401 and 200 responses and replace `renew` or the SDK's `authenticate`. A green
-  run proves that a 401 for a session of the launch address signs in once with the launch credentials and resends
-  the request with the new session, and that every other 401 (no launch credentials, another address, the sign-in
+  run proves that a 401 for a session of the launch address (a hex address in any letter case, any other address
+  exactly) signs in once with the launch credentials and resends the request with the new session, and that every
+  other 401 (no launch credentials, another address, the sign-in
   itself, a failed re-login, a rejected new session) reaches the caller unchanged. It does not prove what the SDK does
   with the answer; the full-stack merge case above covers the real path.
 - **A widget ignoring a stale redirect URI in the session store is proven by the unit test only.**
