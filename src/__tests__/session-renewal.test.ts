@@ -18,6 +18,9 @@ const OTHER_SESSION = jwt({ address: '0xother', account: 3 });
 const CREDENTIALS = { address: '0xlaunch', signature: '0xsignature', pubkey: 'pubkey' };
 const USER_URL = 'https://api.example/v2/user';
 const CREDENTIALS_KEY = 'dfx.srv.launchCredentials';
+const AUTH_URL = 'https://api.example/v1/auth';
+const SIGN_MESSAGE_URL = 'https://api.example/v1/auth/signMessage?address=0xlaunch';
+const AUTH_PATH_URLS = [AUTH_URL, SIGN_MESSAGE_URL];
 
 const originalFetch = window.fetch;
 let mockFetch: jest.Mock;
@@ -199,6 +202,61 @@ describe('installSessionRenewal', () => {
 
     expect(mockRenew).toHaveBeenCalledTimes(1);
     expect(mockFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('sends the sign-in of a re-login without the rejected session', async () => {
+    const signIn = { status: 201 } as Response;
+    mockFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (AUTH_PATH_URLS.includes(url)) return Promise.resolve(signIn);
+      return Promise.resolve(answer(JSON.stringify(init?.headers).includes(SLAVE_SESSION) ? 401 : 200));
+    });
+    mockRenew.mockImplementation(async () => {
+      await window.fetch(SIGN_MESSAGE_URL, authorized(SLAVE_SESSION));
+      await window.fetch(AUTH_URL);
+      await window.fetch(AUTH_URL, { headers: { Authorization: `Bearer ${SLAVE_SESSION}` } });
+      await window.fetch(AUTH_URL, {
+        method: 'post',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SLAVE_SESSION}` },
+      });
+      return MASTER_SESSION;
+    });
+
+    expect((await window.fetch(USER_URL, authorized(SLAVE_SESSION))).status).toBe(200);
+
+    expect(mockFetch).toHaveBeenNthCalledWith(2, SIGN_MESSAGE_URL, authorized(SLAVE_SESSION));
+    expect(mockFetch).toHaveBeenNthCalledWith(3, AUTH_URL, undefined);
+    expect(mockFetch).toHaveBeenNthCalledWith(4, AUTH_URL, { headers: { Authorization: `Bearer ${SLAVE_SESSION}` } });
+    expect(mockFetch).toHaveBeenNthCalledWith(5, AUTH_URL, {
+      method: 'post',
+      headers: [['Content-Type', 'application/json']],
+    });
+    expect(mockFetch).toHaveBeenLastCalledWith(USER_URL, { method: 'GET', headers: renewedHeaders(MASTER_SESSION) });
+    expect(mockFetch).toHaveBeenCalledTimes(6);
+  });
+
+  it('keeps the session on a sign-in outside a re-login', async () => {
+    const signIn = { status: 201 } as Response;
+    const init = { method: 'POST', headers: { Authorization: `Bearer ${SLAVE_SESSION}` } };
+    mockFetch.mockResolvedValueOnce(signIn).mockResolvedValueOnce(answer(401)).mockResolvedValueOnce(answer(200));
+
+    expect(await window.fetch(AUTH_URL, init)).toBe(signIn);
+    await window.fetch(USER_URL, authorized(SLAVE_SESSION));
+    mockFetch.mockResolvedValueOnce(signIn);
+    expect(await window.fetch(AUTH_URL, init)).toBe(signIn);
+
+    expect(mockFetch).toHaveBeenNthCalledWith(1, AUTH_URL, init);
+    expect(mockFetch).toHaveBeenNthCalledWith(4, AUTH_URL, init);
+  });
+
+  it('returns the 401 of a renewed session without signing in again', async () => {
+    const rejected = answer(401);
+    mockFetch.mockResolvedValue(rejected);
+
+    expect(await window.fetch(USER_URL, authorized(SLAVE_SESSION))).toBe(rejected);
+    expect(await window.fetch(USER_URL, authorized(MASTER_SESSION))).toBe(rejected);
+
+    expect(mockRenew).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   it('reads the session from header pairs and from a Headers object and replaces it', async () => {

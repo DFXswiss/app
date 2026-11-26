@@ -57,28 +57,52 @@ function isSameAddress(sessionAddress: string | undefined, launchAddress: string
   );
 }
 
+// The sign-in of a re-login goes out without the rejected session: the API binds a sign-in that carries a session to
+// that session's account, which after a merge is the merged (rejected) account again.
+function withoutSession(init: RequestInit | undefined): RequestInit | undefined {
+  if (init?.method?.toUpperCase() !== 'POST') return init;
+  return { ...init, headers: headerList(init.headers).filter((header) => !isAuthorization(header)) };
+}
+
 // When the API rejects a session of the launch address with 401 (the account was merged into another one), the
 // launch signature signs in again and the rejected request is sent once more with the new session, so the SDK never
-// sees the 401 and does not log out. One re-login per rejected session; a failed one returns the original 401.
+// sees the 401 and does not log out. One re-login per rejected session; a failed one returns the original 401, and a
+// 401 of a renewed session reaches the caller unchanged instead of starting another re-login.
 export function installSessionRenewal(renew: Renew): () => void {
   const originalFetch = window.fetch;
   const renewals = new Map<string, Promise<string | undefined>>();
+  const renewedSessions = new Set<string>();
+  let activeRenewals = 0;
 
   function renewalFor(token: string): Promise<string | undefined> | undefined {
     const pending = renewals.get(token);
     if (pending) return pending;
+    if (renewedSessions.has(token)) return undefined;
 
     const credentials = launchCredentials.get();
     if (!credentials || !isSameAddress(tokenAddress(token), credentials.address)) return undefined;
 
-    const renewal = renew(credentials).catch(() => undefined);
+    activeRenewals += 1;
+    const renewal = renew(credentials)
+      .then(
+        (renewed) => {
+          renewedSessions.add(renewed);
+          return renewed;
+        },
+        () => undefined,
+      )
+      .then((renewed) => {
+        activeRenewals -= 1;
+        return renewed;
+      });
     renewals.set(token, renewal);
     return renewal;
   }
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const response = await originalFetch(input, init);
-    if (response.status !== 401 || AUTH_PATH.test(requestUrl(input))) return response;
+    const isSignIn = AUTH_PATH.test(requestUrl(input));
+    const response = await originalFetch(input, isSignIn && activeRenewals > 0 ? withoutSession(init) : init);
+    if (response.status !== 401 || isSignIn) return response;
 
     const headers = headerList(init?.headers);
     const authorization = headers.find(isAuthorization)?.[1];
