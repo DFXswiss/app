@@ -97,6 +97,7 @@ const sections: PageSection[] = [
       { path: '/compliance/custody-orders', label: 'Custody Orders' },
       { path: '/compliance/recalls', label: 'Recalls' },
       { path: '/compliance/pending-chargebacks', label: 'Pending Chargebacks' },
+      { path: '/compliance/pending-merges', label: 'Pending Merges' },
       { path: '/compliance/mros', label: 'MROS Reports' },
       { path: '/compliance/mros/create', label: 'Create MROS Report' },
       { path: '/compliance/call-queues', label: 'Call Queues' },

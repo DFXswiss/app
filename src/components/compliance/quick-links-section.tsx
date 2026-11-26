@@ -15,6 +15,7 @@ export function QuickLinksSection(): JSX.Element {
     { label: 'Aktennotiz erstellen', path: `kyc/log?eventDate=${todayAsString()}` },
     { label: 'Unzugeordnete Bankeingänge', path: 'compliance/bank-tx/unassigned' },
     { label: 'Pending Chargebacks', path: 'compliance/pending-chargebacks' },
+    { label: 'Pending Merges', path: 'compliance/pending-merges' },
   ];
 
   return (

@@ -553,6 +553,11 @@ screen shows the paused message and no payment information`) adds `Sell` to the 
   `ManualReview` on a synthetic account at KYC level 0 whose `accountType` stays null. A green run
   does **not** prove how such a step reaches review; the customer KYC flow only offers `Statutes` to
   association accounts.
+- **Full-stack compliance specs SQL-insert an open account merge request.**
+  `e2e-stack/specs/compliance.spec.ts` (`/compliance/pending-merges lists an open merge request …`)
+  inserts an `account_merge` row between two synthetic accounts with reason `Iban` and a 30-day
+  expiry, and writes both accounts' `verifiedName` by SQL. A green run does **not** prove that the
+  backend creates such a request from a real trigger or that an identification sets those names.
 - **The onboarding-fee full-stack cases write the ref, the fee setting and the starting status
   themselves.** `e2e-stack/specs/compliance-cases.spec.ts` (`/compliance/user/:id sets and removes an
 onboarding fee …`, `… refuses an onboarding fee outside the allowed range …` and `… shows the
