@@ -170,7 +170,7 @@ describe('AccountMergeEditor', () => {
     expect(screen.getByText('Other Name')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Keep this account (88001)' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Keep other account (88002)' })).not.toBeChecked();
-    expect(screen.getByText('Mail after merge: other@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Mail after merge: master@example.com')).toBeInTheDocument();
     expect(mergeButton()).toBeDisabled();
   });
 
@@ -432,7 +432,7 @@ describe('AccountMergeEditor', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'Keep other account (88002)' }));
 
-    expect(screen.getByText('Mail after merge: master@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Mail after merge: other@example.com')).toBeInTheDocument();
     fillReason('Duplicate account');
     expect(mergeButton()).toBeEnabled();
   });
@@ -450,11 +450,18 @@ describe('AccountMergeEditor', () => {
     expect(mergeButton()).toBeDisabled();
   });
 
-  it('falls back to the master mail when the slave has none', async () => {
+  it('keeps the master mail when the other account has none', async () => {
     render(element());
     await openAndLoad(detail({ id: 88002, mail: undefined, kycLevel: 20 }));
 
     expect(screen.getByText('Mail after merge: master@example.com')).toBeInTheDocument();
+  });
+
+  it('fills an empty master mail from the other account', async () => {
+    render(element({ userData: detail({ mail: undefined }) }));
+    await openAndLoad(detail({ id: 88002, mail: 'other@example.com', kycLevel: 20 }));
+
+    expect(screen.getByText('Mail after merge: other@example.com')).toBeInTheDocument();
   });
 
   it('shows no mail when neither account has one', async () => {

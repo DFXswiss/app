@@ -20,6 +20,8 @@ export interface MergeAccount {
 export interface AccountMergePlan {
   masterId: number;
   slaveId: number;
+  // The mail the account that stays really keeps: the API keeps the master's mail and only fills
+  // an empty one from the other account (`master.mail ??= mail ?? slave.mail`).
   resultingMail?: string;
   errors: string[];
 }
@@ -51,7 +53,7 @@ export function planAccountMerge(
   return {
     masterId: master.id,
     slaveId: slave.id,
-    resultingMail: slave.mail ?? master.mail,
+    resultingMail: master.mail ?? slave.mail,
     errors,
   };
 }

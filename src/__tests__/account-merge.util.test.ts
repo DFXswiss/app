@@ -27,27 +27,36 @@ describe('canMergeAccounts', () => {
 });
 
 describe('planAccountMerge', () => {
-  it('keeps the current account as master and takes the slave mail', () => {
+  it("keeps the master's mail when both accounts have one", () => {
     expect(planAccountMerge(account(), account({ id: 88002, mail: 'slave@example.com' }), 'current')).toEqual({
       masterId: 88001,
       slaveId: 88002,
-      resultingMail: 'slave@example.com',
-      errors: [],
-    });
-  });
-
-  it('keeps the other account as master when asked', () => {
-    expect(planAccountMerge(account(), account({ id: 88002, mail: 'slave@example.com' }), 'other')).toEqual({
-      masterId: 88002,
-      slaveId: 88001,
       resultingMail: 'master@example.com',
       errors: [],
     });
   });
 
-  it('falls back to the master mail when the slave has none', () => {
+  it('keeps the other account as master and its own mail when asked', () => {
+    expect(planAccountMerge(account(), account({ id: 88002, mail: 'slave@example.com' }), 'other')).toEqual({
+      masterId: 88002,
+      slaveId: 88001,
+      resultingMail: 'slave@example.com',
+      errors: [],
+    });
+  });
+
+  it('keeps the master mail when the other account has none', () => {
     const plan = planAccountMerge(account(), account({ id: 88002, mail: undefined }), 'current');
     expect(plan.resultingMail).toBe('master@example.com');
+  });
+
+  it('fills an empty master mail from the other account', () => {
+    const plan = planAccountMerge(
+      account({ mail: undefined }),
+      account({ id: 88002, mail: 'slave@example.com' }),
+      'current',
+    );
+    expect(plan.resultingMail).toBe('slave@example.com');
   });
 
   it('has no resulting mail when neither account has one', () => {

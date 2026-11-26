@@ -582,6 +582,15 @@ test.describe('Compliance area (overview)', () => {
       completePersonalData: true,
       language: 'EN',
     });
+    // The merge keeps the master's mail; only a master without one takes the other account's mail.
+    const masterMail = (
+      await queryOne<{ mail: string }>(`SELECT mail FROM user_data WHERE id = $1`, [master.userDataId])
+    )?.mail;
+    const slaveMail = (await queryOne<{ mail: string }>(`SELECT mail FROM user_data WHERE id = $1`, [slave.userDataId]))
+      ?.mail;
+    expect(masterMail, 'seeded master must have a mail').toBeTruthy();
+    expect(slaveMail, 'seeded slave must have a mail').toBeTruthy();
+    expect(masterMail).not.toBe(slaveMail);
     const reason = `e2e merge ${Date.now()}`;
 
     await openScreen(page, `/compliance/user/${master.userDataId}`, jwt);
@@ -601,6 +610,8 @@ test.describe('Compliance area (overview)', () => {
     await page.locator('#account-merge-reason').fill(reason);
     const mergeButton = page.getByRole('button', { name: 'Merge', exact: true });
     await expect(mergeButton).toBeEnabled({ timeout: 15000 });
+    // The account that stays keeps its own mail, so the preview shows the master's mail.
+    await expect(page.getByText(`Mail after merge: ${masterMail}`, { exact: true })).toBeVisible();
 
     const mergeResponsePromise = page.waitForResponse(
       (response) =>
@@ -615,6 +626,9 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByRole('button', { name: 'Merge accounts', exact: true })).toBeVisible({ timeout: 20000 });
 
     await waitForRow(`SELECT id FROM user_data WHERE id = $1 AND status = 'Merged'`, [slave.userDataId], 20000);
+
+    // The merge keeps the master's mail instead of taking the merged account's one.
+    await waitForRow(`SELECT id FROM user_data WHERE id = $1 AND mail = $2`, [master.userDataId, masterMail], 20000);
 
     for (const userDataId of [master.userDataId, slave.userDataId]) {
       const kycLog = await waitForRow<{ id: number; comment: string | null; result: string | null }>(
