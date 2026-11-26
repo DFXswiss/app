@@ -41,8 +41,9 @@ function toMergeAccount(userData: UserDataDetail): MergeAccount {
   };
 }
 
-function displayOrDash(value: string | number | undefined): string {
-  return value === undefined || value === '' ? '-' : String(value);
+// The API sends an unset column as JSON null, which the type does not show.
+function displayOrDash(value: string | number | null | undefined): string {
+  return value === undefined || value === null || value === '' ? '-' : String(value);
 }
 
 function isPositiveInteger(value: string): boolean {

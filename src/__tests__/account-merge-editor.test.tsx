@@ -224,6 +224,18 @@ describe('AccountMergeEditor', () => {
     expect(otherRow.querySelectorAll('td')[2]).toHaveTextContent('-');
   });
 
+  it('shows a dash for values the API sends as null', async () => {
+    render(element());
+    await openAndLoad(
+      detail({ id: 88002, mail: null as unknown as string, verifiedName: null as unknown as string, kycLevel: 20 }),
+    );
+
+    const mailRow = screen.getByText('mail').closest('tr') as HTMLElement;
+    const nameRow = screen.getByText('verifiedName').closest('tr') as HTMLElement;
+    expect(mailRow.querySelectorAll('td')[2]).toHaveTextContent(/^-$/);
+    expect(nameRow.querySelectorAll('td')[2]).toHaveTextContent(/^-$/);
+  });
+
   it('shows the loading label and disables Load while the account is fetched', async () => {
     const deferred = createDeferred<{ userData: UserDataDetail }>();
     mockGetUserData.mockReturnValue(deferred.promise);
