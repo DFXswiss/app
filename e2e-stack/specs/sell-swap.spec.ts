@@ -13,11 +13,14 @@
  * LikelyReturn with the return banner, and Unknown (chain without Scorechain coverage) without a banner.
  * The partner sell wallet lists (bitcoinonly, kevinsoell) are driven from their ?mode= entry page
  * through to the hardware-wallet selection.
+ * One /sell case pauses sell at runtime through the API's `disabledProcess` setting and restores it
+ * before it ends; every other sell case runs with sell on.
  */
 
 import type { Page, Response } from '@playwright/test';
 import { ethers } from 'ethers';
 import {
+  apiPut,
   expect,
   expectSwapUnavailable,
   expectUnavailableSwapQuoteOnScreen,
@@ -29,9 +32,11 @@ import {
   orSwapUnavailable,
   queryOne,
   queryRows,
+  required,
   SwapUnavailableError,
   test,
   testWallet,
+  TRANSACTIONS_PAUSED,
   waitForRow,
   withDb,
 } from './fixtures';
@@ -293,6 +298,73 @@ async function setupSellFullUiFlow(
   await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
 
   return { user, paymentInfos };
+}
+
+/**
+ * The `setting` row the API reads its runtime list of switched-off processes from (a JSON array of process
+ * names). The API re-reads it every 30 seconds, so a change takes up to that long to reach the sell route.
+ */
+const DISABLED_PROCESS_SETTING = 'disabledProcess';
+const SELL_PROCESS = 'Sell';
+/** The message the API sends with 503 `TRANSACTIONS_PAUSED`. */
+const TRANSACTIONS_PAUSED_MESSAGE =
+  'Transactions are temporarily paused. Your account, KYC and support remain available.';
+/** Bound for one switch to reach the API: the 30-second resync plus room for the request that observes it. */
+const PROCESS_RESYNC_TIMEOUT_MS = 75000;
+
+/** The `disabledProcess` setting as it is now, or null when the row does not exist. */
+async function readDisabledProcessSetting(): Promise<string | null> {
+  const row = await queryOne<{ value: string }>(`SELECT value FROM setting WHERE key = $1`, [DISABLED_PROCESS_SETTING]);
+  return row?.value ?? null;
+}
+
+/** Adds Sell to the processes listed in `previous` and writes the result, inserting the row if it is missing. */
+async function pauseSellThroughSetting(previous: string | null): Promise<void> {
+  const listed: unknown = previous ? JSON.parse(previous) : [];
+  if (!Array.isArray(listed)) {
+    throw new Error(`setting ${DISABLED_PROCESS_SETTING} is not a JSON array: ${previous}`);
+  }
+  const paused = JSON.stringify([...listed.filter((name) => name !== SELL_PROCESS), SELL_PROCESS]);
+  await queryRows(
+    `INSERT INTO setting (key, value) VALUES ($1, $2)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [DISABLED_PROCESS_SETTING, paused],
+  );
+}
+
+/** Puts the `disabledProcess` setting back to `previous`; removes the row when there was none. */
+async function restoreDisabledProcessSetting(previous: string | null): Promise<void> {
+  if (previous === null) {
+    await queryRows(`DELETE FROM setting WHERE key = $1`, [DISABLED_PROCESS_SETTING]);
+  } else {
+    await queryRows(`UPDATE setting SET value = $1 WHERE key = $2`, [previous, DISABLED_PROCESS_SETTING]);
+  }
+}
+
+/** The ETH → CHF sell quote the sell form asks for with `asset-in=ETH&asset-out=CHF&amount-in=0.1`. */
+async function ethToChfSellQuote(): Promise<Record<string, unknown>> {
+  const asset = required(
+    (await fetchAssets()).find((a) => a.name === 'ETH' && a.blockchain === 'Ethereum'),
+    'ETH on Ethereum in GET /v1/asset',
+  );
+  const fiat = required(
+    (await fetchFiats()).find((f) => f.name === 'CHF'),
+    'CHF in GET /v1/fiat',
+  );
+  return { iban: TEST_IBAN, asset: { id: asset.id }, currency: { id: fiat.id }, amount: 0.1 };
+}
+
+/** Asks for `quote` once: `TRANSACTIONS_PAUSED` for the paused answer, otherwise `HTTP <status>` and the body. */
+async function sellQuoteAnswer(jwt: string, quote: Record<string, unknown>): Promise<string> {
+  let status = 0;
+  const body = await apiPut<unknown>('sell/paymentInfos', quote, {
+    jwt,
+    expectOk: false,
+    onStatus: (s) => (status = s),
+  });
+  const code = typeof body === 'object' && body !== null ? (body as { code?: unknown }).code : undefined;
+  if (status === 503 && code === TRANSACTIONS_PAUSED) return TRANSACTIONS_PAUSED;
+  return `HTTP ${status}: ${JSON.stringify(body ?? null).slice(0, 200)}`;
 }
 
 /**
@@ -1421,6 +1493,63 @@ test.describe('Sell + Swap e2e', () => {
         { timeout: 8000, message: 'cleared sell spend amount must stay empty' },
       )
       .toEqual({ value: '', paymentVisible: false });
+  });
+
+  // ---------------------------------------------------------------------------
+  // /sell while sell is paused at runtime
+  // ---------------------------------------------------------------------------
+
+  // This case switches sell off for the whole API, so no other sell case may run while it does. The file is
+  // `test.describe.configure({ mode: 'serial' })` and playwright.config.ts runs one worker, so nothing runs
+  // beside it; the `finally` waits until sell answers again before the next case starts.
+  test('/sell: while sell is paused through the disabledProcess setting, the screen shows the paused message and no payment information', async ({
+    page,
+  }) => {
+    test.setTimeout(240000);
+
+    // A second account asks the API directly whether the switch has arrived, before the screen is opened.
+    const probe = await createUser({
+      walletIndex: nextWalletIndex(),
+      tag: 'sell-paused-probe',
+      // Level 50: the default wallet's RULE_3 refuses sell quotes below it (sell-wallet-aml.spec.ts).
+      kycLevel: 50,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    await createBankAccount(probe.jwt, { iban: TEST_IBAN, label: 'Sell paused probe BA' });
+    const quote = await ethToChfSellQuote();
+
+    const previous = await readDisabledProcessSetting();
+    try {
+      await pauseSellThroughSetting(previous);
+      await expect
+        .poll(() => sellQuoteAnswer(probe.jwt, quote), {
+          timeout: PROCESS_RESYNC_TIMEOUT_MS,
+          intervals: [2000],
+          message: `PUT /v1/sell/paymentInfos must answer ${TRANSACTIONS_PAUSED} once the API has re-read the setting`,
+        })
+        .toBe(TRANSACTIONS_PAUSED);
+
+      const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-paused');
+
+      // Waits for the screen's own quote answer, then asserts its message on screen and no payment information.
+      const answer = await expectUnavailableSwapQuoteOnScreen(page, () => paymentInfos.last);
+      expect(answer, `PUT sell/paymentInfos answer of the screen: ${paymentInfos.last?.body}`).toEqual({
+        kind: 'paused',
+        status: 503,
+        message: TRANSACTIONS_PAUSED_MESSAGE,
+      });
+      await expect(page.getByRole('button', { name: 'Complete transaction in your wallet' })).toHaveCount(0);
+    } finally {
+      await restoreDisabledProcessSetting(previous);
+      await expect
+        .poll(() => sellQuoteAnswer(probe.jwt, quote), {
+          timeout: PROCESS_RESYNC_TIMEOUT_MS,
+          intervals: [2000],
+          message: 'PUT /v1/sell/paymentInfos must stop answering paused once the setting is restored',
+        })
+        .not.toBe(TRANSACTIONS_PAUSED);
+    }
   });
 
   // ---------------------------------------------------------------------------

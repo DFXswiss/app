@@ -507,6 +507,20 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   on and the process off), that the swap screen shows the API's message and no payment information, and that
   no swap route is written, and end there. A green swap case does **not** prove a swap quote, a swap route, the
   swap payment panel, the swap hand-off, its reload or its completion redirect, or the swap form submit.
+- **The full-stack paused-sell case switches sell off at runtime through the `disabledProcess` setting.**
+  `e2e-stack/specs/sell-swap.spec.ts` (`/sell: while sell is paused through the disabledProcess setting, the
+  screen shows the paused message and no payment information`) adds `Sell` to the JSON array in the `setting` row
+  `disabledProcess` by SQL, inserting the row if it is missing and keeping the previous value. It then asks
+  `PUT /v1/sell/paymentInfos` every 2 seconds, for at most 75 seconds, until the API answers HTTP 503
+  `TRANSACTIONS_PAUSED`, opens `/sell` and restores the previous value in a `finally`. After that it waits, with
+  the same bound, until the paused answer is gone. The file runs serially on one worker, so no other case runs
+  while sell is off. Real: the API re-reading the setting on its own, the sell route's gate, the 503 answer
+  with its message, and the screen showing that message and no payment information. A green run does not prove
+  how production writes the setting, since no admin path is used, or that the resync takes 30 seconds. It does
+  not prove that the setting pauses the other processes it lists, or that a pause through `DISABLED_PROCESSES`
+  at boot behaves the same. The case relies on the API adding the setting's list to `DISABLED_PROCESSES` rather
+  than replacing it. Once restored, the case only checks that the paused answer is gone, not that the sell
+  quote succeeds.
 - **The full-stack provisional buy spec SQL-clears `user_data.tradeApprovalDate`.**
   `e2e-stack/specs/buy.spec.ts` (`/buy and /buy/info: provisional approval …`) sets the date to `NULL`
   after creating the customer, because the factory may leave one behind. A green run does **not** prove
