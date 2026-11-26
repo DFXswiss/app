@@ -1127,7 +1127,7 @@ test.describe('Auth area e2e', () => {
     const next = await page.context().newPage();
     try {
       await isolateFromExternalHosts(next);
-      await next.goto(loginUrlFromNotification(row.data));
+      await next.goto(loginUrlFromNotification(decryptPii(row.data)));
       await expect
         .poll(async () => next.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
           timeout: 30000,
