@@ -20,7 +20,6 @@ import type { Page, Response } from '@playwright/test';
 import {
   type CapturedResponse,
   expect,
-  expectPausedQuoteOnScreen,
   gotoWithSession,
   normPath,
   queryOne,
@@ -105,19 +104,13 @@ async function moveToWallet(
   ]);
 }
 
-/**
- * Opens the sell form with the amount filled in and waits for the screen's payment-info answer. Returns undefined
- * after asserting the paused answer on screen while sell is switched off.
- */
-async function openSellForm(
-  page: Page,
-  user: CreateUserResult,
-): Promise<{ last: CapturedResponse | null } | undefined> {
+/** Opens the sell form with the amount filled in and waits for the screen's payment-info answer. */
+async function openSellForm(page: Page, user: CreateUserResult): Promise<{ last: CapturedResponse | null }> {
   const capture = captureSellPaymentInfos(page);
   await gotoWithSession(page, '/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1', user.jwt);
   expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
-  if (await expectPausedQuoteOnScreen(page, () => capture.last, 'sell', 45000)) return undefined;
+  await expect.poll(() => capture.last, { timeout: 45000, message: 'PUT sell/paymentInfos answer' }).not.toBeNull();
   return capture;
 }
 
@@ -157,13 +150,13 @@ test.describe('Wallet AML rules on the /sell screen', () => {
   test('/sell: KYC level 30 on a RULE_3 wallet shows the KYC hint and no payment information', async ({ page }) => {
     test.setTimeout(90000);
     const capture = await openSellForm(page, await seller('sell-aml-30', 30));
-    if (capture) await expectRefusedOnScreen(page, capture);
+    await expectRefusedOnScreen(page, capture);
   });
 
   test('/sell: KYC level 50 on a RULE_3 wallet shows the payment information', async ({ page }) => {
     test.setTimeout(90000);
     const capture = await openSellForm(page, await seller('sell-aml-50', 50));
-    if (capture) await expectPaymentInfoOnScreen(page, capture);
+    await expectPaymentInfoOnScreen(page, capture);
   });
 
   test('/sell: RULE_11 waives RULE_3 for a Swiss IP', async ({ page }) => {
@@ -171,7 +164,7 @@ test.describe('Wallet AML rules on the /sell screen', () => {
     const user = await seller('sell-aml-r11-ch', 30);
     await moveToWallet(user, { amlRules: '3;7;11' }, 'CH');
     const capture = await openSellForm(page, user);
-    if (capture) await expectPaymentInfoOnScreen(page, capture);
+    await expectPaymentInfoOnScreen(page, capture);
   });
 
   test('/sell: RULE_11 does not waive RULE_3 for a non-Swiss IP', async ({ page }) => {
@@ -179,7 +172,7 @@ test.describe('Wallet AML rules on the /sell screen', () => {
     const user = await seller('sell-aml-r11-de', 30);
     await moveToWallet(user, { amlRules: '3;7;11' }, 'DE');
     const capture = await openSellForm(page, user);
-    if (capture) await expectRefusedOnScreen(page, capture);
+    await expectRefusedOnScreen(page, capture);
   });
 
   test('/sell: a wallet exception for RULE_3 lets KYC level 30 through', async ({ page }) => {
@@ -187,6 +180,6 @@ test.describe('Wallet AML rules on the /sell screen', () => {
     const user = await seller('sell-aml-except', 30);
     await moveToWallet(user, { amlRules: '3;7', exceptAmlRules: '3' }, 'DE');
     const capture = await openSellForm(page, user);
-    if (capture) await expectPaymentInfoOnScreen(page, capture);
+    await expectPaymentInfoOnScreen(page, capture);
   });
 });

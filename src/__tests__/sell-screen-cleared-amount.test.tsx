@@ -46,6 +46,8 @@ let mockSession: { address: string } | undefined;
 let mockActiveWallet: string | undefined;
 let mockFlags: string | undefined;
 let mockHideTarget = true;
+let mockUser: { kyc: { level: number } } | undefined;
+let mockHasBankAccount = true;
 const mockGetAsset = (list: any[], name?: string) =>
   name ? (list ?? []).find((a: any) => a.name === name) : undefined;
 const mockGetAssets = () => mockAssets;
@@ -110,7 +112,7 @@ jest.mock('@dfx.swiss/react', () => ({
   }),
   useAuthContext: () => ({ session: mockSession }),
   useBankAccountContext: () => ({
-    bankAccounts: [bankAccount],
+    bankAccounts: mockHasBankAccount ? [bankAccount] : [],
     updateAccount: (...args: unknown[]) => mockUpdateAccount(...args),
   }),
   useFiat: () => ({
@@ -120,6 +122,7 @@ jest.mock('@dfx.swiss/react', () => ({
   }),
   useSell: () => mockSellInterface,
   useSessionContext: () => ({ logout: mockLogout }),
+  useUserContext: () => ({ user: mockUser }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => {
@@ -211,7 +214,14 @@ jest.mock('@dfx.swiss/react-components', () => {
           )}
         />
       ) : null,
-    StyledLink: ({ children, label }: any) => <div>{label ?? children}</div>,
+    StyledLink: ({ children, label, onClick }: any) =>
+      onClick ? (
+        <button type="button" onClick={onClick}>
+          {label}
+        </button>
+      ) : (
+        <div>{label ?? children}</div>
+      ),
     StyledLoadingSpinner: () => <div data-testid="loading-spinner" />,
     StyledSearchDropdown: ({ name, items, labelFunc, control, filterFunc, balanceFunc, descriptionFunc, assetIconFunc }: any) => (
       <Controller
@@ -247,7 +257,7 @@ jest.mock('src/components/order/bank-account-selector', () => ({
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const React = require('react');
     React.useEffect(() => {
-      onChange(bankAccount);
+      if (mockHasBankAccount) onChange(bankAccount);
     }, []);
     return (
       <div data-testid="bank-account-selector">
@@ -412,6 +422,8 @@ describe('SellScreen', () => {
     mockActiveWallet = undefined;
     mockFlags = undefined;
     mockHideTarget = true;
+    mockUser = undefined;
+    mockHasBankAccount = true;
     mockWalletBlockchain = 'Ethereum';
     mockPrefCurrency = chf;
     mockIsInitialized = true;
@@ -1655,5 +1667,61 @@ describe('SellScreen', () => {
     });
     expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+  });
+
+  it('shows the already-verified link at KYC level 0 without a bank account', async () => {
+    mockUser = { kyc: { level: 0 } };
+    mockHasBankAccount = false;
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByRole('button', { name: 'I am already verified with DFX' })).toBeInTheDocument();
+    expect(mockReceiveFor).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+  });
+
+  it('navigates to /link with the redirect set when the already-verified link is clicked', async () => {
+    mockUser = { kyc: { level: 0 } };
+    mockHasBankAccount = false;
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      screen.getByRole('button', { name: 'I am already verified with DFX' }).click();
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('/link', { setRedirect: true });
+  });
+
+  it('does not show the already-verified link above KYC level 0', async () => {
+    mockUser = { kyc: { level: 10 } };
+    mockHasBankAccount = false;
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('bank-account-selector')).toBeInTheDocument();
+    expect(screen.queryByText('I am already verified with DFX')).not.toBeInTheDocument();
+  });
+
+  it('does not show the already-verified link once a quote is shown', async () => {
+    mockUser = { kyc: { level: 0 } };
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
+    expect(screen.queryByText('I am already verified with DFX')).not.toBeInTheDocument();
+  });
+
+  it('does not show the already-verified link once a quote error is shown', async () => {
+    mockUser = { kyc: { level: 0 } };
+    mockReceiveFor.mockRejectedValue({ statusCode: 400, message: 'KycRequired' });
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('quote-error')).toHaveTextContent('KycRequired');
+    expect(screen.queryByText('I am already verified with DFX')).not.toBeInTheDocument();
+  });
+
+  it('does not show the already-verified link once a quote request error is shown', async () => {
+    mockUser = { kyc: { level: 0 } };
+    mockReceiveFor.mockRejectedValue({ statusCode: 500, message: 'boom' });
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('boom');
+    expect(screen.queryByText('I am already verified with DFX')).not.toBeInTheDocument();
   });
 });

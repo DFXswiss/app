@@ -428,6 +428,17 @@ describe('AppHandlingContextProvider', () => {
       expect(ctx.params.mode).toBeUndefined();
     });
 
+    it('does not take the redirect URI an earlier widget left in the session store', async () => {
+      sessionStorage.setItem(REDIRECT_URI_KEY, 'https://partner.example/earlier-widget');
+
+      await renderProvider({ isWidget: true, params: { wallet: 'Partner' } });
+
+      expect(ctx.params.wallet).toBe('Partner');
+      expect(ctx.params.redirectUri).toBeUndefined();
+      expect(ctx.redirectUri).toBeUndefined();
+      expect(ctx.canClose).toBe(false);
+    });
+
     it('keeps the widget attributes without the credentials after a forced logout', async () => {
       mockSession = { ...mockSession, isLoggedIn: true };
       window.history.pushState({}, '', '/host?redirect=/sell&type=Address');

@@ -28,10 +28,40 @@ import {
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { ErrorHint } from '../components/error-hint';
+import { AppParams, useAppHandlingContext } from '../contexts/app-handling.context';
 import { useSettingsContext } from '../contexts/settings.context';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useMergedAccount } from 'src/hooks/merged-account.hook';
 import { useNavigation } from '../hooks/navigation.hook';
+import { appOrigin } from '../util/app-origin';
+import { APP_PARAM_URL_NAMES } from '../util/app-param-names';
+import { LOGIN_PARAMS } from '../util/login-params';
+import { loginRedirectParams } from '../util/login-redirect';
+import { relativeUrl } from '../util/utils';
+
+type ContactDataWithReturn = KycContactData & { redirectUri?: string };
+
+// Page parameters the return page does not get back: the partner redirect URI (loginRedirectParams adds the one of
+// this session) and the personal data a partner can prefill. LOGIN_PARAMS are left out by their URL name.
+const RETURN_EXCLUDED_PARAMS = new Set<keyof AppParams>([
+  'redirectUri',
+  'mail',
+  'accountType',
+  'firstName',
+  'lastName',
+  'street',
+  'houseNumber',
+  'zip',
+  'city',
+  'country',
+  'organizationName',
+  'organizationStreet',
+  'organizationHouseNumber',
+  'organizationZip',
+  'organizationCity',
+  'organizationCountry',
+  'phone',
+]);
 
 export default function LinkScreen(): JSX.Element {
   const { translate, translateError } = useSettingsContext();
@@ -39,6 +69,7 @@ export default function LinkScreen(): JSX.Element {
   const { user, reloadUser } = useUserContext();
   const { navigate, goBack: navigateBack } = useNavigation();
   const { handleMergedError } = useMergedAccount();
+  const { redirectPath, params, isWidget, widgetPersonalIban } = useAppHandlingContext();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -122,12 +153,31 @@ export default function LinkScreen(): JSX.Element {
     formState: { isValid, errors },
   } = useForm<KycContactData>({ mode: 'onTouched' });
 
+  function returnUri(): string | undefined {
+    if (!redirectPath) return undefined;
+
+    const query = loginRedirectParams({ isWidget, widgetPersonalIban }, (window as Window).location.search);
+    // Every page parameter the app read, under the URL name it read it from, so the return page starts the same flow.
+    Object.entries(params).forEach(([key, value]) => {
+      const name = APP_PARAM_URL_NAMES[key as keyof typeof APP_PARAM_URL_NAMES];
+      if (!value || !name || RETURN_EXCLUDED_PARAMS.has(key as keyof AppParams) || LOGIN_PARAMS.includes(name)) return;
+      query.set(name, value);
+    });
+
+    const target = new URL(relativeUrl({ path: redirectPath, params: query }), appOrigin());
+    LOGIN_PARAMS.forEach((name) => target.searchParams.delete(name));
+    return target.href;
+  }
+
   function onSubmit(data: KycContactData) {
     if (!contactStep?.session || !kycCode) return;
 
+    const redirectUri = returnUri();
+    const contactData: ContactDataWithReturn = redirectUri ? { ...data, redirectUri } : data;
+
     setIsUpdating(true);
     setError(undefined);
-    setContactData(kycCode, contactStep.session.url, data)
+    setContactData(kycCode, contactStep.session.url, contactData)
       .then((r) => (isStepDone(r) ? linkFailed() : setShowLinkHint(true)))
       .catch((error: ApiError) => {
         if (handleMergedError(error)) return;
