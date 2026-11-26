@@ -10,7 +10,8 @@
  * dedicated test at the end of this file (select the existing account, do not POST again).
  * Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
  * /sell also proves three wallet address-check outcomes through the real API: Ok without a banner,
- * LikelyReturn with the return banner, and Unknown (chain without Scorechain coverage) without a banner.
+ * LikelyReturn with the return banner, and Ok without a banner for an address Scorechain has no data on
+ * (NoCoverage). Unknown is not reachable on a sellable chain here; the unit test of the hint covers it.
  * The partner sell wallet lists (bitcoinonly, kevinsoell) are driven from their ?mode= entry page
  * through to the hardware-wallet selection.
  * One /sell case pauses sell at runtime through the API's `disabledProcess` setting and restores it
@@ -1017,13 +1018,13 @@ test.describe('Sell + Swap e2e', () => {
   });
 
   test(
-    '/sell shows no banner when the address check runs into nothing (Unknown for an address Scorechain does not cover)',
+    '/sell shows no banner when Scorechain has no data on the address (NoCoverage answers Ok)',
     async ({ page }) => {
       test.setTimeout(120000);
 
       const user = await createUser({
         walletIndex: NO_COVERAGE_WALLET_INDEX,
-        tag: 'sell-address-check-unknown',
+        tag: 'sell-address-check-no-coverage',
         kycLevel: 30,
         completePersonalData: true,
         language: 'EN',
@@ -1031,7 +1032,8 @@ test.describe('Sell + Swap e2e', () => {
       expect(user.wallet.address.toLowerCase()).toBe(NO_COVERAGE_WALLET_ADDRESS);
 
       // The API answers `Unknown` at once while another precheck holds the lock. Start only when the lock is free,
-      // so the `Unknown` below comes from the mocked NoCoverage answer and not from that busy fallback.
+      // so the answer below comes from the mocked NoCoverage screening and not from that busy fallback.
+      // A sell precheck treats NoCoverage as "no data", which is evaluable, so the API answers `Ok`.
       await expect
         .poll(precheckLockIsFree, {
           timeout: 30000,
@@ -1091,7 +1093,7 @@ test.describe('Sell + Swap e2e', () => {
       const requestUrl = new URL(response.url());
       expect(requestUrl.searchParams.get('blockchain')).toBe('Ethereum');
       expect(response.status()).toBe(200);
-      expect(await response.json()).toEqual({ result: 'Unknown' });
+      expect(await response.json()).toEqual({ result: 'Ok' });
 
       await expect(
         page.getByText(

@@ -866,9 +866,13 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   and the tests prove the form is usable before that answer arrives.
   `e2e-stack/specs/sell-swap.spec.ts` proves that the sell page shows no banner for `Ok` and the
   banner for `LikelyReturn`, through the real API and database. A third test opens the sell page on
-  Ethereum with the `NoCoverage` address, so the check runs into nothing, and proves the `Unknown`
-  answer shows no banner. It does not use a chain Scorechain does not cover: the `loc` sell chains are
-  all covered except Monero, which the EVM command-line login cannot use.
+  Ethereum with the `NoCoverage` address, which Scorechain has no data on, and proves the API answers
+  `Ok` (a sell precheck treats `NoCoverage` as evaluable "no data"), shows no banner and stores the
+  precheck screening with severity `NoCoverage`. The `Unknown` answer is not reachable on a sellable
+  chain in this harness: the `loc` sell chains are all covered by Scorechain except Monero, which the
+  EVM command-line login cannot use. `Unknown` is covered only by the unit test of
+  `src/components/sell-address-check-hint.tsx` (`src/__tests__/sell-address-check-hint.test.tsx`),
+  which replaces the API and is not a full-stack case.
   A green run does not prove what the real Scorechain returns for an address, or that the API stays
   within its 15-second bound against the real provider.
 - **The full-stack harness stores support and KYC blobs in memory, not in object storage.** With `ENVIRONMENT=loc`, the API's
