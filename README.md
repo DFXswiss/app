@@ -187,9 +187,9 @@ _Hint: Asset selection parameters may be overwritten when using [wallet login](#
 
 #### Hints
 
-- To select an asset, either the name of the asset (e.g. `BTC`, caution when using multi-chain accounts - not recommended), the unique name (e.g. `Ethereum/ETH`) or the DFX asset ID (get from [asset endpoint](https://api.dfx.swiss/swagger#/Asset/AssetController_getAllAsset)) can be used.
-- To select a currency, either the name (e.g. `USD`) or the DFX fiat ID (get from [fiat endpoint](https://api.dfx.swiss/swagger#/Fiat/FiatController_getAllFiat)) can be used.
-- To select a bank account, either an IBAN, the account id or the account label (get from [bank accounts endpoint](https://api.dfx.swiss/swagger#/BankAccount/BankAccountController_getAllUserBankAccount)) can be used.
+- To select an asset, either the name of the asset (e.g. `BTC`, caution when using multi-chain accounts - not recommended), the unique name (e.g. `Ethereum/ETH`) or the DFX asset ID (get from the asset endpoint `GET /v1/asset`) can be used.
+- To select a currency, either the name (e.g. `USD`) or the DFX fiat ID (get from the fiat endpoint `GET /v1/fiat`) can be used.
+- To select a bank account, either an IBAN, the account id or the account label (get from the bank accounts endpoint `GET /v1/bankAccount`, authentication required) can be used.
 
 ### Closing
 
@@ -210,7 +210,7 @@ If a redirect URI was provided (`redirect-uri` parameter), the user will be redi
 - Buy: redirected to `{redirect-url}/buy`
 - Sell/swap: redirected to `{redirect-url}/sell` or `{redirect-url}/swap` with the following parameters:
 
-  - `routeId`: sell/swap route ID (get details from [sell route](https://api.dfx.swiss/swagger#/Sell/SellController_getSell) or [swap route](https://api.dfx.swiss/swagger#/Swap/SwapController_getSwap) endpoint, authentication required)
+  - `routeId`: sell/swap route ID (get details from the sell route endpoint `GET /v1/sell/{id}` or the swap route endpoint `GET /v1/swap/{id}`, authentication required)
   - `amount`: amount to send
   - `asset`: asset to send
   - `blockchain`: transfer blockchain
@@ -240,7 +240,7 @@ interface CloseMessage {
 }
 ```
 
-Documentation on `BuyPaymentInfoDto`, `SellPaymentInfoDto` and `SwapPaymentInfoDto` can be found in the [DFX API Swagger documentation](https://api.dfx.swiss/).
+`BuyPaymentInfoDto`, `SellPaymentInfoDto` and `SwapPaymentInfoDto` are the payment info objects returned by the DFX API.
 
 ### Code Examples
 
