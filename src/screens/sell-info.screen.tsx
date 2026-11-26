@@ -76,6 +76,7 @@ export default function SellInfoScreen(): JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [paymentInfo, setPaymentInfo] = useState<Sell>();
   const [showsCompletion, setShowsCompletion] = useState(false);
+  const [confirmedPaymentInfo, setConfirmedPaymentInfo] = useState<Sell>();
   const [asset, setAsset] = useState<Asset>();
   const [currency, setCurrency] = useState<Fiat>();
   const [bankAccount, setBankAccount] = useState<BankAccount>();
@@ -129,6 +130,7 @@ export default function SellInfoScreen(): JSX.Element {
       getTransactionByRequestId(paymentInfo.id)
         .then((tx) => {
           setSellTxId(tx.inputTxId);
+          setConfirmedPaymentInfo(paymentInfo);
           setShowsCompletion(true);
           clearInterval(checkTransactionInterval);
         })
@@ -143,8 +145,8 @@ export default function SellInfoScreen(): JSX.Element {
   }, [paymentInfo, isLoading]);
 
   useEffect(() => {
-    if (remainingSeconds <= 1) fetchData();
-  }, [remainingSeconds]);
+    if (remainingSeconds <= 1 && !isProcessing && !showsCompletion) fetchData();
+  }, [remainingSeconds, isProcessing]);
 
   useEffect(() => fetchData(), [asset, currency, bankAccount, amountIn, amountOut]);
 
@@ -166,8 +168,8 @@ export default function SellInfoScreen(): JSX.Element {
     };
     if (amountIn) {
       request.amount = +amountIn;
-    } else if (amountOut) {
-      request.targetAmount = +amountOut;
+    } else {
+      request.targetAmount = Number(amountOut);
     }
 
     setIsLoading(true);
@@ -182,6 +184,9 @@ export default function SellInfoScreen(): JSX.Element {
   }
 
   function validateSell(sell: Sell): Sell | undefined {
+    setCustomAmountError(undefined);
+    setKycError(undefined);
+
     switch (sell.error) {
       case TransactionError.AMOUNT_TOO_LOW:
         setCustomAmountError(
@@ -218,22 +223,20 @@ export default function SellInfoScreen(): JSX.Element {
         return undefined;
     }
 
-    setCustomAmountError(undefined);
-    setKycError(undefined);
-
     return sell;
   }
 
   async function handleNext(paymentInfo: Sell): Promise<void> {
-    setIsProcessing(true);
-
     if (canSendTransaction() && !activeWallet) {
       closeServices({ type: CloseType.SELL, isComplete: false, sell: paymentInfo }, false);
       return;
     }
 
+    setIsProcessing(true);
+
     try {
       if (canSendTransaction()) await sendTransaction(paymentInfo).then(setSellTxId);
+      setConfirmedPaymentInfo(paymentInfo);
       setShowsCompletion(true);
     } finally {
       setIsProcessing(false);
@@ -252,8 +255,8 @@ export default function SellInfoScreen(): JSX.Element {
 
   return (
     <>
-      {showsCompletion && paymentInfo ? (
-        <SellCompletion paymentInfo={paymentInfo} navigateOnClose={false} txId={sellTxId} />
+      {showsCompletion && confirmedPaymentInfo ? (
+        <SellCompletion paymentInfo={confirmedPaymentInfo} navigateOnClose={false} txId={sellTxId} />
       ) : errorMessage ? (
         <StyledVerticalStack center className="text-center">
           <ErrorHint message={errorMessage} />
@@ -266,8 +269,6 @@ export default function SellInfoScreen(): JSX.Element {
             color={StyledButtonColor.STURDY_WHITE}
           />
         </StyledVerticalStack>
-      ) : !paymentInfo ? (
-        <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : customAmountError ? (
         <>
           <StyledInfoText invertedIcon>{customAmountError}</StyledInfoText>
@@ -279,6 +280,8 @@ export default function SellInfoScreen(): JSX.Element {
         </>
       ) : kycError ? (
         <QuoteErrorHint type={TransactionType.SELL} error={kycError} />
+      ) : !paymentInfo ? (
+        <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : (
         bankAccount &&
         paymentInfo && (

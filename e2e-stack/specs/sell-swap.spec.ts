@@ -22,6 +22,8 @@ import {
   expectPausedQuoteOnScreen,
   expectTransactionsPaused,
   gotoWithSession,
+  headerBackButton,
+  isolateFromExternalHosts,
   normPath,
   openScreen,
   orPaused,
@@ -41,6 +43,7 @@ import {
   createSwap,
   createUser,
   e2eMail,
+  type KycLevelValue,
   TEST_IBAN,
 } from './fixtures/factories';
 import { injectWallet, recordAuthAndErrorReports, type WalletAnswer, walletAnswers } from './fixtures/injected-wallet';
@@ -295,17 +298,21 @@ async function setupSellFullUiFlow(
 
 /**
  * Shared setup for /sell/info write-path and payment-panel tests: user + bank account,
- * paymentInfos tracking, navigation with valid query params (no networkidle).
+ * paymentInfos tracking, navigation with valid query params (no networkidle). `extraQuery` is appended to that URL;
+ * `amountIn` is the ETH amount in it.
  */
 async function setupSellInfoUiFlow(
   page: Page,
   tag: string,
+  extraQuery = '',
+  amountIn = '0.1',
+  // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-wallet-aml.spec.ts).
+  kycLevel: KycLevelValue = 50,
 ): Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
   const user = await createUser({
     walletIndex: nextWalletIndex(),
     tag,
-    // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-wallet-aml.spec.ts).
-    kycLevel: 50,
+    kycLevel,
     completePersonalData: true,
     language: 'EN',
   });
@@ -318,7 +325,7 @@ async function setupSellInfoUiFlow(
   // (by design, so it can auto-advance to the completion screen) — content-based waits gate this.
   await gotoWithSession(
     page,
-    `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}`,
+    `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=${amountIn}&bank-account=${encodeURIComponent(TEST_IBAN)}${extraQuery}`,
     user.jwt,
   );
   expect(normPath(new URL(page.url()).pathname)).toBe('/sell/info');
@@ -355,7 +362,23 @@ async function setupSwapFullUiFlow(
   return { user, paymentInfos };
 }
 
-const WALLET_REDIRECT_QUERY = `&redirect-uri=${encodeURIComponent('https://wallet.e2e.test/return/')}`;
+const WALLET_REDIRECT_URI = 'https://wallet.e2e.test/return/';
+const WALLET_REDIRECT_QUERY = `&redirect-uri=${encodeURIComponent(WALLET_REDIRECT_URI)}`;
+const REDIRECT_URI_KEY = 'dfx.srv.redirectUri';
+
+/**
+ * Any redirect URI found in localStorage, directly or inside the stored query parameters (an older version kept it
+ * there).
+ */
+async function redirectUriInLocalStorage(page: Page): Promise<{ key: string | null; queryParams: unknown }> {
+  return page.evaluate((key) => {
+    const raw = window.localStorage.getItem('dfx.srv.queryParams');
+    return {
+      key: window.localStorage.getItem(key),
+      queryParams: raw ? (JSON.parse(raw) as { redirectUri?: unknown }).redirectUri : undefined,
+    };
+  }, REDIRECT_URI_KEY);
+}
 
 /**
  * Answers every request to the integrator's redirect target with 204, so the page stays open, and returns the list
@@ -412,6 +435,13 @@ async function expectRepeatableHandOff(
     [opts.userId, opts.routeType],
   );
   expect(first.searchParams.get('routeId')).toBe(String(route.id));
+  // orderUid names the confirmed payment info: the user's newest transaction request on this route
+  const request = await waitForRow<{ uid: string }>(
+    `SELECT uid FROM transaction_request WHERE "userId" = $1 AND "routeId" = $2 ORDER BY id DESC LIMIT 1`,
+    [opts.userId, route.id],
+  );
+  expect(request.uid).toBeTruthy();
+  expect(first.searchParams.get('orderUid')).toBe(request.uid);
 
   await expect(page.getByRole('button', { name: 'Click here once you have issued the transaction' })).toHaveCount(0);
 
@@ -419,6 +449,91 @@ async function expectRepeatableHandOff(
   await confirm.click();
   await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(2);
   expect(redirects[1].searchParams.get('routeId')).toBe(String(route.id));
+}
+
+/**
+ * Clicks "Complete transaction in your wallet" and waits for the redirect, reloads the page from the address the app
+ * left in the address bar, confirms again and checks that the reloaded page hands off again with the route and the
+ * order instead of falling back to the manual transfer.
+ */
+async function expectHandOffAfterReload(
+  page: Page,
+  redirects: URL[],
+  opts: { screen: string; path: string; userId: number; routeType: 'Sell' | 'Crypto' },
+): Promise<void> {
+  const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+  expect(outcome.kind, outcome.detail).toBe('payment_info');
+
+  const confirm = page.getByRole('button', { name: 'Complete transaction in your wallet' });
+  await expect(confirm).toBeEnabled({ timeout: 15000 });
+  await confirm.click();
+  await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+  expect(redirects[0].pathname).toBe(opts.path);
+
+  // The reload opens what the address bar holds. The app removed its parameters there, so the reloaded page carries
+  // neither the login nor the redirect URI and does not clear sessionStorage at boot; the redirect URI has to come
+  // from the session store, where the hand-off kept it.
+  const reloadUrl = new URL(page.url());
+  expect(normPath(reloadUrl.pathname)).toBe(opts.screen);
+  expect(reloadUrl.searchParams.has('session')).toBe(false);
+  expect(reloadUrl.searchParams.has('redirect-uri')).toBe(false);
+  expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBe(WALLET_REDIRECT_URI);
+
+  await page.reload();
+  expect(normPath(new URL(page.url()).pathname)).toBe(opts.screen);
+  await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+  const reloaded = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+  expect(reloaded.kind, reloaded.detail).toBe('payment_info');
+
+  const manualTransfer = page.getByRole('button', { name: 'Click here once you have issued the transaction' });
+  await expect(manualTransfer).toHaveCount(0);
+
+  const confirmAgain = page.getByRole('button', { name: 'Complete transaction in your wallet' });
+  await expect(confirmAgain).toBeEnabled({ timeout: 15000 });
+  await confirmAgain.click();
+  await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(2);
+
+  const second = redirects[1];
+  expect(second.pathname).toBe(opts.path);
+  const route = await waitForRow<{ id: number }>(
+    `SELECT id FROM deposit_route WHERE "userId" = $1 AND type = $2 ORDER BY id DESC LIMIT 1`,
+    [opts.userId, opts.routeType],
+  );
+  expect(second.searchParams.get('routeId')).toBe(String(route.id));
+  // orderUid names the payment info confirmed after the reload: the user's newest transaction request on this route
+  const request = await waitForRow<{ uid: string }>(
+    `SELECT uid FROM transaction_request WHERE "userId" = $1 AND "routeId" = $2 ORDER BY id DESC LIMIT 1`,
+    [opts.userId, route.id],
+  );
+  expect(request.uid).toBeTruthy();
+  expect(second.searchParams.get('orderUid')).toBe(request.uid);
+
+  await expect(manualTransfer).toHaveCount(0);
+}
+
+/** The hash the injected wallet answers for a transaction it accepts; no chain is behind it. */
+const SENT_TX_HASH = `0x${'ab'.repeat(32)}`;
+
+/** A mined, successful receipt for `hash`, the answer a chain node gives once the transaction is in a block. */
+function minedReceipt(hash: string, from: string, to: unknown): WalletAnswer {
+  return {
+    result: {
+      transactionHash: hash,
+      transactionIndex: '0x0',
+      blockHash: `0x${'cd'.repeat(32)}`,
+      blockNumber: '0x1',
+      from,
+      to,
+      cumulativeGasUsed: '0x5208',
+      gasUsed: '0x5208',
+      effectiveGasPrice: '0x3b9aca00',
+      contractAddress: null,
+      logs: [],
+      logsBloom: `0x${'00'.repeat(256)}`,
+      status: '0x1',
+      type: '0x2',
+    },
+  };
 }
 
 /**
@@ -435,21 +550,41 @@ async function openSellWithInjectedWallet(
   sendTransaction?: () => WalletAnswer,
   addChain?: () => WalletAnswer,
 ): Promise<string[] | undefined> {
+  return (await openSellWithInjectedWalletAs(page, tag, switchChain, sendTransaction, addChain))?.calls;
+}
+
+/**
+ * `openSellWithInjectedWallet`, which also appends `query` to the sell URL it opens and returns the user's id next to
+ * the wallet methods the page called.
+ */
+async function openSellWithInjectedWalletAs(
+  page: Page,
+  tag: string,
+  switchChain: () => WalletAnswer,
+  sendTransaction?: () => WalletAnswer,
+  addChain?: () => WalletAnswer,
+  query = '',
+): Promise<{ calls: string[]; userId: number } | undefined> {
   const walletIndex = nextWalletIndex();
   // Level 50: the default wallet's RULE_3 refuses sell quotes below it (sell-wallet-aml.spec.ts).
   const user = await createUser({ walletIndex, tag, kycLevel: 50, completePersonalData: true, language: 'EN' });
   await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Sell wallet BA' });
   const wallet = testWallet(walletIndex);
-  const calls = await injectWallet(
-    page,
-    walletAnswers(wallet, {
-      connected: () => true,
-      requestAccounts: () => ({ result: [wallet.address] }),
-      switchChain,
-      addChain,
-      sendTransaction,
-    }),
-  );
+  const answers = walletAnswers(wallet, {
+    connected: () => true,
+    requestAccounts: () => ({ result: [wallet.address] }),
+    switchChain,
+    addChain,
+    sendTransaction,
+  });
+  // web3 waits for the receipt of a transaction the wallet accepted; there is no chain behind the wallet, so it
+  // answers the receipt as mined. Only a test whose wallet accepts the transaction reaches this request.
+  let sentTo: unknown = null;
+  const calls = await injectWallet(page, (method, params) => {
+    if (method === 'eth_sendTransaction') sentTo = (params[0] as { to?: unknown } | undefined)?.to ?? null;
+    if (method === 'eth_getTransactionReceipt') return minedReceipt(String(params[0]), wallet.address, sentTo);
+    return answers(method, params);
+  });
 
   await page.goto('/login?blockchain=Ethereum');
   await page.locator('img[src*="cryptowallet"]').click({ timeout: 15000 });
@@ -460,7 +595,7 @@ async function openSellWithInjectedWallet(
 
   // Only the sell answer: the /buy screen the login lands on can still answer its own paymentInfos request here.
   const paymentInfos = trackPaymentInfosResponses(page, 'sell/paymentInfos');
-  await page.goto('/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1');
+  await page.goto(`/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1${query}`);
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
   if (await quotePaused(page, paymentInfos, 'sell')) return undefined;
@@ -469,7 +604,7 @@ async function openSellWithInjectedWallet(
     ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
     : 'no PUT paymentInfos response captured';
   expect(outcome.kind, `${outcome.detail}; ${apiDetail}`).toBe('payment_info');
-  return calls;
+  return { calls, userId: user.userId };
 }
 
 /**
@@ -1138,6 +1273,116 @@ test.describe('Sell + Swap e2e', () => {
     });
   });
 
+  test('/sell: after a hand-off, a reload hands off again instead of the manual transfer', async ({ page }) => {
+    test.setTimeout(120000);
+    const { user, paymentInfos } = await setupSellFullUiFlow(page, 'sell-hand-off-reload', WALLET_REDIRECT_QUERY);
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    const redirects = await recordWalletRedirects(page);
+
+    await expectHandOffAfterReload(page, redirects, {
+      screen: '/sell',
+      path: '/return/sell',
+      userId: user.userId,
+      routeType: 'Sell',
+    });
+  });
+
+  test('/sell: a redirect URI left without confirming is not offered in a new session opened without login parameters', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    await setupSellFullUiFlow(page, 'sell-redirect-session', WALLET_REDIRECT_QUERY);
+
+    // The user leaves without confirming; in the same session the page still offers the way back to the wallet.
+    await page.goto('/');
+    await expect(headerBackButton(page)).toBeVisible({ timeout: 15000 });
+
+    // A new page shares localStorage (and the login token) with the first one but starts with its own empty
+    // sessionStorage, as a new WebView does. The wallet opens /buy there without session, address/signature or
+    // redirect URI, so boot clears nothing and the page logs in with the stored token.
+    const next = await page.context().newPage();
+    try {
+      await isolateFromExternalHosts(next);
+      const userResponsePromise = next.waitForResponse(
+        (response) => response.request().method() === 'GET' && /\/v[12]\/user$/.test(new URL(response.url()).pathname),
+        { timeout: 20000 },
+      );
+      await next.goto('/buy');
+      const userResponse = await userResponsePromise;
+      expect(userResponse.ok(), `GET /v2/user returned ${userResponse.status()}`).toBe(true);
+      // /buy sends a visitor without a login to /login; the buy form on /buy shows the page is logged in.
+      await expect(next.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+      expect(normPath(new URL(next.url()).pathname)).toBe('/buy');
+
+      await next.goto('/');
+      await expect(next.locator('img[alt="logo"]')).toBeVisible({ timeout: 15000 });
+      await expect(headerBackButton(next)).toHaveCount(0);
+
+      expect(await next.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBeNull();
+      expect(await redirectUriInLocalStorage(next)).toEqual({ key: null, queryParams: undefined });
+    } finally {
+      await next.close();
+    }
+
+    // The first page keeps the redirect URI for its own session, not in localStorage.
+    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBe(
+      WALLET_REDIRECT_URI,
+    );
+    expect(await redirectUriInLocalStorage(page)).toEqual({ key: null, queryParams: undefined });
+  });
+
+  test('/sell: closing a sell the wallet sent redirects once as complete with the route and the order', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+    const opened = await openSellWithInjectedWalletAs(
+      page,
+      'sell-wallet-complete-redirect',
+      () => ({ result: null }),
+      () => ({ result: SENT_TX_HASH }),
+      undefined,
+      WALLET_REDIRECT_QUERY,
+    );
+    if (!opened) return;
+    const { calls, userId } = opened;
+    const redirects = await recordWalletRedirects(page);
+
+    // The active wallet sends the transaction itself, so confirming does not hand off to the redirect URI.
+    await page.getByRole('button', { name: 'Complete transaction in your wallet' }).click({ timeout: 15000 });
+    await expect.poll(() => calls.includes('eth_sendTransaction'), { timeout: 15000 }).toBe(true);
+    await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByText('Transaction hash')).toBeVisible();
+    expect(redirects).toHaveLength(0);
+
+    // Close on the completion screen calls closeServices as complete and opens /account; it redirects 2 s later.
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/account');
+
+    const [redirect] = redirects;
+    expect(redirect.pathname).toBe('/return/sell');
+    expect(redirect.searchParams.get('isComplete')).toBe('true');
+    const route = await waitForRow<{ id: number }>(
+      `SELECT id FROM deposit_route WHERE "userId" = $1 AND type = $2 ORDER BY id DESC LIMIT 1`,
+      [userId, 'Sell'],
+    );
+    expect(redirect.searchParams.get('routeId')).toBe(String(route.id));
+    // orderUid names the payment info the wallet paid: the user's newest transaction request on this route
+    const request = await waitForRow<{ uid: string }>(
+      `SELECT uid FROM transaction_request WHERE "userId" = $1 AND "routeId" = $2 ORDER BY id DESC LIMIT 1`,
+      [userId, route.id],
+    );
+    expect(request.uid).toBeTruthy();
+    expect(redirect.searchParams.get('orderUid')).toBe(request.uid);
+
+    // closeServices gives up the redirect URI, unlike a hand-off, so nothing redirects a second time.
+    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBeNull();
+    await page.waitForTimeout(3000);
+    expect(redirects).toHaveLength(1);
+  });
+
   test('/sell: native form submit completes the transaction', async ({ page }) => {
     test.setTimeout(90000);
     const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-form-submit');
@@ -1278,6 +1523,107 @@ test.describe('Sell + Swap e2e', () => {
     await expect(
       txDetails.or(page.getByRole('heading', { name: 'Payment Information' })).first(),
     ).toBeVisible();
+  });
+
+  test('/sell/info: amount below minimum shows the minimum instead of a spinner and Close redirects once to the plain URI', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+
+    // Seeded by scripts/up.sh before the API's final start, like the CHF minimum of the buy case.
+    const spec = await queryOne<{ minVolume: string | number }>(
+      `SELECT "minVolume" FROM transaction_specification
+       WHERE system = 'Ethereum' AND asset = 'ETH' AND direction = 'In' LIMIT 1`,
+    );
+    expect(Number(spec?.minVolume ?? 0), 'up.sh must have seeded an ETH In minimum volume').toBeGreaterThan(0);
+
+    // /sell/info picks its asset from the available chains, which `blockchains` limits to the seeded minimum's chain.
+    const { paymentInfos } = await setupSellInfoUiFlow(
+      page,
+      'sell-info-min',
+      `&blockchains=Ethereum${WALLET_REDIRECT_QUERY}`,
+      '0.000001',
+    );
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    const redirects = await recordWalletRedirects(page);
+
+    await expect(page.getByText(/Entered amount is below minimum deposit of [\d.,\s]+ ETH/)).toBeVisible({
+      timeout: 25000,
+    });
+    const close = page.getByRole('button', { name: 'Close', exact: true });
+    await expect(close).toBeVisible();
+    await expect(page.locator('[role="status"], .animate-spin')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Payment Information' })).toHaveCount(0);
+
+    await close.click();
+    await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+    expect(redirects[0].toString()).toBe(WALLET_REDIRECT_URI);
+
+    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBeNull();
+    await page.waitForTimeout(3000);
+    expect(redirects).toHaveLength(1);
+  });
+
+  test('/sell/info: KYC level 30 shows the KYC hint instead of a spinner or payment information', async ({ page }) => {
+    test.setTimeout(75000);
+    const { paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-kyc', '', '0.1', 30);
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
+
+    await expect(
+      page.getByText(
+        'This transaction is only possible with a verified account. Please complete our KYC (Know-Your-Customer) process.',
+      ),
+    ).toBeVisible({ timeout: 25000 });
+    await expect(page.getByRole('button', { name: 'Complete KYC', exact: true })).toBeVisible();
+    await expect(page.locator('[role="status"], .animate-spin')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Payment Information' })).toHaveCount(0);
+    await expect(page.getByText('Transaction Details', { exact: true })).toHaveCount(0);
+  });
+
+  test('/sell/info: confirming with a redirect URI redirects once with the sell route and the order', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    const { user, paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-redirect', WALLET_REDIRECT_QUERY);
+    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    const redirects = await recordWalletRedirects(page);
+
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    const apiDetail = paymentInfos.last
+      ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
+      : 'no PUT paymentInfos response captured';
+    expect(outcome.kind, `${outcome.detail}; ${apiDetail}`).toBe('payment_info');
+
+    // Without an active wallet, the redirect URI is what offers the wallet button; confirming calls closeServices.
+    const confirm = page.getByRole('button', { name: 'Complete transaction in your wallet' });
+    await expect(confirm).toBeEnabled({ timeout: 15000 });
+    await confirm.click();
+
+    // closeServices sends the page to the redirect URI 2 s after the click, not at once, and does not navigate.
+    expect(redirects).toHaveLength(0);
+    await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/sell/info');
+
+    const [redirect] = redirects;
+    expect(redirect.pathname).toBe('/return/sell');
+    expect(redirect.searchParams.get('isComplete')).toBe('false');
+    const route = await waitForRow<{ id: number }>(
+      `SELECT id FROM deposit_route WHERE "userId" = $1 AND type = $2 ORDER BY id DESC LIMIT 1`,
+      [user.userId, 'Sell'],
+    );
+    expect(redirect.searchParams.get('routeId')).toBe(String(route.id));
+    // orderUid names the confirmed payment info: the user's newest transaction request on this route
+    const request = await waitForRow<{ uid: string }>(
+      `SELECT uid FROM transaction_request WHERE "userId" = $1 AND "routeId" = $2 ORDER BY id DESC LIMIT 1`,
+      [user.userId, route.id],
+    );
+    expect(request.uid).toBeTruthy();
+    expect(redirect.searchParams.get('orderUid')).toBe(request.uid);
+
+    // closeServices gives up the redirect URI, unlike a hand-off, so nothing redirects a second time.
+    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBeNull();
+    await page.waitForTimeout(3000);
+    expect(redirects).toHaveLength(1);
   });
 
   // ---------------------------------------------------------------------------
@@ -1506,6 +1852,109 @@ test.describe('Sell + Swap e2e', () => {
       userId: user.userId,
       routeType: 'Crypto',
     });
+  });
+
+  test('/swap: after a hand-off, a reload hands off again instead of the manual transfer', async ({ page }) => {
+    test.setTimeout(120000);
+    const { user, paymentInfos } = await setupSwapFullUiFlow(page, 'swap-hand-off-reload', WALLET_REDIRECT_QUERY);
+    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    const redirects = await recordWalletRedirects(page);
+
+    await expectHandOffAfterReload(page, redirects, {
+      screen: '/swap',
+      path: '/return/swap',
+      userId: user.userId,
+      routeType: 'Crypto',
+    });
+  });
+
+  test('/swap: closing a swap issued outside the app redirects once as complete with the route and the order', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+    const user = await createUser({
+      walletIndex: nextWalletIndex(),
+      tag: 'swap-cli-complete-redirect',
+      // Level 50: the default wallet's RULE_3 refuses sell and swap quotes below it (sell-wallet-aml.spec.ts).
+      kycLevel: 50,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    await page.goto('/login?blockchain=Ethereum');
+    await page.locator('img[src*="cryptowallet"]').click({ timeout: 15000 });
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(user.wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(user.wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/buy');
+    // the login finishes loading the session on /buy; opening /swap before that can leave the form loading
+    await page.waitForLoadState('networkidle');
+
+    // Only the swap answer: the /buy screen the login lands on can still answer its own paymentInfos request here.
+    const paymentInfos = trackPaymentInfosResponses(page, 'swap/paymentInfos');
+    await page.goto(`/swap?asset-in=ETH&amount-in=0.1${WALLET_REDIRECT_QUERY}`);
+    await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 30000 });
+    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    const redirects = await recordWalletRedirects(page);
+
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    const apiDetail = paymentInfos.last
+      ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
+      : 'no PUT paymentInfos response captured';
+    expect(outcome.kind, `${outcome.detail}; ${apiDetail}`).toBe('payment_info');
+
+    // The app cannot send with the command-line wallet, so confirming neither hands off nor sends.
+    const issued = page.getByRole('button', { name: 'Click here once you have issued the transaction' });
+    await expect(issued).toBeEnabled({ timeout: 15000 });
+    await issued.click();
+    await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toBeVisible({
+      timeout: 15000,
+    });
+    expect(redirects).toHaveLength(0);
+
+    // Close on the completion screen calls closeServices as complete and opens /account; it redirects 2 s later.
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect.poll(() => redirects.length, { timeout: 15000 }).toBe(1);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/account');
+
+    const [redirect] = redirects;
+    expect(redirect.pathname).toBe('/return/swap');
+    expect(redirect.searchParams.get('isComplete')).toBe('true');
+    const route = await waitForRow<{ id: number }>(
+      `SELECT id FROM deposit_route WHERE "userId" = $1 AND type = $2 ORDER BY id DESC LIMIT 1`,
+      [user.userId, 'Crypto'],
+    );
+    expect(redirect.searchParams.get('routeId')).toBe(String(route.id));
+    // orderUid names the confirmed payment info: the user's newest transaction request on this route
+    const request = await waitForRow<{ uid: string }>(
+      `SELECT uid FROM transaction_request WHERE "userId" = $1 AND "routeId" = $2 ORDER BY id DESC LIMIT 1`,
+      [user.userId, route.id],
+    );
+    expect(request.uid).toBeTruthy();
+    expect(redirect.searchParams.get('orderUid')).toBe(request.uid);
+
+    // closeServices gives up the redirect URI, unlike a hand-off, so nothing redirects a second time.
+    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBeNull();
+    await page.waitForTimeout(3000);
+    expect(redirects).toHaveLength(1);
   });
 
   test('/swap: native form submit completes the transaction', async ({ page }) => {

@@ -237,6 +237,16 @@ export function removeNonStorageParams(params: AppParams): AppParams {
   return copy;
 }
 
+// The redirect URI is kept for one browser session only (store.hook.ts), never in the stored parameters;
+// on a reload in the same session, loadQueryParams takes it from the session store.
+function removeRedirectUri(params: AppParams): AppParams {
+  const copy = { ...params };
+
+  delete copy.redirectUri;
+
+  return copy;
+}
+
 export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.Element {
   const { redirectUri: storeRedirectUri, queryParams: storeQueryParams } = useStore();
   const { isUsedByIframe, sendMessage } = useIframe();
@@ -266,14 +276,15 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
     }
   }, isLoggedIn);
 
+  // runs once on mount, when redirectUri is still unset, and before init reads the stored parameters
+  useEffect(() => {
+    removeLegacyRedirectUri();
+    setRedirectUri(storeRedirectUri.get());
+  }, []);
+
   useEffect(() => {
     isSessionInitialized && init();
   }, [isSessionInitialized]);
-
-  // runs once on mount, when redirectUri is still unset
-  useEffect(() => {
-    setRedirectUri(storeRedirectUri.get());
-  }, []);
 
   useEffect(() => {
     return () => clearTimeout(handOffTimer.current);
@@ -282,6 +293,14 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   // parameters
   function getParameter(query: URLSearchParams, key: string): string | undefined {
     return query.get(key) ?? undefined;
+  }
+
+  // an older version kept the redirect URI in localStorage, which outlived the browser session
+  function removeLegacyRedirectUri() {
+    storeRedirectUri.removeLegacy();
+
+    const storedParams = storeQueryParams.get();
+    if (storedParams?.redirectUri !== undefined) storeQueryParams.set(removeRedirectUri(storedParams));
   }
 
   function clearCustomerSessionState() {
@@ -296,7 +315,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   function setParameters(params: Partial<AppParams>) {
     setParams((p) => {
       const updatedParams = { ...p, ...params };
-      storeQueryParams.set(removeNonStorageParams(updatedParams));
+      storeQueryParams.set(removeRedirectUri(removeNonStorageParams(updatedParams)));
       return updatedParams;
     });
   }
@@ -315,10 +334,13 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
 
     const storedParams = storeQueryParams.get();
     if (paramsIsNotEmpty(storeParams)) {
-      storeQueryParams.set(storeParams);
+      storeQueryParams.set(removeRedirectUri(storeParams));
     } else {
-      Object.assign(queryParams, storedParams ?? {});
+      Object.assign(queryParams, removeRedirectUri(storedParams ?? {}));
     }
+
+    // after a reload in the same session, the redirect URI comes from the session store
+    queryParams.redirectUri ??= storeRedirectUri.get();
 
     setParams(queryParams);
     return queryParams;
@@ -480,14 +502,13 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       }
 
       if (redirectUri) {
-        storeRedirectUri.remove();
-
         // discard unsafe URIs (e.g. javascript:) to prevent script execution and phishing redirects
         if (isSafeRedirectUri(redirectUri)) {
-          // keep the URI for this page, so the user can hand off again
+          // keep the URI for this page and session, so the user can hand off again, also after a reload
           (window as Window).location = getRedirectUri(redirectUri, params);
           closed = true;
         } else {
+          storeRedirectUri.remove();
           setRedirectUri(undefined);
         }
       }
@@ -517,6 +538,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
           asset: params.sell.asset.name,
           blockchain: params.sell.asset.blockchain,
           isComplete: params.isComplete.toString(),
+          ...(params.sell.uid ? { orderUid: params.sell.uid } : {}),
         });
         break;
 
@@ -527,6 +549,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
           asset: params.swap.sourceAsset.name,
           blockchain: params.swap.sourceAsset.blockchain,
           isComplete: params.isComplete.toString(),
+          ...(params.swap.uid ? { orderUid: params.swap.uid } : {}),
         });
         break;
 

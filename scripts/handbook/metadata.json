@@ -43,6 +43,10 @@
     "title": "Verkaufsprozess",
     "description": "Sell-Flow: geladene Seite, Betrag und Sepolia-ETH/USDT-Verkaufsschritte."
   },
+  "sell-info": {
+    "title": "Verkaufs-Infoseite",
+    "description": "Sell-Info-Flow (/sell/info): Liegt der Betrag unter dem Minimum, zeigt die Seite den Mindestbetrag und den Button zum Schliessen. Verlangt das Angebot eine Verifizierung, zeigt sie den KYC-Hinweis mit dem Button zum KYC-Verfahren. Beide Varianten erscheinen ohne Zahlungsinformationen."
+  },
   "sell-bitcoin": {
     "title": "Bitcoin verkaufen",
     "description": "Sell-Flow für Bitcoin."

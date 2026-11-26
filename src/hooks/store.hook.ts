@@ -9,8 +9,13 @@ export interface StoreItem<T> {
   remove: () => void;
 }
 
+export interface RedirectUriStoreItem extends StoreItem<string> {
+  /** Removes the redirect URI an older version kept in localStorage. */
+  removeLegacy: () => void;
+}
+
 export interface StoreInterface {
-  redirectUri: StoreItem<string>;
+  redirectUri: RedirectUriStoreItem;
   balances: StoreItem<string>;
   language: StoreItem<string>;
   activeWallet: StoreItem<WalletType>;
@@ -49,10 +54,12 @@ export function useStore(): StoreInterface {
   }
 
   return {
+    // kept for the current browser session only, so a new tab or WebView does not redirect
     redirectUri: {
-      get: () => get(StoreKey.REDIRECT_URI),
-      set: (value: string) => set(StoreKey.REDIRECT_URI, value),
-      remove: () => remove(StoreKey.REDIRECT_URI),
+      get: () => storageGet('sessionStorage', StoreKey.REDIRECT_URI),
+      set: (value: string) => storageSet('sessionStorage', StoreKey.REDIRECT_URI, value),
+      remove: () => storageRemove('sessionStorage', StoreKey.REDIRECT_URI),
+      removeLegacy: () => remove(StoreKey.REDIRECT_URI),
     },
     balances: {
       get: () => get(StoreKey.BALANCES),

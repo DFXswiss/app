@@ -131,6 +131,7 @@ export default function SwapScreen(): JSX.Element {
   const [balances, setBalances] = useState<AssetBalance[]>();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isTxDone, setTxDone] = useState<boolean>(false);
+  const [confirmedPaymentInfo, setConfirmedPaymentInfo] = useState<Swap>();
   const [swapTxId, setSwapTxId] = useState<string>();
   const [showsSwitchScreen, setShowsSwitchScreen] = useState(false);
   const [validatedData, setValidatedData] = useState<ValidatedData>();
@@ -668,6 +669,7 @@ export default function SwapScreen(): JSX.Element {
         await sendTransaction(paymentInfo).then(setSwapTxId);
       }
 
+      setConfirmedPaymentInfo(paymentInfo);
       setTxDone(true);
     } catch (error: any) {
       if (error.code === 4001) return;
@@ -693,8 +695,8 @@ export default function SwapScreen(): JSX.Element {
 
   return (
     <>
-      {paymentInfo && isTxDone ? (
-        <SwapCompletion paymentInfo={paymentInfo} navigateOnClose={true} txId={swapTxId} />
+      {isTxDone && confirmedPaymentInfo ? (
+        <SwapCompletion paymentInfo={confirmedPaymentInfo} navigateOnClose={true} txId={swapTxId} />
       ) : showsSwitchScreen ? (
         <AddressSwitch onClose={(r) => (r ? onAddressSwitch() : setShowsSwitchScreen(false))} />
       ) : (

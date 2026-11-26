@@ -26,9 +26,47 @@ describe('useStore', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'localStorage', { value: localStorageMock, configurable: true });
     localStorageMock.clear();
+    sessionStorage.clear();
   });
 
   describe('redirectUri', () => {
+    it('keeps the redirectUri in sessionStorage, not in localStorage', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.redirectUri.set('https://example.com/redirect');
+      });
+
+      expect(sessionStorage.getItem('dfx.srv.redirectUri')).toBe('https://example.com/redirect');
+      expect(localStorageMock.getItem('dfx.srv.redirectUri')).toBeNull();
+
+      act(() => {
+        result.current.redirectUri.remove();
+      });
+
+      expect(sessionStorage.getItem('dfx.srv.redirectUri')).toBeNull();
+    });
+
+    it('does not read a redirectUri an older version left in localStorage', () => {
+      localStorageMock.setItem('dfx.srv.redirectUri', 'https://example.com/old');
+      const { result } = renderHook(() => useStore());
+
+      expect(result.current.redirectUri.get()).toBeUndefined();
+    });
+
+    it('removes the redirectUri an older version left in localStorage', () => {
+      localStorageMock.setItem('dfx.srv.redirectUri', 'https://example.com/old');
+      sessionStorage.setItem('dfx.srv.redirectUri', 'https://example.com/current');
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.redirectUri.removeLegacy();
+      });
+
+      expect(localStorageMock.getItem('dfx.srv.redirectUri')).toBeNull();
+      expect(result.current.redirectUri.get()).toBe('https://example.com/current');
+    });
+
     it('should set and get redirectUri', () => {
       const { result } = renderHook(() => useStore());
       
@@ -235,9 +273,46 @@ describe('useStore', () => {
 
       expect(() => renderHook(() => useStore())).not.toThrow();
       const { result } = renderHook(() => useStore());
-      expect(result.current.redirectUri.get()).toBeUndefined();
-      expect(() => result.current.redirectUri.set('x')).not.toThrow();
-      expect(() => result.current.redirectUri.remove()).not.toThrow();
+      expect(result.current.balances.get()).toBeUndefined();
+      expect(() => result.current.balances.set('x')).not.toThrow();
+      expect(() => result.current.balances.remove()).not.toThrow();
+      expect(() => result.current.redirectUri.removeLegacy()).not.toThrow();
+    });
+
+    it('redirectUri does not throw when window.sessionStorage is blocked', () => {
+      const original = window.sessionStorage;
+      const quota = new DOMException('Quota exceeded', 'QuotaExceededError');
+      try {
+        Object.defineProperty(window, 'sessionStorage', {
+          get() {
+            throw new DOMException('Denied', 'SecurityError');
+          },
+          configurable: true,
+        });
+
+        const { result } = renderHook(() => useStore());
+        expect(result.current.redirectUri.get()).toBeUndefined();
+        expect(() => result.current.redirectUri.set('https://example.com')).not.toThrow();
+        expect(() => result.current.redirectUri.remove()).not.toThrow();
+
+        Object.defineProperty(window, 'sessionStorage', {
+          value: {
+            getItem: () => null,
+            setItem: () => {
+              throw quota;
+            },
+            removeItem: () => undefined,
+            clear: () => undefined,
+          },
+          configurable: true,
+        });
+
+        expect(() => result.current.redirectUri.set('https://example.com')).not.toThrow();
+        expect(result.current.redirectUri.get()).toBeUndefined();
+        expect(() => result.current.redirectUri.remove()).not.toThrow();
+      } finally {
+        Object.defineProperty(window, 'sessionStorage', { configurable: true, value: original });
+      }
     });
 
     it.each(['undefined', '<!doctype html>', '{kaputt'])(
@@ -266,7 +341,7 @@ describe('useStore', () => {
       });
 
       const { result } = renderHook(() => useStore());
-      expect(() => result.current.redirectUri.set('x')).not.toThrow();
+      expect(() => result.current.balances.set('x')).not.toThrow();
       expect(() => result.current.queryParams.set({ mode: 'buy' } as any)).not.toThrow();
     });
 

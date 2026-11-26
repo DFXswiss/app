@@ -18,6 +18,7 @@ import {
   expect,
   gotoWithSession,
   headerBackButton,
+  isolateFromExternalHosts,
   normPath,
   openScreen,
   PARTNER_RETURN_URI,
@@ -961,7 +962,7 @@ test.describe('Auth area e2e', () => {
 
     await page.goto('/login/mail?redirect-uri=' + encodeURIComponent(PARTNER_RETURN_URI));
     await page.waitForFunction(
-      (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+      (expected) => window.sessionStorage.getItem('dfx.srv.redirectUri') === expected,
       PARTNER_RETURN_URI,
       { timeout: 15000 },
     );
@@ -1006,7 +1007,7 @@ test.describe('Auth area e2e', () => {
       })
       .toBeTruthy();
     await page.waitForFunction(
-      (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+      (expected) => window.sessionStorage.getItem('dfx.srv.redirectUri') === expected,
       PARTNER_RETURN_URI,
       { timeout: 15000 },
     );
@@ -1027,7 +1028,7 @@ test.describe('Auth area e2e', () => {
 
     await page.goto('/?mode=login&redirect-uri=' + encodeURIComponent(PARTNER_RETURN_URI));
     await page.waitForFunction(
-      (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+      (expected) => window.sessionStorage.getItem('dfx.srv.redirectUri') === expected,
       PARTNER_RETURN_URI,
       { timeout: 15000 },
     );
@@ -1075,7 +1076,7 @@ test.describe('Auth area e2e', () => {
       })
       .toBeTruthy();
     await page.waitForFunction(
-      (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+      (expected) => window.sessionStorage.getItem('dfx.srv.redirectUri') === expected,
       PARTNER_RETURN_URI,
       { timeout: 15000 },
     );
@@ -1086,6 +1087,67 @@ test.describe('Auth area e2e', () => {
     await expect(back).toBeVisible({ timeout: 15000 });
     await back.click();
     await page.waitForURL((url) => url.href === PARTNER_RETURN_URI, { timeout: 15000 });
+  });
+
+  // The mail client often opens the link in a new tab, which starts with an empty sessionStorage, so there the
+  // partner redirect-uri can only come from the callback.
+  test('/login/mail keeps the partner redirect-uri when the login link opens in a new tab', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const email = testEmail('auth-mail-tab-redirect');
+
+    await page.goto('/login/mail?redirect-uri=' + encodeURIComponent(PARTNER_RETURN_URI));
+    await page.waitForFunction(
+      (expected) => window.sessionStorage.getItem('dfx.srv.redirectUri') === expected,
+      PARTNER_RETURN_URI,
+      { timeout: 15000 },
+    );
+
+    await expect(page.getByPlaceholder('example@mail.com')).toBeVisible({ timeout: 15000 });
+    await page.getByPlaceholder('example@mail.com').fill(email);
+
+    const mailPost = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === 'POST' && new URL(request.url()).pathname === '/v1/auth/mail';
+    });
+    await page.getByRole('button', { name: 'Next' }).click();
+    const response = await mailPost;
+    expect(response.ok(), `POST /v1/auth/mail returned ${response.status()}`).toBe(true);
+
+    const row = await waitForRow<{ data: string }>(
+      `SELECT n.data
+       FROM notification n
+       JOIN user_data ud ON ud.id = n."userDataId"
+       WHERE ud.mail = $1 AND n.context = 'Login'
+       ORDER BY n.id DESC LIMIT 1`,
+      [email],
+      20000,
+    );
+
+    const next = await page.context().newPage();
+    try {
+      await isolateFromExternalHosts(next);
+      await next.goto(loginUrlFromNotification(row.data));
+      await expect
+        .poll(async () => next.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+          timeout: 30000,
+        })
+        .toBeTruthy();
+      await next.waitForFunction(
+        (expected) => window.sessionStorage.getItem('dfx.srv.redirectUri') === expected,
+        PARTNER_RETURN_URI,
+        { timeout: 15000 },
+      );
+
+      // Visitor-visible: the home screen of the new tab offers the way back, and it leads to the partner.
+      await next.goto('/');
+      const back = headerBackButton(next);
+      await expect(back).toBeVisible({ timeout: 15000 });
+      await back.click();
+      await next.waitForURL((url) => url.href === PARTNER_RETURN_URI, { timeout: 15000 });
+    } finally {
+      await next.close();
+    }
   });
 
   // ---------------------------------------------------------------------------

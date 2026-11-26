@@ -866,6 +866,13 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   sell form shows its normal exchange rate and payment information. A green run proves how the sell page renders
   the banner and its absence for those answers. It does not prove production auth, that the API answers
   `LikelyReturn` for a real address, or that the API returns that quote.
+- **The sell-info visuals answer the API themselves.** `e2e/sell-info.spec.ts` passes a synthetic unsigned JWT
+  (`alg: none`, role User, Ethereum wallet address, expiry one hour ahead) as `session`, so it needs no live login,
+  and fulfils the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner`, `/v2/user`), `PUT /v1/sell/paymentInfos` with a quote carrying `AmountTooLow` or
+  `KycRequired`, and `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get `501`. A green run proves
+  how `/sell/info` renders those two answers. It does not prove production auth, that the API returns them for a
+  given amount or account, or that the client-error endpoint stores the report.
 - **The wallet rejection unit test answers for the wallets and their SDKs.**
   `src/__tests__/connect-wallet-rejection.test.tsx` renders the real connect components, wallet hooks,
   `ConnectBase` and `ConnectError` with the real web3 and viem (its mock installs Node's `TextEncoder` and
@@ -899,7 +906,9 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   protocol, and `window.tron`, newer protocol) that reject the connection with code 4001, or with another code
   for the failure cases. `e2e-stack/specs/sell-swap.spec.ts` logs in through the injected MetaMask and lets it
   reject the chain switch, the request to add an unknown chain (after code 4902 for the switch), or the
-  transaction of "Complete transaction in your wallet" on `/sell`. A green run proves, through the real
+  transaction of "Complete transaction in your wallet" on `/sell`; in one case it accepts the transaction with a
+  fixed hash and answers `eth_getTransactionReceipt` with a mined, successful receipt instead of a chain node.
+  A green run proves, through the real
   frontend, API and Postgres, that a cancelled connection in each of those wallets and a cancelled MetaMask
   login signature return to the wallet selection with no error and no `POST /v1/log/clientError` or
   `POST /v1/auth`, that a retry signs in and creates the user row, that a cancelled chain switch, add-chain request or
@@ -980,9 +989,53 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   a switch, or that viem encodes and decodes with the browser's own `TextEncoder` and `TextDecoder` as it does with
   Node's.
 - **The sell and swap hand-off full-stack cases answer the integrator's redirect target themselves.**
-  `e2e-stack/specs/sell-swap.spec.ts` opens `/sell` and `/swap` with a `redirect-uri` on `wallet.e2e.test`
-  and answers every request to that host with 204. A green run does not prove that a wallet intercepts the
-  redirect, opens a send screen or sends a transaction, nor how a WebView behaves.
+  `e2e-stack/specs/sell-swap.spec.ts` opens `/sell`, `/sell/info` and `/swap` with a `redirect-uri` on
+  `wallet.e2e.test` and answers every request to that host with 204. The reload cases there confirm once, reload
+  the page with `page.reload()` and confirm again, all on that answered host. The completed-sell case there lets
+  the injected MetaMask accept the transaction and closes the completion screen, whose redirect two seconds later
+  goes to that answered host as well. The completed-swap case there logs in with the command-line wallet, clicks
+  the issued-transaction button without any transaction being sent, and closes the completion screen, whose
+  redirect two seconds later goes to that answered host as well; while the API has swap switched off, it ends at
+  the paused answer. The `/sell/info` case confirms without an active wallet, whose redirect two
+  seconds later goes to that answered host too. The `/sell/info` amount-error case clicks Close, whose redirect
+  goes to that answered host as well. A green run does not prove that a wallet
+  intercepts the redirect, opens a send screen or sends a transaction, nor how a WebView behaves, nor how a
+  wallet's WebView reloads a page.
+- **The full-stack harness SQL-seeds the sell minimum.** `e2e-stack/scripts/up.sh` inserts the
+  `transaction_specification` row `Ethereum`/`ETH`/`In` with `minVolume` 0.05 and `minFee` 0, if there is none,
+  before the API's final start, because the API reads those rows into memory at boot. The `/sell/info` amount-error
+  case in `e2e-stack/specs/sell-swap.spec.ts` depends on it. A green run does not prove the production minimum
+  values or how they are maintained.
+- **The `/sell/info` error full-stack cases accept the paused answer while sell is off.** The amount-error and
+  KYC-error cases in `e2e-stack/specs/sell-swap.spec.ts` end at the `TRANSACTIONS_PAUSED` answer on screen while
+  the API has sell switched off. A green run does **not** prove the error views or the Close redirect while sell
+  is off; it proves them only while sell is on.
+- **The sell redirect-session full-stack case opens the later page as a second page of the same browser
+  context.** The case in `e2e-stack/specs/sell-swap.spec.ts` that leaves `/sell` with a `redirect-uri` without
+  confirming opens `/buy` and then `/` with a plain `goto`, without `session`, `address`/`signature` or
+  `redirect-uri`, in a new page that shares `localStorage` and the login token but starts with an empty
+  `sessionStorage`. The case registers `isolateFromExternalHosts` on that page as well, so every host outside the
+  stack is answered with an empty 200 there too. It does not cover a launch with `session` (the cases in
+  `e2e-stack/specs/cross-cutting.spec.ts` do). A green run does not prove how a real wallet's WebView handles
+  `sessionStorage`.
+- **The mail-login redirect full-stack case opens the login link as a second page and answers the redirect
+  itself.** The new-tab case in `e2e-stack/specs/auth.spec.ts` starts `/login/mail` with `PARTNER_RETURN_URI`
+  (`e2e-stack/specs/fixtures/partner-redirect.ts`) as `redirect-uri`, reads the login link from the
+  `notification` row and opens it in a new page of the same browser context. The `page` fixture registers
+  `isolateFromExternalHosts` (`e2e-stack/specs/fixtures/index.ts`) on its own page only, so the case registers it
+  on the new page before the first `goto`; it answers the partner host with an empty 200 there. A green run does
+  not prove how a real mail client or browser opens the link, nor how a wallet handles the redirect.
+- **The payment-link result redirect full-stack case answers the redirect itself and names the status in the
+  URL.** The case in `e2e-stack/specs/payment-links.spec.ts` opens `/pl/result` with `status=Completed` and
+  `PARTNER_RETURN_URI` as `redirect-uri`, without a payment; the harness answers the partner host
+  with an empty 200. A green run does not prove that a payment completes, that a payment app opens that URL, nor
+  how a partner site handles the redirect.
+- **The sell-info unit test replaces the SDK, the app contexts and the wallet.**
+  `src/__tests__/sell-info-screen.test.tsx` renders the real screen, countdown and completion component against
+  stubbed `@dfx.swiss/react` hooks, components, app parameters, transaction helper and app-handling context, with
+  fake timers. A green run proves which quote the screen passes to `closeServices` and when it asks for a new one.
+  It also proves that an amount or KYC error in a quote replaces the payment view and that the amount error cancels.
+  It does not prove that the API returns or expires such a quote, that a wallet sends, or that a redirect happens.
 
 ## Known gaps
 

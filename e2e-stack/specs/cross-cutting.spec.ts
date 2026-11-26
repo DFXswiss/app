@@ -336,7 +336,7 @@ test.describe('Cross-cutting', () => {
       // A real earlier visit stores a redirect target of its own; prove the starting state is real.
       await page.goto('/?redirect-uri=' + encodeURIComponent(PARTNER_RETURN_URI));
       await page.waitForFunction(
-        (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+        (expected) => window.sessionStorage.getItem('dfx.srv.redirectUri') === expected,
         PARTNER_RETURN_URI,
         { timeout: 15000 },
       );
@@ -346,7 +346,7 @@ test.describe('Cross-cutting', () => {
       // This launch carries a session but no redirect-uri, so the stored target must be gone.
       await gotoWithSession(page, '/', user.jwt);
       expect(normPath(new URL(page.url()).pathname)).toBe('/');
-      expect(await page.evaluate(() => window.localStorage.getItem('dfx.srv.redirectUri'))).toBeNull();
+      expect(await page.evaluate(() => window.sessionStorage.getItem('dfx.srv.redirectUri'))).toBeNull();
       await expect(page.locator('img[alt="logo"]')).toBeVisible({ timeout: 15000 });
       await expect(headerBackButton(page)).toHaveCount(0);
     });
@@ -358,7 +358,7 @@ test.describe('Cross-cutting', () => {
       expect(normPath(new URL(page.url()).pathname)).toBe('/');
       // The launch's own redirect target is stored after the boot-time clear.
       await page.waitForFunction(
-        (expected) => window.localStorage.getItem('dfx.srv.redirectUri') === expected,
+        (expected) => window.sessionStorage.getItem('dfx.srv.redirectUri') === expected,
         PARTNER_RETURN_URI,
         { timeout: 15000 },
       );

@@ -44,6 +44,8 @@ const swap = {
   amount: 1.5,
   sourceAsset: { name: 'ETH', blockchain: 'Ethereum' },
 } as never;
+const sellWithUid = { ...(sell as object), uid: 'S-order-1' } as never;
+const swapWithUid = { ...(swap as object), uid: 'W-order-2' } as never;
 
 let ctx: Context;
 
@@ -118,7 +120,7 @@ function advance(ms: number) {
 }
 
 async function renderWithRedirectUri(redirectUri: string) {
-  localStorage.setItem(REDIRECT_URI_KEY, redirectUri);
+  sessionStorage.setItem(REDIRECT_URI_KEY, redirectUri);
   const result = await renderProvider();
   recordLocation();
   return result;
@@ -129,6 +131,7 @@ describe('AppHandlingContextProvider', () => {
     jest.clearAllMocks();
     localStorage.clear();
     sessionStorage.removeItem('dfx.kyc.redirect');
+    sessionStorage.removeItem(REDIRECT_URI_KEY);
     window.history.pushState({}, '', '/');
     mockSession = { isInitialized: true, isLoggedIn: false, availableBlockchains: ['Bitcoin', 'Ethereum'] };
     mockIsUsedByIframe = false;
@@ -218,9 +221,87 @@ describe('AppHandlingContextProvider', () => {
       expect(mockReadBalances).toHaveBeenCalledWith('BTC:1');
       expect(storedQueryParams()).toMatchObject({ wallet: 'Partner', mode: 'partner' });
       expect(storedQueryParams()?.session).toBeUndefined();
-      expect(localStorage.getItem(REDIRECT_URI_KEY)).toBe('https://partner.example/done');
+      expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBe('https://partner.example/done');
+      expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+      expect(storedQueryParams()).not.toHaveProperty('redirectUri');
       expect(window.location.search).toBe('');
       expect(mockRouterNavigate).toHaveBeenCalledWith('/buy', { replace: true });
+    });
+
+    it('ignores and removes a redirect URI an older version left in localStorage', async () => {
+      localStorage.setItem(REDIRECT_URI_KEY, 'https://partner.example/old');
+      localStorage.setItem(
+        QUERY_PARAMS_KEY,
+        JSON.stringify({ wallet: 'Stored', redirectUri: 'https://partner.example/old' }),
+      );
+
+      await renderProvider();
+
+      expect(ctx.canClose).toBe(false);
+      expect(ctx.params.wallet).toBe('Stored');
+      expect(ctx.params.redirectUri).toBeUndefined();
+      expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+      expect(storedQueryParams()).toEqual({ wallet: 'Stored' });
+      expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+    });
+
+    it('keeps the redirect URI on a reload in the same session', async () => {
+      sessionStorage.setItem(REDIRECT_URI_KEY, 'https://partner.example/done');
+      localStorage.setItem(QUERY_PARAMS_KEY, JSON.stringify({ wallet: 'Stored' }));
+
+      await renderProvider();
+
+      expect(ctx.canClose).toBe(true);
+      expect(ctx.params.wallet).toBe('Stored');
+      expect(ctx.params.redirectUri).toBe('https://partner.example/done');
+      expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBe('https://partner.example/done');
+      expect(storedQueryParams()).toEqual({ wallet: 'Stored' });
+    });
+
+    it('keeps the redirect URI in the parameters on a reload with other URL parameters in the same session', async () => {
+      sessionStorage.setItem(REDIRECT_URI_KEY, 'https://partner.example/done');
+      window.history.pushState({}, '', '/buy?wallet=Partner');
+
+      await renderProvider();
+
+      expect(ctx.params).toMatchObject({ wallet: 'Partner', redirectUri: 'https://partner.example/done' });
+      expect(ctx.canClose).toBe(true);
+      expect(storedQueryParams()).toMatchObject({ wallet: 'Partner' });
+      expect(storedQueryParams()).not.toHaveProperty('redirectUri');
+      expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+    });
+
+    it('prefers the redirect URI in the URL over the one of the session', async () => {
+      sessionStorage.setItem(REDIRECT_URI_KEY, 'https://partner.example/old');
+      window.history.pushState({}, '', '/buy?redirect-uri=https://partner.example/new');
+
+      await renderProvider();
+
+      expect(ctx.params.redirectUri).toBe('https://partner.example/new');
+      expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBe('https://partner.example/new');
+      expect(storedQueryParams()).not.toHaveProperty('redirectUri');
+    });
+
+    it('has no redirect URI in the parameters in a new session', async () => {
+      localStorage.setItem(QUERY_PARAMS_KEY, JSON.stringify({ wallet: 'Stored' }));
+
+      await renderProvider();
+
+      expect(ctx.params.wallet).toBe('Stored');
+      expect(ctx.params.redirectUri).toBeUndefined();
+      expect(ctx.canClose).toBe(false);
+      expect(storedQueryParams()).toEqual({ wallet: 'Stored' });
+    });
+
+    it('keeps the session redirect URI out of the stored parameters on a parameter update', async () => {
+      sessionStorage.setItem(REDIRECT_URI_KEY, 'https://partner.example/done');
+
+      await renderProvider();
+      act(() => ctx.setParams({ assetIn: 'EUR' }));
+
+      expect(ctx.params).toMatchObject({ assetIn: 'EUR', redirectUri: 'https://partner.example/done' });
+      expect(storedQueryParams()).toMatchObject({ assetIn: 'EUR' });
+      expect(storedQueryParams()).not.toHaveProperty('redirectUri');
     });
 
     it('accepts an address/signature pair as a session and ignores an unknown blockchain', async () => {
@@ -259,18 +340,25 @@ describe('AppHandlingContextProvider', () => {
       await renderProvider();
 
       expect(ctx.canClose).toBe(false);
+      expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
       expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
     });
 
-    it('merges parameter updates and stores them without credentials', async () => {
+    it('merges parameter updates and stores them without credentials or the redirect URI', async () => {
       await renderProvider();
 
-      act(() => ctx.setParams({ wallet: 'Partner', session: 'jwt' }));
+      act(() => ctx.setParams({ wallet: 'Partner', session: 'jwt', redirectUri: 'https://partner.example/done' }));
       act(() => ctx.setParams({ assetIn: 'EUR' }));
 
-      expect(ctx.params).toMatchObject({ wallet: 'Partner', session: 'jwt', assetIn: 'EUR' });
+      expect(ctx.params).toMatchObject({
+        wallet: 'Partner',
+        session: 'jwt',
+        assetIn: 'EUR',
+        redirectUri: 'https://partner.example/done',
+      });
       expect(storedQueryParams()).toMatchObject({ wallet: 'Partner', assetIn: 'EUR' });
       expect(storedQueryParams()?.session).toBeUndefined();
+      expect(storedQueryParams()).not.toHaveProperty('redirectUri');
     });
 
     it('keeps the redirect path', async () => {
@@ -301,7 +389,7 @@ describe('AppHandlingContextProvider', () => {
       expect(ctx.params).toEqual({});
       expect(ctx.canClose).toBe(false);
       expect(storedQueryParams()).toBeUndefined();
-      expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+      expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
     });
   });
 
@@ -444,7 +532,7 @@ describe('AppHandlingContextProvider', () => {
         advance(1);
 
         expect(assigned).toBe('https://partner.example/done/buy');
-        expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+        expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
         expect(ctx.canClose).toBe(false);
       });
 
@@ -459,7 +547,7 @@ describe('AppHandlingContextProvider', () => {
         expect(assigned).toBe(
           'https://partner.example/sell?routeId=7&amount=0.5&asset=BTC&blockchain=Bitcoin&isComplete=false',
         );
-        expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+        expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
         expect(ctx.canClose).toBe(false);
         expect(ctx.isHandingOff).toBe(false);
       });
@@ -471,7 +559,7 @@ describe('AppHandlingContextProvider', () => {
         advance(1);
 
         expect(assigned).toBe('mywallet://swap/?routeId=8&amount=1.5&asset=ETH&blockchain=Ethereum&isComplete=false');
-        expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+        expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
         expect(ctx.canClose).toBe(false);
         expect(ctx.isHandingOff).toBe(false);
       });
@@ -487,6 +575,47 @@ describe('AppHandlingContextProvider', () => {
         );
         expect(ctx.canClose).toBe(false);
         expect(ctx.isHandingOff).toBe(false);
+      });
+
+      it('names the confirmed sell order in the redirect', async () => {
+        await closeWith('https://partner.example/', { type: CloseType.SELL, isComplete: true, sell: sellWithUid });
+        advance(2000);
+
+        expect(assigned).toBe(
+          'https://partner.example/sell?routeId=7&amount=0.5&asset=BTC&blockchain=Bitcoin&isComplete=true' +
+            '&orderUid=S-order-1',
+        );
+      });
+
+      it('names the confirmed swap order in a deep link redirect', async () => {
+        await closeWith('mywallet://', { type: CloseType.SWAP, isComplete: true, swap: swapWithUid });
+        advance(2000);
+
+        expect(assigned).toBe(
+          'mywallet://swap/?routeId=8&amount=1.5&asset=ETH&blockchain=Ethereum&isComplete=true&orderUid=W-order-2',
+        );
+      });
+
+      it('leaves the order out of the redirect when the payment info has no uid', async () => {
+        await closeWith('https://partner.example/', { type: CloseType.SELL, isComplete: true, sell });
+        advance(2000);
+
+        expect(new URL(assigned as string).searchParams.has('orderUid')).toBe(false);
+      });
+
+      it('does not redirect a buy when only an older version left a redirect URI in localStorage', async () => {
+        localStorage.setItem(REDIRECT_URI_KEY, 'https://partner.example/old');
+        localStorage.setItem(QUERY_PARAMS_KEY, JSON.stringify({ redirectUri: 'https://partner.example/old' }));
+        await renderProvider();
+        recordLocation();
+
+        expect(ctx.canClose).toBe(false);
+        expect(close({ type: CloseType.BUY, isComplete: true })).toBe(false);
+        advance(2000);
+
+        expect(assigned).toBeUndefined();
+        expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+        expect(storedQueryParams()).toEqual({});
       });
 
       it('adds the swap details to a deep link redirect', async () => {
@@ -521,7 +650,7 @@ describe('AppHandlingContextProvider', () => {
         advance(2000);
 
         expect(assigned).toBeUndefined();
-        expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+        expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
         expect(ctx.canClose).toBe(false);
       });
     });
@@ -560,10 +689,23 @@ describe('AppHandlingContextProvider', () => {
       expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(true);
       expect(assigned).toBe(sellUri);
       expect(ctx.canClose).toBe(true);
-      expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+      expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBe('https://partner.example/');
       expect(ctx.isHandingOff).toBe(true);
       expect(mockRouterNavigate).not.toHaveBeenCalled();
 
+      assigned = undefined;
+      expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(true);
+      expect(assigned).toBe(sellUri);
+    });
+
+    it('a reload after a hand-off keeps the hand-off page', async () => {
+      const result = await renderWithRedirectUri('https://partner.example/');
+      handOff({ type: CloseType.SELL, isComplete: false, sell });
+      result.unmount();
+
+      await renderProvider();
+
+      expect(ctx.canClose).toBe(true);
       assigned = undefined;
       expect(handOff({ type: CloseType.SELL, isComplete: false, sell })).toBe(true);
       expect(assigned).toBe(sellUri);
@@ -575,6 +717,15 @@ describe('AppHandlingContextProvider', () => {
       expect(handOff({ type: CloseType.SWAP, isComplete: false, swap })).toBe(true);
       expect(assigned).toBe('mywallet://swap/?routeId=8&amount=1.5&asset=ETH&blockchain=Ethereum&isComplete=false');
       expect(ctx.canClose).toBe(true);
+    });
+
+    it('names the confirmed order in the hand-off to a deep link', async () => {
+      await renderWithRedirectUri('mywallet://');
+
+      expect(handOff({ type: CloseType.SELL, isComplete: false, sell: sellWithUid })).toBe(true);
+      expect(assigned).toBe(
+        'mywallet://sell/?routeId=7&amount=0.5&asset=BTC&blockchain=Bitcoin&isComplete=false&orderUid=S-order-1',
+      );
     });
 
     it('ends the hand-off state after three seconds', async () => {
@@ -621,7 +772,7 @@ describe('AppHandlingContextProvider', () => {
       advance(3000);
 
       expect(assigned).toBeUndefined();
-      expect(localStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
+      expect(sessionStorage.getItem(REDIRECT_URI_KEY)).toBeNull();
       expect(ctx.canClose).toBe(false);
       expect(ctx.isHandingOff).toBe(false);
     });
