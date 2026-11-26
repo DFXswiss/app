@@ -4,6 +4,7 @@ import { BitcoinAddressType } from '../../config/key-path';
 import { useSettingsContext } from '../../contexts/settings.context';
 import { WalletType } from '../../contexts/wallet.context';
 import { useReportDisplayedError } from '../../hooks/report-displayed-error.hook';
+import { mapWalletErrorMessage } from '../../util/pending-wallet-request';
 
 export type Account =
   | {
@@ -40,7 +41,8 @@ export interface ConnectContentProps {
   onSwitch: (wallet: WalletType) => void;
 }
 
-export function ConnectError({ error }: { error: string }): JSX.Element {
+export function ConnectError({ error: rawError }: { error: string }): JSX.Element {
+  const error = mapWalletErrorMessage(rawError);
   useReportDisplayedError(error);
   const { translate } = useSettingsContext();
 

@@ -550,6 +550,7 @@
     "Please confirm the connection in your TronLink browser extension.": "Confermare la connessione nell'estensione del browser TronLink.",
     "Please confirm the connection in your wallet.": "Confermare la connessione nel portafoglio.",
     "Please confirm the connection with your Ledger.": "Confermare il collegamento con il Ledger.",
+    "Please confirm or close the pending request in your wallet.": "Confermare o chiudere la richiesta in sospeso nel portafoglio.",
     "Connection failed!": "Connessione fallita!",
     "Please make sure that all other applications and browser extensions that are connected to the ledger are completely closed when you try to connect.\nThis includes third-party wallets (Ledger Live, Metamask, Daedalus, MyEtherWallet) or other applications that could interfere with the connection between DFX.swiss and your ledger device.": "Assicurarsi che tutte le altre applicazioni e le estensioni del browser collegate al ledger siano completamente chiuse quando si cerca di connettersi.\nCiò include portafogli di terze parti (Ledger Live, Metamask, Daedalus, MyEtherWallet) o altre applicazioni che potrebbero interferire con la connessione tra DFX.swiss e il dispositivo ledger.",
     "Connect your {{device}} with your computer": "Collegare il  {{device}} al computer",
@@ -965,7 +966,8 @@
     "Show Bank Frick IBAN": "Mostra l'IBAN Bank Frick",
     "Show available IBAN": "Mostra l'IBAN disponibile",
     "The requested personal IBAN is not available for your account. Please switch back or contact support.": "L'IBAN personale richiesto non è disponibile per il tuo account. Torna indietro oppure contatta l'assistenza.",
-    "Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.": "Il tuo nuovo IBAN Bank Frick richiede il livello KYC 50: ti mostriamo invece il tuo IBAN esistente."
+    "Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.": "Il tuo nuovo IBAN Bank Frick richiede il livello KYC 50: ti mostriamo invece il tuo IBAN esistente.",
+    "Please confirm or close the pending request in your wallet.": "Conferma o chiudi la richiesta in sospeso nel tuo portafoglio."
   },
   "screens/iban": {
     "Your Bank Accounts": "I tuoi conti bancari",

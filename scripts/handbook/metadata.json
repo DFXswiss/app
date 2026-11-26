@@ -263,6 +263,10 @@
     "title": "Session-Wechsel (Debug)",
     "description": "Debug-Screenshots zum Session-/Account-Wechsel."
   },
+  "payment-link-metamask": {
+    "title": "Zahlungslink im MetaMask-Browser",
+    "description": "Zahlungslink im In-App-Browser von MetaMask, während das Wallet noch eine frühere Anfrage verarbeitet (\"Already processing … Please wait.\"): Der Zahlungsbildschirm zeigt den Hinweis, die offene Anfrage im Wallet zu bestätigen oder zu schliessen, statt des Wallet-Texts."
+  },
   "merchant-page": {
     "title": "Händlerseite",
     "description": "Zahlungslink mit Händler (/pl?merchant=<Route>), jeweils die ganze Seite: Name, Empfänger, Zahlungsmethoden und die empfohlenen, kompatiblen und teilweise kompatiblen Apps aus der Händler-Info, ohne dass eine Zahlung angelegt wird; die gewählte App mit den Zahlungsmethoden, die sie unterstützt, auch direkt über ?wallet-id=<ID> geöffnet; und der Fehlertext, wenn die Händler-Info nicht geladen werden kann (z.B. unbekannte Route oder Händler ohne öffentliche Händler-Info)."
@@ -277,7 +281,7 @@
   },
   "wallet-cancel": {
     "title": "Abbruch im Wallet",
-    "description": "Bricht der Benutzer im Wallet ab (EIP-1193-Code 4001), endet der Vorgang ohne Fehlermeldung und ohne Fehlerbericht: beim Verbinden wieder bei der Wallet-Auswahl, beim Verkauf im Formular, wo ein neuer Versuch möglich ist. Varianten: abgebrochene Verbindung zurück bei der Wallet-Auswahl; eine vom Wallet fehlgeschlagene Verbindung, die weiterhin \"Connection failed!\" mit der Meldung des Wallets zeigt; eine im Wallet abgebrochene Verkaufstransaktion, nach der das Formular ohne Fehler stehen bleibt; eine vom Wallet fehlgeschlagene Verkaufstransaktion, die weiterhin \"Transaction failed\" zeigt."
+    "description": "Bricht der Benutzer im Wallet ab (EIP-1193-Code 4001), endet der Vorgang ohne Fehlermeldung und ohne Fehlerbericht: beim Verbinden wieder bei der Wallet-Auswahl, beim Verkauf im Formular, wo ein neuer Versuch möglich ist. Varianten: abgebrochene Verbindung zurück bei der Wallet-Auswahl; eine vom Wallet fehlgeschlagene Verbindung, die weiterhin \"Connection failed!\" mit der Meldung des Wallets zeigt; eine Verbindung, die das Wallet noch verarbeitet (\"Already processing … Please wait.\"), mit dem Hinweis, die offene Anfrage im Wallet zu bestätigen oder zu schliessen; eine im Wallet abgebrochene Verkaufstransaktion, nach der das Formular ohne Fehler stehen bleibt; eine vom Wallet fehlgeschlagene Verkaufstransaktion, die weiterhin \"Transaction failed\" zeigt."
   },
   "partner-onboarding-fee": {
     "title": "Partner-Onboarding-Gebühr",

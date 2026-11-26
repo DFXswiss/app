@@ -93,7 +93,18 @@ describe('requestAccount', () => {
   it('keeps the hint for a pending request', async () => {
     handlers.eth_requestAccounts = rejectWith(-32002, 'Already processing eth_requestAccounts.');
 
-    await expect(setup().requestAccount()).rejects.toBeInstanceOf(TranslatedError);
+    const error = await setup()
+      .requestAccount()
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TranslatedError);
+    expect((error as Error).message).toBe('Please confirm or close the pending request in your wallet.');
+  });
+
+  it('keeps the wallet text of a pending request that carries data, so it can be mapped to the hint', async () => {
+    handlers.eth_requestAccounts = rejectWith(-32603, 'Already processing unlock. Please wait.', { origin: 'dfx' });
+
+    await expect(setup().requestAccount()).rejects.toThrow(/^Already processing unlock\. Please wait\.$/);
   });
 
   it('leaves the rewritten message of another failure with data as it was', async () => {

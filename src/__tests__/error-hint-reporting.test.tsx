@@ -121,4 +121,24 @@ describe('ErrorHint reporting', () => {
       expect(onBack).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('pending wallet request', () => {
+    it('shows and reports the pending-request hint instead of the wallet text', async () => {
+      renderHint(<ErrorHint message="Already processing eth_sendTransaction. Please wait." />);
+
+      expect(screen.getByText('Please confirm or close the pending request in your wallet.')).toBeInTheDocument();
+      expect(screen.queryByText('Already processing eth_sendTransaction. Please wait.')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(
+          'Something went wrong. Please try again. If the issue persists please reach out to our support.',
+        ),
+      ).not.toBeInTheDocument();
+
+      await waitFor(() => expect(mockReportClientError).toHaveBeenCalledTimes(1));
+      expect(mockReportClientError.mock.calls[0][0]).toMatchObject({
+        message: 'Please confirm or close the pending request in your wallet.',
+        name: 'HandledError',
+      });
+    });
+  });
 });

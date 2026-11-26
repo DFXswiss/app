@@ -791,6 +791,18 @@ describe('PaymentLinkProvider', () => {
       expect(context.current().metaMaskInfo).toBeUndefined();
     });
 
+    it('shows the pending-request hint when the wallet is still processing the account request', async () => {
+      inAppBrowser();
+      mockMetaMask.requestAccount.mockRejectedValue(new Error('Already processing unlock. Please wait.'));
+
+      const context = await renderWithPayRequest(quoted());
+
+      await waitFor(() =>
+        expect(context.current().metaMaskError).toBe('Please confirm or close the pending request in your wallet.'),
+      );
+      expect(context.current().metaMaskInfo).toBeUndefined();
+    });
+
     it('rejects Ethereum when the quote expires within a minute', async () => {
       inAppBrowser();
       const quote = { id: 'quote-1', expiration: new Date(Date.now() + 30 * 1000).toISOString(), payment: 'pay-1' };
@@ -875,6 +887,19 @@ describe('PaymentLinkProvider', () => {
         );
         expect(context.current().isMetaMaskPaying).toBe(false);
         expect(context.current().metaMaskError).toBeUndefined();
+      });
+
+      it('shows the pending-request hint when the wallet is still processing the payment', async () => {
+        const context = await readyToPay(ethAsset, { uri: 'ethereum:coin' });
+        mockEvmDecodeUri.mockReturnValue({ address: '0xshop', amount: '2000' });
+        mockMetaMask.createTransaction.mockRejectedValue(
+          new Error('Already processing eth_sendTransaction. Please wait.'),
+        );
+
+        await act(async () => context.current().payWithMetaMask());
+
+        expect(context.current().metaMaskError).toBe('Please confirm or close the pending request in your wallet.');
+        expect(context.current().isMetaMaskPaying).toBe(false);
       });
 
       it('sends a token to its contract address', async () => {
