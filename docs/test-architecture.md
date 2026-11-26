@@ -466,6 +466,19 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   a past deadline in red. It does not prove that the API returns those rows,
   that the mark date is the account's phone-call date, or that login and
   token verification succeed.
+- **The pending-merges handbook spec answers the merge list itself.**
+  `e2e/compliance-pending-merges.spec.ts` fulfils `GET /v1/support/pending-merges`
+  with synthetic fixtures: one row for each of IdentDocument, Mail, Iban and Staff,
+  a processing Iban row, a Staff row whose master account has neither name nor
+  mail, and an empty list. Auth is the real admin-token flow against `/v1/auth`
+  with credentials derived from `ADMIN_SEED`, and every other request, including
+  the frontend's own user and role fetch, passes through with `route.continue()`.
+  A green run proves the table shows every reason, the Processing status, the
+  `#9107` fallback for the account without name or mail, and the "No pending
+  merges found" empty state, and that the `pending-merges-01-loaded.png` and
+  `pending-merges-02-empty.png` baselines match. It does not prove that the API
+  returns those rows, filters out completed and expired requests, includes every
+  reason, or maps the account fields.
 - **The compliance tag-list spec answers the tag list itself.**
   `e2e/compliance-tag-list.spec.ts` fulfils `GET /v1/support/tag/example` with
   synthetic fixtures: four customer rows, an empty `userDatas`, and a 404 with
