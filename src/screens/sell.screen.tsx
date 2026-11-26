@@ -44,6 +44,7 @@ import { Urls } from 'src/config/urls';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
+import { AlreadyVerifiedLink } from '../components/already-verified-link';
 import { ExchangeRate } from '../components/exchange-rate';
 import { SellCompletion } from '../components/payment/sell-completion';
 import { QuoteErrorHint } from '../components/quote-error-hint';
@@ -765,6 +766,7 @@ export default function SellScreen(): JSX.Element {
                   isModalOpen={bankAccountSelection}
                   onModalToggle={setBankAccountSelection}
                 />
+                {!isLoading && !paymentInfo && !kycError && <AlreadyVerifiedLink />}
               </StyledVerticalStack>
 
               {isLoading && !paymentInfo ? (

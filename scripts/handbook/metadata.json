@@ -41,7 +41,7 @@
   },
   "sell-process": {
     "title": "Verkaufsprozess",
-    "description": "Sell-Flow: geladene Seite, Betrag und Sepolia-ETH/USDT-Verkaufsschritte."
+    "description": "Sell-Flow: geladene Seite, Betrag und Sepolia-ETH/USDT-Verkaufsschritte. Ein Konto mit KYC-Stufe 0 ohne Bankkonto sieht unter der IBAN-Auswahl den Link „I am already verified with DFX“."
   },
   "sell-info": {
     "title": "Verkaufs-Infoseite",

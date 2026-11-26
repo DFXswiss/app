@@ -883,6 +883,20 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   sell form shows its normal exchange rate and payment information. A green run proves how the sell page renders
   the banner and its absence for those answers. It does not prove production auth, that the API answers
   `LikelyReturn` for a real address, or that the API returns that quote.
+- **The sell KYC-0 link visual answers the API itself.** `e2e/sell-process.spec.ts` (`Sell Process - KYC level 0
+  without bank account`) passes a synthetic unsigned JWT as `session` and fulfils the bootstrap GETs (`/v1/language`,
+  `/v1/fiat`, `/v1/asset`, `/v1/country`, `/v1/setting/infoBanner`), `GET /v1/bankAccount` with an empty list,
+  `GET /v1/sell/address-check` with `Ok`, `GET /v2/user` with KYC level 0 and `POST /v1/log/clientError`. Unmatched
+  `/v1/**` and `/v2/**` calls get `501`. A green run proves how `/sell` renders the "I am already verified with DFX"
+  link below the IBAN selection for those answers. It does not prove production auth, that the API returns them, or
+  that the link works; the full-stack case in `e2e-stack/specs/sell-swap.spec.ts` follows it.
+- **The full-stack `/sell` link case ends at "No matching account was found."** The case in
+  `e2e-stack/specs/sell-swap.spec.ts` that follows "I am already verified with DFX" from `/sell` sets the KYC level
+  to 0 by SQL through `createUser`, which also sets a mail, so ContactData is already complete and `/link` shows "No matching account was found." instead of the mail form (the same finding as
+  the `/link` cases in `e2e-stack/specs/kyc.spec.ts`). Its Back runs the same return to `/sell` as the OK after the
+  merge mail was sent. A green run does not prove the mail form on `/link`, the merge mail, its confirmation on
+  `/account-merge` in a new tab, or a return to `/sell` after a completed merge; that confirmation ends on
+  `/account-merge` with "My account" and does not return to `/sell` at all.
 - **The sell-info visuals answer the API themselves.** `e2e/sell-info.spec.ts` passes a synthetic unsigned JWT
   (`alg: none`, role User, Ethereum wallet address, expiry one hour ahead) as `session`, so it needs no live login,
   and fulfils the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,

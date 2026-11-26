@@ -15,6 +15,8 @@
  * through to the hardware-wallet selection.
  * One /sell case pauses sell at runtime through the API's `disabledProcess` setting and restores it
  * before it ends; every other sell case runs with sell on.
+ * One /sell case follows "I am already verified with DFX" from a KYC level 0 account without a bank
+ * account to /link and back to /sell.
  */
 
 import type { Page, Response } from '@playwright/test';
@@ -1377,6 +1379,47 @@ test.describe('Sell + Swap e2e', () => {
     }
 
     // The first page keeps the redirect URI for its own session, not in localStorage.
+    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBe(
+      WALLET_REDIRECT_URI,
+    );
+    expect(await redirectUriInLocalStorage(page)).toEqual({ key: null, queryParams: undefined });
+  });
+
+  test('/sell: a KYC level 0 user without a bank account follows "I am already verified with DFX" to /link and returns to /sell with the amount and the redirect URI', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    const user = await createUser({
+      walletIndex: nextWalletIndex(),
+      tag: 'sell-link-kyc0',
+      kycLevel: 0,
+      language: 'EN',
+    });
+    const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
+
+    await gotoWithSession(page, `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.2${WALLET_REDIRECT_QUERY}`, user.jwt);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
+    await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Add or select your IBAN', { exact: true })).toBeVisible();
+    const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
+    await expect(spend).toHaveValue('0.2');
+
+    const link = page.getByText('I am already verified with DFX', { exact: true });
+    await expect(link).toBeVisible({ timeout: 15000 });
+    await expect(link).toBeInViewport();
+    expect(paymentInfos.last).toBeNull();
+
+    await link.click();
+    await page.waitForURL((url) => normPath(url.pathname) === '/link', { timeout: 15000 });
+
+    // createUser always sets a mail, so ContactData is already complete and /link ends on "no matching account"
+    // (the /link cases in kyc.spec.ts); its Back runs the same return as the OK after the merge mail was sent.
+    await expect(page.getByText('No matching account was found.', { exact: true })).toBeVisible({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Back' }).click();
+
+    await page.waitForURL((url) => normPath(url.pathname) === '/sell', { timeout: 15000 });
+    await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(spend).toHaveValue('0.2');
     expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBe(
       WALLET_REDIRECT_URI,
     );
