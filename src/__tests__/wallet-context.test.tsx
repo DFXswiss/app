@@ -1,5 +1,5 @@
 import { PropsWithChildren } from 'react';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 
 const mockNavigate = jest.fn();
 const mockLogout = jest.fn();
@@ -20,6 +20,7 @@ let mockSessionInitialized = true;
 let mockLoggedIn = false;
 let mockParamsInitialized = true;
 let mockAppParams: Record<string, string | undefined> = {};
+let mockIsWidget = false;
 
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: {
@@ -97,7 +98,11 @@ jest.mock('../hooks/wallets/metamask.hook', () => ({
 }));
 
 jest.mock('../contexts/app-handling.context', () => ({
-  useAppHandlingContext: () => ({ isInitialized: mockParamsInitialized, params: mockAppParams }),
+  useAppHandlingContext: () => ({
+    isInitialized: mockParamsInitialized,
+    params: mockAppParams,
+    isWidget: mockIsWidget,
+  }),
 }));
 
 jest.mock('../contexts/balance.context', () => ({
@@ -107,6 +112,7 @@ jest.mock('../contexts/balance.context', () => ({
 import { Blockchain } from '@dfx.swiss/react';
 import type { Router } from '@remix-run/router';
 import { supportsBlockchain, useWalletContext, WalletContextProvider, WalletType } from '../contexts/wallet.context';
+import { launchCredentials } from '../util/session-renewal';
 
 const router = { navigate: mockNavigate } as unknown as Router;
 
@@ -132,6 +138,8 @@ function reset(): void {
   mockLoggedIn = false;
   mockParamsInitialized = true;
   mockAppParams = {};
+  mockIsWidget = false;
+  sessionStorage.clear();
   mockStoredWalletGet.mockReturnValue(undefined);
   mockBrowserLang.mockReturnValue('en');
   mockAuthenticate.mockResolvedValue('session-token');
@@ -301,12 +309,14 @@ describe('WalletContextProvider param sessions', () => {
     );
   });
 
-  it('logs out when creating the session from credentials fails', async () => {
+  it('logs out and drops the launch credentials when creating the session from credentials fails', async () => {
     mockAppParams = { address: 'address', signature: 'signature' };
+    launchCredentials.set({ address: 'address', signature: 'signature' });
     mockAuthenticate.mockRejectedValue(new Error('authentication failed'));
     const { result } = await ready();
 
     expect(mockLogout).toHaveBeenCalled();
+    expect(launchCredentials.get()).toBeUndefined();
     expect(result.current.isInitialized).toBe(true);
   });
 
@@ -507,5 +517,68 @@ describe('WalletContextProvider public API', () => {
     });
 
     expect(result.current.blockchain).toBe(Blockchain.BITCOIN);
+  });
+});
+
+describe('WalletContextProvider session renewal', () => {
+  const USER_URL = 'https://api.example/v2/user';
+  const originalFetch = window.fetch;
+  let mockFetch: jest.Mock;
+
+  beforeEach(() => {
+    mockFetch = jest.fn();
+    window.fetch = mockFetch;
+  });
+
+  afterEach(() => {
+    cleanup();
+    window.fetch = originalFetch;
+  });
+
+  it('signs in again with the launch credentials when the API rejects their session after a merge', async () => {
+    mockLoggedIn = true;
+    mockAppParams = { wallet: 'partner-wallet' };
+    launchCredentials.set({ address: 'address', signature: 'signature', pubkey: 'pubkey' });
+    mockJwtDecode.mockReturnValue({ address: 'address' });
+    mockAuthenticate.mockResolvedValue('master-session');
+    const renewed = { status: 200 } as Response;
+    mockFetch.mockResolvedValueOnce({ status: 401 } as Response).mockResolvedValueOnce(renewed);
+    await ready();
+
+    let response: Response | undefined;
+    await act(async () => {
+      response = await window.fetch(USER_URL, { headers: { Authorization: 'Bearer slave-session' } });
+    });
+
+    expect(mockAuthenticate).toHaveBeenCalledWith(
+      'address',
+      'signature',
+      'pubkey',
+      undefined,
+      'partner-wallet',
+      undefined,
+      undefined,
+      undefined,
+      'EN',
+    );
+    expect(mockFetch).toHaveBeenLastCalledWith(USER_URL, { headers: [['Authorization', 'Bearer master-session']] });
+    expect(response).toBe(renewed);
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('leaves fetch untouched in a widget', async () => {
+    mockIsWidget = true;
+    await ready();
+
+    expect(window.fetch).toBe(mockFetch);
+  });
+
+  it('restores fetch when the provider unmounts', async () => {
+    const { unmount } = await ready();
+    expect(window.fetch).not.toBe(mockFetch);
+
+    unmount();
+
+    expect(window.fetch).toBe(mockFetch);
   });
 });

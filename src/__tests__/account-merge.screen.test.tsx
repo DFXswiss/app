@@ -346,12 +346,16 @@ describe('AccountMerge return-url', () => {
     expect(mockAssign).toHaveBeenCalledWith('http://localhost/sell?amount-in=0.2&session=token');
   });
 
-  it('continues without a session parameter when the merge returns no access token', async () => {
-    withReturnUrl('http://localhost/sell');
+  // Confirmed where nobody is signed in: the API answers without an access token, and the return page would
+  // only ask for a login, so the account is opened by its code as before the return-url existed.
+  it('opens the account by its code instead of the return-url when the merge returns no access token', async () => {
+    withReturnUrl(`http://localhost/sell?${SELL_QUERY}`);
 
     await confirmMerge({ kycHash: 'hash' });
 
-    expect(mockAssign).toHaveBeenCalledWith('http://localhost/sell');
+    expect(mockSetAuthToken).toHaveBeenCalledWith(undefined);
+    expect(mockNavigate).toHaveBeenCalledWith('/account?code=hash');
+    expect(mockAssign).not.toHaveBeenCalled();
   });
 
   // The return-url is whatever the caller sent as `redirectUri` on the contact step; the API checks only its origin.
@@ -374,13 +378,14 @@ describe('AccountMerge return-url', () => {
   );
 
   it.each(FOREIGN_LOGIN_QUERIES)(
-    'drops %s from the return-url and sends no session without an access token',
+    'does not follow a return-url carrying %s without an access token',
     async (_name, query) => {
       withReturnUrl(`http://localhost/sell?${query}&amount-in=0.2`);
 
       await confirmMerge({ kycHash: 'hash' });
 
-      expect(mockAssign).toHaveBeenCalledWith('http://localhost/sell?amount-in=0.2');
+      expect(mockNavigate).toHaveBeenCalledWith('/account?code=hash');
+      expect(mockAssign).not.toHaveBeenCalled();
     },
   );
 

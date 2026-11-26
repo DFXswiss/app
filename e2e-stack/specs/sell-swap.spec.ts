@@ -4,11 +4,14 @@
  *
  * Browser drives the real frontend; Postgres proves writes where the UI mutates data.
  * UI flows that depend on pricing (`PUT /sell/paymentInfos`, `PUT /swap/paymentInfos`) are split
- * into two tests each — the deposit_route write and the payment panel — and both assert hard.
- * Neither is skipped: pricing does work here, once the URL leaves out the bank-account parameter.
+ * into two tests each — the deposit_route write and the payment panel. The sell cases assert hard:
+ * sell pricing works here, once the URL leaves out the bank-account parameter. The swap quote and
+ * payment-info cases branch on the unavailable answer (HTTP 404 while the swap routes are unmounted,
+ * or HTTP 503 `TRANSACTIONS_PAUSED`) and assert the rest only when the API serves swaps.
  * Passing `bank-account` used to recreate accounts in a loop; that regression is pinned by the
  * dedicated test at the end of this file (select the existing account, do not POST again).
- * Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
+ * Factory-only tests remain as independent API-path proofs: `createSell` always, `createSwap` only
+ * when swap is served.
  * /sell also proves three wallet address-check outcomes through the real API: Ok without a banner,
  * LikelyReturn with the return banner, and Ok without a banner for an address Scorechain has no data on
  * (NoCoverage). Unknown is not reachable on a sellable chain here; the unit test of the hint covers it.
@@ -17,8 +20,9 @@
  * One /sell case pauses sell at runtime through the API's `disabledProcess` setting and restores it
  * before it ends; every other sell case runs with sell on.
  * One /sell case follows "I am already verified with DFX" from a KYC level 0 account without a bank
- * account to /link and back to /sell. Another one enters the mail of a verified account there, confirms
- * the merge mail in a new page and checks where that confirmation continues.
+ * account to /link and back to /sell. Another one starts like a partner WebView with `address`+`signature`,
+ * enters the mail of a verified account there, confirms the merge mail in a new browser context and checks
+ * that OK in the WebView stays on /sell, signed in to the verified account.
  */
 
 import type { Page, Response } from '@playwright/test';
@@ -32,6 +36,7 @@ import {
   gotoWithSession,
   headerBackButton,
   isolateFromExternalHosts,
+  loginSignature,
   normPath,
   openScreen,
   orSwapUnavailable,
@@ -471,6 +476,11 @@ async function sessionAccount(page: Page): Promise<number | undefined> {
   const token = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
   if (!token) return undefined;
   return (JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as { account?: number }).account;
+}
+
+/** `columns` of the user_data row `id`. */
+async function userDataRow<T>(id: number, columns: string): Promise<T> {
+  return required(await queryOne<T>(`SELECT ${columns} FROM user_data WHERE id = $1`, [id]), `user_data row ${id}`);
 }
 
 /**
@@ -1470,10 +1480,12 @@ test.describe('Sell + Swap e2e', () => {
     expect(await redirectUriInLocalStorage(page)).toEqual({ key: null, queryParams: undefined });
   });
 
-  // The merge mail carries `return-url` (backend develop since DFXswiss/backend#6352), so the case asserts that
-  // "My account" returns to /sell.
-  test('/sell: a KYC level 0 user enters the mail of a verified account on /link, confirms the merge mail in a new page and continues where the mail link says', async ({
+  // The partner case: `page` is the partner's WebView, opened with `address`+`signature` of a fresh wallet. The merge
+  // mail is confirmed in another browser (a new browser context without shared storage, as a mail app opens it), so
+  // the WebView's session belongs to the merged account when the user taps OK there.
+  test('/sell: a partner launch with address and signature enters the mail of a verified account on /link, the merge mail is confirmed in another browser, and OK keeps /sell signed in to the verified account', async ({
     page,
+    browser,
   }) => {
     test.setTimeout(180000);
     const master = await createUser({
@@ -1503,9 +1515,15 @@ test.describe('Sell + Swap e2e', () => {
     );
     await apiPut<unknown>('user', { language: { id: english.id } }, { jwt: slaveJwt, version: 'v2', expectOk: true });
 
-    await gotoWithSession(page, `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.2${WALLET_REDIRECT_QUERY}`, slaveJwt);
+    const signature = await loginSignature(slaveWallet);
+    await page.goto(
+      `/sell?address=${encodeURIComponent(slaveWallet.address)}&signature=${encodeURIComponent(signature)}` +
+        `&blockchain=Ethereum&asset-in=ETH&asset-out=CHF&amount-in=0.2${WALLET_REDIRECT_QUERY}`,
+    );
+    await expect.poll(() => sessionAccount(page), { timeout: 20000 }).toBe(slave.userDataId);
     const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
     await expect(spend).toHaveValue('0.2', { timeout: 15000 });
+    expect(new URL(page.url()).searchParams.has('signature')).toBe(false);
 
     await page.getByText('I am already verified with DFX', { exact: true }).click({ timeout: 15000 });
     await page.waitForURL((url) => normPath(url.pathname) === '/link', { timeout: 15000 });
@@ -1554,11 +1572,17 @@ test.describe('Sell + Swap e2e', () => {
     const returnUrl = mergeLink.searchParams.get('return-url');
     expect(returnUrl).toBe(sent.redirectUri);
 
-    const next = await page.context().newPage();
+    const mailBrowser = await browser.newContext();
     try {
-      await isolateFromExternalHosts(next);
-      await next.goto(mergeLink.href);
-      await expect(next.getByText('Wallet address added', { exact: true })).toBeVisible({ timeout: 30000 });
+      const mailPage = await mailBrowser.newPage();
+      await isolateFromExternalHosts(mailPage);
+      const mailPaths: URL[] = [];
+      mailPage.on('framenavigated', (frame) => {
+        if (frame === mailPage.mainFrame() && frame.url().startsWith('http')) mailPaths.push(new URL(frame.url()));
+      });
+      await mailPage.goto(mergeLink.href);
+      await expect(mailPage.getByText('Wallet address added', { exact: true })).toBeVisible({ timeout: 30000 });
+      expect(await sessionAccount(mailPage)).toBeUndefined();
 
       const merge = await waitForRow<{ isCompleted: boolean }>(
         `SELECT "isCompleted" AS "isCompleted" FROM account_merge
@@ -1569,26 +1593,44 @@ test.describe('Sell + Swap e2e', () => {
       );
       expect(merge.isCompleted).toBe(true);
 
-      await next.getByRole('button', { name: 'My account' }).click();
-
-      await next.waitForURL((url) => normPath(url.pathname) === '/sell', { timeout: 30000 });
-      const nextSpend = next
-        .locator('h2', { hasText: 'You spend' })
-        .locator('..')
-        .locator('input[type="number"]')
-        .first();
-      await expect(nextSpend).toHaveValue('0.2', { timeout: 20000 });
-      await next.waitForFunction(
-        ([key, expected]) => window.sessionStorage.getItem(key) === expected,
-        [REDIRECT_URI_KEY, WALLET_REDIRECT_URI],
-        { timeout: 15000 },
-      );
-      await expect.poll(() => new URL(next.url()).searchParams.has('session'), { timeout: 15000 }).toBe(false);
-      await expect.poll(() => sessionAccount(next), { timeout: 15000 }).toBe(master.userDataId);
-      await expect(next.getByText('I am already verified with DFX', { exact: true })).toHaveCount(0);
+      // Confirmed without a session, so the API issues no access token and the button opens the account by its code
+      // instead of the return-url.
+      const { kycHash } = await userDataRow<{ kycHash: string }>(master.userDataId, '"kycHash" AS "kycHash"');
+      const openedAccount = () =>
+        mailPaths.some((url) => url.pathname === '/account' && url.searchParams.get('code') === kycHash);
+      await mailPage.getByRole('button', { name: 'My account' }).click();
+      await expect.poll(openedAccount, { timeout: 15000 }).toBe(true);
+      expect(mailPaths.some((url) => url.pathname === '/sell')).toBe(false);
     } finally {
-      await next.close();
+      await mailBrowser.close();
     }
+
+    const visited: string[] = [];
+    page.on('framenavigated', (frame) => {
+      if (frame !== page.mainFrame() || !frame.url().startsWith('http')) return;
+      visited.push(normPath(new URL(frame.url()).pathname));
+    });
+    const relogin = page.waitForResponse(
+      (response) => response.request().method() === 'POST' && /\/v1\/auth$/.test(new URL(response.url()).pathname),
+      { timeout: 20000 },
+    );
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    expect((await relogin).ok(), 'the re-login with the launch signature').toBe(true);
+
+    await page.waitForURL((url) => normPath(url.pathname) === '/sell', { timeout: 15000 });
+    await expect.poll(() => sessionAccount(page), { timeout: 20000 }).toBe(master.userDataId);
+    const sessionAccountId = required(await sessionAccount(page), 'the account of the session');
+    const { kycLevel } = await userDataRow<{ kycLevel: number }>(sessionAccountId, '"kycLevel" AS "kycLevel"');
+    expect(kycLevel).toBeGreaterThan(0);
+    await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(spend).toHaveValue('0.2', { timeout: 15000 });
+    await expect(page.getByText('I am already verified with DFX', { exact: true })).toHaveCount(0, { timeout: 15000 });
+    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBe(
+      WALLET_REDIRECT_URI,
+    );
+    expect(visited).not.toContain('/login');
+    expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
+    expect(await page.evaluate(() => JSON.stringify(window.localStorage))).not.toContain(signature);
   });
 
   test('/sell: closing a sell the wallet sent redirects once as complete with the route and the order', async ({

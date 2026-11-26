@@ -6,6 +6,7 @@ import { jwtDecode } from 'jwt-decode';
 import { PropsWithChildren, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../hooks/store.hook';
 import { WalletType as MetaMaskWalletType, useMetaMask } from '../hooks/wallets/metamask.hook';
+import { installSessionRenewal, launchCredentials } from '../util/session-renewal';
 import { useAppHandlingContext } from './app-handling.context';
 import { useBalanceContext } from './balance.context';
 
@@ -181,10 +182,7 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
   const { isInitialized: isSessionInitialized, isLoggedIn, logout } = useSessionContext();
   const { updateSession } = useApiSession();
   const api = useSessionContext();
-  const {
-    isInitialized: isParamsInitialized,
-    params: appParams,
-  } = useAppHandlingContext();
+  const { isInitialized: isParamsInitialized, params: appParams, isWidget } = useAppHandlingContext();
   const { getSignMessage } = useAuth();
   const { readBalances } = useBalanceContext();
   const { activeWallet: activeWalletStore } = useStore();
@@ -197,6 +195,13 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
   );
   const [activeBlockchain, setActiveBlockchain] = useState<Blockchain>();
   const lastAppliedCredentials = useRef<{ address?: string; signature?: string; session?: string }>({});
+  const renewSession = useRef(createSession);
+  renewSession.current = createSession;
+
+  useEffect(() => {
+    if (isWidget) return;
+    return installSessionRenewal(({ address, signature, pubkey }) => renewSession.current(address, signature, pubkey));
+  }, [isWidget]);
 
   // initialize
   useEffect(() => {
@@ -258,6 +263,7 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
     } catch (e) {
       // Reset on error to allow retry
       lastAppliedCredentials.current = {};
+      launchCredentials.remove();
       logout();
     }
 

@@ -130,15 +130,16 @@ export default function AccountMerge() {
   // URL; the session goes along as `session`, which that start applies and removes from the address bar.
   // The return-url comes from whoever started the merge, so any login parameters in it are dropped first: the
   // start would otherwise sign in with a foreign `address`+`signature` or apply a foreign `session`.
+  // Only a confirmation that issued an access token (the caller was signed in) continues to the return-url.
   function continueToAccount({ kycHash, accessToken }: MergeRedirect) {
-    if (!returnUrl) {
+    if (!returnUrl || !accessToken) {
       navigate(`/account?code=${kycHash}`);
       return;
     }
 
     const target = new URL(returnUrl.href);
     LOGIN_PARAMS.forEach((name) => target.searchParams.delete(name));
-    if (accessToken) target.searchParams.set('session', accessToken);
+    target.searchParams.set('session', accessToken);
     (window as Window).location.assign(target.href);
   }
 
