@@ -351,6 +351,34 @@ describe('LinkScreen redirectUri', () => {
     });
   });
 
+  it('keeps every page parameter of a partner flow under its URL name and leaves out personal data', async () => {
+    mockAppHandling = {
+      redirectPath: '/sell',
+      params: {
+        wallet: 'PartnerWallet',
+        headless: 'true',
+        blockchains: 'Ethereum,Arbitrum',
+        externalTransactionId: 'ext-1',
+        firstName: 'Max',
+        organizationName: 'Example AG',
+        phone: '+41790000000',
+      },
+      isWidget: false,
+    };
+
+    const sent = (await sentContactData()) as { mail: string; redirectUri: string };
+
+    expect(sent.mail).toBe('test@example.com');
+    const target = new URL(sent.redirectUri);
+    expect(target.origin + target.pathname).toBe('http://localhost/sell');
+    expect(Object.fromEntries(target.searchParams)).toEqual({
+      wallet: 'PartnerWallet',
+      headless: 'true',
+      blockchains: 'Ethereum,Arbitrum',
+      'external-transaction-id': 'ext-1',
+    });
+  });
+
   it('removes login parameters from the redirect path', async () => {
     mockAppHandling = {
       redirectPath: '/kyc?code=KYC&address=0xabc&signature=sig&session=jwt&wallet=RealUnit',

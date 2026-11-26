@@ -1470,9 +1470,8 @@ test.describe('Sell + Swap e2e', () => {
     expect(await redirectUriInLocalStorage(page)).toEqual({ key: null, queryParams: undefined });
   });
 
-  // This PR is paired with DFXswiss/backend#6352 (e2e-companion.json), so its full-stack run uses that backend head.
-  // Without the backend change (backend develop) the merge mail carries no `return-url` and the case asserts that
-  // "My account" opens /account; with the paired backend it asserts the return to /sell.
+  // The merge mail carries `return-url` (backend develop since DFXswiss/backend#6352), so the case asserts that
+  // "My account" returns to /sell.
   test('/sell: a KYC level 0 user enters the mail of a verified account on /link, confirms the merge mail in a new page and continues where the mail link says', async ({
     page,
   }) => {
@@ -1553,6 +1552,7 @@ test.describe('Sell + Swap e2e', () => {
     );
     const mergeLink = required(accountMergeLink(decryptPii(mail.data)), 'the /account-merge link in the merge mail');
     const returnUrl = mergeLink.searchParams.get('return-url');
+    expect(returnUrl).toBe(sent.redirectUri);
 
     const next = await page.context().newPage();
     try {
@@ -1571,12 +1571,6 @@ test.describe('Sell + Swap e2e', () => {
 
       await next.getByRole('button', { name: 'My account' }).click();
 
-      if (returnUrl === null) {
-        await next.waitForURL((url) => normPath(url.pathname) === '/account', { timeout: 15000 });
-        return;
-      }
-
-      expect(returnUrl).toBe(sent.redirectUri);
       await next.waitForURL((url) => normPath(url.pathname) === '/sell', { timeout: 30000 });
       const nextSpend = next
         .locator('h2', { hasText: 'You spend' })

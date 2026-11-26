@@ -34,19 +34,34 @@ import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useMergedAccount } from 'src/hooks/merged-account.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import { appOrigin } from '../util/app-origin';
+import { APP_PARAM_URL_NAMES } from '../util/app-param-names';
 import { LOGIN_PARAMS } from '../util/login-params';
 import { loginRedirectParams } from '../util/login-redirect';
 import { relativeUrl } from '../util/utils';
 
 type ContactDataWithReturn = KycContactData & { redirectUri?: string };
 
-const RETURN_PARAMS: [keyof AppParams, string][] = [
-  ['amountIn', 'amount-in'],
-  ['amountOut', 'amount-out'],
-  ['assetIn', 'asset-in'],
-  ['assetOut', 'asset-out'],
-  ['blockchain', 'blockchain'],
-];
+// Page parameters the return page does not get back: the partner redirect URI (loginRedirectParams adds the one of
+// this session) and the personal data a partner can prefill. LOGIN_PARAMS are left out by their URL name.
+const RETURN_EXCLUDED_PARAMS = new Set<keyof AppParams>([
+  'redirectUri',
+  'mail',
+  'accountType',
+  'firstName',
+  'lastName',
+  'street',
+  'houseNumber',
+  'zip',
+  'city',
+  'country',
+  'organizationName',
+  'organizationStreet',
+  'organizationHouseNumber',
+  'organizationZip',
+  'organizationCity',
+  'organizationCountry',
+  'phone',
+]);
 
 export default function LinkScreen(): JSX.Element {
   const { translate, translateError } = useSettingsContext();
@@ -142,9 +157,11 @@ export default function LinkScreen(): JSX.Element {
     if (!redirectPath) return undefined;
 
     const query = loginRedirectParams({ isWidget, widgetPersonalIban }, (window as Window).location.search);
-    RETURN_PARAMS.forEach(([key, name]) => {
-      const value = params[key];
-      if (value) query.set(name, value);
+    // Every page parameter the app read, under the URL name it read it from, so the return page starts the same flow.
+    Object.entries(params).forEach(([key, value]) => {
+      const name = APP_PARAM_URL_NAMES[key as keyof typeof APP_PARAM_URL_NAMES];
+      if (!value || !name || RETURN_EXCLUDED_PARAMS.has(key as keyof AppParams) || LOGIN_PARAMS.includes(name)) return;
+      query.set(name, value);
     });
 
     const target = new URL(relativeUrl({ path: redirectPath, params: query }), appOrigin());

@@ -902,18 +902,16 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   the `/link` cases in `e2e-stack/specs/kyc.spec.ts`). Its Back runs the same return to `/sell` as the OK after the
   merge mail was sent. A green run of that case does not prove the mail form on `/link`, the merge mail or its
   confirmation; the merge case below covers those.
-- **The full-stack `/sell` merge case asserts the return to `/sell` only when the merge mail carries `return-url`.**
+- **The full-stack `/sell` merge case asserts the return to `/sell` through the `return-url` of the merge mail.**
   The case in `e2e-stack/specs/sell-swap.spec.ts` that enters the mail of a verified account on `/link` signs up a
   fresh wallet without a mail as the KYC level 0 account and takes the verified account from `createUser`, which sets
   its KYC level to 50 and its personal data by SQL. It reads the merge mail from the `notification` table and opens
   its link in a new page of the same browser context. Because `/link` is opened from `/sell` with `setRedirect`, the
-  app sends the `/sell` page as `redirectUri` with the contact data, and the case checks that body. This pull request is paired with DFXswiss/backend#6352 (`e2e-companion.json`), so its
-  full-stack run uses that backend head. Without the backend change (backend `develop`) the mail link carries no
-  `return-url` and the case asserts the confirmation and that "My account" opens `/account`; with the paired backend
-  it asserts the return to `/sell` (with the amount, the partner redirect URI in `sessionStorage`, no `session` left
-  in the address bar and a session for the merged account). A green run does not prove that a mail reaches a
-  mailbox, that a verified account reaches level 50 through the product path, or, while the mail link has no
-  `return-url`, the return to `/sell`.
+  app sends the `/sell` page as `redirectUri` with the contact data, and the case checks that body. The merge mail
+  carries `return-url` (backend `develop` since DFXswiss/backend#6352); the case asserts that it equals the sent
+  `redirectUri`, the confirmation and the return to `/sell` after "My account" (with the amount, the partner redirect
+  URI in `sessionStorage`, no `session` left in the address bar and a session for the merged account). A green run
+  does not prove that a mail reaches a mailbox or that a verified account reaches level 50 through the product path.
 - **A widget ignoring a stale redirect URI in the session store is proven by the unit test only.**
   `src/__tests__/app-handling-context.test.tsx` ("does not take the redirect URI an earlier widget left in the
   session store") puts a value in `sessionStorage['dfx.srv.redirectUri']`, mounts the real app-handling context in
@@ -931,6 +929,14 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   `KycRequired`, and `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get `501`. A green run proves
   how `/sell/info` renders those two answers. It does not prove production auth, that the API returns them for a
   given amount or account, or that the client-error endpoint stores the report.
+- **The account-merge visual answers the API itself.** `e2e/account-merge.spec.ts` opens `/account-merge` with a
+  synthetic `otp` and fulfils `GET /v1/auth/mail/confirm` for that code with a synthetic merge result (a KYC hash and
+  a synthetic unsigned JWT as `accessToken`: `alg: none`, role User, Ethereum wallet address, expiry one hour ahead),
+  the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner`, `/v2/user`) and `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get
+  `501`. A green run proves how `/account-merge` renders a confirmed merge ("Wallet address added" and "My account").
+  It does not prove production auth, that the API merges the accounts or returns that answer, the job path of a slow
+  merge, or where "My account" leads; the full-stack merge case in `e2e-stack/specs/sell-swap.spec.ts` follows it.
 - **The wallet rejection unit test answers for the wallets and their SDKs.**
   `src/__tests__/connect-wallet-rejection.test.tsx` renders the real connect components, wallet hooks,
   `ConnectBase` and `ConnectError` with the real web3 and viem (its mock installs Node's `TextEncoder` and
@@ -1048,15 +1054,13 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   Node's.
 - **The sell and swap hand-off full-stack cases answer the integrator's redirect target themselves.**
   `e2e-stack/specs/sell-swap.spec.ts` opens `/sell`, `/sell/info` and `/swap` with a `redirect-uri` on
-  `wallet.e2e.test` and answers every request to that host with 204. The reload cases there confirm once, reload
-  the page with `page.reload()` and confirm again, all on that answered host. The completed-sell case there lets
-  the injected MetaMask accept the transaction and closes the completion screen, whose redirect two seconds later
-  goes to that answered host as well. The completed-swap case there logs in with the command-line wallet, clicks
-  the issued-transaction button without any transaction being sent, and closes the completion screen, whose
-  redirect two seconds later goes to that answered host as well; with the swap routes unmounted in the harness,
-  the swap cases end at the 404 answer on screen. The `/sell/info` case confirms without an active wallet, whose redirect two
-  seconds later goes to that answered host too. The `/sell/info` amount-error case clicks Close, whose redirect
-  goes to that answered host as well. A green run does not prove that a wallet
+  `wallet.e2e.test` and answers every request to that host with 204. The sell reload case there confirms once,
+  reloads the page with `page.reload()` and confirms again, all on that answered host. The completed-sell case there
+  lets the injected MetaMask accept the transaction and closes the completion screen, whose redirect two seconds
+  later goes to that answered host as well. The `/sell/info` case confirms without an active wallet, whose redirect
+  two seconds later goes to that answered host too. The `/sell/info` amount-error case clicks Close, whose redirect
+  goes to that answered host as well. With the swap routes unmounted in the harness, the swap hand-off, reload and
+  completed-swap cases end at the 404 answer on screen (`swapQuoteUnavailable`). A green run does not prove that a wallet
   intercepts the redirect, opens a send screen or sends a transaction, nor how a WebView behaves, nor how a
   wallet's WebView reloads a page.
 - **The full-stack harness SQL-seeds the sell minimum.** `e2e-stack/scripts/up.sh` inserts the

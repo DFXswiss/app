@@ -13,6 +13,7 @@ import { useChange } from 'src/hooks/change.hook';
 import { Service } from '../App';
 import { useIframe } from '../hooks/iframe.hook';
 import { useStore } from '../hooks/store.hook';
+import { APP_PARAM_URL_NAMES } from '../util/app-param-names';
 import { isSafeRedirectUri, relativeUrl, url } from '../util/utils';
 import { useBalanceContext } from './balance.context';
 
@@ -376,54 +377,12 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
           ...extractWidgetParams(params),
         }
       : {
-          headless: getParameter(query, 'headless'),
-          borderless: getParameter(query, 'borderless'),
-          hideTargetSelection: getParameter(query, 'hide-target-selection'),
-          flags: getParameter(query, 'flags'),
-          lang: getParameter(query, 'lang'),
-          address: getParameter(query, 'address'),
-          signature: getParameter(query, 'signature'),
-          pubkey: getParameter(query, 'pubkey'),
-          mail: getParameter(query, 'mail'),
-          accountType: getParameter(query, 'account-type'),
-          firstName: getParameter(query, 'first-name'),
-          lastName: getParameter(query, 'last-name'),
-          street: getParameter(query, 'street'),
-          houseNumber: getParameter(query, 'house-number'),
-          zip: getParameter(query, 'zip'),
-          city: getParameter(query, 'city'),
-          country: getParameter(query, 'country'),
-          organizationName: getParameter(query, 'organization-name'),
-          organizationStreet: getParameter(query, 'organization-street'),
-          organizationHouseNumber: getParameter(query, 'organization-house-number'),
-          organizationZip: getParameter(query, 'organization-zip'),
-          organizationCity: getParameter(query, 'organization-city'),
-          organizationCountry: getParameter(query, 'organization-country'),
-          phone: getParameter(query, 'phone'),
-          wallet: getParameter(query, 'wallet'),
-          wallets: getParameter(query, 'wallets'),
-          refcode: getParameter(query, 'refcode'),
-          specialCode: getParameter(query, 'special-code'),
-          recommendationCode: getParameter(query, 'recommendation-code'),
-          session: getParameter(query, 'session'),
-          redirect: getParameter(query, 'redirect'),
-          type: getParameter(query, 'type'),
-          redirectUri: getParameter(query, 'redirect-uri'),
-          autoStart: getParameter(query, 'auto-start'),
-          mode: getParameter(query, 'mode'),
+          ...(Object.fromEntries(
+            Object.entries(APP_PARAM_URL_NAMES).map(([key, name]) => [key, getParameter(query, name)]),
+          ) as AppParams),
           blockchain: Object.values(Blockchain).find(
-            (b) => b.toLowerCase() === getParameter(query, 'blockchain')?.toLowerCase(),
+            (b) => b.toLowerCase() === getParameter(query, APP_PARAM_URL_NAMES.blockchain)?.toLowerCase(),
           ),
-          blockchains: getParameter(query, 'blockchains'),
-          balances: getParameter(query, 'balances'),
-          amountIn: getParameter(query, 'amount-in'),
-          amountOut: getParameter(query, 'amount-out'),
-          assets: getParameter(query, 'assets'),
-          assetIn: getParameter(query, 'asset-in'),
-          assetOut: getParameter(query, 'asset-out'),
-          paymentMethod: getParameter(query, 'payment-method'),
-          bankAccount: getParameter(query, 'bank-account'),
-          externalTransactionId: getParameter(query, 'external-transaction-id'),
         };
   }
 
