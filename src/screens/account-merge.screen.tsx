@@ -6,6 +6,7 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { JobResponse, JobStatus, isJobResponse, isJobTerminal, pollJobUntilTerminal } from 'src/util/job';
+import { LOGIN_PARAMS } from 'src/util/login-params';
 
 interface MergeRedirect {
   kycHash: string;
@@ -127,6 +128,8 @@ export default function AccountMerge() {
 
   // The return page is loaded anew, so its start reads the page parameters and the partner redirect URI from the
   // URL; the session goes along as `session`, which that start applies and removes from the address bar.
+  // The return-url comes from whoever started the merge, so any login parameters in it are dropped first: the
+  // start would otherwise sign in with a foreign `address`+`signature` or apply a foreign `session`.
   function continueToAccount({ kycHash, accessToken }: MergeRedirect) {
     if (!returnUrl) {
       navigate(`/account?code=${kycHash}`);
@@ -134,6 +137,7 @@ export default function AccountMerge() {
     }
 
     const target = new URL(returnUrl.href);
+    LOGIN_PARAMS.forEach((name) => target.searchParams.delete(name));
     if (accessToken) target.searchParams.set('session', accessToken);
     (window as Window).location.assign(target.href);
   }

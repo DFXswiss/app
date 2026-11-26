@@ -354,6 +354,36 @@ describe('AccountMerge return-url', () => {
     expect(mockAssign).toHaveBeenCalledWith('http://localhost/sell');
   });
 
+  // The return-url is whatever the caller sent as `redirectUri` on the contact step; the API checks only its origin.
+  // Login parameters in it would make the return page sign in to a foreign wallet or apply a foreign session.
+  const FOREIGN_LOGIN_QUERIES = [
+    ['session', 'session=foreign-session'],
+    ['address and signature', 'address=0xforeign&signature=0xsignature'],
+    ['code', 'code=foreign-code'],
+  ];
+
+  it.each(FOREIGN_LOGIN_QUERIES)(
+    'drops %s from the return-url and sends only the session from the access token',
+    async (_name, query) => {
+      withReturnUrl(`http://localhost/sell?${query}&amount-in=0.2`);
+
+      await confirmMerge();
+
+      expect(mockAssign).toHaveBeenCalledWith('http://localhost/sell?amount-in=0.2&session=token');
+    },
+  );
+
+  it.each(FOREIGN_LOGIN_QUERIES)(
+    'drops %s from the return-url and sends no session without an access token',
+    async (_name, query) => {
+      withReturnUrl(`http://localhost/sell?${query}&amount-in=0.2`);
+
+      await confirmMerge({ kycHash: 'hash' });
+
+      expect(mockAssign).toHaveBeenCalledWith('http://localhost/sell?amount-in=0.2');
+    },
+  );
+
   it.each([
     ['a foreign origin', 'https://evil.example/sell'],
     ['a javascript: URL', 'javascript:alert(1)'],

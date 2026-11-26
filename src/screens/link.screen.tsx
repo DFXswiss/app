@@ -34,6 +34,7 @@ import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useMergedAccount } from 'src/hooks/merged-account.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import { appOrigin } from '../util/app-origin';
+import { LOGIN_PARAMS } from '../util/login-params';
 import { loginRedirectParams } from '../util/login-redirect';
 import { relativeUrl } from '../util/utils';
 
@@ -46,8 +47,6 @@ const RETURN_PARAMS: [keyof AppParams, string][] = [
   ['assetOut', 'asset-out'],
   ['blockchain', 'blockchain'],
 ];
-
-const LOGIN_PARAMS = ['session', 'address', 'signature', 'pubkey', 'code', 'otp', 'user', 'mail'];
 
 export default function LinkScreen(): JSX.Element {
   const { translate, translateError } = useSettingsContext();

@@ -906,8 +906,8 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   The case in `e2e-stack/specs/sell-swap.spec.ts` that enters the mail of a verified account on `/link` signs up a
   fresh wallet without a mail as the KYC level 0 account and takes the verified account from `createUser`, which sets
   its KYC level to 50 and its personal data by SQL. It reads the merge mail from the `notification` table and opens
-  its link in a new page of the same browser context. The app always sends `redirectUri` with the contact data, and
-  the case checks that body. This pull request is paired with DFXswiss/backend#6352 (`e2e-companion.json`), so its
+  its link in a new page of the same browser context. Because `/link` is opened from `/sell` with `setRedirect`, the
+  app sends the `/sell` page as `redirectUri` with the contact data, and the case checks that body. This pull request is paired with DFXswiss/backend#6352 (`e2e-companion.json`), so its
   full-stack run uses that backend head. Without the backend change (backend `develop`) the mail link carries no
   `return-url` and the case asserts the confirmation and that "My account" opens `/account`; with the paired backend
   it asserts the return to `/sell` (with the amount, the partner redirect URI in `sessionStorage`, no `session` left
