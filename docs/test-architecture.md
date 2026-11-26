@@ -509,7 +509,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   swap payment panel, the swap hand-off, its reload or its completion redirect, or the swap form submit.
 - **The full-stack paused-sell case switches sell off at runtime through the `disabledProcess` setting.**
   `e2e-stack/specs/sell-swap.spec.ts` (`/sell: while sell is paused through the disabledProcess setting, the
-  screen shows the paused message and no payment information`) adds `Sell` to the JSON array in the `setting` row
+screen shows the paused message and no payment information`) adds `Sell` to the JSON array in the `setting` row
   `disabledProcess` by SQL, inserting the row if it is missing and keeping the previous value. It then asks
   `PUT /v1/sell/paymentInfos` every 2 seconds, for at most 75 seconds, until the API answers HTTP 503
   `TRANSACTIONS_PAUSED`, opens `/sell` and restores the previous value in a `finally`. After that it waits, with
@@ -890,7 +890,7 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   the banner and its absence for those answers. It does not prove production auth, that the API answers
   `LikelyReturn` for a real address, or that the API returns that quote.
 - **The sell KYC-0 link visual answers the API itself.** `e2e/sell-process.spec.ts` (`Sell Process - KYC level 0
-  without bank account`) passes a synthetic unsigned JWT as `session` and fulfils the bootstrap GETs (`/v1/language`,
+without bank account`) passes a synthetic unsigned JWT as `session` and fulfils the bootstrap GETs (`/v1/language`,
   `/v1/fiat`, `/v1/asset`, `/v1/country`, `/v1/setting/infoBanner`), `GET /v1/bankAccount` with an empty list,
   `GET /v1/sell/address-check` with `Ok`, `GET /v2/user` with KYC level 0 and `POST /v1/log/clientError`. Unmatched
   `/v1/**` and `/v2/**` calls get `501`. A green run proves how `/sell` renders the "I am already verified with DFX"
