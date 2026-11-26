@@ -1715,4 +1715,13 @@ describe('SellScreen', () => {
     expect(screen.getByTestId('quote-error')).toHaveTextContent('KycRequired');
     expect(screen.queryByText('I am already verified with DFX')).not.toBeInTheDocument();
   });
+
+  it('does not show the already-verified link once a quote request error is shown', async () => {
+    mockUser = { kyc: { level: 0 } };
+    mockReceiveFor.mockRejectedValue({ statusCode: 500, message: 'boom' });
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('boom');
+    expect(screen.queryByText('I am already verified with DFX')).not.toBeInTheDocument();
+  });
 });

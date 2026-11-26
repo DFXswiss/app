@@ -143,8 +143,9 @@ fixtures may still insert plaintext. The key comes from `E2E_PII_ENCRYPTION_KEYS
 
 ### Sell on, swap off
 
-`env/api.env` enables the sell request gate (`!Sell` in `DISABLED_PROCESSES`), so every sell case
-performs its function and fails on any refusal, including HTTP 503 `TRANSACTIONS_PAUSED`.
+`env/api.env` enables the sell request gate (`!Sell` in `DISABLED_PROCESSES`), so a sell case fails
+on any refusal it does not assert itself, including HTTP 503 `TRANSACTIONS_PAUSED`. The wallet-AML
+refusals, the `/sell/info` KYC and amount errors and the runtime pause each assert their own answer.
 
 Swap stays off whatever `env/api.env` says: the API's `loc` environment sets the feature flag
 `swap: false`, which forces the swap process off and leaves the swap routes unmounted, so every swap

@@ -766,7 +766,7 @@ export default function SellScreen(): JSX.Element {
                   isModalOpen={bankAccountSelection}
                   onModalToggle={setBankAccountSelection}
                 />
-                {!isLoading && !paymentInfo && !kycError && <AlreadyVerifiedLink />}
+                {!isLoading && !paymentInfo && !kycError && !errorMessage && <AlreadyVerifiedLink />}
               </StyledVerticalStack>
 
               {isLoading && !paymentInfo ? (

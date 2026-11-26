@@ -16,8 +16,8 @@ factories, auth, db, and the other helpers) or from a specific module such as
 A local forwarder on `127.0.0.1:3000` (started by the tests image entrypoint) also relays to the real API. That is why `http://localhost:3000` works from inside the container even though no API process runs there — code paths that hit `localhost` directly (e.g. server-built KYC-step URLs under `Environment.LOC`) need it.
 
 Master data (fiats, assets, countries, languages, banks, fees, one wallet) is seeded at API boot.
-`ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and sets
-`DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus,!Buy,!Sell`. `Scorechain`, `UserDataRiskStatus`,
+`ENVIRONMENT=loc` mocks outbound HTTP and disables mail sending (notification rows are still written);
+`env/api.env` sets `DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus,!Buy,!Sell`. `Scorechain`, `UserDataRiskStatus`,
 `Buy` and `Sell` are request-path gates, not jobs, so still no cron runs. Swap stays off through the
 API's `loc` feature flag `swap: false`, which leaves the swap routes unmounted.
 
