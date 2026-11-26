@@ -933,7 +933,8 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   synthetic `otp` and fulfils `GET /v1/auth/mail/confirm` for that code with a synthetic merge result (a KYC hash and
   a synthetic unsigned JWT as `accessToken`: `alg: none`, role User, Ethereum wallet address, expiry one hour ahead),
   the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
-  `/v1/setting/infoBanner`, `/v2/user`) and `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get
+  `/v1/setting/infoBanner`, `/v2/user`), `GET /v2/kyc` with a static KYC info of the merged, verified account (level
+  50, no open steps) and `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get
   `501`. A green run proves how `/account-merge` renders a confirmed merge ("Wallet address added" and "My account").
   It does not prove production auth, that the API merges the accounts or returns that answer, the job path of a slow
   merge, or where "My account" leads; the full-stack merge case in `e2e-stack/specs/sell-swap.spec.ts` follows it.

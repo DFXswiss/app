@@ -48,6 +48,16 @@ const USER = {
   disabledAddresses: [],
 };
 
+// Same KycInfo shape as e2e/helpers/merged-redirect-fixtures.ts (kycLevel, tradingLimit, language,
+// kycSteps, kycClients all required), with the level and limit of the merged, verified USER above.
+const KYC_INFO = {
+  kycLevel: 50,
+  tradingLimit: { limit: 1000, period: 'Month' },
+  language: { id: 2, name: 'English', symbol: 'EN', foreignName: 'English', enable: true },
+  kycSteps: [],
+  kycClients: [],
+};
+
 const GET_RESPONSES: Record<string, unknown> = {
   '/v1/language': [
     { id: 1, name: 'Deutsch', symbol: 'DE', foreignName: 'Deutsch', enable: true },
@@ -59,6 +69,7 @@ const GET_RESPONSES: Record<string, unknown> = {
   '/v1/country': [],
   '/v1/setting/infoBanner': null,
   '/v2/user': USER,
+  '/v2/kyc': KYC_INFO,
 };
 
 async function json(route: Route, body: unknown, status = 200): Promise<void> {
