@@ -19,20 +19,19 @@ import type { Page, Response } from '@playwright/test';
 import { ethers } from 'ethers';
 import {
   expect,
-  expectPausedQuoteOnScreen,
-  expectTransactionsPaused,
+  expectSwapUnavailable,
+  expectUnavailableSwapQuoteOnScreen,
   gotoWithSession,
   headerBackButton,
   isolateFromExternalHosts,
   normPath,
   openScreen,
-  orPaused,
-  type PausableProduct,
+  orSwapUnavailable,
   queryOne,
   queryRows,
+  SwapUnavailableError,
   test,
   testWallet,
-  TransactionsPausedError,
   waitForRow,
   withDb,
 } from './fixtures';
@@ -243,21 +242,21 @@ type SellSwapUser = Awaited<ReturnType<typeof createUser>>;
 type PaymentInfosTracker = ReturnType<typeof trackPaymentInfosResponses>;
 
 /**
- * True when the screen's payment-information request got the API's paused answer for `product`;
+ * True when the swap screen's payment-information request got the unmounted-route (404) or the paused (503) answer;
  * the helper has then asserted what the screen shows for it, and the test has nothing else to prove.
  * False when the API answered anything else: the test goes on with its usual assertions.
  */
-async function quotePaused(page: Page, paymentInfos: PaymentInfosTracker, product: PausableProduct): Promise<boolean> {
-  return (await expectPausedQuoteOnScreen(page, () => paymentInfos.last, product)) !== undefined;
+async function swapQuoteUnavailable(page: Page, paymentInfos: PaymentInfosTracker): Promise<boolean> {
+  return (await expectUnavailableSwapQuoteOnScreen(page, () => paymentInfos.last)) !== undefined;
 }
 
-/** A paused product must not leave a deposit route behind for the user. */
-async function expectNoDepositRoute(userId: number, type: 'Sell' | 'Crypto'): Promise<void> {
+/** An unavailable swap must not leave a deposit route behind for the user. */
+async function expectNoSwapRoute(userId: number): Promise<void> {
   const routes = await queryOne<{ count: number }>(
-    `SELECT COUNT(*)::int AS count FROM deposit_route WHERE "userId" = $1 AND type = $2`,
-    [userId, type],
+    `SELECT COUNT(*)::int AS count FROM deposit_route WHERE "userId" = $1 AND type = 'Crypto'`,
+    [userId],
   );
-  expect(routes?.count, `no ${type} deposit_route while the product is switched off`).toBe(0);
+  expect(routes?.count, 'no Crypto deposit_route while swap is unavailable').toBe(0);
 }
 
 /**
@@ -540,8 +539,7 @@ function minedReceipt(hash: string, from: string, to: unknown): WalletAnswer {
  * Logs in through an injected MetaMask wallet (the wallet extension is an external provider), which makes it the
  * active wallet, and opens the sell form with ETH → CHF and a bank account filled in until the payment information is
  * shown. The wallet answers `wallet_switchEthereumChain` with `switchChain`, `wallet_addEthereumChain` with
- * `addChain` and `eth_sendTransaction` with `sendTransaction`. Returns the wallet methods the page called, or
- * undefined when the API answered that sell is paused (checked on screen here; there is no payment to complete).
+ * `addChain` and `eth_sendTransaction` with `sendTransaction`. Returns the wallet methods the page called.
  */
 async function openSellWithInjectedWallet(
   page: Page,
@@ -549,8 +547,8 @@ async function openSellWithInjectedWallet(
   switchChain: () => WalletAnswer,
   sendTransaction?: () => WalletAnswer,
   addChain?: () => WalletAnswer,
-): Promise<string[] | undefined> {
-  return (await openSellWithInjectedWalletAs(page, tag, switchChain, sendTransaction, addChain))?.calls;
+): Promise<string[]> {
+  return (await openSellWithInjectedWalletAs(page, tag, switchChain, sendTransaction, addChain)).calls;
 }
 
 /**
@@ -564,7 +562,7 @@ async function openSellWithInjectedWalletAs(
   sendTransaction?: () => WalletAnswer,
   addChain?: () => WalletAnswer,
   query = '',
-): Promise<{ calls: string[]; userId: number } | undefined> {
+): Promise<{ calls: string[]; userId: number }> {
   const walletIndex = nextWalletIndex();
   // Level 50: the default wallet's RULE_3 refuses sell quotes below it (sell-wallet-aml.spec.ts).
   const user = await createUser({ walletIndex, tag, kycLevel: 50, completePersonalData: true, language: 'EN' });
@@ -598,7 +596,6 @@ async function openSellWithInjectedWalletAs(
   await page.goto(`/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1${query}`);
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
-  if (await quotePaused(page, paymentInfos, 'sell')) return undefined;
   const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
   const apiDetail = paymentInfos.last
     ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
@@ -1126,12 +1123,7 @@ test.describe('Sell + Swap e2e', () => {
       kycLevel: 30,
       completePersonalData: true,
     });
-    const sell = await orPaused(safeCreateSell(user.jwt, { blockchain: 'Ethereum', iban: TEST_IBAN }));
-    if (sell instanceof TransactionsPausedError) {
-      expectTransactionsPaused(sell, 'sell');
-      await expectNoDepositRoute(user.userId, 'Sell');
-      return;
-    }
+    const sell = await safeCreateSell(user.jwt, { blockchain: 'Ethereum', iban: TEST_IBAN });
     expect(sell.sellId).toBeGreaterThan(0);
 
     const row = await waitForRow<{ id: number; type: string; iban: string }>(
@@ -1145,11 +1137,7 @@ test.describe('Sell + Swap e2e', () => {
   test('/sell full UI flow: form params produce a Sell deposit_route', async ({ page }) => {
     // Write-path proof only: form/URL params must create a Sell deposit_route. No panel wait.
     test.setTimeout(60000);
-    const { user, paymentInfos } = await setupSellFullUiFlow(page, 'sell-ui-write');
-    if (await quotePaused(page, paymentInfos, 'sell')) {
-      await expectNoDepositRoute(user.userId, 'Sell');
-      return;
-    }
+    const { user } = await setupSellFullUiFlow(page, 'sell-ui-write');
 
     const route = await waitForRow<{ id: number; type: string }>(
       `SELECT id, type FROM deposit_route
@@ -1164,7 +1152,6 @@ test.describe('Sell + Swap e2e', () => {
   test('/sell full UI flow: payment panel renders after paymentInfos', async ({ page }) => {
     test.setTimeout(90000);
     const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-ui-panel');
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
 
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     const apiDetail = paymentInfos.last
@@ -1197,7 +1184,6 @@ test.describe('Sell + Swap e2e', () => {
     const calls = await openSellWithInjectedWallet(page, 'sell-wallet-cancel', () => ({
       error: { code: 4001, message: 'User rejected the request.' },
     }));
-    if (!calls) return;
 
     await expectCancelledSwitchKeepsForm(page, calls, '/sell');
   });
@@ -1211,7 +1197,6 @@ test.describe('Sell + Swap e2e', () => {
       () => ({ result: null }),
       () => ({ error: { code: 4001, message: 'User rejected the request.', data: { location: 'confirmation' } } }),
     );
-    if (!calls) return;
 
     await expectCancelledSwitchKeepsForm(page, calls, '/sell', 'eth_sendTransaction');
   });
@@ -1221,7 +1206,6 @@ test.describe('Sell + Swap e2e', () => {
     const calls = await openSellWithInjectedWallet(page, 'sell-wallet-fail', () => ({
       error: { code: -32603, message: 'Internal JSON-RPC error.' },
     }));
-    if (!calls) return;
 
     await page.getByRole('button', { name: 'Complete transaction in your wallet' }).click({ timeout: 15000 });
     await expect.poll(() => calls.includes('wallet_switchEthereumChain'), { timeout: 15000 }).toBe(true);
@@ -1238,7 +1222,6 @@ test.describe('Sell + Swap e2e', () => {
       undefined,
       () => ({ error: { code: 4001, message: 'User rejected the request.' } }),
     );
-    if (!calls) return;
 
     await expectCancelledSwitchKeepsForm(page, calls, '/sell', 'wallet_addEthereumChain');
   });
@@ -1252,7 +1235,6 @@ test.describe('Sell + Swap e2e', () => {
       undefined,
       () => ({ error: { code: -32602, message: 'Invalid chain parameters.' } }),
     );
-    if (!calls) return;
 
     await page.getByRole('button', { name: 'Complete transaction in your wallet' }).click({ timeout: 15000 });
     await expect.poll(() => calls.includes('wallet_addEthereumChain'), { timeout: 15000 }).toBe(true);
@@ -1261,8 +1243,7 @@ test.describe('Sell + Swap e2e', () => {
 
   test('/sell: confirming with a redirect URI redirects with the sell route and can be repeated', async ({ page }) => {
     test.setTimeout(90000);
-    const { user, paymentInfos } = await setupSellFullUiFlow(page, 'sell-hand-off', WALLET_REDIRECT_QUERY);
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    const { user } = await setupSellFullUiFlow(page, 'sell-hand-off', WALLET_REDIRECT_QUERY);
     const redirects = await recordWalletRedirects(page);
 
     await expectRepeatableHandOff(page, redirects, {
@@ -1275,8 +1256,7 @@ test.describe('Sell + Swap e2e', () => {
 
   test('/sell: after a hand-off, a reload hands off again instead of the manual transfer', async ({ page }) => {
     test.setTimeout(120000);
-    const { user, paymentInfos } = await setupSellFullUiFlow(page, 'sell-hand-off-reload', WALLET_REDIRECT_QUERY);
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    const { user } = await setupSellFullUiFlow(page, 'sell-hand-off-reload', WALLET_REDIRECT_QUERY);
     const redirects = await recordWalletRedirects(page);
 
     await expectHandOffAfterReload(page, redirects, {
@@ -1335,7 +1315,7 @@ test.describe('Sell + Swap e2e', () => {
     page,
   }) => {
     test.setTimeout(120000);
-    const opened = await openSellWithInjectedWalletAs(
+    const { calls, userId } = await openSellWithInjectedWalletAs(
       page,
       'sell-wallet-complete-redirect',
       () => ({ result: null }),
@@ -1343,8 +1323,6 @@ test.describe('Sell + Swap e2e', () => {
       undefined,
       WALLET_REDIRECT_QUERY,
     );
-    if (!opened) return;
-    const { calls, userId } = opened;
     const redirects = await recordWalletRedirects(page);
 
     // The active wallet sends the transaction itself, so confirming does not hand off to the redirect URI.
@@ -1385,8 +1363,7 @@ test.describe('Sell + Swap e2e', () => {
 
   test('/sell: native form submit completes the transaction', async ({ page }) => {
     test.setTimeout(90000);
-    const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-form-submit');
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    await setupSellFullUiFlow(page, 'sell-form-submit');
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
     // Wallet CTA (`Complete transaction in your wallet`) is also payment_info; handleNext then
@@ -1405,8 +1382,7 @@ test.describe('Sell + Swap e2e', () => {
 
   test('/sell: native form submit does not complete after spend is cleared', async ({ page }) => {
     test.setTimeout(90000);
-    const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-form-submit-cleared');
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    await setupSellFullUiFlow(page, 'sell-form-submit-cleared');
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
     const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
@@ -1422,8 +1398,7 @@ test.describe('Sell + Swap e2e', () => {
 
   test('/sell: clearing the spend amount keeps the field empty (no cross-side refill)', async ({ page }) => {
     test.setTimeout(90000);
-    const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-clear-spend');
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    await setupSellFullUiFlow(page, 'sell-clear-spend');
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
 
@@ -1484,11 +1459,7 @@ test.describe('Sell + Swap e2e', () => {
   test('/sell/info with valid query params: form params produce a Sell deposit_route', async ({ page }) => {
     // Write-path proof only: valid query params must create a Sell deposit_route. No panel wait.
     test.setTimeout(60000);
-    const { user, paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-write');
-    if (await quotePaused(page, paymentInfos, 'sell')) {
-      await expectNoDepositRoute(user.userId, 'Sell');
-      return;
-    }
+    const { user } = await setupSellInfoUiFlow(page, 'sell-info-write');
 
     const route = await waitForRow<{ id: number; type: string }>(
       `SELECT id, type FROM deposit_route
@@ -1505,7 +1476,6 @@ test.describe('Sell + Swap e2e', () => {
   }) => {
     test.setTimeout(75000);
     const { paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-panel');
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
 
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     const apiDetail = paymentInfos.last
@@ -1538,13 +1508,7 @@ test.describe('Sell + Swap e2e', () => {
     expect(Number(spec?.minVolume ?? 0), 'up.sh must have seeded an ETH In minimum volume').toBeGreaterThan(0);
 
     // /sell/info picks its asset from the available chains, which `blockchains` limits to the seeded minimum's chain.
-    const { paymentInfos } = await setupSellInfoUiFlow(
-      page,
-      'sell-info-min',
-      `&blockchains=Ethereum${WALLET_REDIRECT_QUERY}`,
-      '0.000001',
-    );
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    await setupSellInfoUiFlow(page, 'sell-info-min', `&blockchains=Ethereum${WALLET_REDIRECT_QUERY}`, '0.000001');
     const redirects = await recordWalletRedirects(page);
 
     await expect(page.getByText(/Entered amount is below minimum deposit of [\d.,\s]+ ETH/)).toBeVisible({
@@ -1566,8 +1530,7 @@ test.describe('Sell + Swap e2e', () => {
 
   test('/sell/info: KYC level 30 shows the KYC hint instead of a spinner or payment information', async ({ page }) => {
     test.setTimeout(75000);
-    const { paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-kyc', '', '0.1', 30);
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    await setupSellInfoUiFlow(page, 'sell-info-kyc', '', '0.1', 30);
 
     await expect(
       page.getByText(
@@ -1585,7 +1548,6 @@ test.describe('Sell + Swap e2e', () => {
   }) => {
     test.setTimeout(90000);
     const { user, paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-redirect', WALLET_REDIRECT_QUERY);
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
     const redirects = await recordWalletRedirects(page);
 
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
@@ -1778,10 +1740,10 @@ test.describe('Sell + Swap e2e', () => {
       kycLevel: 30,
       completePersonalData: true,
     });
-    const swap = await orPaused(safeCreateSwap(user.jwt, { blockchain: 'Ethereum' }));
-    if (swap instanceof TransactionsPausedError) {
-      expectTransactionsPaused(swap, 'swap');
-      await expectNoDepositRoute(user.userId, 'Crypto');
+    const swap = await orSwapUnavailable(safeCreateSwap(user.jwt, { blockchain: 'Ethereum' }));
+    if (swap instanceof SwapUnavailableError) {
+      expectSwapUnavailable(swap);
+      await expectNoSwapRoute(user.userId);
       return;
     }
     expect(swap.swapId).toBeGreaterThan(0);
@@ -1796,8 +1758,8 @@ test.describe('Sell + Swap e2e', () => {
     // Write-path proof only: form/URL params must create a Crypto deposit_route. No panel wait.
     test.setTimeout(60000);
     const { user, paymentInfos } = await setupSwapFullUiFlow(page, 'swap-ui-write');
-    if (await quotePaused(page, paymentInfos, 'swap')) {
-      await expectNoDepositRoute(user.userId, 'Crypto');
+    if (await swapQuoteUnavailable(page, paymentInfos)) {
+      await expectNoSwapRoute(user.userId);
       return;
     }
 
@@ -1814,7 +1776,7 @@ test.describe('Sell + Swap e2e', () => {
   test('/swap full UI flow: payment panel renders after paymentInfos', async ({ page }) => {
     test.setTimeout(90000);
     const { paymentInfos } = await setupSwapFullUiFlow(page, 'swap-ui-panel');
-    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    if (await swapQuoteUnavailable(page, paymentInfos)) return;
 
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     const apiDetail = paymentInfos.last
@@ -1843,7 +1805,7 @@ test.describe('Sell + Swap e2e', () => {
   test('/swap: confirming with a redirect URI redirects with the swap route and can be repeated', async ({ page }) => {
     test.setTimeout(90000);
     const { user, paymentInfos } = await setupSwapFullUiFlow(page, 'swap-hand-off', WALLET_REDIRECT_QUERY);
-    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    if (await swapQuoteUnavailable(page, paymentInfos)) return;
     const redirects = await recordWalletRedirects(page);
 
     await expectRepeatableHandOff(page, redirects, {
@@ -1857,7 +1819,7 @@ test.describe('Sell + Swap e2e', () => {
   test('/swap: after a hand-off, a reload hands off again instead of the manual transfer', async ({ page }) => {
     test.setTimeout(120000);
     const { user, paymentInfos } = await setupSwapFullUiFlow(page, 'swap-hand-off-reload', WALLET_REDIRECT_QUERY);
-    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    if (await swapQuoteUnavailable(page, paymentInfos)) return;
     const redirects = await recordWalletRedirects(page);
 
     await expectHandOffAfterReload(page, redirects, {
@@ -1912,7 +1874,7 @@ test.describe('Sell + Swap e2e', () => {
     const paymentInfos = trackPaymentInfosResponses(page, 'swap/paymentInfos');
     await page.goto(`/swap?asset-in=ETH&amount-in=0.1${WALLET_REDIRECT_QUERY}`);
     await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 30000 });
-    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    if (await swapQuoteUnavailable(page, paymentInfos)) return;
     const redirects = await recordWalletRedirects(page);
 
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
@@ -1960,7 +1922,7 @@ test.describe('Sell + Swap e2e', () => {
   test('/swap: native form submit completes the transaction', async ({ page }) => {
     test.setTimeout(90000);
     const { paymentInfos } = await setupSwapFullUiFlow(page, 'swap-form-submit');
-    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    if (await swapQuoteUnavailable(page, paymentInfos)) return;
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
     const completeBtn = page.getByRole('button', {
@@ -1978,7 +1940,7 @@ test.describe('Sell + Swap e2e', () => {
   test('/swap: native form submit does not complete after spend is cleared', async ({ page }) => {
     test.setTimeout(90000);
     const { paymentInfos } = await setupSwapFullUiFlow(page, 'swap-form-submit-cleared');
-    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    if (await swapQuoteUnavailable(page, paymentInfos)) return;
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
     const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
@@ -1995,7 +1957,7 @@ test.describe('Sell + Swap e2e', () => {
   test('/swap: clearing the spend amount keeps the field empty (no cross-side refill)', async ({ page }) => {
     test.setTimeout(90000);
     const { paymentInfos } = await setupSwapFullUiFlow(page, 'swap-clear-spend');
-    if (await quotePaused(page, paymentInfos, 'swap')) return;
+    if (await swapQuoteUnavailable(page, paymentInfos)) return;
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
     expect(outcome.kind).toBe('payment_info');
 
@@ -2035,7 +1997,6 @@ test.describe('Sell + Swap e2e', () => {
     await createBankAccount(user.jwt, { iban: TEST_IBAN }).catch(() => {
       /* bank account may still succeed without complete personal data */
     });
-    const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
 
     await gotoWithSession(
       page,
@@ -2043,9 +2004,7 @@ test.describe('Sell + Swap e2e', () => {
       user.jwt,
     );
 
-    // The redirect follows the API's "Ident data incomplete" answer to the quote. While sell is switched
-    // off the API refuses the quote before it looks at the personal data, so the screen shows that instead.
-    if (await quotePaused(page, paymentInfos, 'sell')) return;
+    // The redirect follows the API's "Ident data incomplete" answer to the quote.
 
     // The screen either sends the user to /profile or keeps them on /sell behind an "Enter user
     // data" call to action. Staying on /sell with neither — and therefore with a payment panel

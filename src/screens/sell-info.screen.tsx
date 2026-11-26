@@ -158,6 +158,8 @@ export default function SellInfoScreen(): JSX.Element {
     }
 
     setErrorMessage(undefined);
+    setCustomAmountError(undefined);
+    setKycError(undefined);
 
     const request: SellPaymentInfo = {
       asset,

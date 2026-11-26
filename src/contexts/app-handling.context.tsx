@@ -339,8 +339,9 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       Object.assign(queryParams, removeRedirectUri(storedParams ?? {}));
     }
 
-    // after a reload in the same session, the redirect URI comes from the session store
-    queryParams.redirectUri ??= storeRedirectUri.get();
+    // standalone only: after a reload in the same session, the redirect URI comes from the session store; a widget
+    // takes it from its attributes alone, not from a value an earlier widget left in the host page's session
+    if (!props.params) queryParams.redirectUri ??= storeRedirectUri.get();
 
     setParams(queryParams);
     return queryParams;

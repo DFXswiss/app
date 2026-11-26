@@ -536,4 +536,50 @@ describe('SellInfoScreen', () => {
     expect(screen.getByTestId('quote-error')).toHaveTextContent('KycRequired');
     expect(screen.queryByText(minimumText)).not.toBeInTheDocument();
   });
+
+  it('drops the minimum amount while a new quote loads after a failed quote and its retry', async () => {
+    const minimumText = 'Entered amount is below minimum deposit of {{amount}} {{currency}}';
+    mockReceiveFor.mockResolvedValueOnce(quote(1, { error: 'AmountTooLow' }));
+    const { rerender } = await renderScreen();
+    expect(screen.getByText(minimumText)).toBeInTheDocument();
+
+    let rejectQuote: (error: unknown) => void = () => undefined;
+    mockReceiveFor.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectQuote = reject;
+        }),
+    );
+    mockAppParams = baseAppParams({ amountIn: '0.2' });
+    rerender(<SellInfoScreen />);
+    await flush();
+    expect(screen.queryByText(minimumText)).not.toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    await act(async () => {
+      rejectQuote({ message: 'Network error' });
+    });
+    await flush();
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('Network error');
+
+    let resolveQuote: (value: unknown) => void = () => undefined;
+    mockReceiveFor.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveQuote = resolve;
+        }),
+    );
+    await clickButton('Retry');
+    expect(mockReceiveFor).toHaveBeenCalledTimes(3);
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.queryByText(minimumText)).not.toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveQuote(quote(3));
+    });
+    await flush();
+    expect(screen.queryByText(minimumText)).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toHaveTextContent('uid-3');
+  });
 });

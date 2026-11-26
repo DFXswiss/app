@@ -141,16 +141,19 @@ select the rows by unencrypted columns and compare the decrypted value in the te
 fixtures may still insert plaintext. The key comes from `E2E_PII_ENCRYPTION_KEYS`, set in
 `compose.tests.yml`, and must match `PII_ENCRYPTION_KEYS` in `env/api.env`.
 
-### Paused sell and swap
+### Sell on, swap off
 
-The API can switch sell or swap transactions off. While one is off, the endpoints that create or
-confirm it answer HTTP 503 with the error code `TRANSACTIONS_PAUSED`. The harness passes against an
-API in either state and reads the state from the answer, never from a flag or an environment
-variable. `fixtures/paused.ts` holds the helpers: `createSell` and `createSwap` throw
-`TransactionsPausedError` on that answer, `orPaused` turns it into a value a test can branch on, and
-`expectPausedQuoteOnScreen` checks that a sell or swap screen shows the API's message and no payment
-information. A test that needs a sell or swap asserts the paused answer and keeps its other
-assertions, so it passes instead of failing and the rest of a serial file still runs.
+`env/api.env` enables the sell request gate (`!Sell` in `DISABLED_PROCESSES`), so every sell case
+performs its function and fails on any refusal, including HTTP 503 `TRANSACTIONS_PAUSED`.
+
+Swap stays off whatever `env/api.env` says: the API's `loc` environment sets the feature flag
+`swap: false`, which forces the swap process off and leaves the swap routes unmounted, so every swap
+request answers HTTP 404 (`Cannot PUT /v1/swap/paymentInfos`). `fixtures/paused.ts` holds the swap
+helpers: `createSwap` throws `SwapUnavailableError` on that answer or on a paused one,
+`orSwapUnavailable` turns it into a value a test can branch on, and
+`expectUnavailableSwapQuoteOnScreen` checks that the swap screen shows the API's message and no
+payment information. A swap case asserts the answer it got and ends there; its other assertions run
+only once the API serves swaps.
 
 ## Relation to the existing suite under `e2e/`
 

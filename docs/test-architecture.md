@@ -15,7 +15,7 @@ built yet; nothing here may describe a capability as existing when it does not.
 | Unit                | `src/`                                                       | the logic of a component, hook or utility, with its surroundings replaced                                                                       | that any two parts fit together                                                             | drafts run (forks may wait as `action_required`); suite full / related / none                                                                                                    |
 | Handbook deep-link  | `scripts/handbook/deep-link.js`                              | `?shot=` / `?group=` / hash isolate one handbook card in a fake document                                                                        | the browser after Basic Auth, or that nginx serves the query                                | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                                                                                                |
 | Pairing coordinator | `.github/e2e-pairing/` (`*.test.mjs`, `test_review_gate.py`) | pair resolution, review-gate handling, status attestation and fail-closed invalidation of the paired E2E coordinator, against a fake GitHub API | real GitHub permissions, App installation, runner behaviour, or the shared stack run itself | `pr.yml` on every pull request: `node --test` with 100 % lines/branches/functions for `.github/e2e-pairing/*.mjs`, and `coverage` with 100 % lines/branches for `review-gate.py` |
-| Full-stack E2E      | `e2e-stack/`                                                 | the seam between frontend, API and database: screens, contracts, persistence                                                                    | any money movement — every process-gated job except Scorechain is off during the run        | drafts run (mode=none without ci:full and without a pair); paired: local mode=paired-attested, stack once in the coordinator; else ci:full / main / bare dispatch                |
+| Full-stack E2E      | `e2e-stack/`                                                 | the seam between frontend, API and database: screens, contracts, persistence                                                                    | any money movement — every process-gated job except Scorechain is off during the run; swap  | drafts run (mode=none without ci:full and without a pair); paired: local mode=paired-attested, stack once in the coordinator; else ci:full / main / bare dispatch                |
 | Visual regression   | `e2e/`                                                       | appearance against committed screenshot baselines                                                                                               | function                                                                                    | no                                                                                                                                                                               |
 
 A develop app/backend pull request that declares a pair runs the same stack once in the trusted
@@ -496,14 +496,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `wallet` row with fixed `amlRules` / `exceptAmlRules`, then sets `user.walletId` and `user.ipCountry`
   directly, because no partner onboarding or IP geolocation runs in the stack. A green run does **not**
   prove that a real customer is assigned that wallet or that the API derives that IP country.
-- **The full-stack wallet-AML spec accepts the paused answer while sell is off.**
-  `e2e-stack/specs/sell-wallet-aml.spec.ts` runs against `DISABLED_PROCESSES=*` from
-  `e2e-stack/env/api.env`, so the sell quote answers `TRANSACTIONS_PAUSED` and each case asserts that answer
-  on screen instead of the wallet-AML outcome. A green run does **not** prove the wallet-AML refusal or
-  acceptance while sell is off; it proves them only while sell is on.
 - **The full-stack wallet-AML spec has no swap case.** With the API's swap product off in its loc
   environment the swap routes are not mounted (`PUT /v1/swap/paymentInfos` answers 404), so the swap screen
   gets no quote. A green run does **not** prove anything about the wallet-AML rules on swaps.
+- **The full-stack swap cases end at the unmounted swap routes.** The API's `loc` environment sets the
+  feature flag `swap: false`, which forces the swap process off whatever `DISABLED_PROCESSES` in
+  `e2e-stack/env/api.env` says and leaves the swap routes unmounted, so `POST /v1/swap` and
+  `PUT /v1/swap/paymentInfos` answer HTTP 404. The swap cases in `e2e-stack/specs/sell-swap.spec.ts` and
+  `e2e-stack/specs/factories.spec.ts` assert that answer (or HTTP 503 `TRANSACTIONS_PAUSED`, should the flag be
+  on and the process off), that the swap screen shows the API's message and no payment information, and that
+  no swap route is written, and end there. A green swap case does **not** prove a swap quote, a swap route, the
+  swap payment panel, the swap hand-off, its reload or its completion redirect, or the swap form submit.
 - **The full-stack provisional buy spec SQL-clears `user_data.tradeApprovalDate`.**
   `e2e-stack/specs/buy.spec.ts` (`/buy and /buy/info: provisional approval …`) sets the date to `NULL`
   after creating the customer, because the factory may leave one behind. A green run does **not** prove
@@ -841,11 +844,11 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
 - **The full-stack harness answers Scorechain through the API's loc mock.** `e2e-stack/env/api.env`
-  enables the Scorechain, risk-status and buy-gate processes
-  (`DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus,!Buy`) and maps the address of
+  enables the Scorechain, risk-status, buy-gate and sell-gate processes
+  (`DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus,!Buy,!Sell`) and maps the address of
   `testWallet(7700001)` to the mock form `SanctionList` in `SCORECHAIN_LOC_MOCK`; every other address
-  gets `NoRisk`. `Buy` is the request gate the API checks on the buy routes, not a job, so the
-  processing chain still never executes. The mock answers after `SCORECHAIN_LOC_MOCK_DELAY_MS` (5 s),
+  gets `NoRisk`. `Buy` and `Sell` are the request gates the API checks on the buy and sell routes, not
+  jobs, so the processing chain still never executes. The mock answers after `SCORECHAIN_LOC_MOCK_DELAY_MS` (5 s),
   and the tests prove the form is usable before that answer arrives.
   `e2e-stack/specs/sell-swap.spec.ts` proves that the sell page shows no banner for `Ok` and the
   banner for `LikelyReturn`, through the real API and database. A third test opens the sell page on
@@ -995,8 +998,8 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   the injected MetaMask accept the transaction and closes the completion screen, whose redirect two seconds later
   goes to that answered host as well. The completed-swap case there logs in with the command-line wallet, clicks
   the issued-transaction button without any transaction being sent, and closes the completion screen, whose
-  redirect two seconds later goes to that answered host as well; while the API has swap switched off, it ends at
-  the paused answer. The `/sell/info` case confirms without an active wallet, whose redirect two
+  redirect two seconds later goes to that answered host as well; with the swap routes unmounted in the harness,
+  the swap cases end at the 404 answer on screen. The `/sell/info` case confirms without an active wallet, whose redirect two
   seconds later goes to that answered host too. The `/sell/info` amount-error case clicks Close, whose redirect
   goes to that answered host as well. A green run does not prove that a wallet
   intercepts the redirect, opens a send screen or sends a transaction, nor how a WebView behaves, nor how a
@@ -1006,10 +1009,6 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   before the API's final start, because the API reads those rows into memory at boot. The `/sell/info` amount-error
   case in `e2e-stack/specs/sell-swap.spec.ts` depends on it. A green run does not prove the production minimum
   values or how they are maintained.
-- **The `/sell/info` error full-stack cases accept the paused answer while sell is off.** The amount-error and
-  KYC-error cases in `e2e-stack/specs/sell-swap.spec.ts` end at the `TRANSACTIONS_PAUSED` answer on screen while
-  the API has sell switched off. A green run does **not** prove the error views or the Close redirect while sell
-  is off; it proves them only while sell is on.
 - **The sell redirect-session full-stack case opens the later page as a second page of the same browser
   context.** The case in `e2e-stack/specs/sell-swap.spec.ts` that leaves `/sell` with a `redirect-uri` without
   confirming opens `/buy` and then `/` with a plain `goto`, without `session`, `address`/`signature` or
@@ -1034,24 +1033,28 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   `src/__tests__/sell-info-screen.test.tsx` renders the real screen, countdown and completion component against
   stubbed `@dfx.swiss/react` hooks, components, app parameters, transaction helper and app-handling context, with
   fake timers. A green run proves which quote the screen passes to `closeServices` and when it asks for a new one.
-  It also proves that an amount or KYC error in a quote replaces the payment view and that the amount error cancels.
+  It also proves that an amount or KYC error in a quote replaces the payment view, that the amount error cancels, and
+  that a new quote request, including the retry after a failed one, no longer shows the earlier amount error.
   It does not prove that the API returns or expires such a quote, that a wallet sends, or that a redirect happens.
 
 ## Known gaps
 
-All four points below concern the full-stack harness.
+All five points below concern the full-stack harness.
 
 - **No layer here verifies a payment end to end.** The harness sets
-  `DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus,!Buy` (`e2e-stack/env/api.env`); what that
+  `DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus,!Buy,!Sell` (`e2e-stack/env/api.env`); what that
   switches off in the API is described in the companion document there — every process-gated cron
   job — so the processing chain never executes;
   transaction states are inserted with SQL instead. What is verified is the synchronous path:
   interaction, HTTP, validation, authorisation, persistence, display. (A cron without a `process` field
   is not covered by that switch and keeps running — see the companion document in `DFXswiss/backend`.)
-  Three processes are enabled: Scorechain answers from the API's loc mock (`SCORECHAIN_LOC_MOCK`,
+  Four processes are enabled: Scorechain answers from the API's loc mock (`SCORECHAIN_LOC_MOCK`,
   `SCORECHAIN_LOC_MOCK_DELAY_MS`), so no provider is called; `UserDataRiskStatus` only opens the
-  risk-status endpoint and `Buy` only opens the request gate of the buy routes, and neither runs a job;
-  the processing chain stays off.
+  risk-status endpoint, and `Buy` and `Sell` only open the request gates of the buy and sell routes;
+  none of the three runs a job, so the processing chain stays off.
+- **No swap function runs.** The API's `loc` environment keeps swap off through its feature flag
+  `swap: false`, whatever `DISABLED_PROCESSES` says, and does not mount the swap routes; every swap case
+  ends at that 404 answer (see the reality-declaration entry on the swap cases).
 - **The harness does not exercise the migration chain.** It builds the schema from the entities,
   because one migration requires a seed row that does not exist at migration time on a fresh
   database. Migrations are covered in `DFXswiss/backend` instead.
