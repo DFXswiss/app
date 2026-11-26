@@ -1572,6 +1572,7 @@ test.describe('Sell + Swap e2e', () => {
     const returnUrl = mergeLink.searchParams.get('return-url');
     expect(returnUrl).toBe(sent.redirectUri);
 
+    let mergeConfirmedAt = 0;
     const mailBrowser = await browser.newContext();
     try {
       const mailPage = await mailBrowser.newPage();
@@ -1592,6 +1593,7 @@ test.describe('Sell + Swap e2e', () => {
         20000,
       );
       expect(merge.isCompleted).toBe(true);
+      mergeConfirmedAt = Date.now();
 
       // Confirmed without a session, so the API issues no access token and the button opens the account by its code
       // instead of the return-url.
@@ -1614,6 +1616,8 @@ test.describe('Sell + Swap e2e', () => {
       (response) => response.request().method() === 'POST' && /\/v1\/auth$/.test(new URL(response.url()).pathname),
       { timeout: 20000 },
     );
+    // Wait out the API's 10-second sign-in cache, which still maps the launch address to its former account.
+    await page.waitForTimeout(Math.max(0, mergeConfirmedAt + 11000 - Date.now()));
     await page.getByRole('button', { name: 'OK', exact: true }).click();
     expect((await relogin).ok(), 'the re-login with the launch signature').toBe(true);
 

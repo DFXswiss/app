@@ -915,9 +915,14 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   link in a new browser context (`browser.newContext()`), which shares no cookies, `localStorage` or
   `sessionStorage` with the WebView: it stands for the mail app or another browser where nobody is signed in. There
   the case asserts the confirmation and that "My account" opens `/account` with the verified account's `code`, not
-  the `return-url`. Back on the WebView, OK must sign in again with the launch signature (`POST /v1/auth`) and end
-  on `/sell` with the amount, the partner redirect URI in `sessionStorage`, a session for the merged account with a
-  KYC level above 0 and no visit to `/login`. A green run does not prove that a mail reaches a mailbox, that a real
+  the `return-url`. Back on the WebView, the case taps OK only 11 seconds after the merge confirmation: the API's
+  `authenticate` reads the user by address through a cache that resets every 10 seconds (`userCache` in the backend's
+  `auth.service.ts`), so within that window a sign-in still returns a session for the wallet's former account and
+  `GET /v2/user` answers 401 "User is merged". The wait models a person who confirms the mail in another app and
+  returns to the wallet later than that. OK must then sign in again with the launch signature (`POST /v1/auth`) and
+  end on `/sell` with the amount, the partner redirect URI in `sessionStorage`, a session for the merged account with
+  a KYC level above 0 and no visit to `/login`. A green run does not prove that a return within 10 seconds of the
+  confirmation renews the session, that a mail reaches a mailbox, that a real
   mail app or WebView keeps its storage as a browser context does, what `/account` shows without a session (the case
   checks only the target the button opens), that a verified account reaches level 50 through the product path, or
   the return to the `return-url` with a session after a confirmation in the signed-in browser, which only
