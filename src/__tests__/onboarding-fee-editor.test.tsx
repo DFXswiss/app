@@ -1,6 +1,6 @@
 // Component tests for OnboardingFeeEditor: the buttons, which values reach the hook, the in-flight
-// and account-switch guards, the fee list, the switched-off 404, and what the clerk sees when the API
-// refuses or the clerk has no verified name.
+// and account-switch guards, the free amount input with its range rule and suggested amounts, the
+// switched-off 404, and what the clerk sees when the API refuses or the clerk has no verified name.
 
 const mockStaffName: { name?: string; isLoading: boolean; error?: string } = { name: 'JR', isLoading: false };
 const mockSetOnboardingFee = jest.fn();
@@ -74,22 +74,35 @@ function openSetButton(): void {
   fireEvent.click(screen.getByRole('button', { name: 'Set onboarding fee' }));
 }
 
+function amountInput(): HTMLInputElement {
+  return screen.getByLabelText('Amount (CHF)') as HTMLInputElement;
+}
+
+// The suggested amounts offered through the datalist the amount input points to.
+function suggestions(): string[] {
+  const list = document.getElementById(amountInput().getAttribute('list') as string) as HTMLElement;
+  return Array.from(list.querySelectorAll('option'), (option) => option.value);
+}
+
 async function openSet(): Promise<void> {
   openSetButton();
-  await screen.findByRole('option', { name: 'CHF 400' });
+  await waitFor(() => expect(suggestions()).toEqual(['400', '800']));
 }
 
 function openRemove(): void {
   fireEvent.click(screen.getByRole('button', { name: 'Remove onboarding fee' }));
 }
 
-function amountSelect(): HTMLElement {
-  return screen.getByLabelText('Amount (CHF)');
+function typeAmount(value: string): void {
+  fireEvent.change(amountInput(), { target: { value } });
 }
 
-function selectAmount(value: string): void {
-  fireEvent.change(amountSelect(), { target: { value } });
+// Same grouping as the mocked number formatter, so the expectation does not hard-code the separator.
+function swiss(value: number): string {
+  return value.toLocaleString('de-CH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
+
+const AMOUNT_HINT = `Enter a whole CHF amount between 1 and ${swiss(1000000)}.`;
 
 function selectAddress(value: string): void {
   fireEvent.change(screen.getByLabelText('Address'), { target: { value } });
@@ -118,40 +131,81 @@ describe('OnboardingFeeEditor', () => {
     expect(screen.queryByText('Remove the onboarding fee of this account?')).not.toBeInTheDocument();
   });
 
-  it('opens the set form with the clerk name, the fee list and an address label that shows status and usedRef', async () => {
+  it('opens the set form with the clerk name, a free amount input with the suggestions and an address label that shows status and usedRef', async () => {
     render(element({ users: [referred, unreferred] }));
     await openSet();
 
     expect(screen.getByText('JR')).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'CHF 400' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'CHF 800' })).toBeInTheDocument();
+    expect(amountInput()).toHaveAttribute('type', 'text');
+    expect(amountInput()).toHaveAttribute('inputmode', 'numeric');
+    expect(amountInput()).toHaveValue('');
+    expect(amountInput()).toBeEnabled();
+    expect(suggestions()).toEqual(['400', '800']);
     expect(screen.getByRole('option', { name: '0xabc (NA, 194-687)' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '0xdef (Active, -)' })).toBeInTheDocument();
     expect(saveButton()).toBeDisabled();
   });
 
-  it('keeps Save disabled until an amount from the list and an address are selected', async () => {
+  it.each(['', '0', '1000001', '800.5', 'abc'])('keeps Save disabled for the amount "%s"', async (value) => {
     render(element());
     await openSet();
     selectAddress('0xabc');
+    typeAmount(value);
 
     expect(saveButton()).toBeDisabled();
+  });
 
-    // A value outside the loaded list can never be saved.
-    selectAmount('999');
-    expect(saveButton()).toBeDisabled();
+  it('enables Save for an amount that is not among the suggestions', async () => {
+    render(element());
+    await openSet();
+    selectAddress('0xabc');
+    typeAmount('14000');
 
-    selectAmount('400');
     expect(saveButton()).toBeEnabled();
 
-    selectAmount('');
+    typeAmount('');
     expect(saveButton()).toBeDisabled();
+  });
+
+  it('shows the range hint for an invalid amount and not for an empty or a valid one', async () => {
+    render(element());
+    await openSet();
+
+    expect(screen.queryByText(AMOUNT_HINT)).not.toBeInTheDocument();
+
+    typeAmount('1000001');
+    expect(screen.getByText(AMOUNT_HINT)).toBeInTheDocument();
+
+    typeAmount('abc');
+    expect(screen.getByText(AMOUNT_HINT)).toBeInTheDocument();
+
+    typeAmount('14000');
+    expect(screen.queryByText(AMOUNT_HINT)).not.toBeInTheDocument();
+
+    typeAmount('');
+    expect(screen.queryByText(AMOUNT_HINT)).not.toBeInTheDocument();
+  });
+
+  it('saves a typed amount that is not among the suggestions as a number and shows it formatted', async () => {
+    mockSetOnboardingFee.mockResolvedValue(undefined);
+    const onChanged = jest.fn();
+    render(element({ onChanged }));
+    await openSet();
+    typeAmount(' 14000 ');
+    selectAddress('0xabc');
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(mockSetOnboardingFee).toHaveBeenCalledWith(88001, { amount: 14000, address: '0xabc' });
+    expect(
+      screen.getByText(`Onboarding fee of CHF ${swiss(14000)} set; 0xabc attributed to the key account manager.`),
+    ).toBeInTheDocument();
   });
 
   it('keeps Save disabled until an address is selected', async () => {
     render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
 
     expect(saveButton()).toBeDisabled();
 
@@ -163,7 +217,7 @@ describe('OnboardingFeeEditor', () => {
     mockStaffName.isLoading = true;
     render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
 
     expect(screen.getByText('…')).toBeInTheDocument();
@@ -176,14 +230,14 @@ describe('OnboardingFeeEditor', () => {
     const onChanged = jest.fn();
     render(element({ onChanged }));
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
     expect(mockSetOnboardingFee).toHaveBeenCalledWith(88001, { amount: 400, address: '0xabc' });
     expect(
-      screen.getByText('Onboarding fee of 400 CHF set; 0xabc attributed to the key account manager.'),
+      screen.getByText('Onboarding fee of CHF 400 set; 0xabc attributed to the key account manager.'),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText('Amount (CHF)')).not.toBeInTheDocument();
   });
@@ -193,7 +247,7 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockReturnValue(deferred.promise);
     render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     const save = saveButton();
 
@@ -206,7 +260,7 @@ describe('OnboardingFeeEditor', () => {
     expect(mockSetOnboardingFee).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-    expect(amountSelect()).toBeDisabled();
+    expect(amountInput()).toBeDisabled();
     expect(screen.getByLabelText('Address')).toBeDisabled();
 
     await act(async () => {
@@ -222,7 +276,7 @@ describe('OnboardingFeeEditor', () => {
     const onChanged = jest.fn();
     const { unmount } = render(element({ onChanged }));
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
     unmount();
@@ -239,7 +293,7 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockReturnValue(deferredReject.promise);
     const { unmount: unmountSecond } = render(element({ onChanged }));
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
     unmountSecond();
@@ -258,7 +312,7 @@ describe('OnboardingFeeEditor', () => {
     const onChanged = jest.fn();
     const { rerender } = render(element({ onChanged }));
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -276,7 +330,7 @@ describe('OnboardingFeeEditor', () => {
     // The lock was released by the switch: the new account can start its own update.
     mockSetOnboardingFee.mockResolvedValue(undefined);
     await openSet();
-    selectAmount('800');
+    typeAmount('800');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
@@ -290,7 +344,7 @@ describe('OnboardingFeeEditor', () => {
     const onChanged = jest.fn();
     const { rerender } = render(element({ onChanged }));
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -298,7 +352,7 @@ describe('OnboardingFeeEditor', () => {
     rerender(element({ userDataId: 88001, onChanged }));
 
     await openSet();
-    selectAmount('800');
+    typeAmount('800');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -326,7 +380,7 @@ describe('OnboardingFeeEditor', () => {
 
     expect(onChanged).toHaveBeenCalledTimes(2);
     expect(
-      screen.getByText('Onboarding fee of 800 CHF set; 0xabc attributed to the key account manager.'),
+      screen.getByText('Onboarding fee of CHF 800 set; 0xabc attributed to the key account manager.'),
     ).toBeInTheDocument();
   });
 
@@ -336,7 +390,7 @@ describe('OnboardingFeeEditor', () => {
     const onChanged = jest.fn();
     const { rerender } = render(element({ onChanged }));
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -357,7 +411,7 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockReturnValue(deferred.promise);
     const { rerender } = render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -377,7 +431,7 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockRejectedValue(new Error('Address is blocked or deleted'));
     render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -390,7 +444,7 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockRejectedValue(Object.assign(new Error('Address not found'), { statusCode: 404 }));
     render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -401,7 +455,7 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockRejectedValue({ statusCode: 404 });
     render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -413,7 +467,7 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockRejectedValue(Object.assign(new Error('Not Found'), { statusCode: 404 }));
     render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -425,7 +479,7 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockRejectedValue({ statusCode: 400, message: 'Address is blocked or deleted' });
     render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -436,7 +490,7 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockRejectedValue({ statusCode: 400, message: 42 });
     render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -447,7 +501,7 @@ describe('OnboardingFeeEditor', () => {
     mockSetOnboardingFee.mockRejectedValue('boom');
     render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -459,7 +513,7 @@ describe('OnboardingFeeEditor', () => {
     const onChanged = jest.fn();
     render(element({ onChanged }));
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
     fireEvent.click(saveButton());
 
@@ -471,7 +525,7 @@ describe('OnboardingFeeEditor', () => {
     mockStaffName.name = undefined;
     render(element());
     await openSet();
-    selectAmount('400');
+    typeAmount('400');
     selectAddress('0xabc');
 
     expect(screen.getByText('—')).toBeInTheDocument();
@@ -499,36 +553,48 @@ describe('OnboardingFeeEditor', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
   });
 
-  it('keeps the fee list and Save disabled while the amounts load, then enables them', async () => {
+  it('keeps the amount input usable while the suggestions load and fills the datalist once they arrive', async () => {
     const deferred = createDeferred<number[]>();
     mockGetOnboardingFeeAmounts.mockReturnValue(deferred.promise);
     render(element());
     openSetButton();
 
-    expect(amountSelect()).toBeDisabled();
+    expect(amountInput()).toBeEnabled();
+    expect(suggestions()).toEqual([]);
     selectAddress('0xabc');
     expect(saveButton()).toBeDisabled();
+    typeAmount('14000');
+    expect(saveButton()).toBeEnabled();
 
     await act(async () => {
       deferred.resolve([400, 800]);
       await deferred.promise;
     });
 
-    expect(amountSelect()).toBeEnabled();
-    expect(screen.getByRole('option', { name: 'CHF 400' })).toBeInTheDocument();
-    selectAmount('400');
+    expect(suggestions()).toEqual(['400', '800']);
+    expect(amountInput()).toHaveValue('14000');
     expect(saveButton()).toBeEnabled();
   });
 
-  it('shows the error message and keeps Save disabled when the amounts cannot be loaded', async () => {
+  it('shows the error message and still saves a typed amount when the suggestions cannot be loaded', async () => {
     mockGetOnboardingFeeAmounts.mockRejectedValue(new Error('boom'));
-    render(element());
+    mockSetOnboardingFee.mockResolvedValue(undefined);
+    const onChanged = jest.fn();
+    render(element({ onChanged }));
     openSetButton();
     selectAddress('0xabc');
 
     expect(await screen.findByText('boom')).toBeInTheDocument();
+    expect(suggestions()).toEqual([]);
+    expect(amountInput()).toBeEnabled();
     expect(saveButton()).toBeDisabled();
-    expect(screen.queryByRole('option', { name: 'CHF 400' })).not.toBeInTheDocument();
+
+    typeAmount('14000');
+    expect(saveButton()).toBeEnabled();
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(mockSetOnboardingFee).toHaveBeenCalledWith(88001, { amount: 14000, address: '0xabc' });
   });
 
   it('falls back to a generic message when loading the amounts rejects without a message', async () => {
@@ -596,7 +662,7 @@ describe('OnboardingFeeEditor', () => {
     openSetButton();
 
     expect(mockGetOnboardingFeeAmounts).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('option', { name: 'CHF 400' })).toBeInTheDocument();
+    expect(suggestions()).toEqual(['400', '800']);
   });
 
   it('opens the remove confirmation and cancels without calling the API', () => {

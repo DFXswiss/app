@@ -687,9 +687,36 @@ test.describe('Compliance area (cases)', () => {
     await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
     await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
 
+    // Opening the form is what loads the suggested amounts, so the listener is registered before the
+    // click; registered afterwards, a fast answer could be missed.
+    const amountsResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname === '/v1/partner/onboardingFee/amounts',
+    );
     await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+    const amountsAnswer = await amountsResponse;
+    expect(amountsAnswer.status()).toBe(200);
+    const { amounts } = (await amountsAnswer.json()) as { amounts: number[] };
+    // An empty answer would make the comparison below pass without proving that a list is offered.
+    expect(amounts.length).toBeGreaterThan(0);
     await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
-    await page.locator('#onboarding-fee-amount').selectOption('400');
+
+    // The field offers exactly the amounts of the real API, in its order; the option values are the
+    // numbers rendered as attribute strings. toHaveCount waits until the list has rendered.
+    await expect(page.locator('#onboarding-fee-amount')).toHaveAttribute('list', 'onboarding-fee-amount-suggestions');
+    const suggestionOptions = page.locator('#onboarding-fee-amount-suggestions option');
+    await expect(suggestionOptions).toHaveCount(amounts.length, { timeout: 15000 });
+    const offered = await suggestionOptions.evaluateAll((options) =>
+      options.map((option) => option.getAttribute('value')),
+    );
+    expect(offered).toEqual(amounts.map(String));
+    // Makes the comment below true against the real API: 14000 is a free amount, not a suggestion.
+    expect(offered).not.toContain('14000');
+
+    // The amount is typed like the clerk does. 14000 is not one of the suggested amounts, so the
+    // case proves that the Admin route accepts and stores an agreed free amount.
+    await page.locator('#onboarding-fee-amount').fill('14000');
     await page.locator('#onboarding-fee-address').selectOption(customer.address);
     const save = page.getByRole('button', { name: 'Save', exact: true });
     await expect(save).toBeEnabled({ timeout: 15000 });
@@ -700,13 +727,16 @@ test.describe('Compliance area (cases)', () => {
         new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
     );
     await save.click();
-    expect((await putResponse).status()).toBe(200);
+    const put = await putResponse;
+    expect(put.status()).toBe(200);
+    expect(put.request().postDataJSON()).toEqual({ amount: 14000, address: customer.address });
 
-    await expect(
-      page.getByText(`Onboarding fee of 400 CHF set; ${customer.address} attributed to the key account manager.`, {
-        exact: true,
-      }),
-    ).toBeVisible({ timeout: 20000 });
+    // The notice shows the amount with the Swiss thousands separator; the separator character
+    // depends on the browser's locale data, so only its position is fixed here.
+    const notice = new RegExp(
+      `^Onboarding fee of CHF 14.000 set; ${customer.address} attributed to the key account manager\\.$`,
+    );
+    await expect(page.getByText(notice)).toBeVisible({ timeout: 20000 });
 
     // Attribution and status transition, asserted from the database.
     const userRow = await waitForRow<{ usedRef: string | null; status: string }>(
@@ -725,7 +755,7 @@ test.describe('Compliance area (cases)', () => {
     expect(assignedFeeIds.length).toBeGreaterThan(0);
     const feeRow = await waitForRow<{ id: number }>(
       `SELECT id FROM fee
-       WHERE id = ANY($1::int[]) AND label = 'Onboarding Fixed 400' AND fixed = 400 AND active = true`,
+       WHERE id = ANY($1::int[]) AND label = 'Onboarding Fixed 14000' AND fixed = 14000 AND active = true`,
       [assignedFeeIds.map(Number)],
       20000,
     );
@@ -774,6 +804,71 @@ test.describe('Compliance area (cases)', () => {
       .toBe(false);
   });
 
+  test('/compliance/user/:id refuses an onboarding fee outside the allowed range and sends nothing', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffReady(userId);
+    await seedOnboardingFeeRef();
+
+    const customer = await createUser({
+      tag: 'cmp-onboarding-fee-range',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    // Starting state the API transitions from: an NA account with an NA user.
+    await queryRows(`UPDATE "user" SET status = 'NA' WHERE id = $1`, [customer.userId]);
+    await queryRows(`UPDATE user_data SET status = 'NA' WHERE id = $1`, [customer.userDataId]);
+
+    // Every request the page sends is recorded, so the refusal is proven by the absence of a PUT and
+    // not only by the disabled button.
+    const requests: { method: string; pathname: string }[] = [];
+    page.on('request', (request) => {
+      requests.push({ method: request.method(), pathname: new URL(request.url()).pathname });
+    });
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+    const amountInput = page.locator('#onboarding-fee-amount');
+    await expect(amountInput).toBeVisible({ timeout: 15000 });
+    // The address is chosen first and the clerk is loaded, so the amount is what keeps Save disabled,
+    // which the positive control at the end of this case proves.
+    await page.locator('#onboarding-fee-address').selectOption(customer.address);
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    // The editor writes the maximum with the Swiss grouping; the separator character depends on the
+    // browser's locale data, so only its position is fixed here.
+    const rangeHint = /^Enter a whole CHF amount between 1 and 1.000.000\.$/;
+
+    await amountInput.fill('0');
+    await expect(page.getByText(rangeHint)).toBeVisible({ timeout: 10000 });
+    await expect(save).toBeDisabled();
+
+    await amountInput.fill('1000001');
+    await expect(page.getByText(rangeHint)).toBeVisible({ timeout: 10000 });
+    await expect(save).toBeDisabled();
+
+    const refusedPuts = requests.filter(
+      (request) => request.method === 'PUT' && request.pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
+    );
+    expect(refusedPuts).toEqual([]);
+
+    const userData = await queryOne<{ individualFees: string | null }>(
+      `SELECT "individualFees" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    expect(userData).toBeTruthy();
+    expect((userData?.individualFees ?? '').split(';').filter(Boolean)).toEqual([]);
+
+    // Positive control: with the same address and clerk a valid amount enables Save, so the disabled
+    // button above was caused by the amount alone. Save is not clicked.
+    await amountInput.fill('1000000');
+    await expect(page.getByText(rangeHint)).toHaveCount(0);
+    await expect(save).toBeEnabled({ timeout: 15000 });
+  });
+
   test('/compliance/user/:id shows the blocked-address error for an onboarding fee and changes nothing', async ({
     page,
   }) => {
@@ -803,7 +898,7 @@ test.describe('Compliance area (cases)', () => {
 
     await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
     await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
-    await page.locator('#onboarding-fee-amount').selectOption('400');
+    await page.locator('#onboarding-fee-amount').fill('400');
     await page.locator('#onboarding-fee-address').selectOption(customer.address);
     const save = page.getByRole('button', { name: 'Save', exact: true });
     await expect(save).toBeEnabled({ timeout: 15000 });

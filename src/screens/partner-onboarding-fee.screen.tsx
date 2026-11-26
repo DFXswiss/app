@@ -4,41 +4,51 @@ import {
   StyledButton,
   StyledButtonColor,
   StyledButtonWidth,
-  StyledDropdown,
   StyledInput,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
 import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { ErrorHint } from 'src/components/error-hint';
-import { useLayoutContext } from 'src/contexts/layout.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { usePartnerGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useOnboardingFee } from 'src/hooks/onboarding-fee.hook';
-import { ONBOARDING_FEE_API_OFF, formatChf, onboardingFeeFailureMessage } from 'src/util/onboarding-fee.util';
+import {
+  ONBOARDING_FEE_API_OFF,
+  ONBOARDING_FEE_MAX_AMOUNT,
+  ONBOARDING_FEE_MIN_AMOUNT,
+  formatChf,
+  onboardingFeeFailureMessage,
+  parseOnboardingFeeAmount,
+} from 'src/util/onboarding-fee.util';
+import { formatChf as formatSwissNumber } from 'src/util/utils';
 
 interface AssignFormData {
   address: string;
-  amount: number;
+  // The raw input; parseOnboardingFeeAmount turns it into the number the API receives.
+  amount: string;
 }
 
 interface RemoveFormData {
   address: string;
 }
 
-// Partner key-account managers assign one of the fixed onboarding fees to a customer wallet and can
-// remove it again. The API attributes the customer to the caller's ref as part of the assignment,
-// so the screen only asks for the address and the fee; both actions are audited server-side.
+// Validation key of an amount outside the whole-CHF range. The shared error translator only knows
+// the generic keys, so the assign form maps this one to its own sentence that names the range.
+const AMOUNT_INVALID = 'onboarding_fee_amount_invalid';
+
+// Partner key-account managers assign an onboarding fee of any whole CHF amount within the API's
+// range to a customer wallet and can remove it again. The API attributes the customer to the
+// caller's ref as part of the assignment, so the screen only asks for the address and the fee; both
+// actions are audited server-side.
 export default function PartnerOnboardingFeeScreen(): JSX.Element {
   usePartnerGuard();
 
   const { translate, translateError } = useSettingsContext();
-  const { rootRef } = useLayoutContext();
   const { getOnboardingFeeAmounts, setPartnerOnboardingFee, removePartnerOnboardingFee } = useOnboardingFee();
 
   const [amounts, setAmounts] = useState<number[]>();
-  const [isLoadingAmounts, setIsLoadingAmounts] = useState(true);
   const [amountsError, setAmountsError] = useState<string>();
 
   const [isSaving, setIsSaving] = useState(false);
@@ -58,10 +68,11 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
     handleSubmit: handleAssignSubmit,
     watch: watchAssign,
     reset: resetAssign,
+    setValue: setAssignValue,
     formState: { errors: assignErrors },
   } = useForm<AssignFormData>({
     mode: 'onTouched',
-    defaultValues: { address: '' },
+    defaultValues: { address: '', amount: '' },
   });
 
   const {
@@ -75,7 +86,8 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
     defaultValues: { address: '' },
   });
 
-  // The pickable fees are global; load them once. Assign stays disabled until the list arrived.
+  // The suggested fees are global; load them once. They only offer quick picks for the input, so
+  // Assign does not wait for them and a failed load does not block typing an amount.
   useEffect(() => {
     mountedRef.current = true;
     getOnboardingFeeAmounts()
@@ -85,22 +97,19 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
       .catch((e: unknown) => {
         if (mountedRef.current)
           setAmountsError(failureMessage(e, translate('screens/partner', 'Failed to load the onboarding fee amounts')));
-      })
-      .finally(() => {
-        if (mountedRef.current) setIsLoadingAmounts(false);
       });
     return () => {
       mountedRef.current = false;
     };
   }, []);
 
-  // Both forms carry default values, so watch returns the string even before the fields mount. The
-  // amount starts unset: only a value picked from the loaded list enables Assign.
+  // Both forms carry default values, so watch returns the string even before the fields mount. Any
+  // whole CHF amount within the API's range enables Assign, whether typed or picked from a suggestion.
   const assignAddress = watchAssign('address');
-  const assignAmount: number | undefined = watchAssign('amount');
+  const assignAmount = parseOnboardingFeeAmount(watchAssign('amount'));
   const removeAddress = watchRemove('address');
 
-  const canAssign = !!assignAddress.trim() && !!amounts && assignAmount !== undefined && !isSaving;
+  const canAssign = !!assignAddress.trim() && assignAmount !== undefined && !isSaving;
   const canRemove = !!removeAddress.trim();
 
   // Blank input is rejected here as well as by the disabled button, so a stray submit cannot reach
@@ -109,7 +118,10 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
 
   const assignRules = Utils.createRules({
     address: addressRule,
-    amount: Validations.Required,
+    amount: [
+      Validations.Required,
+      Validations.Custom((value) => (parseOnboardingFeeAmount(value) !== undefined ? true : AMOUNT_INVALID)),
+    ],
   });
 
   const removeRules = Utils.createRules({
@@ -125,8 +137,26 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
     return message === ONBOARDING_FEE_API_OFF ? translate('screens/partner', ONBOARDING_FEE_API_OFF) : message;
   }
 
+  // The range sentence is ours and carries the bounds, so it is translated here; every other key goes
+  // through the shared translator like on the remove form. Both bounds come from the shared constants
+  // so the sentence cannot drift from the rule that enforces them.
+  function translateAssignError(key: string): string {
+    if (key !== AMOUNT_INVALID) return translateError(key);
+    const min = formatSwissNumber(ONBOARDING_FEE_MIN_AMOUNT);
+    const max = formatSwissNumber(ONBOARDING_FEE_MAX_AMOUNT);
+    return translate('screens/partner', 'Enter a whole CHF amount between {{min}} and {{max}}.', { min, max });
+  }
+
+  // A suggestion fills the input like typing would, including the validation that clears an error.
+  function pickAmount(value: number): void {
+    setAssignValue('amount', String(value), { shouldValidate: true, shouldDirty: true, shouldTouch: true });
+  }
+
   async function handleAssign(data: AssignFormData): Promise<void> {
-    if (savingRef.current) return;
+    // The submit only runs after the amount rule passed; the check keeps an unparsed amount from
+    // ever reaching the API without asserting the type away.
+    const amount = parseOnboardingFeeAmount(data.amount);
+    if (savingRef.current || amount === undefined) return;
     savingRef.current = true;
 
     setIsSaving(true);
@@ -134,11 +164,11 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
     setAssignNotice(undefined);
     const address = data.address.trim();
     try {
-      await setPartnerOnboardingFee({ address, amount: data.amount });
+      await setPartnerOnboardingFee({ address, amount });
       if (!mountedRef.current) return;
       setAssignNotice(
         translate('screens/partner', 'Onboarding fee of {{amount}} assigned to {{address}}.', {
-          amount: formatChf(data.amount),
+          amount: formatChf(amount),
           address,
         }),
       );
@@ -195,7 +225,7 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
       <p className="text-dfxGray-700">
         {translate(
           'screens/partner',
-          'Enter the wallet address of your customer and choose the onboarding fee. The customer is attributed to your referral code.',
+          'Enter the wallet address of your customer and the onboarding fee. The customer is attributed to your referral code.',
         )}
       </p>
 
@@ -208,23 +238,40 @@ export default function PartnerOnboardingFeeScreen(): JSX.Element {
           rules={assignRules}
           errors={assignErrors}
           onSubmit={handleAssignSubmit(handleAssign)}
-          translate={translateError}
+          translate={translateAssignError}
         >
           <StyledVerticalStack gap={4} full>
             <StyledInput name="address" label={translate('screens/partner', 'Customer address')} full smallLabel />
 
-            <StyledDropdown<number>
-              rootRef={rootRef}
+            {/* A text field, not type="number": the browser reports a partly typed number such as "1."
+                as an empty value, which would show "required" instead of the range sentence. */}
+            <StyledInput
               name="amount"
-              label={translate('screens/partner', 'Onboarding fee')}
-              placeholder={translate('screens/partner', 'Select amount')}
-              items={amounts ?? []}
-              labelFunc={formatChf}
+              type="text"
+              label={translate('screens/partner', 'Onboarding fee (CHF)')}
               full
               smallLabel
-              disabled={isLoadingAmounts || !!amountsError}
-              forceEnable={!!amounts?.length}
             />
+
+            {!!amounts?.length && (
+              <div
+                role="group"
+                aria-label={translate('screens/partner', 'Suggested amounts')}
+                className="w-full flex flex-wrap gap-2"
+              >
+                {amounts.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className="px-3 py-1 text-sm text-dfxBlue-800 border border-dfxGray-400 rounded-md bg-white hover:bg-dfxGray-300 transition-colors disabled:opacity-50"
+                    onClick={() => pickAmount(value)}
+                    disabled={isSaving}
+                  >
+                    {formatChf(value)}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {amountsError && <ErrorHint message={amountsError} />}
 

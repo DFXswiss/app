@@ -495,7 +495,7 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await page.waitForTimeout(2000);
 
       await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
-      await page.locator('#onboarding-fee-amount').selectOption('400');
+      await page.locator('#onboarding-fee-amount').fill('400');
       await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
       await page.waitForTimeout(500);
 
@@ -552,7 +552,7 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await page.waitForTimeout(2000);
 
       await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
-      await page.locator('#onboarding-fee-amount').selectOption('400');
+      await page.locator('#onboarding-fee-amount').fill('400');
       await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
 
       const save = page.getByRole('button', { name: 'Save', exact: true });
@@ -563,6 +563,63 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       });
 
       await expect(page).toHaveScreenshot('compliance-user-17-onboarding-fee-error.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the range hint for an onboarding fee amount outside the allowed range', async ({ page }) => {
+      await page.route(`**/v1/support/${TEST_USER_DATA_ID}`, async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const users =
+          Array.isArray(data.users) && data.users.length > 0
+            ? data.users
+            : [
+                {
+                  id: 1,
+                  address: '0x0000000000000000000000000000000000000001',
+                  role: 'User',
+                  status: 'NA',
+                  usedRef: '194-687',
+                  created: '2026-01-01T00:00:00.000Z',
+                },
+              ];
+
+        await route.fulfill({ response, json: { ...data, users } });
+      });
+      await page.route('**/v1/support/issue/clerk', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ clerk: 'E2E Clerk' }),
+        });
+      });
+      await page.route('**/v1/partner/onboardingFee/amounts', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ amounts: [400, 800] }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+      await page.locator('#onboarding-fee-amount').fill('0');
+      await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
+
+      // The upper bound carries the Swiss thousands separator, whose character depends on the
+      // browser's locale data, so only its position is fixed here.
+      await expect(page.getByText(/^Enter a whole CHF amount between 1 and 1.000.000\.$/)).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+      await page.waitForTimeout(500);
+
+      await expect(page).toHaveScreenshot('compliance-user-24-onboarding-fee-invalid-amount.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });

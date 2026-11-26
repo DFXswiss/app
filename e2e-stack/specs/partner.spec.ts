@@ -1,6 +1,7 @@
 /**
- * /partner/onboarding-fee — Partner key-account managers assign one of the fixed onboarding fees to
- * a customer wallet and remove it again.
+ * /partner/onboarding-fee — Partner key-account managers assign an onboarding fee of any whole CHF
+ * amount to a customer wallet and remove it again. The amount is typed or filled from a suggested
+ * amount; the first case clicks a suggestion, the free-amount case types one.
  *
  * The screen is guarded with usePartnerGuard. The API attributes the named address to the logged-in
  * partner's ref as part of the assignment; the DB assertions below prove that attribution, the fee
@@ -68,21 +69,6 @@ async function restorePartnerRef(): Promise<void> {
 }
 
 /**
- * Open a StyledDropdown by its field label and pick an option by visible label text.
- *
- * StyledDropdown renders the trigger as a sibling of the label wrapper, so the field container is
- * two DOM levels above the label text. `#dropDownButton` is reused by every dropdown, hence the
- * container scope. The trigger stays disabled until the screen has loaded the fixed fee list.
- */
-async function selectStyledDropdown(root: Locator, fieldLabel: string, optionLabel: string): Promise<void> {
-  const fieldContainer = root.getByText(fieldLabel, { exact: true }).locator('xpath=../..');
-  const trigger = fieldContainer.locator('#dropDownButton');
-  await expect(trigger).toBeEnabled({ timeout: 20000 });
-  await trigger.click();
-  await fieldContainer.getByRole('button', { name: optionLabel, exact: true }).click();
-}
-
-/**
  * The input of a StyledInput, found by its field label.
  *
  * `name` on the React component does not become the DOM `name` attribute — StyledInput derives that
@@ -115,6 +101,12 @@ function assignSection(page: Page): Locator {
 
 function removeSection(page: Page): Locator {
   return sectionOf(page, 'Remove onboarding fee');
+}
+
+/** Type the customer address and the amount into the assign form, the way a partner does. */
+async function fillAssignForm(assign: Locator, address: string, amount: string): Promise<void> {
+  await styledInput(assign, 'Customer address').fill(address);
+  await styledInput(assign, 'Onboarding fee (CHF)').fill(amount);
 }
 
 test.describe('Partner onboarding fee', () => {
@@ -156,15 +148,22 @@ test.describe('Partner onboarding fee', () => {
     await expect(page.getByText('Assign onboarding fee', { exact: true })).toBeVisible({ timeout: 20000 });
 
     const assign = assignSection(page);
+    // The amount comes from the quick pick, not from typing: the click must fill the input, and the
+    // request body below proves the picked value is what the screen sends.
     await styledInput(assign, 'Customer address').fill(customer.address);
-    await selectStyledDropdown(assign, 'Onboarding fee', 'CHF 400');
+    const pick = assign.getByRole('button', { name: 'CHF 400', exact: true });
+    await expect(pick).toBeVisible({ timeout: 20000 });
+    await pick.click();
+    await expect(styledInput(assign, 'Onboarding fee (CHF)')).toHaveValue('400');
 
     const putResponse = page.waitForResponse(
       (response) =>
         response.request().method() === 'PUT' && new URL(response.url()).pathname === '/v1/partner/onboardingFee',
     );
     await assign.getByRole('button', { name: 'Assign', exact: true }).click();
-    expect((await putResponse).status()).toBe(200);
+    const put = await putResponse;
+    expect(put.status()).toBe(200);
+    expect(put.request().postDataJSON()).toEqual({ address: customer.address, amount: 400 });
 
     await expect(
       page.getByText(`Onboarding fee of CHF 400 assigned to ${customer.address}.`, { exact: true }),
@@ -236,6 +235,183 @@ test.describe('Partner onboarding fee', () => {
       .toBe(false);
   });
 
+  test('assigns a typed onboarding fee that is not among the suggested amounts', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Partner');
+    const ref = await seedRef(userId);
+
+    const customer = await createUser({
+      tag: 'partner-onboarding-fee-free',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    // Starting state the API transitions from: an NA account with an NA user.
+    await queryRows(`UPDATE "user" SET status = 'NA' WHERE id = $1`, [customer.userId]);
+    await queryRows(`UPDATE user_data SET status = 'NA' WHERE id = $1`, [customer.userDataId]);
+
+    await openScreen(page, '/partner/onboarding-fee', jwt);
+    await expect(page.getByText('Assign onboarding fee', { exact: true })).toBeVisible({ timeout: 20000 });
+
+    const assign = assignSection(page);
+    // The agreed amount is typed; it is not one of the suggestions the screen offers as quick picks.
+    await expect(assign.getByRole('group', { name: 'Suggested amounts' })).toBeVisible({ timeout: 20000 });
+    await expect(assign.getByRole('button', { name: /^CHF 14.000$/ })).toHaveCount(0);
+    await fillAssignForm(assign, customer.address, '14000');
+
+    const putResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' && new URL(response.url()).pathname === '/v1/partner/onboardingFee',
+    );
+    const assignButton = assign.getByRole('button', { name: 'Assign', exact: true });
+    await expect(assignButton).toBeEnabled({ timeout: 10000 });
+    await assignButton.click();
+    const put = await putResponse;
+    expect(put.status()).toBe(200);
+    expect(put.request().postDataJSON()).toEqual({ address: customer.address, amount: 14000 });
+
+    // The notice shows the amount with the Swiss thousands separator; the separator character
+    // depends on the browser's locale data, so only its position is fixed here.
+    const notice = new RegExp(`^Onboarding fee of CHF 14.000 assigned to ${customer.address}\\.$`);
+    await expect(page.getByText(notice)).toBeVisible({ timeout: 20000 });
+
+    const userRow = await waitForRow<{ usedRef: string | null; status: string }>(
+      `SELECT "usedRef", status FROM "user" WHERE id = $1 AND status = 'Active'`,
+      [customer.userId],
+      20000,
+    );
+    expect(userRow.usedRef).toBe(ref);
+
+    const userDataRow = await waitForRow<{ status: string; individualFees: string | null }>(
+      `SELECT status, "individualFees" FROM user_data WHERE id = $1 AND status = 'Active'`,
+      [customer.userDataId],
+      20000,
+    );
+    const feeIds = (userDataRow.individualFees ?? '').split(';').filter(Boolean);
+    expect(feeIds.length).toBeGreaterThan(0);
+    await waitForRow<{ id: number }>(
+      `SELECT id FROM fee
+       WHERE id = ANY($1::int[]) AND label = 'Onboarding Fixed 14000' AND fixed = 14000 AND active = true`,
+      [feeIds.map(Number)],
+      20000,
+    );
+
+    const log = await waitForMatchingRow<{ id: number; message: string | null }>(
+      `SELECT id, message FROM support_log
+       WHERE "userDataId" = $1 AND clerk = $2`,
+      [customer.userDataId, 'E2E Test Staff'],
+      (row) => decryptPii(row.message)?.startsWith('Onboarding fee') ?? false,
+      20000,
+    );
+    trackRow('support_log', log.id);
+  });
+
+  test('refuses an amount outside the allowed range and assigns the upper bound', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Partner');
+    const ref = await seedRef(userId);
+
+    const customer = await createUser({
+      tag: 'partner-onboarding-fee-range',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    // Starting state the API transitions from: an NA account with an NA user.
+    await queryRows(`UPDATE "user" SET status = 'NA' WHERE id = $1`, [customer.userId]);
+    await queryRows(`UPDATE user_data SET status = 'NA' WHERE id = $1`, [customer.userDataId]);
+
+    // Every request the page sends is recorded, so the refusal is proven by the absence of a PUT and
+    // not only by the disabled button.
+    const requests: { method: string; pathname: string }[] = [];
+    page.on('request', (request) => {
+      requests.push({ method: request.method(), pathname: new URL(request.url()).pathname });
+    });
+
+    await openScreen(page, '/partner/onboarding-fee', jwt);
+    await expect(page.getByText('Assign onboarding fee', { exact: true })).toBeVisible({ timeout: 20000 });
+
+    const assign = assignSection(page);
+    const amountInput = styledInput(assign, 'Onboarding fee (CHF)');
+    const assignButton = assign.getByRole('button', { name: 'Assign', exact: true });
+    // The screen fills the bounds with the Swiss grouping; the separator character depends on the
+    // browser's locale data, so only its position is fixed here.
+    const rangeSentence = /^Enter a whole CHF amount between 1 and 1.000.000\.$/;
+
+    // The form validates on blur first, so the amount field is left before the sentence is expected.
+    await fillAssignForm(assign, customer.address, '0');
+    await amountInput.blur();
+    await expect(assign.getByText(rangeSentence)).toBeVisible({ timeout: 10000 });
+    await expect(assignButton).toBeDisabled();
+
+    await amountInput.fill('1000001');
+    await amountInput.blur();
+    await expect(assign.getByText(rangeSentence)).toBeVisible({ timeout: 10000 });
+    await expect(assignButton).toBeDisabled();
+
+    const refusedPuts = requests.filter(
+      (request) => request.method === 'PUT' && request.pathname === '/v1/partner/onboardingFee',
+    );
+    expect(refusedPuts).toEqual([]);
+
+    const refusedUser = await queryOne<{ status: string }>(`SELECT status FROM "user" WHERE id = $1`, [
+      customer.userId,
+    ]);
+    expect(refusedUser?.status).toBe('NA');
+    const refusedUserData = await queryOne<{ status: string; individualFees: string | null }>(
+      `SELECT status, "individualFees" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    expect(refusedUserData?.status).toBe('NA');
+    expect((refusedUserData?.individualFees ?? '').split(';').filter(Boolean)).toEqual([]);
+
+    // The upper bound itself is a valid amount: the screen sends it and the real API stores it.
+    await amountInput.fill('1000000');
+    await amountInput.blur();
+    await expect(assign.getByText(rangeSentence)).toHaveCount(0);
+    await expect(assignButton).toBeEnabled({ timeout: 10000 });
+
+    const putResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' && new URL(response.url()).pathname === '/v1/partner/onboardingFee',
+    );
+    await assignButton.click();
+    const put = await putResponse;
+    expect(put.status()).toBe(200);
+    expect(put.request().postDataJSON()).toEqual({ address: customer.address, amount: 1000000 });
+
+    const notice = new RegExp(`^Onboarding fee of CHF 1.000.000 assigned to ${customer.address}\\.$`);
+    await expect(page.getByText(notice)).toBeVisible({ timeout: 20000 });
+
+    const userRow = await waitForRow<{ usedRef: string | null; status: string }>(
+      `SELECT "usedRef", status FROM "user" WHERE id = $1 AND status = 'Active'`,
+      [customer.userId],
+      20000,
+    );
+    expect(userRow.usedRef).toBe(ref);
+
+    const userDataRow = await waitForRow<{ status: string; individualFees: string | null }>(
+      `SELECT status, "individualFees" FROM user_data WHERE id = $1 AND status = 'Active'`,
+      [customer.userDataId],
+      20000,
+    );
+    const feeIds = (userDataRow.individualFees ?? '').split(';').filter(Boolean);
+    expect(feeIds.length).toBeGreaterThan(0);
+    await waitForRow<{ id: number }>(
+      `SELECT id FROM fee
+       WHERE id = ANY($1::int[]) AND label = 'Onboarding Fixed 1000000' AND fixed = 1000000 AND active = true`,
+      [feeIds.map(Number)],
+      20000,
+    );
+
+    const log = await waitForMatchingRow<{ id: number; message: string | null }>(
+      `SELECT id, message FROM support_log
+       WHERE "userDataId" = $1 AND clerk = $2`,
+      [customer.userDataId, 'E2E Test Staff'],
+      (row) => decryptPii(row.message)?.startsWith('Onboarding fee') ?? false,
+      20000,
+    );
+    trackRow('support_log', log.id);
+  });
+
   test('refuses to assign a fee to a customer another key-account manager already owns', async ({ page }) => {
     const { jwt, userId } = await loginAs('Partner');
     await seedRef(userId);
@@ -266,8 +442,7 @@ test.describe('Partner onboarding fee', () => {
     await expect(page.getByText('Assign onboarding fee', { exact: true })).toBeVisible({ timeout: 20000 });
 
     const assign = assignSection(page);
-    await styledInput(assign, 'Customer address').fill(customer.address);
-    await selectStyledDropdown(assign, 'Onboarding fee', 'CHF 400');
+    await fillAssignForm(assign, customer.address, '400');
 
     const putResponse = page.waitForResponse(
       (response) =>

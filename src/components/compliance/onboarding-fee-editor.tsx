@@ -3,7 +3,14 @@ import { ErrorHint } from 'src/components/error-hint';
 import type { UserInfo } from 'src/hooks/compliance.hook';
 import { useOnboardingFee } from 'src/hooks/onboarding-fee.hook';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
-import { formatChf, onboardingFeeFailureMessage } from 'src/util/onboarding-fee.util';
+import {
+  formatChf,
+  ONBOARDING_FEE_MAX_AMOUNT,
+  ONBOARDING_FEE_MIN_AMOUNT,
+  onboardingFeeFailureMessage,
+  parseOnboardingFeeAmount,
+} from 'src/util/onboarding-fee.util';
+import { formatChf as formatSwissNumber } from 'src/util/utils';
 import { STAFF_NAME_MISSING, staffNameLoadError } from './staff-identity';
 
 interface Props {
@@ -15,6 +22,11 @@ interface Props {
 
 const buttonClass =
   'px-3 py-1 text-xs text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded transition-colors whitespace-nowrap';
+
+// The bounds use the same Swiss grouping as the amounts in the notice, so the clerk reads one format.
+const MAX_AMOUNT_LABEL = formatSwissNumber(ONBOARDING_FEE_MAX_AMOUNT);
+const AMOUNT_HINT = `Enter a whole CHF amount between ${ONBOARDING_FEE_MIN_AMOUNT} and ${MAX_AMOUNT_LABEL}.`;
+const AMOUNT_SUGGESTIONS_ID = 'onboarding-fee-amount-suggestions';
 
 function userOptionLabel(user: UserInfo): string {
   return `${user.address} (${user.status}, ${user.usedRef ?? '-'})`;
@@ -31,7 +43,6 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
   const [amount, setAmount] = useState('');
   const [address, setAddress] = useState('');
   const [amounts, setAmounts] = useState<number[]>();
-  const [isLoadingAmounts, setIsLoadingAmounts] = useState(false);
   const [amountsError, setAmountsError] = useState<string>();
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -68,15 +79,17 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
     setNotice(undefined);
   }, [userDataId]);
 
-  const amountNumber = Number(amount);
-  // Only a value offered by the loaded list can be saved, so the API never receives an invented fee.
-  const canSaveAmount = !!amounts && amounts.includes(amountNumber) && amount !== '';
+  // Any whole CHF amount the API accepts can be saved, including an agreed amount that is not among
+  // the suggestions; the range check here only keeps an amount the API would refuse from being sent.
+  const amountNumber = parseOnboardingFeeAmount(amount);
+  const canSaveAmount = amountNumber !== undefined;
+  const isAmountInvalid = amount !== '' && !canSaveAmount;
   const canSubmit = !!clerk && !isLoadingClerk && !isSaving && canSaveAmount && !!address;
 
-  // Loaded once per box: the list is global and does not change while the clerk stays on the page.
-  // A failed load is retried the next time the form is opened.
+  // Loaded once per box: the suggestions are global and do not change while the clerk stays on the
+  // page. They only fill the input, so a pending or failed load does not block saving; a failed load
+  // is retried the next time the form is opened.
   async function loadAmounts(): Promise<void> {
-    setIsLoadingAmounts(true);
     setAmountsError(undefined);
     try {
       const loaded = await getOnboardingFeeAmounts();
@@ -84,8 +97,6 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
     } catch (e: unknown) {
       if (mountedRef.current)
         setAmountsError(onboardingFeeFailureMessage(e, 'Failed to load the onboarding fee amounts'));
-    } finally {
-      if (mountedRef.current) setIsLoadingAmounts(false);
     }
   }
 
@@ -111,7 +122,9 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
 
   // Only reachable through the Save button, which is disabled until canSubmit holds.
   async function handleSet(): Promise<void> {
-    if (savingRef.current) return;
+    // canSubmit, which enables the only caller, requires a parsed amount; the check keeps an unparsed
+    // amount from ever reaching the API without asserting the type away.
+    if (savingRef.current || amountNumber === undefined) return;
     savingRef.current = true;
 
     setIsSaving(true);
@@ -120,11 +133,13 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
     const requestedId = userDataId;
     const attempt = attemptRef.current;
     const isCurrent = (): boolean => mountedRef.current && attemptRef.current === attempt;
+    const savedAmount = amountNumber;
     try {
-      await setOnboardingFee(requestedId, { amount: amountNumber, address });
+      await setOnboardingFee(requestedId, { amount: savedAmount, address });
       if (isCurrent()) {
+        const fee = formatChf(savedAmount);
         setMode('closed');
-        setNotice(`Onboarding fee of ${amountNumber} CHF set; ${address} attributed to the key account manager.`);
+        setNotice(`Onboarding fee of ${fee} set; ${address} attributed to the key account manager.`);
         onChanged();
       } else if (mountedRef.current && userDataIdRef.current === requestedId) {
         // An earlier attempt for the account shown again (A -> B -> A) changed it: reload the row,
@@ -196,20 +211,22 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
             <label htmlFor="onboarding-fee-amount" className="text-xs text-dfxGray-700">
               Amount (CHF)
             </label>
-            <select
+            <input
               id="onboarding-fee-amount"
+              type="text"
+              inputMode="numeric"
+              list={AMOUNT_SUGGESTIONS_ID}
               className="px-2 py-1.5 text-xs border border-dfxGray-400 rounded bg-white text-dfxBlue-800 w-full"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              disabled={isSaving || isLoadingAmounts}
-            >
-              <option value="">Select amount</option>
+              disabled={isSaving}
+            />
+            {/* The suggestions only fill the input; the clerk may type any other agreed amount. */}
+            <datalist id={AMOUNT_SUGGESTIONS_ID}>
               {(amounts ?? []).map((value) => (
-                <option key={value} value={value}>
-                  {formatChf(value)}
-                </option>
+                <option key={value} value={value} />
               ))}
-            </select>
+            </datalist>
           </div>
           <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
             <label htmlFor="onboarding-fee-address" className="text-xs text-dfxGray-700">
@@ -235,6 +252,7 @@ export function OnboardingFeeEditor({ userDataId, users, onChanged }: Readonly<P
             <p className="px-2 py-1.5 text-xs text-dfxBlue-800">{isLoadingClerk ? '…' : (clerk ?? '—')}</p>
           </div>
         </div>
+        {isAmountInvalid && <p className="text-xs text-dfxRed-100">{AMOUNT_HINT}</p>}
         {amountsError && <p className="text-xs text-dfxRed-100">{amountsError}</p>}
         {!isLoadingClerk && !clerk && (
           <ErrorHint message={clerkError ? staffNameLoadError(clerkError) : STAFF_NAME_MISSING} />
