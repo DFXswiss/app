@@ -45,9 +45,16 @@ export function formatChf(amount: number): string {
 export const ONBOARDING_FEE_MIN_AMOUNT = 1;
 export const ONBOARDING_FEE_MAX_AMOUNT = 1_000_000;
 
-// Plain digits only: a sign, a decimal point or comma, a thousands separator or an exponent would let
-// Number() accept input the clerk did not mean as a whole CHF amount (e.g. "1e3" or "-0").
-const WHOLE_AMOUNT = /^\d+$/;
+// Plain digits, or digits in correct Swiss thousands grouping: the screens show the range, the
+// suggestions and the notices with that grouping (e.g. 1’000’000), so an amount typed the way it is
+// shown must not be refused. Both the typographic apostrophe the locale data produces and the ASCII
+// apostrophe a keyboard types are accepted, but one amount uses one of them throughout and every group
+// after the first has exactly three digits, so a slip such as "1'0000" is not read as a different
+// amount. A sign, a decimal point or comma, a space, a comma or point as grouping, or an exponent
+// stays refused: Number() would accept some of them for input the clerk did not mean as a whole CHF
+// amount (e.g. "1e3" or "-0"), and "1.000" or "1,000" can be read as a decimal amount.
+const WHOLE_AMOUNT = /^(?:\d+|\d{1,3}(['’])\d{3}(?:\1\d{3})*)$/;
+const GROUP_SEPARATOR = /['’]/g;
 
 // Returns the amount for input that is a whole number of CHF within the range, otherwise undefined.
 export function parseOnboardingFeeAmount(input: string | number | undefined | null): number | undefined {
@@ -57,7 +64,7 @@ export function parseOnboardingFeeAmount(input: string | number | undefined | nu
   } else if (typeof input === 'string') {
     const trimmed = input.trim();
     if (!WHOLE_AMOUNT.test(trimmed)) return undefined;
-    amount = Number(trimmed);
+    amount = Number(trimmed.replace(GROUP_SEPARATOR, ''));
   } else {
     return undefined;
   }

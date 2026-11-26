@@ -363,8 +363,10 @@ test.describe('Partner onboarding fee', () => {
     expect(refusedUserData?.status).toBe('NA');
     expect((refusedUserData?.individualFees ?? '').split(';').filter(Boolean)).toEqual([]);
 
-    // The upper bound itself is a valid amount: the screen sends it and the real API stores it.
-    await amountInput.fill('1000000');
+    // The upper bound itself is a valid amount, typed the way the range sentence shows it (Swiss
+    // grouping with the typographic apostrophe): the screen sends it as a plain number and the real
+    // API stores it.
+    await amountInput.fill('1’000’000');
     await amountInput.blur();
     await expect(assign.getByText(rangeSentence)).toHaveCount(0);
     await expect(assignButton).toBeEnabled({ timeout: 10000 });

@@ -863,8 +863,9 @@ test.describe('Compliance area (cases)', () => {
     expect((userData?.individualFees ?? '').split(';').filter(Boolean)).toEqual([]);
 
     // Positive control: with the same address and clerk a valid amount enables Save, so the disabled
-    // button above was caused by the amount alone. Save is not clicked.
-    await amountInput.fill('1000000');
+    // button above was caused by the amount alone. The amount is typed with the Swiss grouping and the
+    // ASCII apostrophe a keyboard produces, which the editor accepts as well. Save is not clicked.
+    await amountInput.fill("1'000'000");
     await expect(page.getByText(rangeHint)).toHaveCount(0);
     await expect(save).toBeEnabled({ timeout: 15000 });
   });
