@@ -28,7 +28,7 @@ import {
   decryptPii,
   expect,
   expectSwapUnavailable,
-  expectUnavailableSwapQuoteOnScreen,
+  expectUnavailableQuoteOnScreen,
   gotoWithSession,
   headerBackButton,
   isolateFromExternalHosts,
@@ -262,7 +262,7 @@ type PaymentInfosTracker = ReturnType<typeof trackPaymentInfosResponses>;
  * False when the API answered anything else: the test goes on with its usual assertions.
  */
 async function swapQuoteUnavailable(page: Page, paymentInfos: PaymentInfosTracker): Promise<boolean> {
-  return (await expectUnavailableSwapQuoteOnScreen(page, () => paymentInfos.last)) !== undefined;
+  return (await expectUnavailableQuoteOnScreen(page, () => paymentInfos.last)) !== undefined;
 }
 
 /** An unavailable swap must not leave a deposit route behind for the user. */
@@ -1473,9 +1473,9 @@ test.describe('Sell + Swap e2e', () => {
     expect(await redirectUriInLocalStorage(page)).toEqual({ key: null, queryParams: undefined });
   });
 
-  // The API image is built from backend develop. Without the backend change that accepts `redirectUri` with the
-  // contact data, the merge mail carries no `return-url` and the confirmation still ends on "My account"; this case
-  // then asserts that. It asserts the return to /sell once the mail link carries `return-url`.
+  // This PR is paired with DFXswiss/backend#6352 (e2e-companion.json), so its full-stack run uses that backend head.
+  // Without the backend change (backend develop) the merge mail carries no `return-url` and the case asserts that
+  // "My account" opens /account; with the paired backend it asserts the return to /sell.
   test('/sell: a KYC level 0 user enters the mail of a verified account on /link, confirms the merge mail in a new page and continues where the mail link says', async ({
     page,
   }) => {
@@ -1750,7 +1750,7 @@ test.describe('Sell + Swap e2e', () => {
       const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-paused');
 
       // Waits for the screen's own quote answer, then asserts its message on screen and no payment information.
-      const answer = await expectUnavailableSwapQuoteOnScreen(page, () => paymentInfos.last);
+      const answer = await expectUnavailableQuoteOnScreen(page, () => paymentInfos.last);
       expect(answer, `PUT sell/paymentInfos answer of the screen: ${paymentInfos.last?.body}`).toEqual({
         kind: 'paused',
         status: 503,

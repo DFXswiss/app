@@ -435,6 +435,8 @@ describe('AppHandlingContextProvider', () => {
 
       expect(ctx.params.wallet).toBe('Partner');
       expect(ctx.params.redirectUri).toBeUndefined();
+      expect(ctx.redirectUri).toBeUndefined();
+      expect(ctx.canClose).toBe(false);
     });
 
     it('keeps the widget attributes without the credentials after a forced logout', async () => {

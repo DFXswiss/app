@@ -151,8 +151,8 @@ Swap stays off whatever `env/api.env` says: the API's `loc` environment sets the
 request answers HTTP 404 (`Cannot PUT /v1/swap/paymentInfos`). `fixtures/paused.ts` holds the swap
 helpers: `createSwap` throws `SwapUnavailableError` on that answer or on a paused one,
 `orSwapUnavailable` turns it into a value a test can branch on, and
-`expectUnavailableSwapQuoteOnScreen` checks that the swap screen shows the API's message and no
-payment information. A swap case asserts the answer it got and ends there; its other assertions run
+`expectUnavailableQuoteOnScreen` checks that the swap screen shows the API's message and no
+payment information (it also serves the sell case that pauses sell at runtime). A swap case asserts the answer it got and ends there; its other assertions run
 only once the API serves swaps.
 
 ## Relation to the existing suite under `e2e/`

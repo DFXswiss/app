@@ -276,10 +276,11 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
     }
   }, isLoggedIn);
 
-  // runs once on mount, when redirectUri is still unset, and before init reads the stored parameters
+  // runs once on mount, when redirectUri is still unset, and before init reads the stored parameters; a widget
+  // does not take the redirect URI an earlier widget left in the host page's session store (see loadQueryParams)
   useEffect(() => {
     removeLegacyRedirectUri();
-    setRedirectUri(storeRedirectUri.get());
+    if (!props.params) setRedirectUri(storeRedirectUri.get());
   }, []);
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 /**
- * Sell is on in the harness (`!Sell` in `env/api.env`), so a sell case treats any refusal as a failure.
+ * Sell is on in the harness (`!Sell` in `env/api.env`). `expectUnavailableQuoteOnScreen` serves the swap screen and
+ * the sell case that pauses sell at runtime; a sell case otherwise treats any refusal as a failure.
  *
  * Swap is off: the API runs with `ENVIRONMENT=loc`, whose feature flag `swap: false` forces the swap process off
  * and leaves the swap routes unmounted, so every swap request answers HTTP 404 with the framework's
@@ -72,12 +73,13 @@ export interface CapturedResponse {
 }
 
 /**
- * For the swap screen: waits for the first answer `latest` returns to `PUT /v1/swap/paymentInfos`. When that answer
- * is the unmounted-route or the paused one, asserts that the screen shows the API's message and no payment
- * information, and returns the answer. Otherwise returns undefined, and the caller's usual assertions decide —
- * including when no answer came in time.
+ * For the swap screen and the sell case that pauses sell at runtime: waits for the first answer `latest` returns to
+ * the screen's `PUT /v1/swap/paymentInfos` or `PUT /v1/sell/paymentInfos`. When that answer is the unmounted-route
+ * or the paused one, asserts that the screen shows the API's message and no payment information, and returns the
+ * answer. Otherwise returns undefined, and the caller's usual assertions decide — including when no answer came in
+ * time. Any other sell case treats a refusal as a failure and does not use this helper.
  */
-export async function expectUnavailableSwapQuoteOnScreen(
+export async function expectUnavailableQuoteOnScreen(
   page: Page,
   latest: () => CapturedResponse | null,
   timeoutMs = 25000,
