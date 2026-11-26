@@ -28,10 +28,26 @@ import {
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { ErrorHint } from '../components/error-hint';
+import { AppParams, useAppHandlingContext } from '../contexts/app-handling.context';
 import { useSettingsContext } from '../contexts/settings.context';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useMergedAccount } from 'src/hooks/merged-account.hook';
 import { useNavigation } from '../hooks/navigation.hook';
+import { appOrigin } from '../util/app-origin';
+import { loginRedirectParams } from '../util/login-redirect';
+import { relativeUrl } from '../util/utils';
+
+type ContactDataWithReturn = KycContactData & { redirectUri?: string };
+
+const RETURN_PARAMS: [keyof AppParams, string][] = [
+  ['amountIn', 'amount-in'],
+  ['amountOut', 'amount-out'],
+  ['assetIn', 'asset-in'],
+  ['assetOut', 'asset-out'],
+  ['blockchain', 'blockchain'],
+];
+
+const LOGIN_PARAMS = ['session', 'address', 'signature', 'pubkey', 'code', 'otp', 'user', 'mail'];
 
 export default function LinkScreen(): JSX.Element {
   const { translate, translateError } = useSettingsContext();
@@ -39,6 +55,7 @@ export default function LinkScreen(): JSX.Element {
   const { user, reloadUser } = useUserContext();
   const { navigate, goBack: navigateBack } = useNavigation();
   const { handleMergedError } = useMergedAccount();
+  const { redirectPath, params, isWidget, widgetPersonalIban } = useAppHandlingContext();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -122,12 +139,29 @@ export default function LinkScreen(): JSX.Element {
     formState: { isValid, errors },
   } = useForm<KycContactData>({ mode: 'onTouched' });
 
+  function returnUri(): string | undefined {
+    if (!redirectPath) return undefined;
+
+    const query = loginRedirectParams({ isWidget, widgetPersonalIban }, (window as Window).location.search);
+    RETURN_PARAMS.forEach(([key, name]) => {
+      const value = params[key];
+      if (value) query.set(name, value);
+    });
+
+    const target = new URL(relativeUrl({ path: redirectPath, params: query }), appOrigin());
+    LOGIN_PARAMS.forEach((name) => target.searchParams.delete(name));
+    return target.href;
+  }
+
   function onSubmit(data: KycContactData) {
     if (!contactStep?.session || !kycCode) return;
 
+    const redirectUri = returnUri();
+    const contactData: ContactDataWithReturn = redirectUri ? { ...data, redirectUri } : data;
+
     setIsUpdating(true);
     setError(undefined);
-    setContactData(kycCode, contactStep.session.url, data)
+    setContactData(kycCode, contactStep.session.url, contactData)
       .then((r) => (isStepDone(r) ? linkFailed() : setShowLinkHint(true)))
       .catch((error: ApiError) => {
         if (handleMergedError(error)) return;

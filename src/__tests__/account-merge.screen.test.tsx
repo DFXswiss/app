@@ -300,3 +300,79 @@ describe('AccountMerge', () => {
     expect(await screen.findByText('Wallet address added')).toBeInTheDocument();
   });
 });
+
+describe('AccountMerge return-url', () => {
+  const SELL_QUERY = 'amount-in=0.2&asset-in=ETH&redirect-uri=https%3A%2F%2Fpartner.example%2Freturn';
+  const originalLocation = window.location;
+  const mockAssign = jest.fn();
+
+  beforeEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'http://localhost', assign: mockAssign },
+    });
+  });
+
+  afterAll(() => {
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: originalLocation });
+  });
+
+  function withReturnUrl(value: string) {
+    mockUrlParams = new URLSearchParams({ otp: 'the-otp', 'return-url': value });
+  }
+
+  async function confirmMerge(result: object = { kycHash: 'hash', accessToken: 'token' }) {
+    respondWith({ merge: [result] });
+    render(<AccountMerge />);
+    fireEvent.click(await screen.findByRole('button', { name: 'My account' }));
+  }
+
+  it('continues to a same-origin return-url with the page parameters and the session', async () => {
+    withReturnUrl(`http://localhost/sell?${SELL_QUERY}`);
+
+    await confirmMerge();
+
+    expect(mockSetAuthToken).toHaveBeenCalledWith('token');
+    expect(mockAssign).toHaveBeenCalledWith(`http://localhost/sell?${SELL_QUERY}&session=token`);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('continues to a return-url given as a path on the current origin', async () => {
+    withReturnUrl('/sell?amount-in=0.2');
+
+    await confirmMerge();
+
+    expect(mockAssign).toHaveBeenCalledWith('http://localhost/sell?amount-in=0.2&session=token');
+  });
+
+  it('continues without a session parameter when the merge returns no access token', async () => {
+    withReturnUrl('http://localhost/sell');
+
+    await confirmMerge({ kycHash: 'hash' });
+
+    expect(mockAssign).toHaveBeenCalledWith('http://localhost/sell');
+  });
+
+  it.each([
+    ['a foreign origin', 'https://evil.example/sell'],
+    ['a javascript: URL', 'javascript:alert(1)'],
+    ['a protocol-relative URL', '//evil.example/sell'],
+    ['an unparsable URL', 'http://'],
+    ['an empty value', ''],
+  ])('ignores %s and opens the account', async (_name, value) => {
+    withReturnUrl(value);
+
+    await confirmMerge();
+
+    expect(mockNavigate).toHaveBeenCalledWith('/account?code=hash');
+    expect(mockAssign).not.toHaveBeenCalled();
+  });
+
+  it('opens the account when there is no return-url', async () => {
+    await confirmMerge();
+
+    expect(mockNavigate).toHaveBeenCalledWith('/account?code=hash');
+    expect(mockAssign).not.toHaveBeenCalled();
+  });
+});

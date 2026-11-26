@@ -894,9 +894,21 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   `e2e-stack/specs/sell-swap.spec.ts` that follows "I am already verified with DFX" from `/sell` sets the KYC level
   to 0 by SQL through `createUser`, which also sets a mail, so ContactData is already complete and `/link` shows "No matching account was found." instead of the mail form (the same finding as
   the `/link` cases in `e2e-stack/specs/kyc.spec.ts`). Its Back runs the same return to `/sell` as the OK after the
-  merge mail was sent. A green run does not prove the mail form on `/link`, the merge mail, its confirmation on
-  `/account-merge` in a new tab, or a return to `/sell` after a completed merge; that confirmation ends on
-  `/account-merge` with "My account" and does not return to `/sell` at all.
+  merge mail was sent. A green run of that case does not prove the mail form on `/link`, the merge mail or its
+  confirmation; the merge case below covers those.
+- **The full-stack `/sell` merge case asserts the return to `/sell` only when the merge mail carries `return-url`.**
+  The case in `e2e-stack/specs/sell-swap.spec.ts` that enters the mail of a verified account on `/link` signs up a
+  fresh wallet without a mail as the KYC level 0 account and takes the verified account from `createUser`, which sets
+  its KYC level to 50 and its personal data by SQL. It reads the merge mail from the `notification` table and opens
+  its link in a new page of the same browser context. The app always sends `redirectUri` with the contact data, and
+  the case checks that body. The API image is built from backend `develop`, which does not yet accept `redirectUri`,
+  so the mail link carries no `return-url` and the case then asserts the confirmation and that "My account" opens
+  `/account`. The strict path (land on `/sell` with the amount, the partner redirect URI in `sessionStorage`, no
+  `session` left in the address bar and a session for the merged account) runs once the backend change is merged.
+  The backend only accepts https redirect URIs on the DFX frontend origins, and the harness frontend is served over
+  http, so whether the strict path then runs in the harness depends on that backend's `loc` allow-list. A green run
+  does not prove that a mail reaches a mailbox, that a verified account reaches level 50 through the product path,
+  or, while the mail link has no `return-url`, the return to `/sell`.
 - **The sell-info visuals answer the API themselves.** `e2e/sell-info.spec.ts` passes a synthetic unsigned JWT
   (`alg: none`, role User, Ethereum wallet address, expiry one hour ahead) as `session`, so it needs no live login,
   and fulfils the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
