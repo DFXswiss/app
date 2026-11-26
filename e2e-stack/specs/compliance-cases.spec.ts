@@ -715,8 +715,10 @@ test.describe('Compliance area (cases)', () => {
     expect(offered).not.toContain('14000');
 
     // The amount is typed like the clerk does. 14000 is not one of the suggested amounts, so the
-    // case proves that the Admin route accepts and stores an agreed free amount.
-    await page.locator('#onboarding-fee-amount').fill('14000');
+    // case proves that the Admin route accepts and stores an agreed free amount. It is typed with the
+    // Swiss grouping the editor shows, using the ASCII apostrophe a keyboard produces (the Partner case
+    // covers the typographic one), and the PUT below proves it is sent as a plain number.
+    await page.locator('#onboarding-fee-amount').fill("14'000");
     await page.locator('#onboarding-fee-address').selectOption(customer.address);
     const save = page.getByRole('button', { name: 'Save', exact: true });
     await expect(save).toBeEnabled({ timeout: 15000 });
@@ -863,8 +865,9 @@ test.describe('Compliance area (cases)', () => {
     expect((userData?.individualFees ?? '').split(';').filter(Boolean)).toEqual([]);
 
     // Positive control: with the same address and clerk a valid amount enables Save, so the disabled
-    // button above was caused by the amount alone. Save is not clicked.
-    await amountInput.fill('1000000');
+    // button above was caused by the amount alone. The amount is typed with the Swiss grouping and the
+    // ASCII apostrophe a keyboard produces, which the editor accepts as well. Save is not clicked.
+    await amountInput.fill("1'000'000");
     await expect(page.getByText(rangeHint)).toHaveCount(0);
     await expect(save).toBeEnabled({ timeout: 15000 });
   });
