@@ -79,8 +79,10 @@ function nextWalletIndex(): number {
   return 8000000 + __sellSwap_WALLET_SEQ;
 }
 
-// Keep this in sync with the dedicated sanction-list address in e2e-stack/env/api.env.
+// Keep these in sync with the dedicated addresses in SCORECHAIN_LOC_MOCK in e2e-stack/env/api.env.
 const SANCTION_LIST_WALLET_INDEX = 7700001;
+const NO_COVERAGE_WALLET_INDEX = 7700002;
+const NO_COVERAGE_WALLET_ADDRESS = '0x81a2e624a3dc4139c0e21e4479389826acf43005';
 
 /**
  * The API serialises every precheck behind one non-waiting Postgres advisory lock and answers
@@ -1015,17 +1017,27 @@ test.describe('Sell + Swap e2e', () => {
   });
 
   test(
-    '/sell shows no banner when the address check runs into nothing (Unknown on a chain Scorechain does not cover)',
+    '/sell shows no banner when the address check runs into nothing (Unknown for an address Scorechain does not cover)',
     async ({ page }) => {
       test.setTimeout(120000);
 
       const user = await createUser({
-        walletIndex: nextWalletIndex(),
+        walletIndex: NO_COVERAGE_WALLET_INDEX,
         tag: 'sell-address-check-unknown',
         kycLevel: 30,
         completePersonalData: true,
         language: 'EN',
       });
+      expect(user.wallet.address.toLowerCase()).toBe(NO_COVERAGE_WALLET_ADDRESS);
+
+      // The API answers `Unknown` at once while another precheck holds the lock. Start only when the lock is free,
+      // so the `Unknown` below comes from the mocked NoCoverage answer and not from that busy fallback.
+      await expect
+        .poll(precheckLockIsFree, {
+          timeout: 30000,
+          message: 'another precheck must finish before this address check starts',
+        })
+        .toBe(true);
 
       const checkResponse = page.waitForResponse(
         (response) =>
@@ -1037,7 +1049,7 @@ test.describe('Sell + Swap e2e', () => {
         { timeout: 30000 },
       );
 
-      await page.goto('/sell?blockchain=Gnosis');
+      await page.goto('/sell?blockchain=Ethereum');
       await page.waitForLoadState('networkidle');
 
       await expect(page.locator('img[src*="cryptowallet"]')).toBeVisible({ timeout: 15000 });
@@ -1077,7 +1089,7 @@ test.describe('Sell + Swap e2e', () => {
 
       const response = await checkResponse;
       const requestUrl = new URL(response.url());
-      expect(requestUrl.searchParams.get('blockchain')).toBe('Gnosis');
+      expect(requestUrl.searchParams.get('blockchain')).toBe('Ethereum');
       expect(response.status()).toBe(200);
       expect(await response.json()).toEqual({ result: 'Unknown' });
 
@@ -1088,8 +1100,10 @@ test.describe('Sell + Swap e2e', () => {
       ).toHaveCount(0);
       await expect(page.getByTestId('sell-address-check-banner')).toHaveCount(0);
 
-      const rows = await queryRows(`SELECT id FROM scorechain_screening WHERE "objectId" = $1`, [user.address]);
-      expect(rows).toEqual([]);
+      const rows = await queryRows(`SELECT context, severity FROM scorechain_screening WHERE "objectId" = $1`, [
+        user.address,
+      ]);
+      expect(rows).toEqual([{ context: 'Precheck', severity: 'NoCoverage' }]);
     },
   );
 

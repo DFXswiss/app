@@ -942,8 +942,9 @@ test.describe('Auth area e2e', () => {
 
     await expect.poll(() => visited.includes('/buy'), { timeout: 30000 }).toBe(true);
     await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 30000 }).toBe('/connect');
+    // The mail-login page may still be navigating; a destroyed context counts as "not yet" and the poll retries.
     await expect
-      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')).catch(() => null), {
         timeout: 20000,
       })
       .toBeTruthy();
@@ -1000,9 +1001,10 @@ test.describe('Auth area e2e', () => {
     await page.goto(loginUrlFromNotification(decryptPii(row.data)));
 
     // The return is a new launch with a session: the boot clear ran, and the callback's redirect-uri
-    // stored the partner target again.
+    // stored the partner target again. The mail-login page may still be navigating; a destroyed context
+    // counts as "not yet" and the poll retries.
     await expect
-      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')).catch(() => null), {
         timeout: 30000,
       })
       .toBeTruthy();
@@ -1069,9 +1071,10 @@ test.describe('Auth area e2e', () => {
     await page.goto(loginUrlFromNotification(decryptPii(row.data)));
 
     // The return is a new launch with a session: the boot clear ran, and the callback's redirect-uri
-    // stored the partner target again.
+    // stored the partner target again. The mail-login page may still be navigating; a destroyed context
+    // counts as "not yet" and the poll retries.
     await expect
-      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')).catch(() => null), {
         timeout: 30000,
       })
       .toBeTruthy();
@@ -1128,11 +1131,10 @@ test.describe('Auth area e2e', () => {
     try {
       await isolateFromExternalHosts(next);
       await next.goto(loginUrlFromNotification(decryptPii(row.data)));
-      await expect
-        .poll(async () => next.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
-          timeout: 30000,
-        })
-        .toBeTruthy();
+      // The mail-login page may still be navigating; a destroyed context counts as "not yet" and the poll retries.
+      const nextToken = () =>
+        next.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')).catch(() => null);
+      await expect.poll(nextToken, { timeout: 30000 }).toBeTruthy();
       await next.waitForFunction(
         (expected) => window.sessionStorage.getItem('dfx.srv.redirectUri') === expected,
         PARTNER_RETURN_URI,
@@ -1207,9 +1209,10 @@ test.describe('Auth area e2e', () => {
     });
     await page.waitForLoadState('networkidle');
 
-    // Session must be established (either via redirect query handling or already applied).
+    // Session must be established (either via redirect query handling or already applied). The page may
+    // still be navigating; a destroyed context counts as "not yet" and the poll retries.
     await expect
-      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')).catch(() => null), {
         timeout: 20000,
       })
       .toBeTruthy();

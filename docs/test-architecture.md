@@ -860,13 +860,15 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
 - **The full-stack harness answers Scorechain through the API's loc mock.** `e2e-stack/env/api.env`
   enables the Scorechain, risk-status, buy-gate and sell-gate processes
   (`DISABLED_PROCESSES=*,!Scorechain,!UserDataRiskStatus,!Buy,!Sell`) and maps the address of
-  `testWallet(7700001)` to the mock form `SanctionList` in `SCORECHAIN_LOC_MOCK`; every other address
-  gets `NoRisk`. `Buy` and `Sell` are the request gates the API checks on the buy and sell routes, not
+  `testWallet(7700001)` to the mock form `SanctionList` and the address of `testWallet(7700002)` to the
+  mock form `NoCoverage` in `SCORECHAIN_LOC_MOCK`; every other address gets `NoRisk`. `Buy` and `Sell` are the request gates the API checks on the buy and sell routes, not
   jobs, so the processing chain still never executes. The mock answers after `SCORECHAIN_LOC_MOCK_DELAY_MS` (5 s),
   and the tests prove the form is usable before that answer arrives.
   `e2e-stack/specs/sell-swap.spec.ts` proves that the sell page shows no banner for `Ok` and the
   banner for `LikelyReturn`, through the real API and database. A third test opens the sell page on
-  Gnosis, which Scorechain does not cover, and proves the `Unknown` answer shows no banner.
+  Ethereum with the `NoCoverage` address, so the check runs into nothing, and proves the `Unknown`
+  answer shows no banner. It does not use a chain Scorechain does not cover: the `loc` sell chains are
+  all covered except Monero, which the EVM command-line login cannot use.
   A green run does not prove what the real Scorechain returns for an address, or that the API stays
   within its 15-second bound against the real provider.
 - **The full-stack harness stores support and KYC blobs in memory, not in object storage.** With `ENVIRONMENT=loc`, the API's
