@@ -7,11 +7,14 @@
  *   /compliance/kyc-files, /compliance/kyc-files/details, /compliance/kyc-stats,
  *   /compliance/transactions, /compliance/custody-orders,
  *   /compliance/mros, /compliance/mros/:id, /compliance/recalls,
- *   /compliance/pending-chargebacks, /compliance/call-queues, /compliance/*, /sitemap
+ *   /compliance/pending-chargebacks, /compliance/pending-merges, /compliance/call-queues,
+ *   /compliance/*, /sitemap
  *
  * Write/decision routes live in compliance-cases.spec.ts.
  */
 
+import { randomUUID } from 'node:crypto';
+import { ethers } from 'ethers';
 import {
   apiGet,
   decryptPii,
@@ -24,7 +27,9 @@ import {
   queryOne,
   queryRows,
   resolveAppSourcePath,
+  ROLE_WALLET_INDEX,
   test,
+  testWallet,
   waitForMatchingRow,
   waitForRow,
   withDb,
@@ -58,7 +63,7 @@ async function ensureStaffKycComplete(userId: number): Promise<void> {
 }
 
 /**
- * All 25 compliance routes with concrete placeholders for param segments.
+ * All 26 compliance routes with concrete placeholders for param segments.
  * `:queue` uses a non-enum placeholder — the guard runs before queue validation, so denial
  * still redirects away from the path regardless of whether the queue name is valid.
  */
@@ -82,6 +87,7 @@ const ALL_COMPLIANCE_PATHS = [
   '/compliance/mros/1',
   '/compliance/recalls',
   '/compliance/pending-chargebacks',
+  '/compliance/pending-merges',
   '/compliance/does-not-exist',
   '/compliance/user/1/kyc',
   '/compliance/call-queues',
@@ -100,10 +106,10 @@ test.describe('Compliance area (overview)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Access control — plain User must not see any of the 25 screens
+  // Access control — plain User must not see any of the 26 screens
   // -------------------------------------------------------------------------
 
-  test('plain User role is denied all 25 compliance routes', async ({ page }) => {
+  test('plain User role is denied all 26 compliance routes', async ({ page }) => {
     const { jwt } = await loginAs('User');
 
     for (const target of ALL_COMPLIANCE_PATHS) {
@@ -1011,6 +1017,97 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText('Block reasons', { exact: true })).toBeVisible({ timeout: 15000 });
 
     expect(pageErrors, `uncaught pageerror on pending-chargebacks quick link: ${pageErrors.join('; ')}`).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // /compliance/pending-merges
+  // -------------------------------------------------------------------------
+
+  test('/compliance/pending-merges lists an open merge request after a real login and opens the master account', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+
+    // Provision the compliance wallet's role and staff KYC clearance. The browser logs in itself
+    // below with the same wallet; the JWT returned here is deliberately not handed to the page.
+    const { userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const master = await createUser({ tag: 'cmp-pending-merge-master', kycLevel: 30, completePersonalData: true });
+    const slave = await createUser({ tag: 'cmp-pending-merge-slave', kycLevel: 30, completePersonalData: true });
+
+    const mergeId = await withDb(async (client) => {
+      const res = await client.query<{ id: number }>(
+        `INSERT INTO account_merge ("masterId", "slaveId", code, "isCompleted", expiration, reason)
+           VALUES ($1, $2, $3, false, now() + interval '30 days', 'Iban') RETURNING id`,
+        [master.userDataId, slave.userDataId, randomUUID()],
+      );
+      return res.rows[0].id;
+    });
+    trackRow('account_merge', mergeId);
+
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+
+    // Real command-line wallet login, exactly as auth.spec.ts — no injected session.
+    const wallet = testWallet(ROLE_WALLET_INDEX.Compliance);
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).not.toBe('/login');
+    await page.waitForTimeout(3000);
+
+    // Visitor path: compliance dashboard → quick link → pending merges.
+    await page.goto('/compliance');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Quick links', { exact: true })).toBeVisible({ timeout: 20000 });
+    await page.getByText('Pending Merges', { exact: true }).click();
+
+    await expect(page).toHaveURL(/\/compliance\/pending-merges(\?|$)/);
+    const masterCell = page.getByRole('button', { name: `#${master.userDataId}`, exact: true });
+    await expect(masterCell).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: `#${slave.userDataId}`, exact: true })).toBeVisible();
+
+    const mergeRow = page.getByRole('row').filter({ has: masterCell });
+    await expect(mergeRow.getByText('Iban', { exact: true })).toBeVisible();
+    await expect(mergeRow.getByText('Waiting for confirmation', { exact: true })).toBeVisible();
+
+    await masterCell.click();
+
+    await expect(page).toHaveURL(new RegExp(`/compliance/user/${master.userDataId}(\\?|$)`));
+
+    expect(pageErrors, `uncaught pageerror on pending-merges: ${pageErrors.join('; ')}`).toEqual([]);
+  });
+
+  // Server-layer denial, like the other guarded compliance endpoints above: the redirect test only
+  // proves the frontend guard, so call the endpoint directly with a plain User role.
+  test('plain User role is denied GET support/pending-merges', async () => {
+    const { jwt } = await loginAs('User');
+    let status: number | undefined;
+    await apiGet('support/pending-merges', { jwt, expectOk: false, onStatus: (s) => (status = s) });
+    expect(status, 'GET /v1/support/pending-merges must reject a plain User role').toBe(403);
   });
 
   // -------------------------------------------------------------------------

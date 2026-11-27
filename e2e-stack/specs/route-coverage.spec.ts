@@ -8,7 +8,7 @@
  *   docker compose -p dfx-e2e-stack -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml \
  *     run --rm tests --grep @coverage-gate
  *
- * Current state: GREEN — all 115 routes in App.tsx are claimed by exactly one suite's registry
+ * Current state: GREEN — all 116 routes in App.tsx are claimed by exactly one suite's registry
  * entry. Do not weaken or remove a claim just to keep this green; add real coverage instead.
  */
 import * as fs from 'fs';

@@ -466,6 +466,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   a past deadline in red. It does not prove that the API returns those rows,
   that the mark date is the account's phone-call date, or that login and
   token verification succeed.
+- **The pending-merges handbook spec answers the merge list itself.**
+  `e2e/compliance-pending-merges.spec.ts` fulfils `GET /v1/support/pending-merges`
+  with synthetic fixtures: one row for each of IdentDocument, Mail, Iban and Staff,
+  a processing Iban row, and an empty list. Auth is the real admin-token flow against
+  `/v1/auth` with credentials derived from `ADMIN_SEED`, and every other request,
+  including the frontend's own user and role fetch, passes through with
+  `route.continue()`. A green run proves the table shows every reason, the Processing
+  status, both account IDs of every row, and the "No pending merges found" empty
+  state, and that the `pending-merges-01-loaded.png` and
+  `pending-merges-02-empty.png` baselines match. It does not prove that the API
+  returns those rows, filters out completed and expired requests, includes every
+  reason, or maps the account IDs.
 - **The compliance tag-list spec answers the tag list itself.**
   `e2e/compliance-tag-list.spec.ts` fulfils `GET /v1/support/tag/example` with
   synthetic fixtures: four customer rows, an empty `userDatas`, and a 404 with
@@ -553,6 +565,11 @@ screen shows the paused message and no payment information`) adds `Sell` to the 
   `ManualReview` on a synthetic account at KYC level 0 whose `accountType` stays null. A green run
   does **not** prove how such a step reaches review; the customer KYC flow only offers `Statutes` to
   association accounts.
+- **Full-stack compliance specs SQL-insert an open account merge request.**
+  `e2e-stack/specs/compliance.spec.ts` (`/compliance/pending-merges lists an open merge request …`)
+  inserts an `account_merge` row between two synthetic accounts with reason `Iban` and a 30-day
+  expiry. A green run does **not** prove that the backend creates such a request from a real
+  trigger.
 - **The onboarding-fee full-stack cases write the ref, the fee setting and the starting status
   themselves.** `e2e-stack/specs/compliance-cases.spec.ts` (`/compliance/user/:id sets and removes an
 onboarding fee …`, `… refuses an onboarding fee outside the allowed range …` and `… shows the
