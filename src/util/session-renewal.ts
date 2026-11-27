@@ -112,8 +112,10 @@ export function installSessionRenewal(renew: Renew, currentSession: CurrentSessi
     const rejected = authorization?.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : undefined;
     const renewal = rejected && renewalFor(rejected);
     const token = renewal && (await renewal);
+    if (!token) return response;
     // The re-login itself makes the renewed session the current one; any other session comes from another login.
-    if (!token || ![rejected, token].includes(currentSession())) return response;
+    const session = currentSession();
+    if (session !== rejected && session !== token) return response;
 
     const otherHeaders = headers.filter((header) => !isAuthorization(header));
     return originalFetch(input, { ...init, headers: [...otherHeaders, ['Authorization', `Bearer ${token}`]] });
