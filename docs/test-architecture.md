@@ -572,7 +572,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   that the custody sign-up call reaches the real API, or the reporter's 60 s deduplication of identical
   reports, since the reporter is replaced.
 - **Passkey wallet balance, asset and history props are not backed by a data source here.**
-  The balance, asset rows, empty, populated, failed and loading history screenshots, and the expanded wallet whose Spark row cannot be derived, pass fixtures through non-production window hooks (`__dfxHandbookPasskeyBalance`, `__dfxHandbookPasskeyAssets`, `__dfxHandbookPasskeyHistory`, `__dfxHandbookPasskeyReceiveError`) to the desk props; the failed page rejects `loadMore` and the loading page never settles it. The receive-error shot sets that hook to `spark`.
+  The balance, asset rows, empty, populated, failed and loading history screenshots, and the expanded wallet whose Bitcoin row cannot be derived, pass fixtures through non-production window hooks (`__dfxHandbookPasskeyBalance`, `__dfxHandbookPasskeyAssets`, `__dfxHandbookPasskeyHistory`, `__dfxHandbookPasskeyReceiveError`) to the desk props; the failed page rejects `loadMore` and the loading page never settles it. The receive-error shot sets that hook to `true`, which makes the desk treat the Bitcoin receive derivation as failed; a green run does not prove that a real key ring can fail that derivation.
   A green visual run does not prove a production balance, asset value, rate or transaction-history integration, nor how a real source fails or how long it takes.
 - **The layout configuration hook unit test replaces its context setter.**
   `src/__tests__/layout-config-hook.test.tsx` uses `mockSetConfig`; a green run does not prove that the real provider updates its context.
@@ -584,8 +584,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/passkey-wallet-card.test.tsx` stubs `useSettingsContext` so `translate` returns the key and `locale` is fixed to `en-US`. A green run does not prove a real translation, the real context wiring, or the number format of another locale.
 - **The passkey wallet dialog unit test replaces scrolling.**
   `src/__tests__/passkey-wallet-dialogs.test.tsx` stubs `scrollIntoView`; a green run does not prove that a real browser scrolls the note clear of the sticky title.
-- **The passkey wallet dialog unit test prefixes three address families.**
-  In `src/__tests__/passkey-wallet-dialogs.test.tsx`, `translate` returns the key, except `Bitcoin`, `Lightning (Spark)` and `Ethereum & EVM`, which it prefixes with `translated ` while one assertion is running. A green run does not prove a real translation of those three names or of any other sentence.
+- **The passkey wallet dialog unit test prefixes the Bitcoin label.**
+  In `src/__tests__/passkey-wallet-dialogs.test.tsx`, `translate` returns the key, except `Bitcoin`, which it prefixes with `translated ` while one assertion is running. A green run does not prove a real translation of that name or of any other sentence.
+- **The passkey desk unit tests use key rings whose EVM and Spark derivations throw.**
+  In `src/__tests__/connect-passkey.test.tsx`, the `ring` helper and the login-flow key rings replace `evm` and `sparkIdentity` with functions that throw, and several cases assert that they were never called. A green run proves that the desk, Receive and the address list do not call them. It does not prove that the wallet package derives no EVM or Spark key: `@dfx.swiss/wallet` itself still derives EVM index 0 for its seed check on register, login and recovery-phrase export, and the Spark identity for the registration proof.
+- **The wallet client unit test checks Bitcoin rows against a fixed login address.**
+  In `src/__tests__/wallet-client.test.ts`, `verifyBitcoinAddresses` receives a key ring object whose `bitcoinAddress(0, 0)` returns a fixed address and path, and server rows written by the test. A green run proves the comparison and that only `Bitcoin` rows are returned; it does not prove that the real key ring derives that login address or that the API stores rows in that shape.
 - **The history unit test replaces the settings context.**
   `src/__tests__/passkey-wallet-history.test.tsx` stubs `useSettingsContext` so `translate` returns the key. A green run does not prove a real translation.
 - **`src/__tests__/connect-passkey.test.tsx` spies on React state.**
@@ -613,7 +617,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **`e2e/passkey-login.spec.ts`: fixed authenticator and wallet routes.**
   The desk and ceremony shots use a fixed in-page authenticator and one wallet fixture; recovery words and receive addresses derive from the fixed PRF bytes in `e2e/passkey-desk-authenticator.ts`. That authenticator's `credentials.get` ignores `allowCredentials`. A green run does not prove a real WebAuthn signature, authenticator PRF output or wallet address, and it does not prove that the browser offers only the stored credential when locking. `src/__tests__/wallet-client.test.ts` proves only that the wallet client passes the stored credential id to the ceremony; no test proves that the real ceremony sets `allowCredentials` or what a real browser offers.
 - **`e2e/passkey-login.spec.ts`: address fixtures.**
-  Register omits Bitcoin, the auto-link adds the derived login address, and Check addresses compares those server rows. The expanded list shows the session receive addresses (EVM index 0, Bitcoin receive index 1, Spark identity), not the server rows. The stored server rows are only placeholders, and a green run does not prove that the server stores them that way.
+  Register returns placeholder EVM and Spark server rows and no Bitcoin row, the auto-link adds the derived login address, and Check addresses compares only the server's Bitcoin rows (the linked login address and one that differs), so it reports `1 / 2`. The expanded list shows only the session's Bitcoin receive address (receive index 1), not the server rows, and no screen shows the EVM or Spark rows. The stored server rows are only placeholders, and a green run does not prove that the server stores them that way.
 - **`e2e/passkey-login.spec.ts`: successful revocation fixture.**
   The successful-revocation scenes answer `revoke/finish` with the wallet fixture and status `Lost`; a green run does not prove the API returns that status after a successful revocation.
 - **`e2e/passkey-login.spec.ts`: unsuccessful revocation fixture.**
@@ -660,9 +664,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   Bitcoin row is still that receive address. A green run does not prove that visible page text
   omits the stored login address or that the stored `bc1q` address equals an independently
   derived login address; the test only reads that address from the database and checks title
-  attributes. It also proves that the EVM address in the Receive dialog
-  matches the derived list row. It does not prove that the list row is the server login
-  address, or that a hardware authenticator derived the receive address.
+  attributes. It also proves that the expanded list has exactly one titled row, that no
+  visible text names Spark, EVM or Ethereum, that Receive offers no chain picker, and that
+  after the second login Receive shows the same Bitcoin receive address. It does not prove that
+  the list row is the server login address, that the API stored no EVM or Spark row for the
+  wallet, or that a hardware authenticator derived the receive address.
   It does not prove a production sign-in, a real hardware-authenticator PRF, or a transaction
   or purchase.
   It does not prove the ceremony

@@ -125,10 +125,10 @@ jest.mock('../components/home/wallet/wallet-client', () => ({
   createWalletClient: () => ({
     login: (...args: unknown[]) => mockLogin(...args),
     register: (...args: unknown[]) => mockRegister(...args),
-    link: (...args: unknown[]) => mockLink(...args),
+    linkBitcoin: (...args: unknown[]) => mockLink(...args),
     revoke: (...args: unknown[]) => mockRevoke(...args),
     exportMnemonic: (...args: unknown[]) => mockExport(...args),
-    verifyServerAddresses: (...args: unknown[]) => mockVerify(...args),
+    verifyBitcoinAddresses: (...args: unknown[]) => mockVerify(...args),
     wallets: (...args: unknown[]) => mockWallets(...args),
     credentialStatus: (...args: unknown[]) => mockCredentialStatus(...args),
     diagnostics: (...args: unknown[]) => mockDiagnostics(...args),
@@ -193,7 +193,13 @@ async function expectFailedLogin(keys?: { wipe: jest.Mock }): Promise<void> {
 const IOS_HINT = "On iPhone, you'll find the compass or Safari icon at the top right.";
 
 const BITCOIN_RECEIVE = 'tb1qunitreceive0000000000000000000000001';
-const SPARK_RECEIVE = 'spark1unitreceive';
+
+// The passkey wallet starts with Bitcoin on-chain only, so the desk must never derive an EVM or Spark key.
+function notDerived(family: string): () => never {
+  return () => {
+    throw new Error(`${family} must not be derived`);
+  };
+}
 
 function addressRows(): HTMLElement[] {
   const list = screen.getByRole('heading', { name: 'Addresses' }).nextElementSibling;
@@ -207,11 +213,11 @@ function bitcoinAddressRow(): HTMLElement {
   return rows[0];
 }
 
-function ring(address: string) {
+function ring(_seedCheck: string) {
   return {
-    evm: () => ({ address }),
+    evm: jest.fn(notDerived('EVM')),
     bitcoinAddress: () => ({ address: BITCOIN_RECEIVE }),
-    sparkIdentity: () => ({ address: SPARK_RECEIVE }),
+    sparkIdentity: jest.fn(notDerived('Spark')),
     wipe: jest.fn(),
   };
 }
@@ -365,35 +371,37 @@ describe('ConnectPasskey', () => {
   });
 
   it('uses an explicitly supplied handbook receive error', async () => {
-    window.__dfxHandbookPasskeyReceiveError = 'spark';
+    window.__dfxHandbookPasskeyReceiveError = true;
     try {
       mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
       mockLogin.mockResolvedValue(authResult('unlocked', ring(SEED)));
       renderPasskey();
       fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Show wallet' }));
-      expect(screen.getByTitle(SEED)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' })).toBeInTheDocument();
-      expect(screen.getByTitle(BITCOIN_RECEIVE)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Copy address Bitcoin' })).toBeInTheDocument();
-      expect(screen.getByText('Lightning (Spark)')).toBeInTheDocument();
-      expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument();
-      expect(screen.queryByTitle(SPARK_RECEIVE)).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Copy address Lightning (Spark)' })).not.toBeInTheDocument();
+      const row = bitcoinAddressRow();
+      expect(within(row).getByText('Something went wrong. Please try again.')).toBeInTheDocument();
+      expect(screen.queryByTitle(BITCOIN_RECEIVE)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Copy address Bitcoin' })).not.toBeInTheDocument();
     } finally {
       delete window.__dfxHandbookPasskeyReceiveError;
     }
   });
 
-  it('shows the spark address when no handbook receive error is set', async () => {
+  it('lists only the Bitcoin receive address when no handbook receive error is set', async () => {
+    const keys = ring(SEED);
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
-    mockLogin.mockResolvedValue(authResult('unlocked', ring(SEED)));
+    mockLogin.mockResolvedValue(authResult('unlocked', keys));
     renderPasskey();
     fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Show wallet' }));
-    expect(screen.getByTitle(SPARK_RECEIVE)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Copy address Lightning (Spark)' })).toBeInTheDocument();
+    expect(addressRows()).toHaveLength(1);
+    expect(within(bitcoinAddressRow()).getByTitle(BITCOIN_RECEIVE)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy address Bitcoin' })).toBeInTheDocument();
+    expect(screen.queryByText(/Spark|EVM|Ethereum/)).not.toBeInTheDocument();
+    expect(screen.queryByTitle(SEED)).not.toBeInTheDocument();
     expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument();
+    expect(keys.evm).not.toHaveBeenCalled();
+    expect(keys.sparkIdentity).not.toHaveBeenCalled();
   });
 
   it('does not use a handbook fixture when NODE_ENV is production', () => {
@@ -403,7 +411,7 @@ describe('ConnectPasskey', () => {
     window.__dfxHandbookPasskeyAssets = [
       { name: 'Bitcoin', amount: '0.1 BTC', chf: 6000, eur: 5800, network: 'Bitcoin' },
     ];
-    window.__dfxHandbookPasskeyReceiveError = 'spark';
+    window.__dfxHandbookPasskeyReceiveError = true;
     process.env.NODE_ENV = 'production';
     try {
       setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
@@ -412,7 +420,7 @@ describe('ConnectPasskey', () => {
       expect(screen.queryByText('No transactions yet.')).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
       expect(screen.queryByText('0.1 BTC')).not.toBeInTheDocument();
-      expect(screen.getByTitle(SPARK_RECEIVE)).toBeInTheDocument();
+      expect(screen.getByTitle(BITCOIN_RECEIVE)).toBeInTheDocument();
       expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument();
     } finally {
       process.env.NODE_ENV = previous;
@@ -568,7 +576,7 @@ describe('ConnectPasskey', () => {
     const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     try {
       fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy address Bitcoin' }));
       expect(screen.getByRole('status')).toHaveTextContent('Clipboard is not available.');
       act(() => jest.advanceTimersByTime(3999));
       expect(screen.getByRole('status')).toHaveTextContent('Clipboard is not available.');
@@ -594,10 +602,10 @@ describe('ConnectPasskey', () => {
     const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     try {
       fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy address Bitcoin' }));
       expect(screen.getByRole('status')).toHaveTextContent('Message 1');
       act(() => jest.advanceTimersByTime(3000));
-      fireEvent.click(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy address Bitcoin' }));
       expect(screen.getByRole('status')).toHaveTextContent('Message 2');
       act(() => jest.advanceTimersByTime(1000));
       expect(screen.getByRole('status')).toHaveTextContent('Message 2');
@@ -620,7 +628,7 @@ describe('ConnectPasskey', () => {
     const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     try {
       fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy address Bitcoin' }));
       fireEvent.click(screen.getByRole('status'));
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
       expect(clear).toHaveBeenCalledTimes(1);
@@ -644,7 +652,7 @@ describe('ConnectPasskey', () => {
     const view = render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     try {
       fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy address Bitcoin' }));
       expect(screen.getByRole('status')).toHaveTextContent('Clipboard is not available.');
       view.unmount();
       expect(clear).toHaveBeenCalledTimes(1);
@@ -666,13 +674,13 @@ describe('ConnectPasskey', () => {
     try {
       render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
       fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy address Bitcoin' }));
       expect(await screen.findByRole('status')).toHaveTextContent('Address copied');
-      expect(writeText).toHaveBeenCalledWith(SEED);
-      expect(screen.getByTitle(SEED)).toHaveClass("[font-feature-settings:'calt'_0]");
+      expect(writeText).toHaveBeenCalledWith(BITCOIN_RECEIVE);
+      expect(screen.getByTitle(BITCOIN_RECEIVE)).toHaveClass("[font-feature-settings:'calt'_0]");
       expect(screen.queryByTitle('bc1qlogin')).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('status'));
-      fireEvent.click(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy address Bitcoin' }));
       expect(await screen.findByRole('status')).toHaveTextContent('clipboard denied');
       expect(mockTranslate).toHaveBeenCalledWith('screens/home', 'clipboard denied');
     } finally {
@@ -694,7 +702,7 @@ describe('ConnectPasskey', () => {
     try {
       render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
       fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Copy address Ethereum & EVM' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy address Bitcoin' }));
       expect(await screen.findByRole('status')).toHaveTextContent(
         mode === 'missing' ? 'Clipboard is not available.' : 'clipboard denied',
       );
@@ -704,15 +712,15 @@ describe('ConnectPasskey', () => {
     }
   });
 
-  it('labels Spark and EVM addresses and displays supplied EUR values', () => {
+  it('labels the Bitcoin address, ignores server Spark and EVM rows and displays supplied EUR values', () => {
     mockTranslate.mockImplementation((_namespace, text) => {
-      if (text === 'Lightning (Spark)') return 'Spark translated';
-      if (text === 'Ethereum & EVM') return 'EVM translated';
+      if (text === 'Bitcoin') return 'Bitcoin translated';
       if (text === 'Copy address') return 'Copy translated';
       return text;
     });
     localStorage.setItem('dfx.wallet.currency', 'EUR');
-    const session = authResult('unlocked', ring(SEED));
+    const keys = ring(SEED);
+    const session = authResult('unlocked', keys);
     session.wallet.addresses.push({
       address: 'spark1example',
       family: 'Spark',
@@ -725,34 +733,33 @@ describe('ConnectPasskey', () => {
       <PasskeyDesk
         onCancel={mockOnCancel}
         onRevoked={mockOnSwitch}
-        assets={[{ name: 'Ether', amount: '1 ETH', chf: 100, eur: 90 }]}
+        assets={[{ name: 'Bitcoin', amount: '1 BTC', chf: 100, eur: 90 }]}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
-    expect(screen.getByText('Spark translated')).toBeInTheDocument();
-    expect(screen.getByText('EVM translated')).toBeInTheDocument();
     expect(screen.getByText('EUR 90.00')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Copy translated Spark translated' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Copy translated EVM translated' })).toBeInTheDocument();
-    expect(addressRows()).toHaveLength(3);
-    const bitcoinRow = bitcoinAddressRow();
+    expect(addressRows()).toHaveLength(1);
+    const [bitcoinRow] = addressRows();
+    expect(within(bitcoinRow).getByText('Bitcoin translated')).toBeInTheDocument();
     expect(within(bitcoinRow).getByTitle(BITCOIN_RECEIVE)).toBeInTheDocument();
-    expect(within(bitcoinRow).getByRole('button', { name: 'Copy translated Bitcoin' })).toBeEnabled();
+    expect(within(bitcoinRow).getByRole('button', { name: 'Copy translated Bitcoin translated' })).toBeEnabled();
     expect(within(bitcoinRow).queryByRole('button', { name: 'Connect again' })).not.toBeInTheDocument();
     expect(within(bitcoinRow).queryByText('Not connected yet')).not.toBeInTheDocument();
-    expect(screen.getByTitle(SPARK_RECEIVE)).toBeInTheDocument();
     expect(screen.queryByTitle('spark1example')).not.toBeInTheDocument();
+    expect(screen.queryByTitle(SEED)).not.toBeInTheDocument();
     expect(screen.queryByTitle('bc1qlogin')).not.toBeInTheDocument();
+    expect(keys.evm).not.toHaveBeenCalled();
+    expect(keys.sparkIdentity).not.toHaveBeenCalled();
   });
 
   it('shows no receive rows when the open session has no keys', () => {
     setOpenPasskey(authResult('unlocked') as unknown as OpenPasskey);
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
+    expect(addressRows).toThrow();
     expect(screen.queryByTitle(SEED)).not.toBeInTheDocument();
     expect(screen.queryByTitle('bc1qlogin')).not.toBeInTheDocument();
     expect(screen.queryByTitle(BITCOIN_RECEIVE)).not.toBeInTheDocument();
-    expect(screen.queryByTitle(SPARK_RECEIVE)).not.toBeInTheDocument();
   });
 
   it('reports SDK errors inside the open settings dialog', async () => {
@@ -809,7 +816,7 @@ describe('ConnectPasskey', () => {
     }
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
-    expect(addressRows()).toHaveLength(3);
+    expect(addressRows()).toHaveLength(1);
     const pendingRow = bitcoinAddressRow();
     expect(within(pendingRow).getByRole('button', { name: 'Connect again' })).toBeDisabled();
     expect(within(pendingRow).getByRole('button', { name: 'Copy address Bitcoin' })).toBeEnabled();
@@ -912,7 +919,7 @@ describe('ConnectPasskey', () => {
     const next = { ...session, wallet: { ...session.wallet, credentialId: 'new-credential' } };
     mockVerify.mockImplementationOnce(() => {
       setOpenPasskey(next);
-      return [{ family: 'Evm', address: SEED, matches: true }];
+      return [{ address: 'bc1qlogin', matches: true }];
     });
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -1079,7 +1086,7 @@ describe('ConnectPasskey', () => {
   it.each(['close', 'another', 'revoke'] as const)('clears address checks on %s', async (action) => {
     const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
     setOpenPasskey(session);
-    mockVerify.mockReturnValueOnce([{ family: 'Evm', address: SEED, matches: true }]);
+    mockVerify.mockReturnValueOnce([{ address: 'bc1qlogin', matches: true }]);
     mockRevoke.mockResolvedValueOnce({ id: 7, status: 'Lost' });
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -1310,19 +1317,24 @@ describe('ConnectPasskey', () => {
   it('shows each verified address and marks mismatches red', async () => {
     setOpenPasskey(authResult('unlocked', ring(SEED)) as unknown as OpenPasskey);
     mockVerify.mockReturnValue([
-      { family: 'Bitcoin', address: 'bc1q12345678901234567890', matches: true },
-      { family: 'Evm', address: SEED, matches: false },
+      { address: 'bc1q12345678901234567890', matches: true },
+      { address: 'bc1qdiffers0000000000000', matches: false },
     ]);
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: /Check addresses/ }));
     expect(await screen.findByText('1 / 2 addresses match')).toHaveClass('text-dfxRed-150');
-    const bitcoin = screen.getByText(/Bitcoin.*Matches/);
-    expect(bitcoin).toHaveClass('text-dfxGreen-300');
-    expect(bitcoin).toHaveTextContent('bc1q123456…34567890');
-    const evm = screen.getByText(/Ethereum & EVM.*Differs/);
-    expect(evm).toHaveClass('text-dfxRed-150');
-    expect(evm).toHaveTextContent(`${SEED.slice(0, 10)}…${SEED.slice(-8)}`);
+    expect(mockVerify).toHaveBeenCalledWith(
+      passkeySession.getOpenPasskey()?.wallet,
+      passkeySession.getOpenPasskey()?.keys,
+    );
+    const matching = screen.getByText(/Bitcoin.*Matches/);
+    expect(matching).toHaveClass('text-dfxGreen-300');
+    expect(matching).toHaveTextContent('bc1q123456…34567890');
+    const differing = screen.getByText(/Bitcoin.*Differs/);
+    expect(differing).toHaveClass('text-dfxRed-150');
+    expect(differing).toHaveTextContent('bc1qdiffer…00000000');
+    expect(screen.queryByText(/Spark|EVM|Ethereum/)).not.toBeInTheDocument();
   });
 
   it('does not abandon the session while an SDK action remains in progress', async () => {
@@ -1725,18 +1737,23 @@ describe('ConnectPasskey', () => {
     }
   });
 
-  it('shows local EVM index zero and hides it when the dialog closes', () => {
-    const keys = { evm: jest.fn((index: number) => ({ address: index === 0 ? SEED : OTHER })) };
-    const session = authResult('unlocked', keys);
-    session.wallet.addresses[0].address = '0x3333333333333333333333333333333333333333';
-    setOpenPasskey(session as unknown as OpenPasskey);
+  it('shows the Bitcoin receive address without a chain picker and hides it when the dialog closes', () => {
+    const keys = ring(SEED);
+    setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-    fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
-    expect(keys.evm).toHaveBeenCalledWith(0);
-    expect(screen.getByTestId('passkey-receive-address').textContent).toBe(SEED);
-    expect(screen.getByTestId('qr-code').textContent).toBe(SEED);
+    const dialog = screen.getByRole('dialog', { name: 'Receive' });
+    expect(within(dialog).getByText('Bitcoin')).toBeInTheDocument();
+    expect(within(dialog).getAllByRole('button')).toEqual([
+      within(dialog).getByRole('button', { name: 'Close' }),
+      within(dialog).getByRole('button', { name: 'Copy address' }),
+    ]);
+    expect(screen.getByTestId('passkey-receive-address').textContent).toBe(BITCOIN_RECEIVE);
+    expect(screen.getByTestId('qr-code').textContent).toBe(BITCOIN_RECEIVE);
+    expect(within(dialog).queryByText(/Spark|EVM|Ethereum/)).not.toBeInTheDocument();
+    expect(keys.evm).not.toHaveBeenCalled();
+    expect(keys.sparkIdentity).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
   });
@@ -1749,7 +1766,6 @@ describe('ConnectPasskey', () => {
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Bitcoin' }));
     expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent(BITCOIN_RECEIVE);
     act(() => setOpenPasskey(second));
     expect(screen.queryByRole('dialog', { name: 'Receive' })).not.toBeInTheDocument();
@@ -1778,14 +1794,13 @@ describe('ConnectPasskey', () => {
 
   it('does not render an address when key derivation throws', () => {
     const keys = {
-      evm: () => {
+      bitcoinAddress: () => {
         throw new Error('wiped');
       },
     };
     setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     expect(() => fireEvent.click(screen.getByRole('button', { name: 'Receive' }))).not.toThrow();
-    fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
     expect(screen.getByRole('alert')).toHaveTextContent('wiped');
     expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
   });
@@ -1956,7 +1971,7 @@ describe('ConnectPasskey', () => {
       </div>,
     );
     expect(mockLink).toHaveBeenCalledTimes(1);
-    expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0);
+    expect(mockLink).toHaveBeenCalledWith('token', keys);
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -1985,7 +2000,7 @@ describe('ConnectPasskey', () => {
     setOpenPasskey(sessionA);
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     expect(mockLink).toHaveBeenCalledTimes(1);
-    expect(mockLink).toHaveBeenLastCalledWith('bitcoin', 'token', keysA, 0);
+    expect(mockLink).toHaveBeenLastCalledWith('token', keysA);
     act(() => setOpenPasskey(sessionB));
     expect(mockLink).toHaveBeenCalledTimes(1);
     await act(async () => {
@@ -1994,17 +2009,13 @@ describe('ConnectPasskey', () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(2));
-    expect(mockLink).toHaveBeenLastCalledWith('bitcoin', 'other-token', keysB, 0);
+    expect(mockLink).toHaveBeenLastCalledWith('other-token', keysB);
   });
 
-  it('shows a derivation error on the failed family and addresses on the others', () => {
+  it('shows a Bitcoin derivation error in its row without a copy button', () => {
     const keys = {
-      evm: () => {
-        throw new Error('evm failed');
-      },
-      bitcoinAddress: () => ({ address: BITCOIN_RECEIVE }),
-      sparkIdentity: () => {
-        throw new Error('spark failed');
+      bitcoinAddress: () => {
+        throw new Error('bitcoin failed');
       },
       wipe: jest.fn(),
     };
@@ -2012,22 +2023,18 @@ describe('ConnectPasskey', () => {
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
     const rows = addressRows();
-    expect(rows).toHaveLength(3);
-    expect(within(rows[0]).getByText('Ethereum & EVM')).toBeInTheDocument();
-    expect(within(rows[0]).getByText('evm failed')).toBeInTheDocument();
-    expect(within(rows[0]).queryByRole('button', { name: 'Copy address Ethereum & EVM' })).not.toBeInTheDocument();
-    expect(within(rows[1]).getByTitle(BITCOIN_RECEIVE)).toBeInTheDocument();
-    expect(within(rows[1]).getByRole('button', { name: 'Copy address Bitcoin' })).toBeInTheDocument();
-    expect(within(rows[2]).getByText('Lightning (Spark)')).toBeInTheDocument();
-    expect(within(rows[2]).getByText('spark failed')).toBeInTheDocument();
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByText('Bitcoin')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('bitcoin failed')).toBeInTheDocument();
+    expect(within(rows[0]).queryByRole('button', { name: 'Copy address Bitcoin' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
   });
 
   it('shows an empty derived address without inventing a value', () => {
-    setOpenPasskey(authResult('unlocked', ring('')) as unknown as OpenPasskey);
+    const keys = { ...ring(SEED), bitcoinAddress: () => ({ address: '' }) };
+    setOpenPasskey(authResult('unlocked', keys) as unknown as OpenPasskey);
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-    fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
     expect(screen.getByTestId('passkey-receive-address')).toBeEmptyDOMElement();
   });
 
@@ -2038,7 +2045,6 @@ describe('ConnectPasskey', () => {
     mockRevoke.mockResolvedValue({ id: 7, status: 'Lost' });
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-    fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
     expect(screen.getByTestId('passkey-receive-address')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -2104,7 +2110,8 @@ describe('ConnectPasskey', () => {
     await waitFor(() => expect(mockRegister).toHaveBeenCalledWith({ mail: 'user@example.com' }));
     expect(await screen.findByRole('button', { name: 'Buy' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
-    expect(screen.getByTitle(SEED)).toBeInTheDocument();
+    expect(screen.getByTitle(BITCOIN_RECEIVE)).toBeInTheDocument();
+    expect(screen.queryByTitle(SEED)).not.toBeInTheDocument();
     expect(screen.queryByTitle('bc1qlogin')).not.toBeInTheDocument();
     expect(mockLogout).not.toHaveBeenCalled();
     expect(mockSetSession).not.toHaveBeenCalled();
@@ -2173,7 +2180,7 @@ describe('ConnectPasskey', () => {
     act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, addresses: [] } }));
     expect(mockLink).not.toHaveBeenCalled();
     await act(async () => finishDiagnostics());
-    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0));
+    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('token', keys));
     expect(await screen.findByRole('alert')).toHaveTextContent('link failed');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Record a diagnostic' })).toBeEnabled());
     await act(async () => undefined);
@@ -2193,7 +2200,7 @@ describe('ConnectPasskey', () => {
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     expect(await screen.findByRole('status')).toHaveTextContent('Linked Bitcoin bc1qlogin. translated refresh error');
     expect(mockTranslate).toHaveBeenCalledWith('screens/home', 'wallet refresh failed');
-    expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0);
+    expect(mockLink).toHaveBeenCalledWith('token', keys);
     expect(mockWallets).toHaveBeenCalledWith('token');
   });
 
@@ -2224,8 +2231,7 @@ describe('ConnectPasskey', () => {
     mockWallets.mockResolvedValueOnce([session.wallet]);
     render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
     fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-    fireEvent.click(screen.getByRole('button', { name: 'EVM', exact: true }));
-    expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent(SEED);
+    expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent(BITCOIN_RECEIVE);
     act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, addresses: [] } }));
     await waitFor(() => expect(mockWallets).toHaveBeenCalledWith('token'));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled());
@@ -2244,8 +2250,7 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
     act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, addresses: [] } }));
     expect(await screen.findByRole('alert')).toHaveTextContent('link failed');
-    fireEvent.click(screen.getByRole('button', { name: 'EVM', exact: true }));
-    expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent(SEED);
+    expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent(BITCOIN_RECEIVE);
     expect(screen.getByRole('alert')).toHaveTextContent('link failed');
   });
 
@@ -2367,10 +2372,9 @@ describe('ConnectPasskey', () => {
     try {
       render(<PasskeyDesk onCancel={mockOnCancel} onRevoked={mockOnSwitch} />);
       fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
       fireEvent.click(screen.getByRole('button', { name: 'Copy address' }));
       expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
-      expect(writeText).toHaveBeenCalledWith(SEED);
+      expect(writeText).toHaveBeenCalledWith(BITCOIN_RECEIVE);
     } finally {
       if (original) Object.defineProperty(navigator, 'clipboard', original);
       else delete (navigator as { clipboard?: Clipboard }).clipboard;
@@ -2381,9 +2385,9 @@ describe('ConnectPasskey', () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
     const keys = {
       id: 'keys',
-      evm: () => ({ address: SEED }),
+      evm: notDerived('EVM'),
       bitcoinAddress: () => ({ address: BITCOIN_RECEIVE }),
-      sparkIdentity: () => ({ address: SPARK_RECEIVE }),
+      sparkIdentity: notDerived('Spark'),
     };
     mockLogin.mockResolvedValue(authResult('unlocked', keys, false));
     mockLink.mockResolvedValue({
@@ -2396,7 +2400,7 @@ describe('ConnectPasskey', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
 
     await waitFor(() => expect(mockLink).toHaveBeenCalledTimes(1));
-    expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0);
+    expect(mockLink).toHaveBeenCalledWith('token', keys);
     await waitFor(() =>
       expect(passkeySession.getOpenPasskey()?.wallet.addresses.some((row) => row.address === 'bc1qlogin')).toBe(true),
     );
@@ -2426,9 +2430,9 @@ describe('ConnectPasskey', () => {
     mockCheckPasskeyPlatform.mockResolvedValue({ available: true, prf: 'yes' });
     const keys = {
       id: 'keys',
-      evm: () => ({ address: SEED }),
+      evm: notDerived('EVM'),
       bitcoinAddress: () => ({ address: BITCOIN_RECEIVE }),
-      sparkIdentity: () => ({ address: SPARK_RECEIVE }),
+      sparkIdentity: notDerived('Spark'),
     };
     mockLogin.mockResolvedValue(authResult('unlocked', keys, false));
     mockLink.mockRejectedValueOnce(new Error('link failed')).mockResolvedValueOnce({
@@ -2443,13 +2447,13 @@ describe('ConnectPasskey', () => {
     expect(await screen.findByText('link failed')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Connect again' })).toBeEnabled());
-    expect(addressRows()).toHaveLength(3);
+    expect(addressRows()).toHaveLength(1);
     const bitcoinRow = bitcoinAddressRow();
     expect(within(bitcoinRow).getByTitle(BITCOIN_RECEIVE)).toBeInTheDocument();
     expect(within(bitcoinRow).getByText('Not connected yet')).toBeInTheDocument();
     expect(within(bitcoinRow).getByRole('button', { name: 'Copy address Bitcoin' })).toBeEnabled();
     fireEvent.click(within(bitcoinRow).getByRole('button', { name: 'Connect again' }));
-    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', keys, 0));
+    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('token', keys));
     await waitFor(() => expect(mockWallets).toHaveBeenCalledWith('token'));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -2563,9 +2567,9 @@ describe('ConnectPasskey', () => {
       bitcoinNetwork: 'testnet4',
       mnemonic: () => 'seed phrase',
       wipe: jest.fn(),
-      evm: () => ({ address: SEED }),
+      evm: notDerived('EVM'),
       bitcoinAddress: () => ({ address: BITCOIN_RECEIVE }),
-      sparkIdentity: () => ({ address: SPARK_RECEIVE }),
+      sparkIdentity: notDerived('Spark'),
     };
     mockLogin.mockResolvedValue(authResult('unlocked', keys, false));
     mockLink.mockRejectedValueOnce(new Error('link failed')).mockResolvedValueOnce({
@@ -2580,7 +2584,7 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show wallet' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Connect again' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Connect again' }));
-    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('bitcoin', 'token', loginRing, 0));
+    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('token', loginRing));
     await waitFor(() => expect(mockWallets).toHaveBeenCalledWith('token'));
     expect(wiped).toHaveBeenCalledTimes(2);
     expect(keys.wipe).not.toHaveBeenCalled();
@@ -2658,7 +2662,7 @@ describe('ConnectPasskey', () => {
     renderPasskey();
     fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
     await screen.findByRole('button', { name: 'Settings' });
-    mockVerify.mockReturnValue([{ address: SEED, family: 'Evm', matches: false }]);
+    mockVerify.mockReturnValue([{ address: 'bc1qlogin', matches: false }]);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: /Check addresses/ }));
     expect(await screen.findByText('0 / 1 addresses match')).toBeInTheDocument();
@@ -2769,7 +2773,7 @@ describe('ConnectPasskey', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reload data' }));
     expect(await screen.findByText('Wallets on this account: 1.')).toBeInTheDocument();
 
-    mockVerify.mockReturnValue([{ address: SEED, family: 'Evm', matches: true }]);
+    mockVerify.mockReturnValue([{ address: 'bc1qlogin', matches: true }]);
     fireEvent.click(screen.getByRole('button', { name: /Check addresses/ }));
     expect(await screen.findByText('1 / 1 addresses match')).toBeInTheDocument();
 
@@ -3421,14 +3425,15 @@ describe('ConnectPasskey', () => {
       const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
       Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
       try {
-        openDesk({ evm: () => ({ path: 'm/0', address: '0xabc' }) });
+        const bitcoinAddress = jest.fn(() => ({ path: 'm/1', address: 'tb1qabc' }));
+        openDesk({ bitcoinAddress });
         fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-        fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
-        expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('0xabc');
+        expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('tb1qabc');
         fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-        expect(screen.getByRole('button', { name: 'EVM' })).toHaveAttribute('aria-pressed', 'false');
         expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+        expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('tb1qabc');
+        expect(bitcoinAddress).toHaveBeenCalledTimes(2);
         fireEvent.keyDown(document, { key: 'Escape' });
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
         fireEvent.change(screen.getByLabelText('Destination'), { target: { value: 'bc1qdest' } });
@@ -3613,46 +3618,53 @@ describe('ConnectPasskey', () => {
         else delete (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
       }
     });
-    it('shows a receive derivation failure inside the dialog', () => {
-      openDesk({
-        evm: () => {
+    it('shows a receive derivation failure inside the dialog and clears it for the next derivation', () => {
+      const failing = {
+        bitcoinAddress: () => {
           throw new Error('derivation failed');
         },
-        sparkIdentity: () => ({ address: 'spark1local' }),
-      });
+      };
+      const session = authResult('unlocked', failing) as unknown as OpenPasskey;
+      act(() => setOpenPasskey(session));
+      renderDesk();
       fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
       expect(screen.getByRole('dialog', { name: 'Receive' })).toContainElement(screen.getByRole('alert'));
       expect(screen.getByRole('alert')).toHaveTextContent('derivation failed');
       expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
       expect(screen.queryByTestId('qr-code')).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Spark', exact: true }));
+      act(() => setOpenPasskey({ ...session, keys: ring(SEED) } as unknown as OpenPasskey));
+      expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('spark1local');
-      expect(screen.getByTestId('qr-code')).toHaveTextContent('spark1local');
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent(BITCOIN_RECEIVE);
+      expect(screen.getByTestId('qr-code')).toHaveTextContent(BITCOIN_RECEIVE);
     });
 
-    it.each(['missing', 'without-keys'] as const)(
-      'shows a receive error when the session is %s at derivation',
-      (state) => {
-        const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
-        setOpenPasskey(session);
-        renderDesk();
-        fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-        const stale = jest.spyOn(passkeySession, 'getOpenPasskey');
-        try {
-          stale.mockReturnValueOnce(state === 'missing' ? undefined : { ...session, keys: undefined });
-          fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
-          const alert = screen.getByRole('alert');
-          expect(alert).toHaveTextContent('locked');
-          expect(screen.getByRole('dialog', { name: 'Receive' })).toContainElement(alert);
-          expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
-          expect(screen.queryByTestId('passkey-receive-qr')).not.toBeInTheDocument();
-        } finally {
-          stale.mockRestore();
-        }
-      },
-    );
+    it('keeps a non-receive note when a later derivation succeeds', async () => {
+      const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+      act(() => setOpenPasskey(session));
+      mockLink.mockRejectedValueOnce(new Error('link failed'));
+      renderDesk();
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet, addresses: [] } }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('link failed');
+      const nextKeys = ring(OTHER);
+      act(() => setOpenPasskey({ ...session, keys: nextKeys } as unknown as OpenPasskey));
+      expect(screen.getByRole('alert')).toHaveTextContent('link failed');
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent(BITCOIN_RECEIVE);
+      expect(mockLink).toHaveBeenCalledTimes(1);
+    });
+
+    it('hides the receive address while the same session holds no keys', () => {
+      const session = authResult('unlocked', ring(SEED)) as unknown as OpenPasskey;
+      act(() => setOpenPasskey(session));
+      renderDesk();
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent(BITCOIN_RECEIVE);
+      act(() => setOpenPasskey({ ...session, keys: undefined }));
+      expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
+      expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('passkey-receive-qr')).not.toBeInTheDocument();
+    });
 
     it('shows receive and send on an unlocked desk with the existing actions', () => {
       openDesk({ id: 'keys' });
@@ -3663,61 +3675,16 @@ describe('ConnectPasskey', () => {
       expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
     });
 
-    it('shows the evm(0) receive address and qr without using the account index field', () => {
-      const evm = jest.fn((index: number) => ({ path: `m/${index}`, address: `addr-${index}` }));
-      openDesk({ evm });
-
+    it('derives the Bitcoin receive address once per opened dialog and never another family', () => {
+      const keys = { ...ring(SEED), bitcoinAddress: jest.fn(() => ({ path: 'm/1', address: 'tb1qonce' })) };
+      openDesk(keys);
       fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
-
-      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('addr-0');
+      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('tb1qonce');
       expect(screen.getByTestId('passkey-receive-address')).toHaveClass("[font-feature-settings:'calt'_0]");
-      expect(screen.getByTestId('qr-code')).toHaveTextContent('addr-0');
-      expect(evm).toHaveBeenCalledWith(0);
-      expect(evm).not.toHaveBeenCalledWith(1);
-    });
-
-    it('keeps the address without deriving again when the selected family is clicked twice', () => {
-      const evm = jest.fn(() => ({ address: 'addr-0' }));
-      openDesk({ evm });
-      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
-      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('addr-0');
-      fireEvent.click(screen.getByRole('button', { name: 'EVM' }));
-      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('addr-0');
-      expect(evm).toHaveBeenCalledTimes(1);
-    });
-
-    it('hides the previous receive address before the next family is read', () => {
-      const evm = jest.fn((index: number) => ({ path: `m/${index}`, address: `addr-${index}` }));
-      const bitcoinAddress = jest.fn(() => {
-        expect(screen.queryByText('addr-0')).not.toBeInTheDocument();
-        return { path: "m/84'/0'/0'/0/1", address: 'bc1qnext', publicKey: new Uint8Array() };
-      });
-      openDesk({ evm, bitcoinNetwork: 'mainnet', bitcoinAddress });
-
-      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
-      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('addr-0');
-
-      fireEvent.click(screen.getByRole('button', { name: /^Bitcoin$/ }));
-
-      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('bc1qnext');
-      expect(screen.queryByText('addr-0')).not.toBeInTheDocument();
-      expect(bitcoinAddress).toHaveBeenCalledWith(0, 1);
-      expect(evm).toHaveBeenCalledWith(0);
-      expect(evm).not.toHaveBeenCalledWith(1);
-    });
-
-    it('shows the spark identity receive address', () => {
-      openDesk({
-        sparkIdentity: () => ({ path: "m/879'/0'/0'", publicKey: new Uint8Array(), address: 'spark1identity' }),
-      });
-
-      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Spark' }));
-
-      expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('spark1identity');
+      expect(screen.getByTestId('qr-code')).toHaveTextContent('tb1qonce');
+      expect(keys.bitcoinAddress).toHaveBeenCalledTimes(1);
+      expect(keys.evm).not.toHaveBeenCalled();
+      expect(keys.sparkIdentity).not.toHaveBeenCalled();
     });
 
     it('shows bitcoinAddress(0, 1) on a mainnet ring without building a login ring', () => {
@@ -3729,7 +3696,6 @@ describe('ConnectPasskey', () => {
       openDesk({ bitcoinNetwork: 'mainnet', bitcoinAddress });
 
       fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      fireEvent.click(screen.getByRole('button', { name: /^Bitcoin$/ }));
 
       expect(bitcoinAddress).toHaveBeenCalledWith(0, 1);
       expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('bc1qreceive');
@@ -3748,7 +3714,6 @@ describe('ConnectPasskey', () => {
       });
 
       fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-      fireEvent.click(screen.getByRole('button', { name: /^Bitcoin$/ }));
 
       expect(sessionBitcoinAddress).toHaveBeenCalledWith(0, 1);
       expect(screen.getByTestId('passkey-receive-address')).toHaveTextContent('tb1qsession');
@@ -3761,11 +3726,10 @@ describe('ConnectPasskey', () => {
       Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
 
       try {
-        openDesk({ evm: () => ({ path: 'm/0', address: '0xcopyme' }) });
+        openDesk({ bitcoinAddress: () => ({ path: 'm/1', address: 'tb1qcopyme' }) });
         fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
-        fireEvent.click(screen.getByRole('button', { name: /^EVM$/ }));
         fireEvent.click(screen.getByRole('button', { name: 'Copy address' }));
-        await waitFor(() => expect(writeText).toHaveBeenCalledWith('0xcopyme'));
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith('tb1qcopyme'));
       } finally {
         if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard);
         else delete (navigator as { clipboard?: Clipboard }).clipboard;

@@ -1,15 +1,13 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { DESK_CREDENTIAL_BYTES, deskBase64Url, installDeskAuthenticator } from './passkey-desk-authenticator';
 
-// EVM index 0 derived from the fixed DESK_PRF_BYTES by the wallet package.
-const DESK_DERIVED_EVM = '0xA6EC3c72017965c5fAeEdaF020895ef1aDD7Ad72';
 // BIP-84 receive index 1 on testnet4 (the loc network) derived from the fixed DESK_PRF_BYTES by the wallet package.
 const DESK_DERIVED_BITCOIN_RECEIVE = 'tb1q0cxey6x9nz35jky4v0rh77ta34z63j4hzl6tvt';
 
 type HistoryWindow = {
   __dfxHandbookPasskeyBalance?: { chf: number; eur: number };
   __dfxHandbookPasskeyAssets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
-  __dfxHandbookPasskeyReceiveError?: 'evm' | 'bitcoin' | 'spark';
+  __dfxHandbookPasskeyReceiveError?: boolean;
   __dfxHandbookPasskeyHistory?: {
     items: {
       type: 'buy' | 'sell' | 'swap' | 'send' | 'receive' | 'pay';
@@ -170,6 +168,8 @@ const DESK_CHALLENGE = {
   timeout: 600000,
 };
 
+// The wallet package still sends an EVM seed check and a Spark proof at registration, so the API stores
+// those rows. The desk offers Bitcoin only and must neither show nor check them.
 const DESK_EVM = {
   address: '0x00000000000000000000000000000000000000aa',
   family: 'Evm',
@@ -315,16 +315,17 @@ async function openDesk(
   await waitForPlatform(page);
 }
 
+async function expectBitcoinOnly(page: Page): Promise<void> {
+  await expect(page.getByText(/Spark|EVM|Ethereum/)).toHaveCount(0);
+  await expect(page.locator('[title^="0x"], [title^="spark1"]')).toHaveCount(0);
+}
+
 async function expectDerivedReceiveRows(page: Page): Promise<void> {
-  await expect(page.locator(`li [title="${DESK_DERIVED_EVM}"]`)).toHaveCount(1);
+  await expect(page.locator('li [title]')).toHaveCount(1);
   await expect(page.locator(`li [title="${DESK_DERIVED_BITCOIN_RECEIVE}"]`)).toHaveCount(1);
-  const spark = page.locator('li [title^="spark1"]');
-  await expect(spark).toHaveCount(1);
-  const sparkTitle = await spark.getAttribute('title');
-  expect(sparkTitle).toMatch(/^spark1[023456789acdefghjklmnpqrstuvwxyz]{62}$/);
-  expect(sparkTitle).not.toBe(DESK_SPARK.address);
   await expect(page.locator('li [title^="bc1q"]')).toHaveCount(0);
-  await expect(page.locator(`li [title="${DESK_EVM.address}"]`)).toHaveCount(0);
+  await expect(page.locator(`[title="${DESK_EVM.address}"], [title="${DESK_SPARK.address}"]`)).toHaveCount(0);
+  await expectBitcoinOnly(page);
 }
 
 async function registerUnlockedDesk(page: Page): Promise<string> {
@@ -492,50 +493,19 @@ test.describe('Passkey login', () => {
     await shoot(page, 'passkey-desk-unlocked.png', await deskControls(page));
   });
 
-  test('shows the receive address on the unlocked desk', async ({ page }) => {
+  test('shows the Bitcoin receive address on the unlocked desk without a chain picker', async ({ page }) => {
     await registerUnlockedDesk(page);
     await page.getByRole('button', { name: 'Receive' }).click();
-    await page.getByRole('button', { name: 'EVM', exact: true }).click();
-    const address = page.getByTestId('passkey-receive-address');
-    await expect(address).toHaveText(/^0x[0-9a-fA-F]{40}$/);
-    await expect(address).toHaveText(DESK_DERIVED_EVM);
-    await expect(address).not.toHaveText(DESK_EVM.address);
-    await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
+    const dialog = page.getByRole('dialog', { name: 'Receive' });
+    const address = dialog.getByTestId('passkey-receive-address');
+    await expect(address).toHaveText(DESK_DERIVED_BITCOIN_RECEIVE);
+    await expect(dialog.getByText('Bitcoin', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button')).toHaveCount(2);
+    await expect(dialog.getByRole('button', { name: 'Copy address' })).toBeVisible();
+    await expectBitcoinOnly(page);
     const qr = page.locator('[data-testid=passkey-receive-qr]');
     await expect(qr).toBeVisible();
     await shoot(page, 'passkey-desk-receive.png', [
-      ...(await deskControls(page)),
-      page.getByRole('button', { name: 'Copy address' }),
-      qr,
-    ]);
-  });
-
-  test('shows the Bitcoin receive address on the unlocked desk', async ({ page }) => {
-    await registerUnlockedDesk(page);
-    await page.getByRole('button', { name: 'Receive' }).click();
-    await page.getByRole('button', { name: 'Bitcoin', exact: true }).click();
-    const address = page.getByTestId('passkey-receive-address');
-    await expect(address).toHaveText(DESK_DERIVED_BITCOIN_RECEIVE);
-    await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
-    const qr = page.locator('[data-testid=passkey-receive-qr]');
-    await expect(qr).toBeVisible();
-    await shoot(page, 'passkey-desk-receive-bitcoin.png', [
-      ...(await deskControls(page)),
-      page.getByRole('button', { name: 'Copy address' }),
-      qr,
-    ]);
-  });
-
-  test('shows the Spark receive address on the unlocked desk', async ({ page }) => {
-    await registerUnlockedDesk(page);
-    await page.getByRole('button', { name: 'Receive' }).click();
-    await page.getByRole('button', { name: 'Spark', exact: true }).click();
-    const address = page.getByTestId('passkey-receive-address');
-    await expect(address).toHaveText(/^spark1[023456789acdefghjklmnpqrstuvwxyz]{62}$/);
-    await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible();
-    const qr = page.locator('[data-testid=passkey-receive-qr]');
-    await expect(qr).toBeVisible();
-    await shoot(page, 'passkey-desk-receive-spark.png', [
       ...(await deskControls(page)),
       page.getByRole('button', { name: 'Copy address' }),
       qr,
@@ -748,7 +718,9 @@ test.describe('Passkey login', () => {
     const bitcoinAddress = await registerUnlockedDesk(page);
     await openSettings(page);
     await page.getByRole('button', { name: /Check addresses/ }).click();
-    await expect(page.getByText('1 / 4 addresses match', { exact: true })).toBeVisible();
+    await expect(page.getByText('1 / 2 addresses match', { exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Settings' }).getByRole('listitem')).toHaveCount(2);
+    await expectBitcoinOnly(page);
     const linkedBitcoin = `${bitcoinAddress.slice(0, 10)}…${bitcoinAddress.slice(-8)}`;
     await expect(page.getByRole('listitem').filter({ hasText: linkedBitcoin })).toContainText('Matches');
     await expect(page.getByRole('listitem').filter({ hasText: 'bc1qdeskdi…kdiffers' })).toContainText('Differs');
@@ -922,17 +894,18 @@ test.describe('Passkey wallet design', () => {
     await expect(page).toHaveScreenshot('passkey-wallet-settings.png');
   });
 
-  test('shows the expanded wallet when spark derivation fails', async ({ page }) => {
+  test('shows the expanded wallet when bitcoin derivation fails', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
-      (window as unknown as HistoryWindow).__dfxHandbookPasskeyReceiveError = 'spark';
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyReceiveError = true;
     });
     await openWallet(page);
     await page.getByRole('button', { name: 'Show wallet' }).first().click();
-    await expect(page.locator(`li [title="${DESK_DERIVED_EVM}"]`)).toHaveCount(1);
-    await expect(page.locator(`li [title="${DESK_DERIVED_BITCOIN_RECEIVE}"]`)).toHaveCount(1);
-    await expect(page.locator('li [title^="spark1"]')).toHaveCount(0);
-    await expect(page.getByText('Something went wrong. Please try again.')).toBeVisible();
+    const bitcoinRow = page.locator('li', { has: page.getByText('Bitcoin', { exact: true }) });
+    await expect(bitcoinRow).toHaveCount(1);
+    await expect(page.locator('li [title]')).toHaveCount(0);
+    await expect(bitcoinRow.getByText('Something went wrong. Please try again.')).toBeVisible();
+    await expectBitcoinOnly(page);
     await expect(page).toHaveScreenshot('passkey-wallet-expanded-receive-error.png');
   });
 
@@ -1005,7 +978,7 @@ test.describe('Passkey wallet design', () => {
             direction: 'in',
             title: 'Swap',
             date: '3 Nov 2026',
-            amount: '+0.01 ETH',
+            amount: '+0.0005 BTC',
             fiatValue: 'CHF 30',
           },
           {
@@ -1057,14 +1030,12 @@ test.describe('Passkey wallet design', () => {
     await page.addInitScript(() => {
       (window as unknown as HistoryWindow).__dfxHandbookPasskeyBalance = { chf: 12345.67, eur: 11890.2 };
       (window as unknown as HistoryWindow).__dfxHandbookPasskeyAssets = [
-        { name: 'Bitcoin', amount: '0.15 BTC', chf: 9000, eur: 8670, network: 'Bitcoin' },
-        { name: 'Ether', amount: '1.2 ETH', chf: 3345.67, eur: 3220.2, network: 'Ethereum' },
+        { name: 'Bitcoin', amount: '0.20576 BTC', chf: 12345.67, eur: 11890.2, network: 'Bitcoin' },
       ];
     });
     await openWallet(page);
     await page.getByRole('button', { name: 'Show wallet' }).first().click();
-    await expect(page.getByText('0.15 BTC')).toBeVisible();
-    await expect(page.getByText('1.2 ETH')).toBeVisible();
+    await expect(page.getByText('0.20576 BTC')).toBeVisible();
     await expectDerivedReceiveRows(page);
     await expect(page).toHaveScreenshot('passkey-wallet-assets.png', { fullPage: true });
   });

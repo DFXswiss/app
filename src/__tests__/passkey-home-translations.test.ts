@@ -10,9 +10,7 @@ it('keeps the home translation keys aligned across German, French and Italian', 
 });
 
 const addedHomeKeys = [
-  'EVM',
   'Bitcoin',
-  'Spark',
   'Destination',
   'Paste',
   'Scan',
@@ -51,8 +49,6 @@ const addedHomeKeys = [
   'Hide wallet',
   'Your wallet',
   'Addresses',
-  'Lightning (Spark)',
-  'Ethereum & EVM',
   'Buy',
   'Sell',
   'Swap',
@@ -117,19 +113,19 @@ const addedHomeKeys = [
 ];
 
 const unchangedTranslations: Record<string, string[]> = {
-  de: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'Lightning (Spark)', 'Ethereum & EVM', '{{credentialId}}: {{status}}'],
-  fr: [
-    'EVM',
-    'Bitcoin',
-    'Spark',
-    'Wallet',
-    'Actions',
-    'Lightning (Spark)',
-    'Ethereum & EVM',
-    '{{credentialId}}: {{status}}',
-  ],
-  it: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'Lightning (Spark)', 'Ethereum & EVM', '{{credentialId}}: {{status}}'],
+  de: ['Bitcoin', 'Wallet', '{{credentialId}}: {{status}}'],
+  fr: ['Bitcoin', 'Wallet', 'Actions', '{{credentialId}}: {{status}}'],
+  it: ['Bitcoin', 'Wallet', '{{credentialId}}: {{status}}'],
 };
+
+// Spark and EVM are not offered by the passkey wallet, so their labels are gone from every language.
+const removedHomeKeys = ['EVM', 'Spark', 'Lightning (Spark)', 'Ethereum & EVM'];
+
+it('has no Spark or EVM labels in the home translations', () => {
+  for (const messages of [de['screens/home'], fr['screens/home'], italian['screens/home']]) {
+    for (const key of removedHomeKeys) expect(Object.keys(messages)).not.toContain(key);
+  }
+});
 
 function checkAddedTranslations(language: string, messages: Record<string, string>): void {
   for (const key of addedHomeKeys) {
@@ -160,10 +156,10 @@ it('keeps the existing generic error translated', () => {
 
 it('rejects missing and empty translations of added home keys', () => {
   const missing: Record<string, string> = { ...de['screens/home'] };
-  delete missing['EVM'];
+  delete missing['Bitcoin'];
   expect(() => checkAddedTranslations('de', missing)).toThrow();
-  const empty = { ...de['screens/home'], EVM: '' };
+  const empty = { ...de['screens/home'], Bitcoin: '' };
   expect(() => checkAddedTranslations('de', empty)).toThrow();
-  const whitespace = { ...de['screens/home'], EVM: ' ' };
+  const whitespace = { ...de['screens/home'], Bitcoin: ' ' };
   expect(() => checkAddedTranslations('de', whitespace)).toThrow();
 });

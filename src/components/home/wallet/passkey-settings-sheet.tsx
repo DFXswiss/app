@@ -6,7 +6,7 @@ interface PasskeySettingsSheetProps {
   busy: boolean;
   note?: string;
   noteKind?: 'message' | 'refresh' | 'status' | 'diagnostics';
-  checks?: { family: string; address: string; matches: boolean }[];
+  checks?: { address: string; matches: boolean }[];
   onWords: () => void;
   onVerify: () => void;
   onRefresh: () => void;
@@ -124,17 +124,8 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
         {props.checks && (
           <ul className="px-4 pb-3 text-sm">
             {props.checks.map((item, index) => (
-              <li
-                key={`${item.family}:${item.address}:${index}`}
-                className={item.matches ? 'text-dfxGreen-300' : 'text-dfxRed-150'}
-              >
-                {t(
-                  item.family === 'Spark'
-                    ? 'Lightning (Spark)'
-                    : item.family === 'Evm'
-                      ? 'Ethereum & EVM'
-                      : item.family,
-                )}{' '}
+              <li key={`${item.address}:${index}`} className={item.matches ? 'text-dfxGreen-300' : 'text-dfxRed-150'}>
+                {t('Bitcoin')}{' '}
                 <span className="font-mono">
                   {item.address.slice(0, 10)}…{item.address.slice(-8)}
                 </span>
