@@ -256,6 +256,129 @@ test.describe('KYC area e2e', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // /kyc links with a code or a step
+  // ---------------------------------------------------------------------------
+
+  const CODE_PROMPT =
+    'This link belongs to a different account than the one you are signed in with. If you open the link, the data you enter is saved to that account.';
+  const STEP_PROMPT = 'Do you want to start the step "Personal data"?';
+
+  /** Collects the KYC code every API request of the page is sent with. */
+  function recordKycCodes(page: Page): string[] {
+    const codes: string[] = [];
+    page.on('request', (request) => {
+      const code = request.headers()['x-kyc-code'];
+      if (code) codes.push(code);
+    });
+    return codes;
+  }
+
+  async function lastKycStepId(userDataId: number, name: string): Promise<number> {
+    const row = await queryOne<{ id: number }>(
+      `SELECT COALESCE(MAX(id), 0) AS id FROM kyc_step WHERE "userDataId" = $1 AND name = $2`,
+      [userDataId, name],
+    );
+    return Number(row?.id ?? 0);
+  }
+
+  test('/kyc?code of another account asks first and continues with the own account', async ({ page }) => {
+    const own = await createUser({ tag: 'kyc-link-own', kycLevel: 0, language: 'EN' });
+    const other = await createUser({ tag: 'kyc-link-other', kycLevel: -10, language: 'EN' });
+    const ownHash = await kycHashOf(own.userDataId);
+    const otherHash = await kycHashOf(other.userDataId);
+    const codes = recordKycCodes(page);
+
+    await gotoWithSession(page, `/kyc?code=${otherHash}`, own.jwt);
+
+    await expect(page.getByText(CODE_PROMPT)).toBeVisible({ timeout: 15000 });
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Terminated', { exact: true })).toHaveCount(0);
+    expect(codes).not.toContain(otherHash);
+
+    await page.getByRole('button', { name: 'Continue with my account' }).click();
+
+    await expect(page.getByText('Level 0', { exact: true })).toBeVisible({ timeout: 15000 });
+    expect(new URL(page.url()).searchParams.get('code')).toBeNull();
+    expect(codes).toContain(ownHash);
+    expect(codes).not.toContain(otherHash);
+  });
+
+  test('/kyc?code of another account opens the link after a click and keeps the session', async ({ page }) => {
+    const own = await createUser({ tag: 'kyc-link-open', kycLevel: 0, language: 'EN' });
+    const other = await createUser({ tag: 'kyc-link-opened', kycLevel: -10, language: 'EN' });
+    const otherHash = await kycHashOf(other.userDataId);
+
+    await gotoWithSession(page, `/kyc?code=${otherHash}`, own.jwt);
+    await page.getByRole('button', { name: 'Open link' }).click({ timeout: 15000 });
+
+    await expect(page.getByText('Terminated', { exact: true })).toBeVisible({ timeout: 15000 });
+    expect(await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'))).toBe(own.jwt);
+  });
+
+  test('/kyc?code without a session opens the link directly', async ({ page }) => {
+    const other = await createUser({ tag: 'kyc-link-mail', kycLevel: -10, language: 'EN' });
+    const otherHash = await kycHashOf(other.userDataId);
+
+    await page.goto(`/kyc?code=${otherHash}`);
+
+    await expect(page.getByText('Terminated', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(CODE_PROMPT)).toHaveCount(0);
+  });
+
+  test('/kyc?step asks a signed-in user before starting the step', async ({ page }) => {
+    const user = await createUser({ tag: 'kyc-step-link', kycLevel: 0, language: 'EN' });
+    const before = await lastKycStepId(user.userDataId, 'PersonalData');
+
+    await gotoWithSession(page, '/kyc?step=PersonalData', user.jwt);
+
+    await expect(page.getByText(STEP_PROMPT)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('input[name="firstname"]')).toHaveCount(0);
+    expect(await lastKycStepId(user.userDataId, 'PersonalData')).toBe(before);
+
+    await page.getByRole('button', { name: 'Start' }).click();
+
+    await expect(page.getByText('Account Type', { exact: true })).toBeVisible({ timeout: 25000 });
+    await waitForRow(
+      `SELECT id FROM kyc_step WHERE "userDataId" = $1 AND name = 'PersonalData' AND id > $2`,
+      [user.userDataId, before],
+      20000,
+    );
+  });
+
+  test('/kyc?code&step without a session starts the step directly', async ({ page }) => {
+    const user = await createUser({ tag: 'kyc-step-mail', kycLevel: 0, language: 'EN' });
+    const hash = await kycHashOf(user.userDataId);
+
+    await page.goto(`/kyc?code=${hash}&step=PersonalData`);
+
+    await expect(page.getByText('Account Type', { exact: true })).toBeVisible({ timeout: 25000 });
+    await expect(page.getByText(STEP_PROMPT)).toHaveCount(0);
+  });
+
+  test('/account phone change starts its KYC step without the step confirmation', async ({ page }) => {
+    const user = await createUser({ tag: 'kyc-step-app', kycLevel: 0, language: 'EN', completePersonalData: true });
+    const before = await lastKycStepId(user.userDataId, 'PhoneChange');
+
+    await openScreen(page, '/account', user.jwt);
+    await page
+      .getByText('+41791234567', { exact: true })
+      .getByRole('button')
+      .click({ timeout: 15000 });
+    await expect(page.getByText('Do you really want to change your phone number?')).toBeVisible();
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    await page.waitForURL((url) => url.pathname === '/kyc', { timeout: 15000 });
+    await waitForRow(
+      `SELECT id FROM kyc_step WHERE "userDataId" = $1 AND name = 'PhoneChange' AND id > $2`,
+      [user.userDataId, before],
+      20000,
+    );
+    await expect(page.getByText(/Do you want to start the step/)).toHaveCount(0);
+  });
+
+  // ---------------------------------------------------------------------------
   // /kyc/redirect - do NOT use openScreen (immediate navigate to /kyc)
   // ---------------------------------------------------------------------------
 
