@@ -375,6 +375,26 @@ test.describe('KYC area e2e', () => {
     expect(await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'))).toBeNull();
   });
 
+  test('/kyc after a session switch shows only the new account', async ({ page }) => {
+    const first = await createUser({ tag: 'kyc-switch-first', kycLevel: 0, language: 'EN' });
+    const second = await createUser({ tag: 'kyc-switch-second', kycLevel: -10, language: 'EN' });
+    const firstHash = await kycHashOf(first.userDataId);
+    const secondHash = await kycHashOf(second.userDataId);
+
+    await gotoWithSession(page, '/kyc', first.jwt);
+    await expect(page.getByText('Level 0', { exact: true })).toBeVisible({ timeout: 15000 });
+
+    // the first account's token stays stored while the link applies the second account's session
+    const codes = recordKycCodes(page);
+    await gotoWithSession(page, '/kyc', second.jwt);
+
+    await expect(page.getByText('Terminated', { exact: true })).toBeVisible({ timeout: 15000 });
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Level 0', { exact: true })).toHaveCount(0);
+    expect(codes).toContain(secondHash);
+    expect(codes).not.toContain(firstHash);
+  });
+
   test('/kyc?code without a session opens the link directly', async ({ page }) => {
     const other = await createUser({ tag: 'kyc-link-mail', kycLevel: -10, language: 'EN' });
     const otherHash = await kycHashOf(other.userDataId);
