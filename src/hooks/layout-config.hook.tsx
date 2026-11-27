@@ -7,12 +7,16 @@ export function useLayoutOptions({
   backButton,
   textStart,
   noPadding,
+  noHeader,
   noMaxWidth,
   smallMenu,
   onBack,
 }: LayoutConfig): void {
   const { setConfig } = useLayoutConfigContext();
   const prevConfig = useRef<LayoutConfig>();
+  const onBackRef = useRef(onBack);
+  const stableOnBack = useRef(() => onBackRef.current?.());
+  onBackRef.current = onBack;
 
   useLayoutEffect(() => {
     const newConfig: LayoutConfig = {
@@ -20,9 +24,10 @@ export function useLayoutOptions({
       backButton,
       textStart,
       noPadding,
+      noHeader,
       noMaxWidth,
       smallMenu,
-      onBack,
+      onBack: onBack === undefined ? undefined : stableOnBack.current,
     };
 
     const changed = !isEqual(
@@ -34,7 +39,7 @@ export function useLayoutOptions({
       prevConfig.current = newConfig;
       setConfig(newConfig);
     }
-  }, [title, backButton, textStart, noPadding, smallMenu, onBack, setConfig]);
+  }, [title, backButton, textStart, noPadding, noHeader, noMaxWidth, smallMenu, onBack, setConfig]);
 
   useLayoutEffect(() => {
     return () => setConfig({});
