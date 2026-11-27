@@ -1,4 +1,4 @@
-import { Blockchain, useAuthContext, useSessionContext } from '@dfx.swiss/react';
+import { Blockchain, useAuthContext, useSessionContext, useUserContext } from '@dfx.swiss/react';
 import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
 import {
   checkPasskeyPlatform,
@@ -127,6 +127,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const { login } = useWalletContext();
   const { logout } = useSessionContext();
   const { getAuthToken } = useAuthContext();
+  const { reloadUser } = useUserContext();
   const { navigate } = useNavigation();
   const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
   const [report, setReport] = useState<PlatformReport | undefined>();
@@ -287,8 +288,13 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
           await logout();
           return;
         }
-        await login(WalletType.PASSKEY, keys.evm(0).address, Blockchain.ETHEREUM, async (address, message) =>
-          new LoginAutoSigner(keys, env).sign('evm', address, message),
+        await login(
+          WalletType.PASSKEY,
+          keys.evm(0).address,
+          Blockchain.ETHEREUM,
+          async (address, message) => new LoginAutoSigner(keys, env).sign('evm', address, message),
+          undefined,
+          false,
         );
         if (accountClaim(getAuthToken()) !== evmAccount) throw new Error(PASSKEY_OTHER_ACCOUNT);
       } finally {
@@ -298,6 +304,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
         await logout();
         return;
       }
+      reloadUser();
       if (isConnect) {
         onLogin();
         onCancel();

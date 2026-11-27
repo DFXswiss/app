@@ -4,6 +4,7 @@ jest.mock('@dfx.swiss/react/dist/definitions/auth', () => ({
 
 const mockLogout = jest.fn(() => Promise.resolve());
 const mockGetAuthToken = jest.fn((): string | undefined => undefined);
+const mockReloadUser = jest.fn();
 let mockCurrency: { name: string } | undefined;
 let mockLocale = 'en-US';
 const mockChangeCurrency = jest.fn();
@@ -26,6 +27,7 @@ jest.mock('@dfx.swiss/react', () => ({
     authenticate: () => undefined,
   }),
   useAuthContext: () => ({ getAuthToken: () => mockGetAuthToken() }),
+  useUserContext: () => ({ reloadUser: () => mockReloadUser() }),
 }));
 
 const mockNavigate = jest.fn();
@@ -304,6 +306,7 @@ describe('ConnectPasskey', () => {
       throw new Error('unexpected login ring');
     };
     jest.clearAllMocks();
+    mockReloadUser.mockReset();
     mockPasskeyDiagnosticCalls.length = 0;
     mockTranslate.mockImplementation((_key, text, values) => interpolate(text, values));
     mockCurrency = undefined;
@@ -3945,6 +3948,7 @@ describe('ConnectPasskey opt-in', () => {
       throw new Error('unexpected login ring');
     };
     jest.clearAllMocks();
+    mockReloadUser.mockReset();
     mockPasskeyDiagnosticCalls.length = 0;
     mockLoginSignerConstructed.length = 0;
     mockLoginSignerSigns.length = 0;
@@ -4049,8 +4053,18 @@ describe('ConnectPasskey opt-in', () => {
         undefined,
         false,
       );
-      expect(mockWalletLogin).toHaveBeenNthCalledWith(3, WalletType.PASSKEY, SEED, 'Ethereum', expect.any(Function));
-      expect(mockWalletLogin.mock.calls[2]).toHaveLength(4);
+      expect(mockWalletLogin).toHaveBeenNthCalledWith(
+        3,
+        WalletType.PASSKEY,
+        SEED,
+        'Ethereum',
+        expect.any(Function),
+        undefined,
+        false,
+      );
+      expect(mockReloadUser).toHaveBeenCalledTimes(1);
+      expect(mockReloadUser.mock.invocationCallOrder[0]).toBeGreaterThan(mockWalletLogin.mock.invocationCallOrder[2]);
+      expect(mockNavigate.mock.invocationCallOrder[0]).toBeGreaterThan(mockReloadUser.mock.invocationCallOrder[0]);
       await expectSigner(mockWalletLogin.mock.calls[0]);
       await expectSigner(mockWalletLogin.mock.calls[1]);
       await expectSigner(mockWalletLogin.mock.calls[2]);
@@ -4103,6 +4117,8 @@ describe('ConnectPasskey opt-in', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
     await waitFor(() => expect(mockOnLogin).toHaveBeenCalledTimes(1));
     expect(mockWalletLogin).toHaveBeenCalledTimes(3);
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+    expect(mockReloadUser.mock.invocationCallOrder[0]).toBeLessThan(mockOnLogin.mock.invocationCallOrder[0]);
     expect(loggedOutBeforeFirstLogin()).toBe(false);
     expect(mockOnCancel).toHaveBeenCalledTimes(1);
     expect(mockNavigate).not.toHaveBeenCalled();
@@ -4145,6 +4161,7 @@ describe('ConnectPasskey opt-in', () => {
     expect(mockWalletLogin).toHaveBeenCalledTimes(2);
     expect(mockWalletLogin.mock.calls[1][2]).toBe('Bitcoin');
     expect(loggedOutAfter(1)).toBe(true);
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -4159,6 +4176,7 @@ describe('ConnectPasskey opt-in', () => {
     expect(mockWalletLogin).toHaveBeenCalledTimes(3);
     expect(mockWalletLogin.mock.calls[2][2]).toBe('Ethereum');
     expect(loggedOutAfter(2)).toBe(true);
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -4170,6 +4188,7 @@ describe('ConnectPasskey opt-in', () => {
     expect(mockWalletLogin).toHaveBeenCalledTimes(1);
     expect(mockWalletLogin.mock.calls[0][2]).toBe('Ethereum');
     expect(loggedOutAfter(0)).toBe(true);
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -4221,6 +4240,7 @@ describe('ConnectPasskey opt-in', () => {
       await Promise.resolve();
     });
     expect(mockWalletLogin).not.toHaveBeenCalled();
+    expect(mockReloadUser).not.toHaveBeenCalled();
   });
 
   it('stops before the Bitcoin login after unmount, then logs out without navigating, calling onLogin, or a state update warning', async () => {
@@ -4245,6 +4265,7 @@ describe('ConnectPasskey opt-in', () => {
       expect(mockWalletLogin).toHaveBeenCalledTimes(1);
       expect(mockNavigate).not.toHaveBeenCalled();
       expect(mockOnLogin).not.toHaveBeenCalled();
+      expect(mockReloadUser).not.toHaveBeenCalled();
       expect(stateUpdateWarnings(spy)).toBe('');
     } finally {
       spy.mockRestore();
@@ -4276,6 +4297,7 @@ describe('ConnectPasskey opt-in', () => {
       expect(mockWalletLogin).toHaveBeenCalledTimes(2);
       expect(mockNavigate).not.toHaveBeenCalled();
       expect(mockOnLogin).not.toHaveBeenCalled();
+      expect(mockReloadUser).not.toHaveBeenCalled();
       expect(stateUpdateWarnings(spy)).toBe('');
     } finally {
       spy.mockRestore();
@@ -4302,6 +4324,7 @@ describe('ConnectPasskey opt-in', () => {
     });
     await waitFor(() => expect(loggedOutAfter(0)).toBe(true));
     expect(mockWalletLogin).toHaveBeenCalledTimes(1);
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(passkeySession.isPasskeySigningIn()).toBe(false);
   });
 
@@ -4324,6 +4347,7 @@ describe('ConnectPasskey opt-in', () => {
     });
     await waitFor(() => expect(loggedOutAfter(0)).toBe(true));
     expect(mockWalletLogin).toHaveBeenCalledTimes(1);
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(passkeySession.isPasskeySigningIn()).toBe(true);
     passkeySession.setPasskeySigningIn(false);
   });
@@ -4350,6 +4374,7 @@ describe('ConnectPasskey opt-in', () => {
       expect(mockWalletLogin).toHaveBeenCalledTimes(1);
       expect(mockNavigate).not.toHaveBeenCalled();
       expect(mockOnLogin).not.toHaveBeenCalled();
+      expect(mockReloadUser).not.toHaveBeenCalled();
       expect(stateUpdateWarnings(spy)).toBe('');
     } finally {
       spy.mockRestore();
@@ -4373,6 +4398,7 @@ describe('ConnectPasskey opt-in', () => {
       await Promise.resolve();
     });
     expect(mockWalletLogin).not.toHaveBeenCalled();
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -4394,6 +4420,7 @@ describe('ConnectPasskey opt-in', () => {
     });
     await waitFor(() => expect(loggedOutAfter(0)).toBe(true));
     expect(mockWalletLogin).toHaveBeenCalledTimes(1);
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockOnLogin).not.toHaveBeenCalled();
   });
@@ -4419,6 +4446,7 @@ describe('ConnectPasskey opt-in', () => {
     });
     await waitFor(() => expect(loggedOutAfter(1)).toBe(true));
     expect(mockWalletLogin).toHaveBeenCalledTimes(2);
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockOnLogin).not.toHaveBeenCalled();
   });
@@ -4449,6 +4477,7 @@ describe('ConnectPasskey opt-in', () => {
       expect(mockWalletLogin).toHaveBeenCalledTimes(3);
       expect(mockNavigate).not.toHaveBeenCalled();
       expect(mockOnLogin).not.toHaveBeenCalled();
+      expect(mockReloadUser).not.toHaveBeenCalled();
       expect(stateUpdateWarnings(spy)).toBe('');
     } finally {
       spy.mockRestore();
@@ -4476,6 +4505,7 @@ describe('ConnectPasskey opt-in', () => {
     });
     await waitFor(() => expect(loggedOutAfter(2)).toBe(true));
     expect(mockWalletLogin).toHaveBeenCalledTimes(3);
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockOnLogin).not.toHaveBeenCalled();
   });
@@ -4626,6 +4656,7 @@ describe('ConnectPasskey opt-in', () => {
     expect(mockWalletLogin).toHaveBeenCalledTimes(1);
     expect(mockWalletLogin.mock.calls[0][2]).toBe('Ethereum');
     expect(loggedOutAfter(0)).toBe(true);
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(mockOnLogin).not.toHaveBeenCalled();
     expect(mockOnCancel).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
@@ -4637,6 +4668,8 @@ describe('ConnectPasskey opt-in', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
     await waitFor(() => expect(mockOnLogin).toHaveBeenCalledTimes(1));
     expect(mockWalletLogin).toHaveBeenCalledTimes(3);
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+    expect(mockReloadUser.mock.invocationCallOrder[0]).toBeLessThan(mockOnLogin.mock.invocationCallOrder[0]);
     expect(mockWalletLogin.mock.calls[1][2]).toBe('Bitcoin');
     expect(loggedOutBeforeFirstLogin()).toBe(false);
     expect(mockOnCancel).toHaveBeenCalledTimes(1);
