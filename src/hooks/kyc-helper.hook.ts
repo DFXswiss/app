@@ -141,7 +141,8 @@ export function useKycHelper(): KycHelperInterface {
 
   function startStep(stepName: KycStepName, stepType?: KycStepType) {
     const step = stepName + (stepType ? `/${stepType}` : '');
-    navigate({ pathname: '/kyc', search: `step=${step}` });
+    // the router state marks the step as started inside the app, so the KYC screen does not ask again
+    navigate({ pathname: '/kyc', search: `step=${step}` }, { state: { kycStep: step } });
   }
 
   // formatting

@@ -138,9 +138,9 @@ export default function KycScreen(): JSX.Element {
   const { user, reloadUser } = useUserContext();
   const { getKycInfo, continueKyc, startStep, addTransferClient, cancelStep } = useKyc();
   const { nameToString } = useKycHelper();
-  const { pathname, search } = useLocation();
+  const { pathname, search, state } = useLocation();
   const { navigate, goBack } = useNavigation();
-  const { logout } = useSessionContext();
+  const { logout, isLoggedIn } = useSessionContext();
   const { isInitialized, params, setParams } = useAppHandlingContext();
   const { lang } = useAppParams();
 
@@ -153,6 +153,8 @@ export default function KycScreen(): JSX.Element {
   const [error, setError] = useState<string>();
   const [showLinkHint, setShowLinkHint] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
+  const [acceptedCode, setAcceptedCode] = useState<string | null>();
+  const [confirmedStep, setConfirmedStep] = useState<string | null>();
   const { rootRef } = useLayoutContext();
   const loadSerial = useRef(createKeyedSerial());
   const loadGen = useRef(0);
@@ -167,7 +169,26 @@ export default function KycScreen(): JSX.Element {
   const [step, stepSequence] = urlParams.get('step')?.split(':') ?? [];
   const [stepName, stepType] = step?.split('/') ?? [];
   const paramKycCode = urlParams.get('code');
-  const kycCode = paramKycCode ?? user?.kyc.hash;
+  const ownKycCode = user?.kyc.hash;
+  // a signed-in user only works on another account's code after choosing to open the link
+  const isIdentityPending = !isInitialized || (isLoggedIn && !user);
+  const isSignedIn = !!isLoggedIn && !!ownKycCode;
+  const isOtherCode = isSignedIn && !!paramKycCode && paramKycCode !== ownKycCode;
+  const needsCodeChoice = isOtherCode && acceptedCode !== paramKycCode;
+  const kycCode =
+    isIdentityPending || needsCodeChoice
+      ? undefined
+      : isOtherCode
+        ? paramKycCode
+        : isSignedIn
+          ? ownKycCode
+          : (paramKycCode ?? ownKycCode);
+  // a step from a link starts for a signed-in user only when opened inside the app or confirmed
+  const stepParam = urlParams.get('step');
+  const canStartStep =
+    !!stepName &&
+    (!isSignedIn || (state as { kycStep?: string } | null)?.kycStep === stepParam || confirmedStep === stepParam);
+  const needsStepConfirm = !!stepName && !!kycCode && !canStartStep;
   const redirectUri = urlParams.get('kyc-redirect');
   const client = urlParams.get('client') ?? undefined;
   const [requestedAddress] = useState(() => readRequestedKycAddress(search, params.address));
@@ -191,7 +212,7 @@ export default function KycScreen(): JSX.Element {
       ? requestedAddress
       : undefined;
 
-  useUserGuard('/login', !kycCode);
+  useUserGuard('/login', !paramKycCode && !ownKycCode);
 
   useEffect(() => {
     if (!lang && info) changeLanguage(info.language);
@@ -248,6 +269,10 @@ export default function KycScreen(): JSX.Element {
   useEffect(() => {
     if (mismatchAddress) return;
     if (!kycCode) return;
+    if (needsStepConfirm) {
+      setIsLoading(false);
+      return;
+    }
 
     const request = stepName
       ? callKyc(() =>
@@ -273,7 +298,7 @@ export default function KycScreen(): JSX.Element {
         });
 
     request.catch((error: ApiError) => setError(error.message ?? 'Unknown error')).finally(() => setIsLoading(false));
-  }, [kycCode, stepName, stepType, mismatchAddress]);
+  }, [kycCode, stepName, stepType, mismatchAddress, canStartStep]);
 
   async function onLoad(next: boolean): Promise<void> {
     if (!kycCode) return;
@@ -422,10 +447,73 @@ export default function KycScreen(): JSX.Element {
     );
   }
 
+  if (needsCodeChoice) {
+    const resetForCode = () => {
+      setInfo(undefined);
+      setStepInProgress(undefined);
+      setIsLoading(true);
+    };
+
+    return (
+      <StyledVerticalStack gap={6} full>
+        <p className="text-dfxGray-700">
+          {translate(
+            'screens/kyc',
+            'This link belongs to a different account than the one you are signed in with. If you open the link, the data you enter is saved to that account.',
+          )}
+        </p>
+        <StyledButton
+          width={StyledButtonWidth.FULL}
+          label={translate('screens/kyc', 'Continue with my account')}
+          onClick={() => {
+            resetForCode();
+            clearParams(['code']);
+          }}
+        />
+        <StyledButton
+          width={StyledButtonWidth.FULL}
+          color={StyledButtonColor.STURDY_WHITE}
+          label={translate('screens/kyc', 'Open link')}
+          onClick={() => {
+            resetForCode();
+            setAcceptedCode(paramKycCode);
+          }}
+        />
+      </StyledVerticalStack>
+    );
+  }
+
   return (
     <>
       {isLoading || isAutoStarting ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
+      ) : needsStepConfirm ? (
+        <StyledVerticalStack gap={6} full>
+          <p className="text-dfxGray-700">
+            {translate('screens/kyc', 'Do you want to start the step "{{step}}"?', {
+              step: Object.values(KycStepName).includes(stepName as KycStepName)
+                ? nameToString(stepName as KycStepName)
+                : stepName,
+            })}
+          </p>
+          <StyledButton
+            width={StyledButtonWidth.FULL}
+            label={translate('general/actions', 'Start')}
+            onClick={() => {
+              setIsLoading(true);
+              setConfirmedStep(stepParam);
+            }}
+          />
+          <StyledButton
+            width={StyledButtonWidth.FULL}
+            color={StyledButtonColor.STURDY_WHITE}
+            label={translate('general/actions', 'Cancel')}
+            onClick={() => {
+              setIsLoading(true);
+              clearParams(['step']);
+            }}
+          />
+        </StyledVerticalStack>
       ) : showLinkHint ? (
         <StyledVerticalStack gap={6} full>
           <p className="text-dfxGray-700">

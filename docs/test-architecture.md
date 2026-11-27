@@ -856,6 +856,11 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   address `0x1111111111111111111111111111111111111111`, and does not call a live API. A green run
   proves the mismatch hint renders for that fixture. It does not prove that the hint comes from a
   real session or a real API response.
+- **The KYC link prompts visual spec answers the user endpoint itself.**
+  `e2e/kyc-link-prompts.spec.ts` fulfils the user routes with a built user whose KYC code is
+  `handbook`, opens `/kyc` with a placeholder code of another account and with a step parameter, and
+  does not call a live API. A green run proves the account prompt and the step confirmation render
+  for that fixture. It does not prove a real session, a real KYC response, or what the buttons do.
 - **The account screen coverage test replaces the SDK and the component library.**
   `src/__tests__/account-screen-coverage.test.tsx` replaces the user, auth, session, API and
   transaction hooks with in-memory stubs, and replaces the styled components with passthrough
