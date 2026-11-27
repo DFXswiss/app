@@ -347,6 +347,29 @@ test.describe('KYC area e2e', () => {
     );
   });
 
+  test('/kyc?step with auto-start still waits for the step confirmation', async ({ page }) => {
+    const user = await createUser({ tag: 'kyc-step-auto', kycLevel: 0, language: 'EN' });
+    const steps = async () =>
+      Number(
+        (
+          await queryOne<{ n: number }>(`SELECT COUNT(*)::int AS n FROM kyc_step WHERE "userDataId" = $1`, [
+            user.userDataId,
+          ])
+        )?.n ?? 0,
+      );
+    const before = await steps();
+
+    await gotoWithSession(page, '/kyc?step=PersonalData&auto-start=true', user.jwt);
+
+    await expect(page.getByText(STEP_PROMPT)).toBeVisible({ timeout: 15000 });
+    await page.waitForLoadState('networkidle');
+    expect(await steps()).toBe(before);
+
+    await page.getByRole('button', { name: 'Start' }).click();
+
+    await expect(page.getByText('Account Type', { exact: true })).toBeVisible({ timeout: 25000 });
+  });
+
   test('/kyc?code&step without a session starts the step directly', async ({ page }) => {
     const user = await createUser({ tag: 'kyc-step-mail', kycLevel: 0, language: 'EN' });
     const hash = await kycHashOf(user.userDataId);
