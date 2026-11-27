@@ -8,6 +8,7 @@ export interface LaunchCredentials {
 }
 
 type Renew = (credentials: LaunchCredentials) => Promise<string>;
+type CurrentSession = () => string | undefined;
 
 const LAUNCH_CREDENTIALS_KEY = 'dfx.srv.launchCredentials';
 
@@ -64,11 +65,13 @@ function withoutSession(init: RequestInit | undefined): RequestInit | undefined 
   return { ...init, headers: headerList(init.headers).filter((header) => !isAuthorization(header)) };
 }
 
-// When the API rejects a session of the launch address with 401 (the account was merged into another one), the
-// launch signature signs in again and the rejected request is sent once more with the new session, so the SDK never
-// sees the 401 and does not log out. One re-login per rejected session; a failed one returns the original 401, and a
-// 401 of a renewed session reaches the caller unchanged instead of starting another re-login.
-export function installSessionRenewal(renew: Renew): () => void {
+// When the API rejects the current session of the launch address with 401 (the account was merged into another one),
+// the launch signature signs in again and the rejected request is sent once more with the new session, so the SDK
+// never sees the 401 and does not log out. One re-login per rejected session; a failed one returns the original 401,
+// and a 401 of a renewed session reaches the caller unchanged instead of starting another re-login. A 401 of a session
+// the app no longer uses, or one whose session was replaced by another login during the re-login, reaches the caller
+// unchanged as well.
+export function installSessionRenewal(renew: Renew, currentSession: CurrentSession): () => void {
   const originalFetch = window.fetch;
   const renewals = new Map<string, Promise<string | undefined>>();
   const renewedSessions = new Set<string>();
@@ -77,7 +80,7 @@ export function installSessionRenewal(renew: Renew): () => void {
   function renewalFor(token: string): Promise<string | undefined> | undefined {
     const pending = renewals.get(token);
     if (pending) return pending;
-    if (renewedSessions.has(token)) return undefined;
+    if (renewedSessions.has(token) || currentSession() !== token) return undefined;
 
     const credentials = launchCredentials.get();
     if (!credentials || !isSameAddress(tokenAddress(token), credentials.address)) return undefined;
@@ -106,9 +109,11 @@ export function installSessionRenewal(renew: Renew): () => void {
 
     const headers = headerList(init?.headers);
     const authorization = headers.find(isAuthorization)?.[1];
-    const renewal = authorization?.startsWith('Bearer ') && renewalFor(authorization.slice('Bearer '.length));
+    const rejected = authorization?.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : undefined;
+    const renewal = rejected && renewalFor(rejected);
     const token = renewal && (await renewal);
-    if (!token) return response;
+    // The re-login itself makes the renewed session the current one; any other session comes from another login.
+    if (!token || ![rejected, token].includes(currentSession())) return response;
 
     const otherHeaders = headers.filter((header) => !isAuthorization(header));
     return originalFetch(input, { ...init, headers: [...otherHeaders, ['Authorization', `Bearer ${token}`]] });

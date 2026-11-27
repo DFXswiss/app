@@ -1,6 +1,6 @@
-// The re-login of a partner launch: after an account merge the API rejects the session of the launch address with
-// 401; the launch signature signs in again and the request is sent once more, so the caller (the SDK) never sees the
-// 401 and does not log out. Every other 401 reaches the caller unchanged, which logs out as before.
+// The re-login of a partner launch: after an account merge the API rejects the current session of the launch address
+// with 401; the launch signature signs in again and the request is sent once more, so the caller (the SDK) never sees
+// the 401 and does not log out. Every other 401 reaches the caller unchanged, which logs out as before.
 
 jest.mock('../util/client-error', () => ({ reportClientError: jest.fn() }));
 
@@ -25,6 +25,7 @@ const AUTH_PATH_URLS = [AUTH_URL, SIGN_MESSAGE_URL];
 const originalFetch = window.fetch;
 let mockFetch: jest.Mock;
 let mockRenew: jest.Mock;
+let currentSession: string | undefined;
 let uninstall: () => void;
 
 function answer(status: number): Response {
@@ -47,8 +48,13 @@ beforeEach(() => {
   localStorage.clear();
   mockFetch = jest.fn();
   window.fetch = mockFetch;
-  mockRenew = jest.fn().mockResolvedValue(MASTER_SESSION);
-  uninstall = installSessionRenewal(mockRenew);
+  currentSession = SLAVE_SESSION;
+  // Like the app's re-login, the renewal makes the renewed session the current one.
+  mockRenew = jest.fn().mockImplementation(async () => {
+    currentSession = MASTER_SESSION;
+    return MASTER_SESSION;
+  });
+  uninstall = installSessionRenewal(mockRenew, () => currentSession);
 });
 
 afterEach(() => {
@@ -91,6 +97,7 @@ describe('installSessionRenewal', () => {
     mockFetch.mockResolvedValueOnce(answer(401)).mockResolvedValueOnce(renewed);
 
     const session = jwt({ address: checksummed.address.toLowerCase(), account: 1 });
+    currentSession = session;
     const result = await window.fetch(USER_URL, authorized(session));
 
     expect(result).toBe(renewed);
@@ -104,6 +111,7 @@ describe('installSessionRenewal', () => {
     mockFetch.mockResolvedValueOnce(rejected);
 
     const session = jwt({ address: '1bvbmseystwetqtfn5au4m4gfg7xjanvn2', account: 1 });
+    currentSession = session;
 
     expect(await window.fetch(USER_URL, authorized(session))).toBe(rejected);
     expect(mockRenew).not.toHaveBeenCalled();
@@ -139,10 +147,44 @@ describe('installSessionRenewal', () => {
   });
 
   it.each([
-    ['a session of another address', authorized(OTHER_SESSION)],
-    ['a session of another hex address', authorized(jwt({ address: '0xabc', account: 4 }))],
-    ['a session without an address', authorized(jwt({ account: 5 }))],
-    ['a session that is no JWT', { headers: { Authorization: 'Bearer not-a-jwt' } }],
+    ['another address', OTHER_SESSION],
+    ['another hex address', jwt({ address: '0xabc', account: 4 })],
+    ['no address', jwt({ account: 5 })],
+    ['no JWT', 'not-a-jwt'],
+  ])('returns the 401 of a request with the current session of %s', async (_name, session) => {
+    currentSession = session;
+    const rejected = answer(401);
+    mockFetch.mockResolvedValueOnce(rejected);
+
+    expect(await window.fetch(USER_URL, authorized(session))).toBe(rejected);
+    expect(mockRenew).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the 401 of a launch session that is no longer the current one without signing in again', async () => {
+    currentSession = OTHER_SESSION;
+    const rejected = answer(401);
+    mockFetch.mockResolvedValueOnce(rejected);
+
+    expect(await window.fetch(USER_URL, authorized(SLAVE_SESSION))).toBe(rejected);
+    expect(mockRenew).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the 401 when another login replaces the session during the re-login', async () => {
+    mockRenew.mockImplementation(async () => {
+      currentSession = OTHER_SESSION;
+      return MASTER_SESSION;
+    });
+    const rejected = answer(401);
+    mockFetch.mockResolvedValueOnce(rejected);
+
+    expect(await window.fetch(USER_URL, authorized(SLAVE_SESSION))).toBe(rejected);
+    expect(mockRenew).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
     ['no bearer session', { headers: { Authorization: 'Basic credentials' } }],
     ['no headers', {}],
     ['no request options', undefined],

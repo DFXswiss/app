@@ -1635,12 +1635,12 @@ test.describe('Sell + Swap e2e', () => {
       if (frame !== page.mainFrame() || !frame.url().startsWith('http')) return;
       visited.push(normPath(new URL(frame.url()).pathname));
     });
+    // Wait out the API's 10-second sign-in cache, which still maps the launch address to its former account.
+    await page.waitForTimeout(Math.max(0, mergeConfirmedAt + 11000 - Date.now()));
     const relogin = page.waitForResponse(
       (response) => response.request().method() === 'POST' && /\/v1\/auth$/.test(new URL(response.url()).pathname),
       { timeout: 20000 },
     );
-    // Wait out the API's 10-second sign-in cache, which still maps the launch address to its former account.
-    await page.waitForTimeout(Math.max(0, mergeConfirmedAt + 11000 - Date.now()));
     await page.getByRole('button', { name: 'OK', exact: true }).click();
     expect((await relogin).ok(), 'the re-login with the launch signature').toBe(true);
 

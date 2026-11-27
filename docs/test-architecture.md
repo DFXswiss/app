@@ -940,11 +940,14 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
 - **The re-login after a merge is proven by unit tests against a replaced `fetch`.**
   `src/__tests__/session-renewal.test.ts` and the session-renewal cases of `src/__tests__/wallet-context.test.tsx`
   answer `window.fetch` with synthetic 401 and 200 responses and replace `renew` or the SDK's `authenticate`. A green
-  run proves that a 401 for a session of the launch address (a hex address in any letter case, any other address
-  exactly) signs in once with the launch credentials and resends the request with the new session, and that every
-  other 401 (no launch credentials, another address, the sign-in
-  itself, a failed re-login, a rejected new session) reaches the caller unchanged. It does not prove what the SDK does
-  with the answer; the full-stack merge case above covers the real path.
+  run proves that a 401 for the current session of the launch address (a hex address in any letter case, any other
+  address exactly) signs in once with the launch credentials and resends the request with the new session, and that
+  every other 401 (no launch credentials, another address, a session that is no longer the current one, a session
+  another login replaced during the re-login, the sign-in itself, a failed re-login, a rejected new session) reaches
+  the caller unchanged, and that a wallet login or a set session drops the launch credentials. The current session
+  is read from `localStorage['dfx.authenticationToken']`, which the tests set themselves. It does not prove what the
+  SDK does with the answer, nor that the SDK keeps that key in step with the session it sends; the full-stack merge
+  case above covers the real path.
 - **A widget ignoring a stale redirect URI in the session store is proven by the unit test only.**
   `src/__tests__/app-handling-context.test.tsx` ("does not take the redirect URI an earlier widget left in the
   session store") puts a value in `sessionStorage['dfx.srv.redirectUri']`, mounts the real app-handling context in
@@ -1093,8 +1096,9 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   lets the injected MetaMask accept the transaction and closes the completion screen, whose redirect two seconds
   later goes to that answered host as well. The `/sell/info` case confirms without an active wallet, whose redirect
   two seconds later goes to that answered host too. The `/sell/info` amount-error case clicks Close, whose redirect
-  goes to that answered host as well. With the swap routes unmounted in the harness, the swap hand-off, reload and
-  completed-swap cases end at the 404 answer on screen (`swapQuoteUnavailable`). A green run does not prove that a wallet
+  goes to that answered host as well. With the swap unavailable in the harness, the swap hand-off, reload and
+  completed-swap cases end at the unavailable answer (404, or 503 `TRANSACTIONS_PAUSED`) on screen
+  (`swapQuoteUnavailable`). A green run does not prove that a wallet
   intercepts the redirect, opens a send screen or sends a transaction, nor how a WebView behaves, nor how a
   wallet's WebView reloads a page.
 - **The full-stack harness SQL-seeds the sell minimum.** `e2e-stack/scripts/up.sh` inserts the

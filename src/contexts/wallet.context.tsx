@@ -6,6 +6,7 @@ import { jwtDecode } from 'jwt-decode';
 import { PropsWithChildren, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../hooks/store.hook';
 import { WalletType as MetaMaskWalletType, useMetaMask } from '../hooks/wallets/metamask.hook';
+import { storageGet } from '../util/safe-storage';
 import { installSessionRenewal, launchCredentials } from '../util/session-renewal';
 import { useAppHandlingContext } from './app-handling.context';
 import { useBalanceContext } from './balance.context';
@@ -174,6 +175,9 @@ export function useWalletContext(): WalletInterface {
   return useContext(WalletContext);
 }
 
+// The SDK keeps the session it sends as the Bearer token under this key.
+const SESSION_KEY = 'dfx.authenticationToken';
+
 function knownWalletType(value?: string): WalletType | undefined {
   return Object.values(WalletType).includes(value as WalletType) ? (value as WalletType) : undefined;
 }
@@ -200,7 +204,10 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
 
   useEffect(() => {
     if (isWidget) return;
-    return installSessionRenewal(({ address, signature, pubkey }) => renewSession.current(address, signature, pubkey));
+    return installSessionRenewal(
+      ({ address, signature, pubkey }) => renewSession.current(address, signature, pubkey),
+      () => storageGet('localStorage', SESSION_KEY),
+    );
   }, [isWidget]);
 
   // initialize
@@ -292,6 +299,7 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
     try {
       const message = await getSignMessage(address);
       const signature = await onSignMessage(address, message);
+      launchCredentials.remove();
       await createSession(address, signature, key, wallet);
     } catch (e) {
       api.logout();
@@ -306,7 +314,9 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
     reloadUser();
   }
 
+  // Only the launch with address and signature may renew a session; every other login ends that.
   async function setSession(session: string, wallet?: WalletType, blockchain?: Blockchain): Promise<void> {
+    launchCredentials.remove();
     updateSession(session);
 
     setWallet(wallet);
