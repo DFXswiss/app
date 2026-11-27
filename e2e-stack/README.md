@@ -148,13 +148,15 @@ on any refusal it does not assert itself, including HTTP 503 `TRANSACTIONS_PAUSE
 refusals, the `/sell/info` KYC and amount errors and the runtime pause each assert their own answer.
 
 Swap stays off whatever `env/api.env` says: the API's `loc` environment sets the feature flag
-`swap: false`, which forces the swap process off and leaves the swap routes unmounted, so every swap
-request answers HTTP 404 (`Cannot PUT /v1/swap/paymentInfos`). `fixtures/paused.ts` holds the swap
-helpers: `createSwap` throws `SwapUnavailableError` on that answer or on a paused one,
-`orSwapUnavailable` turns it into a value a test can branch on, and
-`expectUnavailableQuoteOnScreen` checks that the swap screen shows the API's message and no
-payment information (it also serves the sell case that pauses sell at runtime). A swap case asserts the answer it got and ends there; its other assertions run
-only once the API serves swaps.
+`swap: false`, which forces the swap process off and leaves the swap routes unmounted, so a swap quote
+or payment-info request (`POST /v1/swap`, `PUT /v1/swap/paymentInfos`) answers HTTP 404
+(`Cannot PUT /v1/swap/paymentInfos`); with the flag on and the process off it would answer HTTP 503
+`TRANSACTIONS_PAUSED`. `fixtures/paused.ts` holds the swap helpers: `createSwap` throws
+`SwapUnavailableError` on either answer, `orSwapUnavailable` turns it into a value a test can branch
+on, and `expectUnavailableQuoteOnScreen` checks that the swap screen shows the API's message and no
+payment information (it also serves the sell case that pauses sell at runtime). A swap quote or
+payment-info case asserts the answer it got and ends there; its other assertions run only once the API
+serves swaps. The swap cases that only render the swap form or its asset lists do not depend on it.
 
 ## Relation to the existing suite under `e2e/`
 

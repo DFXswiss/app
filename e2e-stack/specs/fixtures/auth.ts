@@ -33,20 +33,23 @@ export function testWallet(index = 0): TestWallet {
   };
 }
 
-/** Full signature login: GET /v1/auth/signMessage -> sign with ethers v5 -> POST /v1/auth. Returns the JWT. */
-export async function signatureLogin(wallet: TestWallet): Promise<string> {
-  const base = apiBase();
-  const signRes = await fetch(`${base}/v1/auth/signMessage?address=${encodeURIComponent(wallet.address)}`);
+/** GET /v1/auth/signMessage -> sign with ethers v5. The signature a partner passes as `signature` with `address`. */
+export async function loginSignature(wallet: TestWallet): Promise<string> {
+  const signRes = await fetch(`${apiBase()}/v1/auth/signMessage?address=${encodeURIComponent(wallet.address)}`);
   if (!signRes.ok) {
     const body = await signRes.text();
     throw new Error(`signMessage failed: ${signRes.status} ${body}`);
   }
   const { message } = (await signRes.json()) as { message: string };
   // Always sign the server-returned message as-is (loc prefixes [loc]_ server-side).
-  const signer = new ethers.Wallet(wallet.privateKey);
-  const signature = await signer.signMessage(message);
+  return new ethers.Wallet(wallet.privateKey).signMessage(message);
+}
 
-  const authRes = await fetch(`${base}/v1/auth`, {
+/** Full signature login: GET /v1/auth/signMessage -> sign with ethers v5 -> POST /v1/auth. Returns the JWT. */
+export async function signatureLogin(wallet: TestWallet): Promise<string> {
+  const signature = await loginSignature(wallet);
+
+  const authRes = await fetch(`${apiBase()}/v1/auth`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ address: wallet.address, signature }),

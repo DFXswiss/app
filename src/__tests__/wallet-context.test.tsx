@@ -1,5 +1,5 @@
 import { PropsWithChildren } from 'react';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 
 const mockNavigate = jest.fn();
 const mockLogout = jest.fn();
@@ -20,6 +20,7 @@ let mockSessionInitialized = true;
 let mockLoggedIn = false;
 let mockParamsInitialized = true;
 let mockAppParams: Record<string, string | undefined> = {};
+let mockIsWidget = false;
 
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: {
@@ -97,7 +98,11 @@ jest.mock('../hooks/wallets/metamask.hook', () => ({
 }));
 
 jest.mock('../contexts/app-handling.context', () => ({
-  useAppHandlingContext: () => ({ isInitialized: mockParamsInitialized, params: mockAppParams }),
+  useAppHandlingContext: () => ({
+    isInitialized: mockParamsInitialized,
+    params: mockAppParams,
+    isWidget: mockIsWidget,
+  }),
 }));
 
 jest.mock('../contexts/balance.context', () => ({
@@ -107,8 +112,11 @@ jest.mock('../contexts/balance.context', () => ({
 import { Blockchain } from '@dfx.swiss/react';
 import type { Router } from '@remix-run/router';
 import { supportsBlockchain, useWalletContext, WalletContextProvider, WalletType } from '../contexts/wallet.context';
+import { launchCredentials } from '../util/session-renewal';
 
 const router = { navigate: mockNavigate } as unknown as Router;
+const SESSION_KEY = 'dfx.authenticationToken';
+const LAUNCH = { address: 'launch-address', signature: 'launch-signature' };
 
 function wrapper({ children }: PropsWithChildren): JSX.Element {
   return <WalletContextProvider router={router}>{children}</WalletContextProvider>;
@@ -132,6 +140,8 @@ function reset(): void {
   mockLoggedIn = false;
   mockParamsInitialized = true;
   mockAppParams = {};
+  mockIsWidget = false;
+  sessionStorage.clear();
   mockStoredWalletGet.mockReturnValue(undefined);
   mockBrowserLang.mockReturnValue('en');
   mockAuthenticate.mockResolvedValue('session-token');
@@ -301,12 +311,14 @@ describe('WalletContextProvider param sessions', () => {
     );
   });
 
-  it('logs out when creating the session from credentials fails', async () => {
+  it('logs out and drops the launch credentials when creating the session from credentials fails', async () => {
     mockAppParams = { address: 'address', signature: 'signature' };
+    launchCredentials.set({ address: 'address', signature: 'signature' });
     mockAuthenticate.mockRejectedValue(new Error('authentication failed'));
     const { result } = await ready();
 
     expect(mockLogout).toHaveBeenCalled();
+    expect(launchCredentials.get()).toBeUndefined();
     expect(result.current.isInitialized).toBe(true);
   });
 
@@ -328,6 +340,34 @@ describe('WalletContextProvider param sessions', () => {
     expect(mockStoredWalletSet).toHaveBeenCalledWith(WalletType.META_MASK);
     expect(mockNavigate).toHaveBeenCalledWith('/account');
     expect(result.current.isInitialized).toBe(true);
+  });
+
+  it('drops the launch credentials of an earlier launch when a start applies a session', async () => {
+    launchCredentials.set(LAUNCH);
+    mockAppParams = { session: 'jwt.token' };
+    await ready();
+
+    expect(mockUpdateSession).toHaveBeenCalledWith('jwt.token');
+    expect(launchCredentials.get()).toBeUndefined();
+  });
+
+  it('keeps the launch credentials when the launch with address and signature creates the session', async () => {
+    launchCredentials.set(LAUNCH);
+    mockAppParams = { address: LAUNCH.address, signature: LAUNCH.signature };
+    await ready();
+
+    expect(mockAuthenticate).toHaveBeenCalledTimes(1);
+    expect(launchCredentials.get()).toEqual(LAUNCH);
+  });
+
+  it('takes the launch with address and signature over a session and keeps the launch credentials', async () => {
+    launchCredentials.set(LAUNCH);
+    mockAppParams = { address: LAUNCH.address, signature: LAUNCH.signature, session: 'jwt.token' };
+    await ready();
+
+    expect(mockAuthenticate).toHaveBeenCalledTimes(1);
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(launchCredentials.get()).toEqual(LAUNCH);
   });
 
   it('does not apply the same session twice', async () => {
@@ -498,6 +538,33 @@ describe('WalletContextProvider public API', () => {
     expect(result.current.blockchain).toBeUndefined();
   });
 
+  it('drops the launch credentials when another login sets a session', async () => {
+    mockLoggedIn = true;
+    launchCredentials.set(LAUNCH);
+    const { result } = await ready();
+
+    await act(async () => {
+      await result.current.setSession('mail-session');
+    });
+
+    expect(launchCredentials.get()).toBeUndefined();
+    expect(mockUpdateSession).toHaveBeenCalledWith('mail-session');
+  });
+
+  it('drops the launch credentials when a wallet login signs in', async () => {
+    mockLoggedIn = true;
+    launchCredentials.set(LAUNCH);
+    const { result } = await ready();
+    const onSignMessage = jest.fn().mockResolvedValue('signature');
+
+    await act(async () => {
+      await result.current.login(WalletType.META_MASK, 'address', Blockchain.ETHEREUM, onSignMessage);
+    });
+
+    expect(launchCredentials.get()).toBeUndefined();
+    expect(mockAuthenticate).toHaveBeenCalledTimes(1);
+  });
+
   it('switches the blockchain', async () => {
     mockLoggedIn = true;
     const { result } = await ready();
@@ -507,5 +574,89 @@ describe('WalletContextProvider public API', () => {
     });
 
     expect(result.current.blockchain).toBe(Blockchain.BITCOIN);
+  });
+});
+
+describe('WalletContextProvider session renewal', () => {
+  const USER_URL = 'https://api.example/v2/user';
+  const originalFetch = window.fetch;
+  let mockFetch: jest.Mock;
+
+  beforeEach(() => {
+    mockFetch = jest.fn();
+    window.fetch = mockFetch;
+    localStorage.setItem(SESSION_KEY, 'slave-session');
+  });
+
+  afterEach(() => {
+    cleanup();
+    window.fetch = originalFetch;
+    localStorage.removeItem(SESSION_KEY);
+  });
+
+  it('signs in again with the launch credentials when the API rejects their session after a merge', async () => {
+    mockLoggedIn = true;
+    mockAppParams = { wallet: 'partner-wallet' };
+    launchCredentials.set({ address: 'address', signature: 'signature', pubkey: 'pubkey' });
+    mockJwtDecode.mockReturnValue({ address: 'address' });
+    mockAuthenticate.mockResolvedValue('master-session');
+    const renewed = { status: 200 } as Response;
+    mockFetch.mockResolvedValueOnce({ status: 401 } as Response).mockResolvedValueOnce(renewed);
+    await ready();
+
+    let response: Response | undefined;
+    await act(async () => {
+      response = await window.fetch(USER_URL, { headers: { Authorization: 'Bearer slave-session' } });
+    });
+
+    expect(mockAuthenticate).toHaveBeenCalledWith(
+      'address',
+      'signature',
+      'pubkey',
+      undefined,
+      'partner-wallet',
+      undefined,
+      undefined,
+      undefined,
+      'EN',
+    );
+    expect(mockFetch).toHaveBeenLastCalledWith(USER_URL, { headers: [['Authorization', 'Bearer master-session']] });
+    expect(response).toBe(renewed);
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('returns the 401 of a launch session the SDK no longer holds without signing in again', async () => {
+    mockLoggedIn = true;
+    launchCredentials.set({ address: 'address', signature: 'signature' });
+    localStorage.setItem(SESSION_KEY, 'other-session');
+    mockJwtDecode.mockReturnValue({ address: 'address' });
+    const rejected = { status: 401 } as Response;
+    mockFetch.mockResolvedValueOnce(rejected);
+    await ready();
+
+    let response: Response | undefined;
+    await act(async () => {
+      response = await window.fetch(USER_URL, { headers: { Authorization: 'Bearer slave-session' } });
+    });
+
+    expect(response).toBe(rejected);
+    expect(mockAuthenticate).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves fetch untouched in a widget', async () => {
+    mockIsWidget = true;
+    await ready();
+
+    expect(window.fetch).toBe(mockFetch);
+  });
+
+  it('restores fetch when the provider unmounts', async () => {
+    const { unmount } = await ready();
+    expect(window.fetch).not.toBe(mockFetch);
+
+    unmount();
+
+    expect(window.fetch).toBe(mockFetch);
   });
 });

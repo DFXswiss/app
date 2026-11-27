@@ -499,14 +499,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The full-stack wallet-AML spec has no swap case.** With the API's swap product off in its loc
   environment the swap routes are not mounted (`PUT /v1/swap/paymentInfos` answers 404), so the swap screen
   gets no quote. A green run does **not** prove anything about the wallet-AML rules on swaps.
-- **The full-stack swap cases end at the unmounted swap routes.** The API's `loc` environment sets the
-  feature flag `swap: false`, which forces the swap process off whatever `DISABLED_PROCESSES` in
-  `e2e-stack/env/api.env` says and leaves the swap routes unmounted, so `POST /v1/swap` and
-  `PUT /v1/swap/paymentInfos` answer HTTP 404. The swap cases in `e2e-stack/specs/sell-swap.spec.ts` and
-  `e2e-stack/specs/factories.spec.ts` assert that answer (or HTTP 503 `TRANSACTIONS_PAUSED`, should the flag be
-  on and the process off), that the swap screen shows the API's message and no payment information, and that
-  no swap route is written, and end there. A green swap case does **not** prove a swap quote, a swap route, the
-  swap payment panel, the swap hand-off, its reload or its completion redirect, or the swap form submit.
+- **The full-stack swap quote and payment-info cases end at the unavailable swap answer.** The API's `loc`
+  environment sets the feature flag `swap: false`, which forces the swap process off whatever `DISABLED_PROCESSES`
+  in `e2e-stack/env/api.env` says and leaves the swap routes unmounted, so `POST /v1/swap` and
+  `PUT /v1/swap/paymentInfos` answer HTTP 404; with the flag on and the process off they answer HTTP 503
+  `TRANSACTIONS_PAUSED`. The swap quote and payment-info cases in `e2e-stack/specs/sell-swap.spec.ts` and the
+  `createSwap` case in `e2e-stack/specs/factories.spec.ts` assert whichever of the two answers they get and end
+  there; the screen cases also assert the API's message and no payment information. Only the UI write case and the
+  two `createSwap` cases also assert that no swap route is written.
+  The swap cases that only render the swap form or compare its assets with `GET /v1/asset` do not depend on that
+  answer. A green swap quote or payment-info case does **not** prove a swap quote, a swap route, the swap payment
+  panel, the swap hand-off, its reload or its completion redirect, or the swap form submit.
 - **The full-stack paused-sell case switches sell off at runtime through the `disabledProcess` setting.**
   `e2e-stack/specs/sell-swap.spec.ts` (`/sell: while sell is paused through the disabledProcess setting, the
 screen shows the paused message and no payment information`) adds `Sell` to the JSON array in the `setting` row
@@ -902,16 +905,50 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   the `/link` cases in `e2e-stack/specs/kyc.spec.ts`). Its Back runs the same return to `/sell` as the OK after the
   merge mail was sent. A green run of that case does not prove the mail form on `/link`, the merge mail or its
   confirmation; the merge case below covers those.
-- **The full-stack `/sell` merge case asserts the return to `/sell` through the `return-url` of the merge mail.**
+- **The full-stack `/sell` merge case models the partner WebView and the mail app with two browser contexts.**
   The case in `e2e-stack/specs/sell-swap.spec.ts` that enters the mail of a verified account on `/link` signs up a
   fresh wallet without a mail as the KYC level 0 account and takes the verified account from `createUser`, which sets
-  its KYC level to 50 and its personal data by SQL. It reads the merge mail from the `notification` table and opens
-  its link in a new page of the same browser context. Because `/link` is opened from `/sell` with `setRedirect`, the
-  app sends the `/sell` page as `redirectUri` with the contact data, and the case checks that body. The merge mail
-  carries `return-url` (backend `develop` since DFXswiss/backend#6352); the case asserts that it equals the sent
-  `redirectUri`, the confirmation and the return to `/sell` after "My account" (with the amount, the partner redirect
-  URI in `sessionStorage`, no `session` left in the address bar and a session for the merged account). A green run
-  does not prove that a mail reaches a mailbox or that a verified account reaches level 50 through the product path.
+  its KYC level to 50 and its personal data by SQL. The test page stands for the partner's WebView: it opens `/sell`
+  with `address` and a `signature` the harness signs for that wallet, the amount, the asset and the partner redirect
+  URI. Because `/link` is opened from `/sell` with `setRedirect`, the app sends the `/sell` page as `redirectUri` with
+  the contact data, and the case checks that body and that the merge mail's `return-url` equals it (backend
+  `develop` since DFXswiss/backend#6352). The case reads the merge mail from the `notification` table and opens its
+  link in a new browser context (`browser.newContext()`), which shares no cookies, `localStorage` or
+  `sessionStorage` with the WebView: it stands for the mail app or another browser where nobody is signed in. There
+  the case asserts the confirmation and that "My account" opens `/account` with the verified account's `code`, not
+  the `return-url`. Back on the WebView, the case taps OK only 11 seconds after the merge confirmation: the API's
+  `authenticate` reads the user by address through a cache that resets every 10 seconds (`userCache` in the backend's
+  `auth.service.ts`), so within that window a sign-in still returns a session for the wallet's former account and
+  `GET /v2/user` answers 401 "User is merged". The wait models a person who confirms the mail in another app and
+  returns to the wallet later than that. OK must then sign in again with the launch signature (`POST /v1/auth`) and
+  end on `/sell` with the amount, the partner redirect URI in `sessionStorage`, a session for the merged account with
+  a KYC level above 0 and no visit to `/login`. A green run does not prove that a return within 10 seconds of the
+  confirmation renews the session, that a mail reaches a mailbox, that a real
+  mail app or WebView keeps its storage as a browser context does, what `/account` shows without a session (the case
+  checks only the target the button opens), or that a verified account reaches level 50 through the product path.
+- **The full-stack `/sell` merge case with a session confirms the mail in the signed-in browser context.** A second
+  case in `e2e-stack/specs/sell-swap.spec.ts` starts like the partner case above (two new accounts of the same kind, the `/sell`
+  launch with `address`, `signature`, amount, asset and partner redirect URI, the mail form on `/link`, the
+  `redirectUri` check and the merge mail from the `notification` table), but opens the mail's link in a new page of
+  the WebView's own browser context (`page.context().newPage()`). That page shares the cookies and `localStorage`,
+  and with them the signed-in session, but starts with its own empty `sessionStorage`. The case asserts the
+  confirmation and the completed `account_merge` row, then clicks "My account" and expects `/sell` with the amount,
+  the partner redirect URI in `sessionStorage`, no `session` left in the address bar and a session whose `account` is
+  the verified account's `userDataId`. A green run does not prove that a real mail app opens the link in the browser
+  where the partner WebView is signed in, that a mail reaches a mailbox, or what the WebView page itself shows after
+  the confirmation in the other page.
+- **The re-login after a merge is proven by unit tests against a replaced `fetch`.**
+  `src/__tests__/session-renewal.test.ts` and the session-renewal cases of `src/__tests__/wallet-context.test.tsx`
+  answer `window.fetch` with synthetic 401 and 200 responses and replace `renew` or the SDK's `authenticate`. A green
+  run proves that a 401 for the current session of the launch address (a hex address in any letter case, any other
+  address exactly) signs in once with the launch credentials and resends the request with the new session, and that
+  every other 401 (no launch credentials, another address, a session that is no longer the current one, a session
+  another login replaced during the re-login, the sign-in itself, a failed re-login, a rejected new session) reaches
+  the caller unchanged, and that a wallet login or a set session drops the launch credentials.
+  `session-renewal.test.ts` passes its own current-session reader; the wallet-context cases let the provider read
+  `localStorage['dfx.authenticationToken']`, which they set themselves. It does not prove what the SDK does with the
+  answer, nor that the SDK keeps that key in step with the session it sends; the full-stack merge case above covers
+  the real path.
 - **A widget ignoring a stale redirect URI in the session store is proven by the unit test only.**
   `src/__tests__/app-handling-context.test.tsx` ("does not take the redirect URI an earlier widget left in the
   session store") puts a value in `sessionStorage['dfx.srv.redirectUri']`, mounts the real app-handling context in
@@ -929,6 +966,15 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   `KycRequired`, and `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get `501`. A green run proves
   how `/sell/info` renders those two answers. It does not prove production auth, that the API returns them for a
   given amount or account, or that the client-error endpoint stores the report.
+- **The account-merge visual answers the API itself.** `e2e/account-merge.spec.ts` opens
+  `/account-merge?otp=synthetic-merge-otp&lang=en` without a session and without a real login, and fulfils the
+  bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset` with an empty list, `/v1/country` with an empty list,
+  `/v1/setting/infoBanner` with `null`), `GET /v1/auth/mail/confirm?code=synthetic-merge-otp` with a synthetic
+  `kycHash` and no `accessToken` (a confirmation from a mail app where nobody is signed in), and
+  `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get `501`; without a token the app requests no
+  user, KYC or bank accounts. A green run proves how `/account-merge` renders "Wallet address added" and the
+  "My account" button for that answer. It does not prove production auth, that the API answers a real merge link that
+  way, or where "My account" leads; the full-stack merge cases in `e2e-stack/specs/sell-swap.spec.ts` cover that.
 - **The wallet rejection unit test answers for the wallets and their SDKs.**
   `src/__tests__/connect-wallet-rejection.test.tsx` renders the real connect components, wallet hooks,
   `ConnectBase` and `ConnectError` with the real web3 and viem (its mock installs Node's `TextEncoder` and
@@ -1051,8 +1097,9 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   lets the injected MetaMask accept the transaction and closes the completion screen, whose redirect two seconds
   later goes to that answered host as well. The `/sell/info` case confirms without an active wallet, whose redirect
   two seconds later goes to that answered host too. The `/sell/info` amount-error case clicks Close, whose redirect
-  goes to that answered host as well. With the swap routes unmounted in the harness, the swap hand-off, reload and
-  completed-swap cases end at the 404 answer on screen (`swapQuoteUnavailable`). A green run does not prove that a wallet
+  goes to that answered host as well. With the swap unavailable in the harness, the swap hand-off, reload and
+  completed-swap cases end at the unavailable answer (404, or 503 `TRANSACTIONS_PAUSED`) on screen
+  (`swapQuoteUnavailable`). A green run does not prove that a wallet
   intercepts the redirect, opens a send screen or sends a transaction, nor how a WebView behaves, nor how a
   wallet's WebView reloads a page.
 - **The full-stack harness SQL-seeds the sell minimum.** `e2e-stack/scripts/up.sh` inserts the
@@ -1101,10 +1148,11 @@ All five points below concern the full-stack harness.
   Four processes are enabled: Scorechain answers from the API's loc mock (`SCORECHAIN_LOC_MOCK`,
   `SCORECHAIN_LOC_MOCK_DELAY_MS`), so no provider is called; `UserDataRiskStatus` only opens the
   risk-status endpoint, and `Buy` and `Sell` only open the request gates of the buy and sell routes;
-  none of the three runs a job, so the processing chain stays off.
-- **No swap function runs.** The API's `loc` environment keeps swap off through its feature flag
-  `swap: false`, whatever `DISABLED_PROCESSES` says, and does not mount the swap routes; every swap case
-  ends at that 404 answer (see the reality-declaration entry on the swap cases).
+  none of the four runs a job, so the processing chain stays off.
+- **No swap quote or swap payment information is served.** The API's `loc` environment keeps swap off through its
+  feature flag `swap: false`, whatever `DISABLED_PROCESSES` says, and does not mount the swap routes; the swap quote
+  and payment-info cases end at the unavailable answer, HTTP 404 while the routes are unmounted or HTTP 503
+  `TRANSACTIONS_PAUSED` with the flag on and the process off (see the reality-declaration entry on the swap cases).
 - **The harness does not exercise the migration chain.** It builds the schema from the entities,
   because one migration requires a seed row that does not exist at migration time on a fresh
   database. Migrations are covered in `DFXswiss/backend` instead.

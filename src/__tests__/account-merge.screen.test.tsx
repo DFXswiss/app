@@ -36,6 +36,7 @@ jest.mock('react-router-dom', () => ({
 
 import AccountMerge from '../screens/account-merge.screen';
 import { JobStatus } from '../util/job';
+import { launchCredentials } from '../util/session-renewal';
 
 const MERGE_URL = 'auth/mail/confirm';
 const JOB = { uid: 'job-uid', expectedSeconds: 65 };
@@ -67,6 +68,7 @@ function mergeCalls(): number {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  sessionStorage.clear();
   mockUrlParams = new URLSearchParams('otp=the-otp');
 });
 
@@ -80,6 +82,18 @@ describe('AccountMerge', () => {
     expect(mockSetAuthToken).toHaveBeenCalledWith('token');
     expect(mergeCalls()).toBe(1);
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  // The access token signs in as the merged account; launch credentials of the tab's partner launch must not renew it.
+  it('drops the launch credentials when the confirmation issues an access token', async () => {
+    launchCredentials.set({ address: 'launch-address', signature: 'launch-signature' });
+    respondWith({ merge: [{ kycHash: 'hash', accessToken: 'token' }] });
+
+    render(<AccountMerge />);
+
+    expect(await screen.findByText('Wallet address added')).toBeInTheDocument();
+    expect(mockSetAuthToken).toHaveBeenCalledWith('token');
+    expect(launchCredentials.get()).toBeUndefined();
   });
 
   // The regression from the issue: a 202 used to leave the screen on the spinner forever.
@@ -346,12 +360,16 @@ describe('AccountMerge return-url', () => {
     expect(mockAssign).toHaveBeenCalledWith('http://localhost/sell?amount-in=0.2&session=token');
   });
 
-  it('continues without a session parameter when the merge returns no access token', async () => {
-    withReturnUrl('http://localhost/sell');
+  // Confirmed where nobody is signed in: the API answers without an access token, and the return page would
+  // only ask for a login, so the account is opened by its code as before the return-url existed.
+  it('opens the account by its code instead of the return-url when the merge returns no access token', async () => {
+    withReturnUrl(`http://localhost/sell?${SELL_QUERY}`);
 
     await confirmMerge({ kycHash: 'hash' });
 
-    expect(mockAssign).toHaveBeenCalledWith('http://localhost/sell');
+    expect(mockSetAuthToken).toHaveBeenCalledWith(undefined);
+    expect(mockNavigate).toHaveBeenCalledWith('/account?code=hash');
+    expect(mockAssign).not.toHaveBeenCalled();
   });
 
   // The return-url is whatever the caller sent as `redirectUri` on the contact step; the API checks only its origin.
@@ -374,13 +392,14 @@ describe('AccountMerge return-url', () => {
   );
 
   it.each(FOREIGN_LOGIN_QUERIES)(
-    'drops %s from the return-url and sends no session without an access token',
+    'does not follow a return-url carrying %s without an access token',
     async (_name, query) => {
       withReturnUrl(`http://localhost/sell?${query}&amount-in=0.2`);
 
       await confirmMerge({ kycHash: 'hash' });
 
-      expect(mockAssign).toHaveBeenCalledWith('http://localhost/sell?amount-in=0.2');
+      expect(mockNavigate).toHaveBeenCalledWith('/account?code=hash');
+      expect(mockAssign).not.toHaveBeenCalled();
     },
   );
 

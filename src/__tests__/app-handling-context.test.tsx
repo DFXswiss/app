@@ -33,6 +33,7 @@ type Context = ReturnType<typeof useAppHandlingContext>;
 
 const QUERY_PARAMS_KEY = 'dfx.srv.queryParams';
 const REDIRECT_URI_KEY = 'dfx.srv.redirectUri';
+const LAUNCH_CREDENTIALS_KEY = 'dfx.srv.launchCredentials';
 
 const sell = {
   routeId: 7,
@@ -132,6 +133,7 @@ describe('AppHandlingContextProvider', () => {
     localStorage.clear();
     sessionStorage.removeItem('dfx.kyc.redirect');
     sessionStorage.removeItem(REDIRECT_URI_KEY);
+    sessionStorage.removeItem(LAUNCH_CREDENTIALS_KEY);
     window.history.pushState({}, '', '/');
     mockSession = { isInitialized: true, isLoggedIn: false, availableBlockchains: ['Bitcoin', 'Ethereum'] };
     mockIsUsedByIframe = false;
@@ -314,6 +316,41 @@ describe('AppHandlingContextProvider', () => {
       expect(mockReadBalances).toHaveBeenCalledWith(undefined);
     });
 
+    it('keeps the launch address and signature for this tab only, out of the address bar', async () => {
+      window.history.pushState({}, '', '/sell?address=addr&signature=sig&pubkey=pk&amount-in=0.1');
+
+      await renderProvider();
+
+      expect(JSON.parse(sessionStorage.getItem(LAUNCH_CREDENTIALS_KEY) as string)).toEqual({
+        address: 'addr',
+        signature: 'sig',
+        pubkey: 'pk',
+      });
+      expect(localStorage.getItem(LAUNCH_CREDENTIALS_KEY)).toBeNull();
+      expect(storedQueryParams()).toMatchObject({ amountIn: '0.1' });
+      expect(storedQueryParams()).not.toHaveProperty('signature');
+      expect(window.location.search).toBe('');
+    });
+
+    it('keeps no launch credentials for an address without a signature', async () => {
+      window.history.pushState({}, '', '/sell?address=addr');
+
+      await renderProvider();
+
+      expect(sessionStorage.getItem(LAUNCH_CREDENTIALS_KEY)).toBeNull();
+    });
+
+    it('drops the launch credentials on logout', async () => {
+      mockSession = { ...mockSession, isLoggedIn: true };
+      window.history.pushState({}, '', '/sell?address=addr&signature=sig');
+      const result = await renderProvider();
+      expect(sessionStorage.getItem(LAUNCH_CREDENTIALS_KEY)).not.toBeNull();
+
+      await setLoggedIn(result, false);
+
+      expect(sessionStorage.getItem(LAUNCH_CREDENTIALS_KEY)).toBeNull();
+    });
+
     it('falls back to the stored parameters when the URL carries none', async () => {
       localStorage.setItem(QUERY_PARAMS_KEY, JSON.stringify({ wallet: 'Stored', blockchains: 'bitcoin' }));
 
@@ -457,6 +494,13 @@ describe('AppHandlingContextProvider', () => {
       });
       expect(ctx.widgetPersonalIban).toBe('frick');
       expect(storedQueryParams()).toBeUndefined();
+    });
+
+    it('keeps no launch credentials from the widget attributes', async () => {
+      await renderProvider({ isWidget: true, params: widgetParams });
+
+      expect(ctx.params).toMatchObject({ address: 'addr', signature: 'sig' });
+      expect(sessionStorage.getItem(LAUNCH_CREDENTIALS_KEY)).toBeNull();
     });
   });
 

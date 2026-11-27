@@ -7,6 +7,7 @@ import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { JobResponse, JobStatus, isJobResponse, isJobTerminal, pollJobUntilTerminal } from 'src/util/job';
 import { LOGIN_PARAMS } from 'src/util/login-params';
+import { launchCredentials } from 'src/util/session-renewal';
 
 interface MergeRedirect {
   kycHash: string;
@@ -59,6 +60,8 @@ export default function AccountMerge() {
       .then((result: MergeRedirect) => {
         if (isCancelled.current) return;
 
+        // The merge signs in as the merged account, so the launch credentials of the old one must not renew it.
+        launchCredentials.remove();
         setAuthToken(result.accessToken);
         setMerge(result);
       })
@@ -130,15 +133,16 @@ export default function AccountMerge() {
   // URL; the session goes along as `session`, which that start applies and removes from the address bar.
   // The return-url comes from whoever started the merge, so any login parameters in it are dropped first: the
   // start would otherwise sign in with a foreign `address`+`signature` or apply a foreign `session`.
+  // Only a confirmation that issued an access token (the caller was signed in) continues to the return-url.
   function continueToAccount({ kycHash, accessToken }: MergeRedirect) {
-    if (!returnUrl) {
+    if (!returnUrl || !accessToken) {
       navigate(`/account?code=${kycHash}`);
       return;
     }
 
     const target = new URL(returnUrl.href);
     LOGIN_PARAMS.forEach((name) => target.searchParams.delete(name));
-    if (accessToken) target.searchParams.set('session', accessToken);
+    target.searchParams.set('session', accessToken);
     (window as Window).location.assign(target.href);
   }
 

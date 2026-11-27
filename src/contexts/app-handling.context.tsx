@@ -14,6 +14,7 @@ import { Service } from '../App';
 import { useIframe } from '../hooks/iframe.hook';
 import { useStore } from '../hooks/store.hook';
 import { APP_PARAM_URL_NAMES } from '../util/app-param-names';
+import { launchCredentials } from '../util/session-renewal';
 import { isSafeRedirectUri, relativeUrl, url } from '../util/utils';
 import { useBalanceContext } from './balance.context';
 
@@ -308,6 +309,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   function clearCustomerSessionState() {
     storeQueryParams.remove();
     storeRedirectUri.remove();
+    launchCredentials.remove();
     // The widget's attributes are the host page's configuration, not customer session state: keep
     // them (minus the one-shot credentials) so a forced logout returns to the configured flow.
     setParams(props.params ? removeNonStorageParams(extractWidgetParams(props.params)) : {});
@@ -355,6 +357,10 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
     if (params.redirectUri && isSafeRedirectUri(params.redirectUri)) {
       setRedirectUri(params.redirectUri);
       storeRedirectUri.set(params.redirectUri);
+    }
+
+    if (!props.params && params.address && params.signature) {
+      launchCredentials.set({ address: params.address, signature: params.signature, pubkey: params.pubkey });
     }
 
     const hasSession = paramsHasSession(params);
