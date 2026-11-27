@@ -57,6 +57,7 @@ const mockUser: {
   reloadUser: mockReloadUser,
 };
 const mockAuth: { session?: { account: number } } = {};
+const mockWallet = { isInitialized: true };
 const mockApp: {
   isInitialized: boolean;
   isWidget: boolean;
@@ -196,6 +197,7 @@ jest.mock('react-i18next', () => ({ Trans: ({ children }: any) => children }));
 jest.mock('react-icons/fa', () => ({ FaHandshake: () => <span /> }));
 jest.mock('src/contexts/app-handling.context', () => ({ useAppHandlingContext: () => mockApp }));
 jest.mock('src/contexts/layout.context', () => ({ useLayoutContext: () => ({ rootRef: { current: null } }) }));
+jest.mock('../contexts/wallet.context', () => ({ useWalletContext: () => mockWallet }));
 jest.mock('src/hooks/app-params.hook', () => ({ useAppParams: () => mockParams }));
 jest.mock('../components/error-hint', () => ({
   ErrorHint: ({ message, onBack }: any) => (
@@ -390,6 +392,7 @@ beforeEach(() => {
   mockSession.isLoggedIn = false;
   mockUser.isUserLoading = false;
   mockAuth.session = undefined;
+  mockWallet.isInitialized = true;
   routerNavigate = undefined;
   routerLocation = undefined;
   mockApp.isInitialized = true;
@@ -930,6 +933,21 @@ describe('KycScreen startup and route modes', () => {
     mockApp.isInitialized = true;
     rendered.rerender(tree('/kyc?code=CODE'));
     await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
+  });
+
+  it('waits until a session from the link is applied', async () => {
+    mockWallet.isInitialized = false;
+    const rendered = renderPath('/kyc?code=CODE&step=PersonalData');
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+    expect(mockStartStep).not.toHaveBeenCalled();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    mockWallet.isInitialized = true;
+    rendered.rerender(tree('/kyc?code=CODE&step=PersonalData'));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('CODE', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
   });
 
   it('auto-starts and clears its parameter', async () => {
