@@ -1,6 +1,8 @@
 import { useAuthContext } from '@dfx.swiss/react';
 import { ReactNode, useEffect, useState } from 'react';
+import { useInRouterContext } from 'react-router-dom';
 import { AccountAccessToggles } from 'src/components/compliance/account-access-toggles';
+import { AccountMergeEditor } from 'src/components/compliance/account-merge-editor';
 import { CollapsibleSection } from 'src/components/compliance/collapsible-section';
 import { LimitRequestModal } from 'src/components/compliance/limit-request-modal';
 import { OnboardingFeeEditor } from 'src/components/compliance/onboarding-fee-editor';
@@ -10,7 +12,9 @@ import { UserDataEditForm } from 'src/components/compliance/user-data-edit-form'
 import type { UserDataStatusInfo } from 'src/hooks/account-reactivation.hook';
 import { useClipboard } from 'src/hooks/clipboard.hook';
 import { OrganizationDetail, UserDataDetail, UserInfo } from 'src/hooks/compliance.hook';
+import { useNavigation } from 'src/hooks/navigation.hook';
 import { canReactivateAccount, DEACTIVATED_STATUS } from 'src/util/account-reactivation.util';
+import { canMergeAccounts } from 'src/util/account-merge.util';
 import { appOrigin } from 'src/util/app-origin';
 import { display, formatBirthday, formatDate, formatDateTime, Primitive, refName } from 'src/util/compliance-helpers';
 import { canManageOnboardingFee } from 'src/util/onboarding-fee.util';
@@ -54,6 +58,32 @@ function KycLinkButtons({ kycHash }: Readonly<{ kycHash: string }>): JSX.Element
         {videoLink.isCopying ? '✓ Video' : 'Video'}
       </button>
     </div>
+  );
+}
+
+interface AccountMergeEntryProps {
+  userDataId: number;
+  userData: UserDataDetail;
+  onAccountAccessChanged: () => void;
+}
+
+// The merge form needs the router to open the remaining account after a merge. It is mounted only
+// inside a router so the panel can also render in environments without one (e.g. component tests).
+function AccountMergeEntry({
+  userDataId,
+  userData,
+  onAccountAccessChanged,
+}: Readonly<AccountMergeEntryProps>): JSX.Element {
+  const { navigate } = useNavigation();
+
+  return (
+    <AccountMergeEditor
+      userDataId={userDataId}
+      userData={userData}
+      onMerged={(remaining) =>
+        remaining === userDataId ? onAccountAccessChanged() : navigate(`/compliance/user/${remaining}`)
+      }
+    />
   );
 }
 
@@ -229,6 +259,7 @@ export function UserDataPanel({
   const [showLimitRequestModal, setShowLimitRequestModal] = useState(false);
   const [editFormUserDataId, setEditFormUserDataId] = useState<number>();
   const { session } = useAuthContext();
+  const inRouter = useInRouterContext();
   const editFields = editableTextFields(session?.role);
   const mayEditUserData = editFields !== undefined;
 
@@ -329,6 +360,17 @@ export function UserDataPanel({
               onAccountAccessChanged &&
               canManageOnboardingFee(session?.role) && (
                 <OnboardingFeeEditor userDataId={userDataId} users={users} onChanged={onAccountAccessChanged} />
+              )}
+            {userDataId !== undefined &&
+              rowIsThisAccount &&
+              onAccountAccessChanged &&
+              canMergeAccounts(session?.role) &&
+              inRouter && (
+                <AccountMergeEntry
+                  userDataId={userDataId}
+                  userData={current}
+                  onAccountAccessChanged={onAccountAccessChanged}
+                />
               )}
           </CollapsibleSection>
 

@@ -70,6 +70,10 @@ jest.mock('src/components/compliance/risk-status-editor', () => ({
   RiskStatusEditor: () => <div data-testid="risk-status-editor" />,
 }));
 
+jest.mock('src/components/compliance/account-merge-editor', () => ({
+  AccountMergeEditor: () => <div data-testid="account-merge-editor" />,
+}));
+
 jest.mock('src/components/error-hint', () => ({
   ErrorHint: ({ message }: { message: string }) => <p data-testid="error-hint">{message}</p>,
 }));

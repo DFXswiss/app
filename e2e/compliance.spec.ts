@@ -233,6 +233,26 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       });
     });
 
+    test('shows the account merge form', async ({ page }) => {
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Merge accounts', exact: true }).click();
+      await expect(page.locator('#account-merge-other-id')).toBeVisible();
+      await page.waitForTimeout(500);
+      // The dossier scrolls in its own column; start the shot at the section heading, not at the button.
+      await page
+        .getByText('UserData', { exact: true })
+        .first()
+        .evaluate((element) => element.scrollIntoView({ block: 'start' }));
+
+      await expect(page).toHaveScreenshot('compliance-user-24-account-merge.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
     test('shows the personal data edit form to Compliance without the names', async ({ page }) => {
       // The browser's role guard reads the role from an unsigned token; the API never sees it, because
       // every API request below is forwarded with the real Admin token.

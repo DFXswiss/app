@@ -5,6 +5,8 @@
 let mockSession: { role?: string } | undefined = { role: 'Compliance' };
 const mockCopy = jest.fn();
 let mockIsCopying = false;
+let mockInRouter = true;
+const mockNavigate = jest.fn();
 const mockReactivateProps: { userDataId?: number; onReactivated?: (info: unknown) => void } = {};
 const mockAccountAccessProps: {
   userDataId?: number;
@@ -30,6 +32,19 @@ const mockRiskStatusProps: {
   currentRiskStatus?: string;
   onChanged?: () => void;
 } = {};
+const mockAccountMergeProps: {
+  userDataId?: number;
+  userData?: UserDataDetail;
+  onMerged?: (remaining: number) => void;
+} = {};
+
+jest.mock('react-router-dom', () => ({
+  useInRouterContext: () => mockInRouter,
+}));
+
+jest.mock('src/hooks/navigation.hook', () => ({
+  useNavigation: () => ({ navigate: mockNavigate }),
+}));
 
 jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => ({ session: mockSession }),
@@ -132,6 +147,13 @@ jest.mock('src/components/compliance/risk-status-editor', () => ({
   },
 }));
 
+jest.mock('src/components/compliance/account-merge-editor', () => ({
+  AccountMergeEditor: (props: typeof mockAccountMergeProps) => {
+    Object.assign(mockAccountMergeProps, props);
+    return <div data-testid="account-merge-editor" />;
+  },
+}));
+
 jest.mock('src/hooks/clipboard.hook', () => ({
   useClipboard: () => ({ copy: mockCopy, isCopying: mockIsCopying }),
 }));
@@ -183,6 +205,8 @@ describe('UserDataPanel', () => {
     mockSession = { role: 'Compliance' };
     mockCopy.mockReset();
     mockIsCopying = false;
+    mockInRouter = true;
+    mockNavigate.mockReset();
     mockReactivateProps.userDataId = undefined;
     mockReactivateProps.onReactivated = undefined;
     Object.keys(mockAccountAccessProps).forEach(
@@ -194,6 +218,9 @@ describe('UserDataPanel', () => {
     Object.keys(mockEditFormProps).forEach((key) => delete mockEditFormProps[key as keyof typeof mockEditFormProps]);
     Object.keys(mockRiskStatusProps).forEach(
       (key) => delete mockRiskStatusProps[key as keyof typeof mockRiskStatusProps],
+    );
+    Object.keys(mockAccountMergeProps).forEach(
+      (key) => delete mockAccountMergeProps[key as keyof typeof mockAccountMergeProps],
     );
     delete process.env.REACT_APP_PUBLIC_URL;
   });
@@ -463,6 +490,77 @@ describe('UserDataPanel', () => {
       render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
 
       expect(screen.queryByTestId('risk-status-editor')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('account merge editor', () => {
+    it.each(['Compliance', 'Admin'])(
+      'shows the editor to a %s session with the account id, its row and the reload handler',
+      (role) => {
+        mockSession = { role };
+        const onAccountAccessChanged = jest.fn();
+        render(
+          <UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={onAccountAccessChanged} />,
+        );
+
+        expect(screen.getByTestId('account-merge-editor')).toBeInTheDocument();
+        expect(mockAccountMergeProps).toMatchObject({
+          userDataId: 88001,
+          userData: expect.objectContaining({ id: 88001 }),
+        });
+      },
+    );
+
+    it.each(['Support', 'Marketing', 'User'])('hides the editor from %s, whose PUT the API refuses', (role) => {
+      mockSession = { role };
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('account-merge-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor without a session', () => {
+      mockSession = undefined;
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('account-merge-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor without an account id', () => {
+      render(<UserDataPanel userData={detail()} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('account-merge-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor when the row belongs to another account than the route', () => {
+      render(<UserDataPanel userData={detail({ id: 88002 })} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('account-merge-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor without a reload handler', () => {
+      render(<UserDataPanel userData={detail()} userDataId={88001} />);
+
+      expect(screen.queryByTestId('account-merge-editor')).not.toBeInTheDocument();
+    });
+
+    it('hides the editor outside a router', () => {
+      mockInRouter = false;
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={jest.fn()} />);
+
+      expect(screen.queryByTestId('account-merge-editor')).not.toBeInTheDocument();
+    });
+
+    it('reloads the current account when it stays and opens the other one when it does not', () => {
+      const onAccountAccessChanged = jest.fn();
+      render(<UserDataPanel userData={detail()} userDataId={88001} onAccountAccessChanged={onAccountAccessChanged} />);
+
+      act(() => mockAccountMergeProps.onMerged?.(88001));
+      expect(onAccountAccessChanged).toHaveBeenCalledTimes(1);
+      expect(mockNavigate).not.toHaveBeenCalled();
+
+      act(() => mockAccountMergeProps.onMerged?.(88002));
+      expect(mockNavigate).toHaveBeenCalledWith('/compliance/user/88002');
+      expect(onAccountAccessChanged).toHaveBeenCalledTimes(1);
     });
   });
 
