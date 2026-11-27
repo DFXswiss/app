@@ -293,7 +293,8 @@ test.describe('KYC area e2e', () => {
     await expect(page.getByText(CODE_PROMPT)).toBeVisible({ timeout: 15000 });
     await page.waitForLoadState('networkidle');
     await expect(page.getByText('Terminated', { exact: true })).toHaveCount(0);
-    expect(codes).not.toContain(otherHash);
+    // no KYC request at all before the choice
+    expect(codes).toEqual([]);
 
     await page.getByRole('button', { name: 'Continue with my account' }).click();
 
@@ -313,6 +314,65 @@ test.describe('KYC area e2e', () => {
 
     await expect(page.getByText('Terminated', { exact: true })).toBeVisible({ timeout: 15000 });
     expect(await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'))).toBe(own.jwt);
+
+    // the choice is not kept: a reload asks again
+    await page.reload();
+    await expect(page.getByText(CODE_PROMPT)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Terminated', { exact: true })).toHaveCount(0);
+  });
+
+  test('/kyc?code with the own code loads the own account without asking', async ({ page }) => {
+    const own = await createUser({ tag: 'kyc-link-same', kycLevel: 0, language: 'EN' });
+    const ownHash = await kycHashOf(own.userDataId);
+
+    await gotoWithSession(page, `/kyc?code=${ownHash}`, own.jwt);
+
+    await expect(page.getByText('Level 0', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(CODE_PROMPT)).toHaveCount(0);
+  });
+
+  test('/kyc?code&step of another account asks for the account, then for the step', async ({ page }) => {
+    const own = await createUser({ tag: 'kyc-link-step-own', kycLevel: 0, language: 'EN' });
+    const other = await createUser({ tag: 'kyc-link-step-other', kycLevel: 0, language: 'EN' });
+    const otherHash = await kycHashOf(other.userDataId);
+    const before = await lastKycStepId(other.userDataId, 'PersonalData');
+
+    await gotoWithSession(page, `/kyc?code=${otherHash}&step=PersonalData`, own.jwt);
+    await page.getByRole('button', { name: 'Open link' }).click({ timeout: 15000 });
+
+    await expect(page.getByText(STEP_PROMPT)).toBeVisible({ timeout: 15000 });
+    await page.waitForLoadState('networkidle');
+    expect(await lastKycStepId(other.userDataId, 'PersonalData')).toBe(before);
+
+    await page.getByRole('button', { name: 'Start' }).click();
+
+    await expect(page.getByText('Account Type', { exact: true })).toBeVisible({ timeout: 25000 });
+    await waitForRow(
+      `SELECT id FROM kyc_step WHERE "userDataId" = $1 AND name = 'PersonalData' AND id > $2`,
+      [other.userDataId, before],
+      20000,
+    );
+  });
+
+  test('/kyc?code of a merged account hands over to the account it was merged into', async ({ page }) => {
+    const own = await createUser({ tag: 'kyc-link-merge-own', kycLevel: 0, language: 'EN' });
+    const master = await createUser({ tag: 'kyc-link-merge-master', kycLevel: -10, language: 'EN' });
+    const merged = await createUser({ tag: 'kyc-link-merge-slave', kycLevel: 0, language: 'EN' });
+    await withDb(async (client) => {
+      await client.query(`UPDATE user_data SET status = 'Merged', firstname = $2 WHERE id = $1`, [
+        merged.userDataId,
+        `Merged into ${master.userDataId}`,
+      ]);
+    });
+    const mergedHash = await kycHashOf(merged.userDataId);
+    const masterHash = await kycHashOf(master.userDataId);
+
+    await gotoWithSession(page, `/kyc?code=${mergedHash}`, own.jwt);
+    await page.getByRole('button', { name: 'Open link' }).click({ timeout: 15000 });
+
+    await expect(page.getByText('Terminated', { exact: true })).toBeVisible({ timeout: 15000 });
+    expect(new URL(page.url()).searchParams.get('code')).toBe(masterHash);
+    expect(await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'))).toBeNull();
   });
 
   test('/kyc?code without a session opens the link directly', async ({ page }) => {
@@ -345,6 +405,20 @@ test.describe('KYC area e2e', () => {
       [user.userDataId, before],
       20000,
     );
+  });
+
+  test('/kyc?step Cancel drops the step and shows the overview', async ({ page }) => {
+    const user = await createUser({ tag: 'kyc-step-cancel', kycLevel: 0, language: 'EN' });
+    const before = await lastKycStepId(user.userDataId, 'PersonalData');
+
+    await gotoWithSession(page, '/kyc?step=PersonalData', user.jwt);
+    await page.getByRole('button', { name: 'Cancel' }).click({ timeout: 15000 });
+
+    await expect(page.getByText('Level 0', { exact: true })).toBeVisible({ timeout: 15000 });
+    expect(new URL(page.url()).searchParams.get('step')).toBeNull();
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('input[name="firstname"]')).toHaveCount(0);
+    expect(await lastKycStepId(user.userDataId, 'PersonalData')).toBe(before);
   });
 
   test('/kyc?step with auto-start still waits for the step confirmation', async ({ page }) => {
