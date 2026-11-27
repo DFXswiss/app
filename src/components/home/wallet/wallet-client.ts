@@ -24,21 +24,31 @@ import { walletEnvForHost } from './passkey-host';
 export interface WalletClient {
   login(): Promise<AuthResult>;
   register(extras: RegisterExtras): Promise<AuthResult>;
-  link(
-    family: 'evm' | 'bitcoin',
+  linkBitcoin(
     sessionToken: string,
     keys: KeyRing,
-    evmIndex?: number,
   ): Promise<{
     accessToken: string;
     address: PasskeyAddress;
   }>;
   revoke(reason: 'Lost' | 'Compromised', credentialId: string): Promise<PasskeyWallet>;
   exportMnemonic(credentialId?: Uint8Array): Promise<string[]>;
-  verifyServerAddresses(wallet: PasskeyWallet, keys: KeyRing): { address: string; family: string; matches: boolean }[];
+  verifyBitcoinAddresses(wallet: PasskeyWallet, keys: KeyRing): { address: string; matches: boolean }[];
   wallets(sessionToken: string): Promise<PasskeyWallet[]>;
   credentialStatus(ids: string[]): Promise<PasskeyCredentialStatusResult[]>;
   diagnostics(input: PasskeyDiagnosticParams): Promise<void>;
+}
+
+// The wallet starts with Bitcoin on-chain only. Only the server's Bitcoin rows are compared, against the
+// mainnet BIP-84 login address of `keys`; no other family is derived for the check.
+function verifyBitcoinAddresses(wallet: PasskeyWallet, keys: KeyRing): { address: string; matches: boolean }[] {
+  const login = keys.bitcoinAddress(0, 0);
+  return wallet.addresses
+    .filter((record) => record.family === 'Bitcoin')
+    .map((record) => ({
+      address: record.address,
+      matches: record.address.toLowerCase() === login.address.toLowerCase() && record.path === login.path,
+    }));
 }
 
 // DFXswiss/wallet-api will connect here; until then calls use the DFX API passkey routes.
@@ -55,10 +65,10 @@ export function createWalletClient(): WalletClient {
   return {
     login: (...args) => auth.login(...args),
     register: (...args) => auth.register(...args),
-    link: (...args) => auth.link(...args),
+    linkBitcoin: (sessionToken, keys) => auth.link('bitcoin', sessionToken, keys),
     revoke: (reason, credentialId) => revokePasskey(reason, credentialId),
     exportMnemonic: (...args) => auth.exportMnemonic(...args),
-    verifyServerAddresses: (...args) => auth.verifyServerAddresses(...args),
+    verifyBitcoinAddresses,
     wallets: (...args) => passkey.wallets(...args),
     credentialStatus: (...args) => passkey.credentialStatus(...args),
     diagnostics: (...args) => passkey.diagnostics(...args),

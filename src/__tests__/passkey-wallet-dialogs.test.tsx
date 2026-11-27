@@ -7,9 +7,7 @@ let mockTranslateAddresses = false;
 jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({
     translate: (_namespace: string, text: string) =>
-      mockTranslateAddresses && ['Bitcoin', 'Lightning (Spark)', 'Ethereum & EVM'].includes(text)
-        ? `translated ${text}`
-        : text,
+      mockTranslateAddresses && text === 'Bitcoin' ? `translated ${text}` : text,
   }),
 }));
 
@@ -160,12 +158,7 @@ describe('Passkey wallet dialogs', () => {
     expect(onClose).not.toHaveBeenCalled();
 
     view.rerender(
-      <PasskeySettingsSheet
-        {...props}
-        credentialId=""
-        note="failure"
-        checks={[{ family: 'Evm', address: 'a', matches: false }]}
-      />,
+      <PasskeySettingsSheet {...props} credentialId="" note="failure" checks={[{ address: 'a', matches: false }]} />,
     );
     expect(screen.getByText('Unlocked')).toBeInTheDocument();
     expect(screen.queryByText('Unlock to view')).not.toBeInTheDocument();
@@ -180,7 +173,7 @@ describe('Passkey wallet dialogs', () => {
     view.rerender(<PasskeySettingsSheet {...props} checks={[]} />);
     expect(screen.getByText('0 / 0 addresses match')).not.toHaveClass('text-dfxGreen-300');
     expect(screen.getByText('0 / 0 addresses match')).not.toHaveClass('text-dfxRed-150');
-    view.rerender(<PasskeySettingsSheet {...props} checks={[{ family: 'Evm', address: 'a', matches: true }]} />);
+    view.rerender(<PasskeySettingsSheet {...props} checks={[{ address: 'a', matches: true }]} />);
     expect(screen.getByText('1 / 1 addresses match')).toHaveClass('text-dfxGreen-300');
 
     mockTranslateAddresses = true;
@@ -189,15 +182,15 @@ describe('Passkey wallet dialogs', () => {
         <PasskeySettingsSheet
           {...props}
           checks={[
-            { family: 'Evm', address: 'a', matches: true },
-            { family: 'Spark', address: 'b', matches: true },
-            { family: 'Bitcoin', address: 'c', matches: true },
+            { address: 'bc1qfirstaddress00', matches: true },
+            { address: 'bc1qsecondaddress0', matches: false },
           ]}
         />,
       );
-      expect(screen.getByText(/translated Ethereum & EVM/)).toBeInTheDocument();
-      expect(screen.getByText(/translated Lightning \(Spark\)/)).toBeInTheDocument();
-      expect(screen.getByText(/translated Bitcoin/)).toBeInTheDocument();
+      const rows = screen.getAllByRole('listitem');
+      expect(rows).toHaveLength(2);
+      rows.forEach((row) => expect(row).toHaveTextContent(/^translated Bitcoin /));
+      expect(screen.queryByText(/Spark|EVM|Ethereum/)).not.toBeInTheDocument();
     } finally {
       mockTranslateAddresses = false;
     }

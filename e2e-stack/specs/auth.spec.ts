@@ -550,11 +550,16 @@ test.describe('Auth area e2e', () => {
       expect(rows.length).toBe(1);
       await expect(page.locator(`[title="${row.address}"]`)).toHaveCount(0);
 
+      // The wallet starts with Bitcoin on-chain only: one address row and no chain picker in Receive.
+      await expect(page.locator('li [title]')).toHaveCount(1);
+      await expect(page.getByText(/Spark|EVM|Ethereum/)).toHaveCount(0);
       await page.getByRole('button', { name: 'Receive', exact: true }).click();
       const receive = page.getByRole('dialog', { name: 'Receive' });
-      await receive.getByRole('button', { name: 'Bitcoin', exact: true }).click();
       const shownReceive = receive.getByTestId('passkey-receive-address');
       await expect(shownReceive).toHaveText(address);
+      // Only after the dialog shows the address: its sole buttons are Close and Copy address.
+      await expect(receive.getByRole('button')).toHaveCount(2);
+      await expect(receive.getByRole('button', { name: /^(EVM|Spark)$/ })).toHaveCount(0);
       await expect(shownReceive).not.toHaveText(row.address);
       await receive.getByRole('button', { name: 'Close' }).click();
       await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -589,16 +594,10 @@ test.describe('Auth area e2e', () => {
       await expect(bitcoinRow.locator('[title]')).toHaveAttribute('title', address);
       await expect(page.locator(`[title="${row.address}"]`)).toHaveCount(0);
 
-      const evmRow = page.locator('li', { has: page.getByText('Ethereum & EVM', { exact: true }) });
-      await expect(evmRow).toHaveCount(1, { timeout: 30000 });
+      await expect(page.locator('li [title]')).toHaveCount(1);
+      await expect(page.getByText(/Spark|EVM|Ethereum/)).toHaveCount(0);
       await page.getByRole('button', { name: 'Receive', exact: true }).click();
-      await receive.getByRole('button', { name: 'EVM', exact: true }).click();
-      const receiveAddress = receive.getByTestId('passkey-receive-address');
-      await expect(receiveAddress).toHaveText(/^0x[0-9a-fA-F]{40}$/, { timeout: 30000 });
-      const evmAddress = await receiveAddress.textContent();
-      if (evmAddress === null || !/^0x[0-9a-fA-F]{40}$/.test(evmAddress)) throw new Error('Missing EVM address');
-      const listEvmAddress = await evmRow.locator('[title]').getAttribute('title');
-      expect(listEvmAddress?.toLowerCase()).toBe(evmAddress.toLowerCase());
+      await expect(receive.getByTestId('passkey-receive-address')).toHaveText(address, { timeout: 30000 });
       await receive.getByRole('button', { name: 'Close' }).click();
     } finally {
       await trackPasskeyUser();

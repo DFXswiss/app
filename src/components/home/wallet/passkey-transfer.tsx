@@ -5,11 +5,8 @@ import { useClipboard } from '../../../hooks/clipboard.hook';
 import { QrBasic } from '../../payment/qr-code';
 import { passkeyMessage } from './passkey-host';
 
-export type ReceiveFamily = 'evm' | 'bitcoin' | 'spark';
-
-export function receiveAddress(keys: KeyRing, family: ReceiveFamily): string {
-  if (family === 'evm') return keys.evm(0).address;
-  if (family === 'spark') return keys.sparkIdentity().address;
+// The passkey wallet starts with Bitcoin on-chain only: BIP-84 receive index 1 on the session's network.
+export function receiveAddress(keys: KeyRing): string {
   return keys.bitcoinAddress(0, 1).address;
 }
 
@@ -27,72 +24,37 @@ const PASTE_UNAVAILABLE = 'Paste is not available in this browser.';
 const SCAN_UNAVAILABLE = 'QR scanning is not available in this browser.';
 
 export function PasskeyReceivePanel({
-  readReceive,
+  keys,
+  failed,
   onReceiveError,
 }: {
-  readReceive: (family: ReceiveFamily) => string;
+  keys: KeyRing;
+  // Non-production handbook hook: treat the derivation as failed.
+  failed?: boolean;
   onReceiveError: (message?: string) => void;
 }): JSX.Element {
   const { translate } = useSettingsContext();
   const { copy, isCopying } = useClipboard();
-  const [family, setFamily] = useState<ReceiveFamily>();
   const [address, setAddress] = useState<string>();
-  const readReceiveRef = useRef(readReceive);
   const onReceiveErrorRef = useRef(onReceiveError);
-  readReceiveRef.current = readReceive;
   onReceiveErrorRef.current = onReceiveError;
 
   useEffect(() => {
-    if (family === undefined) {
-      setAddress(undefined);
-      return;
-    }
     try {
-      setAddress(readReceiveRef.current(family));
+      if (failed) throw new Error();
+      setAddress(receiveAddress(keys));
       onReceiveErrorRef.current(undefined);
     } catch (caught) {
       setAddress(undefined);
       onReceiveErrorRef.current(passkeyMessage(caught));
     }
-  }, [family]);
-
-  const families: ReceiveFamily[] = ['evm', 'bitcoin', 'spark'];
-  const familyLabel: Record<ReceiveFamily, string> = {
-    evm: 'EVM',
-    bitcoin: 'Bitcoin',
-    spark: 'Spark',
-  };
+  }, [keys, failed]);
 
   return (
     <div className="w-full pt-4">
-      <div className="flex items-center justify-center gap-4">
-        {families.map((item) => (
-          <button
-            key={item}
-            type="button"
-            aria-pressed={family === item}
-            onClick={() => {
-              if (item === family) return;
-              setFamily(item);
-              setAddress(undefined);
-            }}
-            className={
-              family === item
-                ? 'min-h-[44px] rounded-full bg-dfxBlue-800 px-4 py-2 text-sm text-white'
-                : 'min-h-[44px] rounded-full border border-dfxGray-500 bg-white px-4 py-2 text-sm text-dfxBlue-800'
-            }
-          >
-            {translate('screens/home', familyLabel[item])}
-          </button>
-        ))}
-      </div>
-      {family !== undefined && address !== undefined ? (
-        <div
-          className={
-            'mt-4 flex w-full flex-col items-center gap-4 rounded-[16px] ' +
-            'border border-dfxGray-400 bg-white px-5 py-5'
-          }
-        >
+      {address !== undefined ? (
+        <div className="flex w-full flex-col items-center gap-4 rounded-[16px] border border-dfxGray-400 bg-white px-5 py-5">
+          <p className="text-sm font-semibold text-dfxBlue-800">{translate('screens/home', 'Bitcoin')}</p>
           <p
             data-testid="passkey-receive-address"
             className="select-all break-all text-dfxBlue-800 [font-feature-settings:'calt'_0]"

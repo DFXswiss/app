@@ -527,9 +527,7 @@
     "Please reload this page. If this problem persists, please contact our support.": "Bitte lade diese Seite neu. Wenn dieses Problem weiterhin besteht, wende Dich bitte an unseren Support."
   },
   "screens/home": {
-    "EVM": "EVM",
     "Bitcoin": "Bitcoin",
-    "Spark": "Spark",
     "Destination": "Zieladresse",
     "Paste": "Einfügen",
     "Scan": "Scannen",
@@ -629,8 +627,6 @@
     "No credential status.": "Kein Passkey-Status verfügbar.",
     "Matches": "Stimmt",
     "Differs": "Weicht ab",
-    "Lightning (Spark)": "Lightning (Spark)",
-    "Ethereum & EVM": "Ethereum & EVM",
     "DFX services": "DFX Services",
     "title": "Eine einfache <1>Toolbox</1><2/>für alle <4>DFX Services</4>",
     "Buy and sell crypto directly into your wallet!": "Kaufe und verkaufe Kryptowährungen direkt in Deine Wallet!",

@@ -169,7 +169,7 @@ describe('createWalletClient', () => {
     mockDiagnostics.mockResolvedValueOnce({ tag: 'diagnostics' });
 
     expect(http.setToken).not.toHaveBeenCalled();
-    await client.link('evm', 'wallet-token', keys, 2);
+    await client.linkBitcoin('wallet-token', keys);
     await client.wallets('wallet-token');
     await client.credentialStatus(['credential']);
     await client.diagnostics(diagnostic);
@@ -243,7 +243,7 @@ describe('createWalletClient', () => {
     expect(mockRegister).toHaveBeenCalledWith(second);
   });
 
-  it('returns each PasskeyAuth link result for the two argument lists', async () => {
+  it('links only the Bitcoin family and returns each PasskeyAuth link result', async () => {
     const client = createWalletClient();
     const firstKeys = { id: 'keys' } as KeyRing;
     const secondKeys = { id: 'other-keys' } as KeyRing;
@@ -252,11 +252,11 @@ describe('createWalletClient', () => {
     mockLink.mockResolvedValueOnce(firstResult);
     mockLink.mockResolvedValueOnce(secondResult);
 
-    expect(await client.link('bitcoin', 'session-token', firstKeys, 5)).toBe(firstResult);
-    expect(await client.link('evm', 'other-token', secondKeys)).toBe(secondResult);
+    expect(await client.linkBitcoin('session-token', firstKeys)).toBe(firstResult);
+    expect(await client.linkBitcoin('other-token', secondKeys)).toBe(secondResult);
     expect(mockLink).toHaveBeenCalledTimes(2);
-    expect(mockLink).toHaveBeenCalledWith('bitcoin', 'session-token', firstKeys, 5);
-    expect(mockLink).toHaveBeenCalledWith('evm', 'other-token', secondKeys);
+    expect(mockLink).toHaveBeenNthCalledWith(1, 'bitcoin', 'session-token', firstKeys);
+    expect(mockLink).toHaveBeenNthCalledWith(2, 'bitcoin', 'other-token', secondKeys);
   });
 
   it('pins the stored credential id when revoking and updates the cache only if the wallet is not Active', async () => {
@@ -372,22 +372,41 @@ describe('createWalletClient', () => {
     expect(mockExport).toHaveBeenCalledWith(secondId);
   });
 
-  it('returns each PasskeyAuth verifyServerAddresses result for the two wallet and key pairs', () => {
+  it('checks only the Bitcoin rows against the login address and path, without deriving other families', () => {
     const client = createWalletClient();
-    const firstWallet = { id: 'wallet' } as PasskeyWallet;
-    const secondWallet = { id: 'other-wallet' } as PasskeyWallet;
-    const firstKeys = { id: 'keys' } as KeyRing;
-    const secondKeys = { id: 'other-keys' } as KeyRing;
-    const firstResult = [{ address: 'bc1qexample', family: 'bitcoin', matches: true }];
-    const secondResult = [{ address: '0xabc', family: 'evm', matches: false }];
-    mockVerify.mockReturnValueOnce(firstResult);
-    mockVerify.mockReturnValueOnce(secondResult);
+    const login = { address: 'bc1qlogin', path: "m/84'/0'/0'/0/0" };
+    const bitcoinAddress = jest.fn(() => login);
+    const evm = jest.fn();
+    const sparkIdentity = jest.fn();
+    const keys = { bitcoinAddress, evm, sparkIdentity } as unknown as KeyRing;
+    const wallet = {
+      addresses: [
+        { family: 'Evm', address: '0xabc', path: "m/44'/60'/0'/0/0" },
+        { family: 'Spark', address: 'spark1abc', path: "m/8797555'/1'/0'" },
+        { family: 'Bitcoin', address: 'BC1QLOGIN', path: login.path },
+        { family: 'Bitcoin', address: 'bc1qlogin', path: "m/84'/0'/0'/0/1" },
+        { family: 'Bitcoin', address: 'bc1qother', path: login.path },
+      ],
+    } as unknown as PasskeyWallet;
 
-    expect(client.verifyServerAddresses(firstWallet, firstKeys)).toBe(firstResult);
-    expect(client.verifyServerAddresses(secondWallet, secondKeys)).toBe(secondResult);
-    expect(mockVerify).toHaveBeenCalledTimes(2);
-    expect(mockVerify).toHaveBeenCalledWith(firstWallet, firstKeys);
-    expect(mockVerify).toHaveBeenCalledWith(secondWallet, secondKeys);
+    expect(client.verifyBitcoinAddresses(wallet, keys)).toEqual([
+      { address: 'BC1QLOGIN', matches: true },
+      { address: 'bc1qlogin', matches: false },
+      { address: 'bc1qother', matches: false },
+    ]);
+    expect(bitcoinAddress).toHaveBeenCalledTimes(1);
+    expect(bitcoinAddress).toHaveBeenCalledWith(0, 0);
+    expect(evm).not.toHaveBeenCalled();
+    expect(sparkIdentity).not.toHaveBeenCalled();
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it('returns no rows when the server holds no Bitcoin address', () => {
+    const client = createWalletClient();
+    const keys = { bitcoinAddress: () => ({ address: 'bc1qlogin', path: 'm/0' }) } as unknown as KeyRing;
+    const wallet = { addresses: [{ family: 'Evm', address: '0xabc', path: 'm/0' }] } as unknown as PasskeyWallet;
+
+    expect(client.verifyBitcoinAddresses(wallet, keys)).toEqual([]);
   });
 
   it('returns each PasskeyApi wallets result for the two session tokens', async () => {

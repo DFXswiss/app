@@ -5,7 +5,6 @@ import { useSettingsContext } from '../../../contexts/settings.context';
 import { ConnectProps } from '../connect-shared';
 import { useNavigation } from '../../../hooks/navigation.hook';
 import PasskeyDesk from './passkey-desk';
-import type { ReceiveFamily } from './passkey-transfer';
 import type { PasskeyHistory } from './passkey-wallet-history';
 import {
   passkeyDismissed,
@@ -53,7 +52,7 @@ declare global {
     __dfxHandbookPasskeyHistory?: PasskeyHistory;
     __dfxHandbookPasskeyBalance?: { chf: number; eur: number };
     __dfxHandbookPasskeyAssets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
-    __dfxHandbookPasskeyReceiveError?: ReceiveFamily;
+    __dfxHandbookPasskeyReceiveError?: boolean;
   }
 }
 

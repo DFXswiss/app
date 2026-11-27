@@ -7,7 +7,7 @@ import { passkeyMessage, walletEnvForHost } from './passkey-host';
 import { credentialBytes } from './passkey-bytes';
 import { createWalletClient, type WalletClient } from './wallet-client';
 import { getOpenPasskey, sameSession, setOpenPasskey, subscribeOpenPasskey, type OpenPasskey } from './passkey-session';
-import { PasskeyReceivePanel, PasskeySendPanel, receiveAddress, type ReceiveFamily } from './passkey-transfer';
+import { PasskeyReceivePanel, PasskeySendPanel, receiveAddress } from './passkey-transfer';
 import PasskeyWalletCard, { formatWalletAmount } from './passkey-wallet-card';
 import PasskeyWalletActions, { WalletAction } from './passkey-wallet-actions';
 import PasskeyWordsSheet from './passkey-words-sheet';
@@ -22,14 +22,13 @@ const TOAST_DURATION_MS = 4000;
 // A wallet refresh keeps the ring; a new sign-in replaces it.
 const bitcoinLinksStarted = new WeakSet<object>();
 
-type ShownReceive =
-  { family: ReceiveFamily; label: string; address: string } | { family: ReceiveFamily; label: string; error: string };
+type ShownReceive = { address: string } | { error: string };
 
 export interface PasskeyDeskProps {
   balance?: { chf: number; eur: number };
   assets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
   history?: PasskeyHistory;
-  receiveError?: ReceiveFamily;
+  receiveError?: boolean;
   onCancel: () => void;
   onHome?: () => void;
   onRevoked: () => void;
@@ -50,10 +49,13 @@ function bitcoinLoginRing(keys: KeyRing): { ring: KeyRing; release: () => void }
   return { ring, release: () => ring.wipe() };
 }
 
-function readReceive(family: ReceiveFamily): string {
-  const session = getOpenPasskey();
-  if (!session?.keys) throw new Error('locked');
-  return receiveAddress(session.keys, family);
+function shownReceive(keys: KeyRing, failed: boolean | undefined, t: (key: string) => string): ShownReceive {
+  try {
+    if (failed) throw new Error();
+    return { address: receiveAddress(keys) };
+  } catch (caught) {
+    return { error: t(passkeyMessage(caught)) };
+  }
 }
 
 function diagnosticPrf(prf: PlatformReport['prf']): boolean | undefined {
@@ -112,7 +114,7 @@ export default function PasskeyDesk({
   const [note, setNoteValue] = useState<string>();
   const [noteKind, setNoteKind] = useState<'message' | 'refresh' | 'status' | 'diagnostics' | 'receive'>('message');
   const [words, setWords] = useState<string[]>();
-  const [checks, setChecks] = useState<{ family: string; address: string; matches: boolean }[]>();
+  const [checks, setChecks] = useState<{ address: string; matches: boolean }[]>();
   const busyRef = useRef(false);
   const mounted = useRef(false);
   const sheetRef = useRef<typeof sheet>();
@@ -265,16 +267,16 @@ export default function PasskeyDesk({
     return match;
   }
 
-  async function onLink(accountIndex: number, reportSuccess: boolean): Promise<void> {
+  async function onLink(reportSuccess: boolean): Promise<void> {
     const session = getOpenPasskey();
     if (!session || !session.wallet || !canUseKeys(session)) return;
     const keys = session.keys;
     const token = session.accessToken;
     await run(async (client, original, isCurrent) => {
       const login = bitcoinLoginRing(keys);
-      let linked: Awaited<ReturnType<WalletClient['link']>>;
+      let linked: Awaited<ReturnType<WalletClient['linkBitcoin']>>;
       try {
-        linked = await client.link('bitcoin', token, login.ring, accountIndex);
+        linked = await client.linkBitcoin(token, login.ring);
       } finally {
         login.release();
       }
@@ -327,7 +329,7 @@ export default function PasskeyDesk({
     if (addresses.some((address) => address.family === 'Bitcoin')) return;
     if (bitcoinLinksStarted.has(open.keys)) return;
     bitcoinLinksStarted.add(open.keys);
-    void onLink(0, false);
+    void onLink(false);
   }, [busy, open, sessionWallet, addresses, onLink]);
 
   if (!open?.wallet) return <StyledVerticalStack gap={2} center />;
@@ -393,24 +395,8 @@ export default function PasskeyDesk({
     else openSheet('receive');
   }
   const bitcoin = addresses.some((address) => address.family === 'Bitcoin');
-  const receiveLabel: Record<ReceiveFamily, string> = {
-    evm: t('Ethereum & EVM'),
-    bitcoin: 'Bitcoin',
-    spark: t('Lightning (Spark)'),
-  };
   const sessionKeys = expanded && canUseKeys(open) ? open.keys : undefined;
-  const receiveRows: ShownReceive[] =
-    sessionKeys === undefined
-      ? []
-      : (['evm', 'bitcoin', 'spark'] as const).map((family): ShownReceive => {
-          const label = receiveLabel[family];
-          try {
-            if (receiveError === family) throw new Error();
-            return { family, label, address: receiveAddress(sessionKeys, family) };
-          } catch (caught) {
-            return { family, label, error: t(passkeyMessage(caught)) };
-          }
-        });
+  const receiveRow = sessionKeys === undefined ? undefined : shownReceive(sessionKeys, receiveError, t);
 
   return (
     <main className="mx-auto w-full max-w-[560px] pb-10 text-left text-dfxBlue-800">
@@ -455,44 +441,44 @@ export default function PasskeyDesk({
             ))}
             <h3 className="px-4 pt-4 font-semibold">{t('Addresses')}</h3>
             <ul>
-              {receiveRows.map((row) => (
-                <li
-                  key={`${row.family}:${'address' in row ? row.address : row.error}`}
-                  className="flex min-h-[58px] items-center justify-between gap-2 px-4 py-2"
-                >
+              {receiveRow !== undefined && (
+                <li className="flex min-h-[58px] items-center justify-between gap-2 px-4 py-2">
                   <div className="min-w-0">
-                    <b>{row.label}</b>
-                    {'address' in row ? (
-                      <p className="truncate font-mono text-sm [font-feature-settings:'calt'_0]" title={row.address}>
-                        {row.address.slice(0, 10)}…{row.address.slice(-8)}
+                    <b>{t('Bitcoin')}</b>
+                    {'address' in receiveRow ? (
+                      <p
+                        className="truncate font-mono text-sm [font-feature-settings:'calt'_0]"
+                        title={receiveRow.address}
+                      >
+                        {receiveRow.address.slice(0, 10)}…{receiveRow.address.slice(-8)}
                       </p>
                     ) : (
-                      <p className="text-sm">{row.error}</p>
+                      <p className="text-sm">{receiveRow.error}</p>
                     )}
-                    {row.family === 'bitcoin' && !bitcoin && (
+                    {!bitcoin && (
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <p className="text-sm">{t('Not connected yet')}</p>
                         <button
                           className={`${button} border border-dfxGray-500`}
                           disabled={busy}
-                          onClick={() => void onLink(0, true)}
+                          onClick={() => void onLink(true)}
                         >
                           {t('Connect again')}
                         </button>
                       </div>
                     )}
                   </div>
-                  {'address' in row && (
+                  {'address' in receiveRow && (
                     <button
                       className={button}
-                      aria-label={`${t('Copy address')} ${row.label}`}
-                      onClick={() => void copyAddress(row.address)}
+                      aria-label={`${t('Copy address')} ${t('Bitcoin')}`}
+                      onClick={() => void copyAddress(receiveRow.address)}
                     >
                       ⧉
                     </button>
                   )}
                 </li>
-              ))}
+              )}
             </ul>
           </div>
         </section>
@@ -522,11 +508,9 @@ export default function PasskeyDesk({
               if (!canUseKeys(session)) return;
               const login = bitcoinLoginRing(session.keys);
               try {
-                const rows = client.verifyServerAddresses(session.wallet, login.ring);
+                const rows = client.verifyBitcoinAddresses(session.wallet, login.ring);
                 if (isLive(session) && isCurrent()) {
-                  setChecks(
-                    rows.map((item) => ({ family: item.family, address: item.address, matches: item.matches })),
-                  );
+                  setChecks(rows);
                 }
               } finally {
                 login.release();
@@ -601,13 +585,16 @@ export default function PasskeyDesk({
       {sheet === 'receive' && (
         <PasskeySheet title={t('Receive')} busy={busy} onClose={requestCloseSheet}>
           {note && <p role="alert">{t(note)}</p>}
-          <PasskeyReceivePanel
-            readReceive={readReceive}
-            onReceiveError={(message) => {
-              if (message !== undefined) setNote(message, 'receive');
-              else if (noteKindRef.current === 'receive') setNote(undefined);
-            }}
-          />
+          {canUseKeys(open) && (
+            <PasskeyReceivePanel
+              keys={open.keys}
+              failed={receiveError}
+              onReceiveError={(message) => {
+                if (message !== undefined) setNote(message, 'receive');
+                else if (noteKindRef.current === 'receive') setNote(undefined);
+              }}
+            />
+          )}
         </PasskeySheet>
       )}
       {sheet === 'send' && (
