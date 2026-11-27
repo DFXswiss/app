@@ -16,10 +16,9 @@ import { createTestCredentials } from './test-wallet';
  *   - GET support/pending-merges
  * Everything else (the real auth/role/user fetch) is passed through via route.continue().
  *
- * Synthetic fixtures (fake ids 9000+, fake names, @example.com mails):
+ * Synthetic fixtures (fake ids 9000+):
  *   - one row per merge reason (IdentDocument, Mail, Iban, Staff)
  *   - one processing row
- *   - one row with an account that has neither name nor mail
  * Empty-state test returns [].
  */
 
@@ -69,10 +68,6 @@ type MergeReason = 'IdentDocument' | 'Mail' | 'Iban' | 'Staff';
 
 type PendingMergeAccountFixture = {
   userDataId: number;
-  userName?: string;
-  mail?: string;
-  accountType?: string;
-  kycLevel: number;
 };
 
 type PendingMergeFixture = {
@@ -89,20 +84,8 @@ const LOADED_FIXTURES: PendingMergeFixture[] = [
   {
     id: 9001,
     reason: 'IdentDocument',
-    master: {
-      userDataId: 9101,
-      userName: 'Anna Beispiel',
-      mail: 'anna@example.com',
-      accountType: 'Personal',
-      kycLevel: 30,
-    },
-    slave: {
-      userDataId: 9102,
-      userName: 'Anna Zweitkonto',
-      mail: 'anna.zweit@example.com',
-      accountType: 'Personal',
-      kycLevel: 30,
-    },
+    master: { userDataId: 9101 },
+    slave: { userDataId: 9102 },
     isProcessing: false,
     requestedDate: '2026-01-15T10:00:00.000Z',
     expiration: '2026-02-14T10:00:00.000Z',
@@ -110,20 +93,8 @@ const LOADED_FIXTURES: PendingMergeFixture[] = [
   {
     id: 9002,
     reason: 'Mail',
-    master: {
-      userDataId: 9103,
-      userName: 'Bruno Beispiel',
-      mail: 'bruno@example.com',
-      accountType: 'Personal',
-      kycLevel: 40,
-    },
-    slave: {
-      userDataId: 9104,
-      userName: 'Bruno Zweitkonto',
-      mail: 'bruno.zweit@example.com',
-      accountType: 'Personal',
-      kycLevel: 20,
-    },
+    master: { userDataId: 9103 },
+    slave: { userDataId: 9104 },
     isProcessing: false,
     requestedDate: '2026-01-16T10:00:00.000Z',
     expiration: '2026-02-15T10:00:00.000Z',
@@ -131,20 +102,8 @@ const LOADED_FIXTURES: PendingMergeFixture[] = [
   {
     id: 9003,
     reason: 'Iban',
-    master: {
-      userDataId: 9105,
-      userName: 'Clara Beispiel',
-      mail: 'clara@example.com',
-      accountType: 'Personal',
-      kycLevel: 30,
-    },
-    slave: {
-      userDataId: 9106,
-      userName: 'Clara Zweitkonto',
-      mail: 'clara.zweit@example.com',
-      accountType: 'Personal',
-      kycLevel: 50,
-    },
+    master: { userDataId: 9105 },
+    slave: { userDataId: 9106 },
     isProcessing: true,
     requestedDate: '2026-01-17T10:00:00.000Z',
     expiration: '2026-02-16T10:00:00.000Z',
@@ -152,16 +111,8 @@ const LOADED_FIXTURES: PendingMergeFixture[] = [
   {
     id: 9004,
     reason: 'Staff',
-    master: {
-      userDataId: 9107,
-      kycLevel: 10,
-    },
-    slave: {
-      userDataId: 9108,
-      userName: 'Dora Zweitkonto',
-      accountType: 'Personal',
-      kycLevel: 30,
-    },
+    master: { userDataId: 9107 },
+    slave: { userDataId: 9108 },
     isProcessing: false,
     requestedDate: '2026-01-18T10:00:00.000Z',
     expiration: '2026-02-17T10:00:00.000Z',
@@ -201,22 +152,21 @@ test.describe('Compliance Pending Merges list - Visual Regression Tests', () => 
     token = await getAdminAuth(request);
   });
 
-  test('1. loaded list shows every reason, a processing row and an account without name or mail', async ({ page }) => {
+  test('1. loaded list shows every reason, a processing row and both account IDs', async ({ page }) => {
     await installPendingMergeRoute(page, LOADED_FIXTURES);
 
     await gotoList(page, token);
 
     await expect(page.getByRole('table')).toBeVisible();
-    await expect(page.getByText('Anna Beispiel')).toBeVisible();
-    await expect(page.getByText('Bruno Beispiel')).toBeVisible();
-    await expect(page.getByText('Clara Beispiel')).toBeVisible();
-    await expect(page.getByText('Dora Zweitkonto')).toBeVisible();
     await expect(page.getByRole('cell', { name: 'IdentDocument', exact: true })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Mail', exact: true })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Iban', exact: true })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Staff', exact: true })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Processing', exact: true })).toBeVisible();
-    await expect(page.getByText('#9107')).toBeVisible();
+    for (const row of LOADED_FIXTURES) {
+      await expect(page.getByRole('button', { name: `#${row.master.userDataId}`, exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: `#${row.slave.userDataId}`, exact: true })).toBeVisible();
+    }
 
     await expect(page).toHaveScreenshot('pending-merges-01-loaded.png', {
       fullPage: true,

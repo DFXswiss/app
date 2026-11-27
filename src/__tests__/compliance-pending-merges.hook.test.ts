@@ -57,20 +57,8 @@ describe('useCompliance().getPendingMerges', () => {
       {
         id: 9001,
         reason: MergeReason.IBAN,
-        master: {
-          userDataId: 9101,
-          userName: 'Fixture Master',
-          mail: 'master@example.com',
-          accountType: 'Personal',
-          kycLevel: 30,
-        },
-        slave: {
-          userDataId: 9102,
-          userName: 'Fixture Slave',
-          mail: 'slave@example.com',
-          accountType: 'Personal',
-          kycLevel: 40,
-        },
+        master: { userDataId: 9101 },
+        slave: { userDataId: 9102 },
         isProcessing: false,
         requestedDate: '2026-01-15T10:00:00.000Z',
         expiration: '2026-02-14T10:00:00.000Z',

@@ -56,13 +56,7 @@ const REQUESTED = '2026-01-15T10:00:00.000Z';
 const EXPIRATION = '2026-02-14T10:00:00.000Z';
 
 function makeAccount(overrides: Partial<PendingMergeAccount> = {}): PendingMergeAccount {
-  return {
-    userDataId: 9101,
-    userName: 'Master Name',
-    mail: 'master@example.com',
-    kycLevel: 30,
-    ...overrides,
-  };
+  return { userDataId: 9101, ...overrides };
 }
 
 function baseEntry(overrides: Partial<PendingMergePayload> = {}): PendingMergeEntry {
@@ -70,7 +64,7 @@ function baseEntry(overrides: Partial<PendingMergePayload> = {}): PendingMergeEn
     id: 9001,
     reason: MergeReason.IBAN,
     master: makeAccount(),
-    slave: makeAccount({ userDataId: 9102, userName: 'Slave Name', mail: 'slave@example.com', kycLevel: 40 }),
+    slave: makeAccount({ userDataId: 9102 }),
     isProcessing: false,
     requestedDate: REQUESTED,
     expiration: EXPIRATION,
@@ -165,21 +159,21 @@ describe('CompliancePendingMergesScreen', () => {
     expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
   });
 
-  it('renders every column, both statuses, a missing reason and accounts without name or mail', async () => {
-    const processingWithoutDetails = baseEntry({
+  it('renders every column, both statuses, a missing reason and every account ID', async () => {
+    const processingWithoutReason = baseEntry({
       id: 9002,
       reason: undefined,
-      master: makeAccount({ userDataId: 9103, userName: undefined, mail: undefined, kycLevel: 10 }),
-      slave: makeAccount({ userDataId: 9104, userName: 'Second Slave', mail: undefined, kycLevel: 20 }),
+      master: makeAccount({ userDataId: 9103 }),
+      slave: makeAccount({ userDataId: 9104 }),
       isProcessing: true,
     });
 
-    mockGetPendingMerges.mockResolvedValue(asTransport([baseEntry(), processingWithoutDetails]));
+    mockGetPendingMerges.mockResolvedValue(asTransport([baseEntry(), processingWithoutReason]));
 
     render(<CompliancePendingMergesScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText('Master Name')).toBeInTheDocument();
+      expect(screen.getByText('#9101')).toBeInTheDocument();
     });
 
     // Column headers
@@ -197,25 +191,14 @@ describe('CompliancePendingMergesScreen', () => {
     // Reason present on one row, missing on the other
     expect(screen.getByText(MergeReason.IBAN)).toBeInTheDocument();
 
-    // Both account names, ids and KYC levels
-    expect(screen.getByText('Slave Name')).toBeInTheDocument();
-    expect(screen.getByText('Second Slave')).toBeInTheDocument();
+    // Account cells show only the userDataId, each once
     expect(screen.getByText('#9101')).toBeInTheDocument();
     expect(screen.getByText('#9102')).toBeInTheDocument();
     expect(screen.getByText('#9103')).toBeInTheDocument();
     expect(screen.getByText('#9104')).toBeInTheDocument();
-    expect(screen.getByText('KYC 30')).toBeInTheDocument();
-    expect(screen.getByText('KYC 40')).toBeInTheDocument();
-    expect(screen.getByText('KYC 10')).toBeInTheDocument();
-    expect(screen.getByText('KYC 20')).toBeInTheDocument();
 
-    // Mail shown when present, omitted when absent
-    expect(screen.getByText('master@example.com')).toBeInTheDocument();
-    expect(screen.getByText('slave@example.com')).toBeInTheDocument();
-    expect(screen.queryByText('second-slave@example.com')).not.toBeInTheDocument();
-
-    // Missing reason and missing name render the dash fallback
-    expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(2);
+    // Missing reason renders the dash fallback
+    expect(screen.getAllByText('-')).toHaveLength(1);
 
     // Both status variants
     expect(screen.getByText('Waiting for confirmation')).toBeInTheDocument();
@@ -223,17 +206,15 @@ describe('CompliancePendingMergesScreen', () => {
   });
 
   it('navigates to the master account only when the master cell is clicked', async () => {
-    mockGetPendingMerges.mockResolvedValue(
-      asTransport([baseEntry({ master: makeAccount({ userDataId: 9101, userName: 'Master Navigate' }) })]),
-    );
+    mockGetPendingMerges.mockResolvedValue(asTransport([baseEntry({ master: makeAccount({ userDataId: 9101 }) })]));
 
     render(<CompliancePendingMergesScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText('Master Navigate')).toBeInTheDocument();
+      expect(screen.getByText('#9101')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Master Navigate/ }));
+    fireEvent.click(screen.getByRole('button', { name: '#9101' }));
 
     expect(mockNavigate).toHaveBeenCalledTimes(1);
     expect(mockNavigate).toHaveBeenCalledWith('compliance/user/9101');
@@ -241,17 +222,15 @@ describe('CompliancePendingMergesScreen', () => {
   });
 
   it('navigates to the slave account only when the slave cell is clicked', async () => {
-    mockGetPendingMerges.mockResolvedValue(
-      asTransport([baseEntry({ slave: makeAccount({ userDataId: 9102, userName: 'Slave Navigate' }) })]),
-    );
+    mockGetPendingMerges.mockResolvedValue(asTransport([baseEntry({ slave: makeAccount({ userDataId: 9102 }) })]));
 
     render(<CompliancePendingMergesScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText('Slave Navigate')).toBeInTheDocument();
+      expect(screen.getByText('#9102')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Slave Navigate/ }));
+    fireEvent.click(screen.getByRole('button', { name: '#9102' }));
 
     expect(mockNavigate).toHaveBeenCalledTimes(1);
     expect(mockNavigate).toHaveBeenCalledWith('compliance/user/9102');

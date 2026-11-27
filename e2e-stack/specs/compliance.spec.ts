@@ -1036,16 +1036,6 @@ test.describe('Compliance area (overview)', () => {
 
     const master = await createUser({ tag: 'cmp-pending-merge-master', kycLevel: 30, completePersonalData: true });
     const slave = await createUser({ tag: 'cmp-pending-merge-slave', kycLevel: 30, completePersonalData: true });
-    await withDb(async (client) => {
-      await client.query(
-        `UPDATE user_data SET firstname = 'E2E', surname = 'MergeMaster', "verifiedName" = 'E2E MergeMaster' WHERE id = $1`,
-        [master.userDataId],
-      );
-      await client.query(
-        `UPDATE user_data SET firstname = 'E2E', surname = 'MergeSlave', "verifiedName" = 'E2E MergeSlave' WHERE id = $1`,
-        [slave.userDataId],
-      );
-    });
 
     const mergeId = await withDb(async (client) => {
       const res = await client.query<{ id: number }>(
@@ -1097,13 +1087,11 @@ test.describe('Compliance area (overview)', () => {
     await page.getByText('Pending Merges', { exact: true }).click();
 
     await expect(page).toHaveURL(/\/compliance\/pending-merges(\?|$)/);
-    const masterCell = page.getByRole('button', { name: /MergeMaster/ });
+    const masterCell = page.getByRole('button', { name: `#${master.userDataId}`, exact: true });
     await expect(masterCell).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole('button', { name: /MergeSlave/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: `#${slave.userDataId}`, exact: true })).toBeVisible();
 
     const mergeRow = page.getByRole('row').filter({ has: masterCell });
-    await expect(mergeRow.getByText(`#${master.userDataId}`, { exact: true })).toBeVisible();
-    await expect(mergeRow.getByText(`#${slave.userDataId}`, { exact: true })).toBeVisible();
     await expect(mergeRow.getByText('Iban', { exact: true })).toBeVisible();
     await expect(mergeRow.getByText('Waiting for confirmation', { exact: true })).toBeVisible();
 

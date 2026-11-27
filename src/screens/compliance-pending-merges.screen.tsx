@@ -44,12 +44,7 @@ export default function CompliancePendingMergesScreen(): JSX.Element {
         className="text-left text-sm text-dfxBlue-800 hover:underline"
         onClick={() => navigate(`compliance/user/${account.userDataId}`)}
       >
-        <span className="block">{account.userName ?? '-'}</span>
-        <span className="block text-xs text-dfxGray-700">
-          <span>#{account.userDataId}</span>
-          {account.mail ? <span className="ml-2">{account.mail}</span> : null}
-          <span className="ml-2">KYC {account.kycLevel}</span>
-        </span>
+        #{account.userDataId}
       </button>
     );
   }

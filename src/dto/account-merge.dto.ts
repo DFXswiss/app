@@ -7,10 +7,6 @@ export enum MergeReason {
 
 export interface PendingMergeAccount {
   userDataId: number;
-  userName?: string;
-  mail?: string;
-  accountType?: string;
-  kycLevel: number;
 }
 
 export interface PendingMergeEntry {
