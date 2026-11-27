@@ -6,6 +6,8 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { JobResponse, JobStatus, isJobResponse, isJobTerminal, pollJobUntilTerminal } from 'src/util/job';
+import { LOGIN_PARAMS } from 'src/util/login-params';
+import { launchCredentials } from 'src/util/session-renewal';
 
 interface MergeRedirect {
   kycHash: string;
@@ -16,6 +18,18 @@ interface MergeRedirect {
 // which is what tells it apart from an ApiError in the catch below.
 class MergeJobError extends Error {}
 
+function sameOriginUrl(value: string | null): URL | undefined {
+  if (!value) return undefined;
+
+  const { origin } = (window as Window).location;
+  try {
+    const target = new URL(value, origin);
+    return target.origin === origin ? target : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export default function AccountMerge() {
   const { translate } = useSettingsContext();
   const { setAuthToken } = useAuthContext();
@@ -23,10 +37,11 @@ export default function AccountMerge() {
   const { call } = useApi();
 
   const [urlParams, setUrlParams] = useSearchParams();
-  const [kycHash, setKycHash] = useState<string>();
+  const [merge, setMerge] = useState<MergeRedirect>();
   const isCancelled = useRef(false);
 
   const otp = urlParams.get('otp');
+  const [returnUrl] = useState(() => sameOriginUrl(urlParams.get('return-url')));
 
   useEffect(() => {
     // The cleanup below cancels the run; re-arm here so a second invocation on the same instance
@@ -42,11 +57,13 @@ export default function AccountMerge() {
     setUrlParams(urlParams);
 
     mergeAccounts(otp)
-      .then(({ kycHash, accessToken }: MergeRedirect) => {
+      .then((result: MergeRedirect) => {
         if (isCancelled.current) return;
 
-        setAuthToken(accessToken);
-        setKycHash(kycHash);
+        // The merge signs in as the merged account, so the launch credentials of the old one must not renew it.
+        launchCredentials.remove();
+        setAuthToken(result.accessToken);
+        setMerge(result);
       })
       .catch((error: ApiError | MergeJobError) => {
         if (isCancelled.current) return;
@@ -112,21 +129,35 @@ export default function AccountMerge() {
     return new MergeJobError(job.error ?? translate('screens/error', 'The address could not be added'));
   }
 
+  // The return page is loaded anew, so its start reads the page parameters and the partner redirect URI from the
+  // URL; the session goes along as `session`, which that start applies and removes from the address bar.
+  // The return-url comes from whoever started the merge, so any login parameters in it are dropped first: the
+  // start would otherwise sign in with a foreign `address`+`signature` or apply a foreign `session`.
+  // Only a confirmation that issued an access token (the caller was signed in) continues to the return-url.
+  function continueToAccount({ kycHash, accessToken }: MergeRedirect) {
+    if (!returnUrl || !accessToken) {
+      navigate(`/account?code=${kycHash}`);
+      return;
+    }
+
+    const target = new URL(returnUrl.href);
+    LOGIN_PARAMS.forEach((name) => target.searchParams.delete(name));
+    target.searchParams.set('session', accessToken);
+    (window as Window).location.assign(target.href);
+  }
+
   useLayoutOptions({});
 
   return (
     <StyledVerticalStack center gap={5} marginY={5}>
-      {kycHash ? (
+      {merge ? (
         <>
           <div>
             <h2 className="text-dfxBlue-800">{translate('screens/kyc', 'Wallet address added')}</h2>
             <p className="text-dfxGray-700">{translate('screens/kyc', 'You can now access your account.')}</p>
           </div>
 
-          <StyledButton
-            label={translate('screens/kyc', 'My account')}
-            onClick={() => navigate(`/account?code=${kycHash}`)}
-          />
+          <StyledButton label={translate('screens/kyc', 'My account')} onClick={() => continueToAccount(merge)} />
         </>
       ) : (
         <>

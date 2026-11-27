@@ -8,7 +8,7 @@
  *   docker compose -p dfx-e2e-stack -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml \
  *     run --rm tests --grep @coverage-gate
  *
- * Current state: GREEN — all 100 routes in App.tsx are claimed by exactly one suite's registry
+ * Current state: GREEN — all 116 routes in App.tsx are claimed by exactly one suite's registry
  * entry. Do not weaken or remove a claim just to keep this green; add real coverage instead.
  */
 import * as fs from 'fs';
@@ -16,12 +16,7 @@ import * as path from 'path';
 import * as ts from 'typescript';
 import { expect, test } from '@playwright/test';
 import type { RouteClaim } from './registry/types';
-import {
-  evaluateClaimedRouteVisits,
-  readVisitedRoutes,
-  specClaimName,
-  visitedRoutesPath,
-} from './fixtures/routes';
+import { evaluateClaimedRouteVisits, readVisitedRoutes, specClaimName, visitedRoutesPath } from './fixtures/routes';
 
 const APP_SOURCE_PATH = '/work/app-source/App.tsx';
 
@@ -272,9 +267,7 @@ test('a claimed route opened only by another suite is reported as wrong-suite co
     specsDir,
   );
 
-  expect(result.wrongSuite).toEqual([
-    '/synthetic/:id (claimed by owner.spec.ts, opened by: different.spec.ts)',
-  ]);
+  expect(result.wrongSuite).toEqual(['/synthetic/:id (claimed by owner.spec.ts, opened by: different.spec.ts)']);
   expect(result.neverOpened).toEqual([]);
   expect(result.correctlyOpened).toEqual([]);
 });
@@ -344,12 +337,7 @@ test('every app route is claimed by exactly one registry entry @coverage-gate', 
         claimByPath.set(claim.path, claim);
       }
 
-      const { neverOpened, wrongSuite } = evaluateClaimedRouteVisits(
-        real,
-        claimByPath,
-        visited,
-        __dirname,
-      );
+      const { neverOpened, wrongSuite } = evaluateClaimedRouteVisits(real, claimByPath, visited, __dirname);
 
       if (neverOpened.length > 0) {
         messages.push(

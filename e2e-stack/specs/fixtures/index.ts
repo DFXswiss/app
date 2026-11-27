@@ -7,6 +7,9 @@ export * from './auth';
 export * from './db';
 export * from './factories';
 export * from './mail';
+export * from './partner-redirect';
+export * from './paused';
+export * from './pii';
 export * from './routes';
 export * from './screen-sync';
 export * from './test-data';
@@ -103,8 +106,10 @@ function stackHosts(): Set<string> {
  * to make. Answering instead of aborting keeps the request from failing at all — an aborted request
  * logs an error of its own. Serving no fonts is also the honest state of affairs: the app has to
  * work without them.
+ *
+ * It covers `page` only: a spec that opens another page calls it there before the first `goto`.
  */
-async function isolateFromExternalHosts(page: Page): Promise<void> {
+export async function isolateFromExternalHosts(page: Page): Promise<void> {
   const allowed = stackHosts();
   await page.route('**/*', async (route) => {
     const host = new URL(route.request().url()).hostname;

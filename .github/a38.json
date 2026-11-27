@@ -50,6 +50,26 @@
       "reason": "GitHub-hosted full-stack E2E on public runners. Not a local author-measured job."
     },
     {
+      "workflow": ".github/workflows/e2e-paired.yml",
+      "job": "resolve",
+      "reason": "Trusted paired-E2E coordinator: resolves an app and a backend pull request pair with the pairing App token. Event-driven GitHub-hosted coordination, not a local author-measured job."
+    },
+    {
+      "workflow": ".github/workflows/e2e-paired.yml",
+      "job": "run",
+      "reason": "Paired full-stack E2E of the exact app and backend heads on a GitHub-hosted runner. Same suite as e2e-stack.yml / e2e; not a local author-measured job."
+    },
+    {
+      "workflow": ".github/workflows/e2e-paired.yml",
+      "job": "publish",
+      "reason": "Publishes the App-signed pair attestation status. Status publication, not a code or test suite."
+    },
+    {
+      "workflow": ".github/workflows/e2e-paired.yml",
+      "job": "reconcile",
+      "reason": "Scheduled reconciliation of stale pair attestations. Housekeeping, not a code or test suite."
+    },
+    {
       "workflow": ".github/workflows/e2e-images.yml",
       "job": "publish",
       "reason": "Publishes SHA-tagged E2E accelerator images to GHCR. The workflow is explicitly not a merge gate."

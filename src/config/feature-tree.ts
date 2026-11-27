@@ -44,7 +44,7 @@ export const FeatureTree: Page[] = [
         img: 'bitcoinlightning',
         next: {
           page: 'wallets',
-          tiles: ['dfx-wallet', 'hw-wallet', 'alby', 'cli'],
+          tiles: ['dfx-wallet', 'hw-wallet', 'cli'],
           options: {
             service: 'buy',
             query: { blockchain: Blockchain.BITCOIN, assetOut: 'BTC' },
@@ -850,7 +850,7 @@ export const FeatureTree: Page[] = [
         img: 'bitcoinlightning',
         next: {
           page: 'wallets',
-          tiles: ['dfx-wallet', 'hw-wallet', 'alby', 'cli'],
+          tiles: ['dfx-wallet', 'hw-wallet', 'cli'],
           options: {
             service: 'sell',
             query: { blockchain: Blockchain.BITCOIN, assetIn: 'BTC' },
@@ -1650,11 +1650,6 @@ export const FeatureTree: Page[] = [
         },
       },
       {
-        id: 'alby',
-        img: 'alby',
-        wallet: { type: WalletType.ALBY, blockchain: Blockchain.LIGHTNING },
-      },
-      {
         id: 'phantom-sol',
         img: 'phantom',
         wallet: { type: WalletType.PHANTOM_SOL, blockchain: Blockchain.SOLANA },
@@ -1891,7 +1886,7 @@ export const FeatureTree: Page[] = [
         img: 'bitcoinlightning',
         next: {
           page: 'wallets',
-          tiles: ['dfx-wallet', 'hw-wallet', 'alby'],
+          tiles: ['dfx-wallet', 'hw-wallet'],
           options: {
             service: 'buy',
             query: { blockchain: Blockchain.BITCOIN, assetOut: 'BTC' },
@@ -1908,7 +1903,7 @@ export const FeatureTree: Page[] = [
         img: 'bitcoinlightning',
         next: {
           page: 'wallets',
-          tiles: ['alby'],
+          tiles: ['dfx-wallet', 'hw-wallet'],
           options: {
             service: 'sell',
             query: { blockchain: Blockchain.BITCOIN, assetIn: 'BTC' },
@@ -1945,7 +1940,7 @@ export const FeatureTree: Page[] = [
         img: 'bitcoinlightning',
         next: {
           page: 'wallets',
-          tiles: ['dfx-wallet', 'hw-wallet', 'alby'],
+          tiles: ['dfx-wallet', 'hw-wallet'],
           options: {
             service: 'buy',
             query: { blockchain: Blockchain.BITCOIN, assetOut: 'BTC' },
@@ -1962,7 +1957,7 @@ export const FeatureTree: Page[] = [
         img: 'bitcoinlightning',
         next: {
           page: 'wallets',
-          tiles: ['dfx-wallet', 'hw-wallet', 'alby'],
+          tiles: ['dfx-wallet', 'hw-wallet'],
           options: {
             service: 'sell',
             query: { blockchain: Blockchain.BITCOIN, assetIn: 'BTC' },
@@ -2024,7 +2019,7 @@ export const FeatureTree: Page[] = [
         img: 'bitcoinlightning',
         next: {
           page: 'wallets',
-          tiles: ['dfx-wallet', 'hw-wallet', 'alby'],
+          tiles: ['dfx-wallet', 'hw-wallet'],
           options: {
             service: 'sell',
             query: { blockchain: Blockchain.BITCOIN, assetIn: 'BTC' },
@@ -3425,51 +3420,11 @@ export const FeatureTree: Page[] = [
         wallet: { type: WalletType.DFX_TARO, blockchain: Blockchain.LIGHTNING },
       },
       {
-        id: 'alby',
-        img: 'alby',
-        wallet: { type: WalletType.ALBY, blockchain: Blockchain.LIGHTNING },
-      },
-      {
         id: 'cli',
         img: 'command',
         wallet: (params) => ({
           type: params.blockchain === Blockchain.BITCOIN ? WalletType.CLI_BTC : WalletType.CLI_ETH,
         }),
-      },
-    ],
-  },
-
-  // --- ALBY ONLY --- //
-  {
-    id: 'albyonly',
-    header: 'Buy and sell with Alby',
-    description: 'Buy and sell Bitcoin directly on your Alby Account!',
-    bottomImage:
-      'https://getalby.com/assets/alby-logo-head-da6c4355b69a3baac3fc306d47741c9394a825e54905ef67c5dd029146b89edf.svg',
-    tiles: [
-      {
-        id: 'albyonly-buy',
-        img: 'kaufen_simple',
-        next: {
-          page: 'wallets',
-          tiles: ['alby'],
-          options: {
-            service: 'buy',
-            query: { blockchain: Blockchain.LIGHTNING, assetOut: 'BTC' },
-          },
-        },
-      },
-      {
-        id: 'albyonly-sell',
-        img: 'verkaufen_simple',
-        next: {
-          page: 'wallets',
-          tiles: ['alby'],
-          options: {
-            service: 'sell',
-            query: { blockchain: Blockchain.LIGHTNING, assetIn: 'BTC' },
-          },
-        },
       },
     ],
   },
@@ -4737,7 +4692,7 @@ export const FeatureTree: Page[] = [
         img: 'bitcoinlightning',
         next: {
           page: 'wallets',
-          tiles: ['alby'],
+          tiles: ['hw-wallet'],
           options: {
             service: 'sell',
             query: { blockchain: Blockchain.BITCOIN, assetIn: 'BTC' },

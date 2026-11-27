@@ -21,6 +21,7 @@ import {
   expect,
   normPath,
   openScreen,
+  PARTNER_RETURN_URI,
   queryOne,
   queryRows,
   test,
@@ -222,7 +223,7 @@ test.describe('Payment links / routes / invoice', () => {
   }) => {
     const user = await createUser({ tag: 'pl-routes-mixed', language: 'EN', kycLevel: 30, completePersonalData: true });
     const buy = await createBuy(user.jwt);
-    const sell = await createSell(user.jwt, { blockchain: 'Ethereum' });
+    const { sellId } = await createSell(user.jwt, { blockchain: 'Ethereum' });
     const pl = await createPaymentLink(user.jwt, {
       tag: 'pl-routes-mixed',
       amount: 18.5,
@@ -231,7 +232,7 @@ test.describe('Payment links / routes / invoice', () => {
 
     // DB preconditions for what the list should surface.
     await waitForRow(`SELECT id FROM buy WHERE id = $1`, [buy.buyId]);
-    await waitForRow(`SELECT id FROM deposit_route WHERE id = $1 AND type = 'Sell'`, [sell.sellId]);
+    await waitForRow(`SELECT id FROM deposit_route WHERE id = $1 AND type = 'Sell'`, [sellId]);
     await waitForRow(`SELECT id, status FROM payment_link WHERE id = $1`, [pl.paymentLinkId]);
     expect(pl.paymentId, 'factory should create a pending payment_link_payment').toBeTruthy();
     const paymentRow = await waitForRow<{ id: number; amount: number; status: string }>(
@@ -245,7 +246,7 @@ test.describe('Payment links / routes / invoice', () => {
 
     // Buy + sell route cards (title is "Route <id>" — numeric id is language-stable).
     await routeVisibleInSection(page, 'Buy', `Route ${buy.buyId}`);
-    await routeVisibleInSection(page, 'Sell', `Route ${sell.sellId}`);
+    await routeVisibleInSection(page, 'Sell', `Route ${sellId}`);
     // Payment link's own Lightning sell route is also a sell card (same section).
     if (pl.routeId) {
       await routeVisibleInSection(page, 'Sell', `Route ${pl.routeId}`);
@@ -708,6 +709,30 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByText('CANCELLED', { exact: true })).toHaveCount(0);
     await expect(page.getByText('EXPIRED', { exact: true })).toHaveCount(0);
     await expect(page.getByText(/By using this service, the outstanding claim/i)).toBeVisible();
+  });
+
+  test('/pl/result: redirects to the redirect-uri once; opened again without it, it neither announces nor redirects', async ({
+    page,
+  }) => {
+    const hint = page.getByText('You will be redirected to the site shortly', { exact: true });
+
+    // The redirect follows about 2 s after the screen rendered, so nothing but the hint is waited for before it.
+    await page.goto(`/pl/result?status=Completed&redirect-uri=${encodeURIComponent(PARTNER_RETURN_URI)}`, {
+      waitUntil: 'commit',
+    });
+    await expect(hint).toBeVisible({ timeout: 15000 });
+    await page.waitForURL((url) => url.href === PARTNER_RETURN_URI, { timeout: 15000 });
+
+    // Same tab, same sessionStorage: the close gave up the redirect URI.
+    await page.goto('/pl/result');
+    await waitForPublicPath(page, '/pl/result');
+    await expect(page.getByText(/By using this service, the outstanding claim/i)).toBeVisible();
+    await expect(hint).toHaveCount(0);
+    expect(await page.evaluate(() => window.sessionStorage.getItem('dfx.srv.redirectUri'))).toBeNull();
+
+    await page.waitForTimeout(3000);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/pl/result');
+    await expect(hint).toHaveCount(0);
   });
 
   // =========================================================================

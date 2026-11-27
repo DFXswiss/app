@@ -44,6 +44,7 @@ import { Urls } from 'src/config/urls';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
+import { AlreadyVerifiedLink } from '../components/already-verified-link';
 import { ExchangeRate } from '../components/exchange-rate';
 import { SellCompletion } from '../components/payment/sell-completion';
 import { QuoteErrorHint } from '../components/quote-error-hint';
@@ -98,7 +99,7 @@ export default function SellScreen(): JSX.Element {
   useAddressGuard('/login');
 
   const { translate, translateError, currency: prefCurrency } = useSettingsContext();
-  const { isInitialized, closeServices } = useAppHandlingContext();
+  const { isInitialized, handOff, isHandingOff } = useAppHandlingContext();
   const { logout } = useSessionContext();
   const { session } = useAuthContext();
   const { width } = useWindowContext();
@@ -137,6 +138,7 @@ export default function SellScreen(): JSX.Element {
   const [balances, setBalances] = useState<AssetBalance[]>();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isTxDone, setTxDone] = useState<boolean>(false);
+  const [confirmedPaymentInfo, setConfirmedPaymentInfo] = useState<Sell>();
   const [sellTxId, setSellTxId] = useState<string>();
   const [bankAccountSelection, setBankAccountSelection] = useState(false);
   const [showsSwitchScreen, setShowsSwitchScreen] = useState(false);
@@ -570,7 +572,15 @@ export default function SellScreen(): JSX.Element {
 
   function onSubmit(_data?: FormData) {
     if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
-    if (!paymentInfo || !isQuoteFinal || kycError || errorMessage || customAmountError?.hideInfos || isProcessing)
+    if (
+      !paymentInfo ||
+      !isQuoteFinal ||
+      kycError ||
+      errorMessage ||
+      customAmountError?.hideInfos ||
+      isProcessing ||
+      isHandingOff
+    )
       return;
     if (selectedAsset?.category === AssetCategory.PRIVATE && !flags?.includes('private')) return;
     void handleNext(paymentInfo);
@@ -596,13 +606,14 @@ export default function SellScreen(): JSX.Element {
       await updateBankAccount();
 
       if (canSendTransaction() && !activeWallet) {
-        closeServices({ type: CloseType.SELL, isComplete: false, sell: paymentInfo }, false);
+        handOff({ type: CloseType.SELL, isComplete: false, sell: paymentInfo });
         return;
       }
 
       if (canSendTransaction()) {
         await sendTransaction(paymentInfo).then(setSellTxId);
       }
+      setConfirmedPaymentInfo(paymentInfo);
       setTxDone(true);
     } catch (error: any) {
       // User rejected in wallet - silently return, user stays on form
@@ -633,8 +644,8 @@ export default function SellScreen(): JSX.Element {
     <>
       {showsSwitchScreen ? (
         <AddressSwitch onClose={(r) => (r ? onAddressSwitch() : setShowsSwitchScreen(false))} />
-      ) : paymentInfo && isTxDone ? (
-        <SellCompletion paymentInfo={paymentInfo} navigateOnClose={true} txId={sellTxId} />
+      ) : isTxDone && confirmedPaymentInfo ? (
+        <SellCompletion paymentInfo={confirmedPaymentInfo} navigateOnClose={true} txId={sellTxId} />
       ) : (
         <form
           className="w-full"
@@ -755,6 +766,7 @@ export default function SellScreen(): JSX.Element {
                   isModalOpen={bankAccountSelection}
                   onModalToggle={setBankAccountSelection}
                 />
+                {!isLoading && !paymentInfo && !kycError && !errorMessage && <AlreadyVerifiedLink />}
               </StyledVerticalStack>
 
               {isLoading && !paymentInfo ? (
@@ -819,7 +831,7 @@ export default function SellScreen(): JSX.Element {
                             disabled={!isQuoteFinal}
                             caps={false}
                             className="mt-4"
-                            isLoading={isProcessing}
+                            isLoading={isProcessing || isHandingOff}
                           />
                         </div>
                       </>

@@ -1,15 +1,25 @@
 import { useAuthContext } from '@dfx.swiss/react';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
+import { useInRouterContext } from 'react-router-dom';
 import { AccountAccessToggles } from 'src/components/compliance/account-access-toggles';
+import { AccountMergeEditor } from 'src/components/compliance/account-merge-editor';
 import { CollapsibleSection } from 'src/components/compliance/collapsible-section';
 import { LimitRequestModal } from 'src/components/compliance/limit-request-modal';
+import { OnboardingFeeEditor } from 'src/components/compliance/onboarding-fee-editor';
 import { ReactivateAccount } from 'src/components/compliance/reactivate-account';
+import { RiskStatusEditor } from 'src/components/compliance/risk-status-editor';
+import { UserDataEditForm } from 'src/components/compliance/user-data-edit-form';
 import type { UserDataStatusInfo } from 'src/hooks/account-reactivation.hook';
 import { useClipboard } from 'src/hooks/clipboard.hook';
 import { OrganizationDetail, UserDataDetail, UserInfo } from 'src/hooks/compliance.hook';
+import { useNavigation } from 'src/hooks/navigation.hook';
 import { canReactivateAccount, DEACTIVATED_STATUS } from 'src/util/account-reactivation.util';
+import { canMergeAccounts } from 'src/util/account-merge.util';
 import { appOrigin } from 'src/util/app-origin';
 import { display, formatBirthday, formatDate, formatDateTime, Primitive, refName } from 'src/util/compliance-helpers';
+import { canManageOnboardingFee } from 'src/util/onboarding-fee.util';
+import { canManageRiskStatus } from 'src/util/risk-status.util';
+import { editableTextFields } from 'src/util/user-data-edit.util';
 
 interface UserDataPanelProps {
   userData: UserDataDetail;
@@ -48,6 +58,32 @@ function KycLinkButtons({ kycHash }: Readonly<{ kycHash: string }>): JSX.Element
         {videoLink.isCopying ? '✓ Video' : 'Video'}
       </button>
     </div>
+  );
+}
+
+interface AccountMergeEntryProps {
+  userDataId: number;
+  userData: UserDataDetail;
+  onAccountAccessChanged: () => void;
+}
+
+// The merge form needs the router to open the remaining account after a merge. It is mounted only
+// inside a router so the panel can also render in environments without one (e.g. component tests).
+function AccountMergeEntry({
+  userDataId,
+  userData,
+  onAccountAccessChanged,
+}: Readonly<AccountMergeEntryProps>): JSX.Element {
+  const { navigate } = useNavigation();
+
+  return (
+    <AccountMergeEditor
+      userDataId={userDataId}
+      userData={userData}
+      onMerged={(remaining) =>
+        remaining === userDataId ? onAccountAccessChanged() : navigate(`/compliance/user/${remaining}`)
+      }
+    />
   );
 }
 
@@ -221,7 +257,17 @@ export function UserDataPanel({
   onAccountAccessChanged,
 }: Readonly<UserDataPanelProps>): JSX.Element {
   const [showLimitRequestModal, setShowLimitRequestModal] = useState(false);
+  const [editFormUserDataId, setEditFormUserDataId] = useState<number>();
   const { session } = useAuthContext();
+  const inRouter = useInRouterContext();
+  const editFields = editableTextFields(session?.role);
+  const mayEditUserData = editFields !== undefined;
+
+  // The form belongs to one account: it must not carry over to another one, or returning to the first
+  // account would reopen its form.
+  useEffect(() => {
+    setEditFormUserDataId(undefined);
+  }, [userDataId]);
 
   // A reactivation answers with the account's new status row; the box shows it until the screen reloads
   // the account. The row on screen must be that same account: this box stays mounted, and the screen
@@ -229,6 +275,14 @@ export function UserDataPanel({
   // button both fail closed unless the row is that id; the overlay also requires the stored answer.
   const [reactivated, setReactivated] = useState<UserDataStatusInfo>();
   const rowIsThisAccount = userData.id === userDataId;
+  // The form is keyed by the account it was opened for and reset when the route's userDataId changes
+  // underneath it. The reload callback is required for the edit entry point: without it the screen
+  // could not show the saved values.
+  const editEntryPoint =
+    userDataId !== undefined && rowIsThisAccount && onAccountAccessChanged && mayEditUserData
+      ? { userDataId, reload: onAccountAccessChanged, fields: editFields }
+      : undefined;
+  const editTarget = editEntryPoint && editEntryPoint.userDataId === editFormUserDataId ? editEntryPoint : undefined;
   const current: UserDataDetail =
     rowIsThisAccount && reactivated && reactivated.id === userDataId
       ? { ...userData, status: reactivated.status, deactivationDate: reactivated.deactivationDate }
@@ -291,10 +345,63 @@ export function UserDataPanel({
                 onChanged={onAccountAccessChanged}
               />
             )}
+            {userDataId !== undefined &&
+              rowIsThisAccount &&
+              onAccountAccessChanged &&
+              canManageRiskStatus(session?.role) && (
+                <RiskStatusEditor
+                  userDataId={userDataId}
+                  currentRiskStatus={current.riskStatus}
+                  onChanged={onAccountAccessChanged}
+                />
+              )}
+            {userDataId !== undefined &&
+              rowIsThisAccount &&
+              onAccountAccessChanged &&
+              canManageOnboardingFee(session?.role) && (
+                <OnboardingFeeEditor userDataId={userDataId} users={users} onChanged={onAccountAccessChanged} />
+              )}
+            {userDataId !== undefined &&
+              rowIsThisAccount &&
+              onAccountAccessChanged &&
+              canMergeAccounts(session?.role) &&
+              inRouter && (
+                <AccountMergeEntry
+                  userDataId={userDataId}
+                  userData={current}
+                  onAccountAccessChanged={onAccountAccessChanged}
+                />
+              )}
           </CollapsibleSection>
 
           <CollapsibleSection title="Personal Data" initiallyOpen>
-            <SectionTable rows={personalDataRows(userData)} />
+            {editTarget ? (
+              <UserDataEditForm
+                userDataId={editTarget.userDataId}
+                userData={userData}
+                fields={editTarget.fields}
+                onSaved={() => {
+                  setEditFormUserDataId(undefined);
+                  editTarget.reload();
+                }}
+                onCancel={() => setEditFormUserDataId(undefined)}
+              />
+            ) : (
+              <>
+                <SectionTable rows={personalDataRows(userData)} />
+                {editEntryPoint && (
+                  <div className="px-3 py-2">
+                    <button
+                      type="button"
+                      className="px-3 py-1 text-xs text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded transition-colors whitespace-nowrap"
+                      onClick={() => setEditFormUserDataId(editEntryPoint.userDataId)}
+                    >
+                      Edit personal data
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </CollapsibleSection>
 
           <CollapsibleSection title="Organization Data" initiallyOpen={!!userData.organization}>

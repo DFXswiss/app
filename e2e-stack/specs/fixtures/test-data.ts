@@ -20,6 +20,7 @@ export const ROLE_WALLET_INDEX = {
   Support: 4,
   Marketing: 5,
   RealUnit: 6,
+  Partner: 7,
 } as const;
 
 let testEmailCounter = 0;

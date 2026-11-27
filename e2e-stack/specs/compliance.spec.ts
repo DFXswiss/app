@@ -7,13 +7,17 @@
  *   /compliance/kyc-files, /compliance/kyc-files/details, /compliance/kyc-stats,
  *   /compliance/transactions, /compliance/custody-orders,
  *   /compliance/mros, /compliance/mros/:id, /compliance/recalls,
- *   /compliance/pending-chargebacks, /compliance/call-queues, /compliance/*, /sitemap
+ *   /compliance/pending-chargebacks, /compliance/pending-merges, /compliance/call-queues,
+ *   /compliance/*, /sitemap
  *
  * Write/decision routes live in compliance-cases.spec.ts.
  */
 
+import { randomUUID } from 'node:crypto';
+import { ethers } from 'ethers';
 import {
   apiGet,
+  decryptPii,
   expect,
   extractAppRoutes,
   gotoWithSession,
@@ -23,7 +27,10 @@ import {
   queryOne,
   queryRows,
   resolveAppSourcePath,
+  ROLE_WALLET_INDEX,
   test,
+  testWallet,
+  waitForMatchingRow,
   waitForRow,
   withDb,
 } from './fixtures';
@@ -35,6 +42,7 @@ import {
   createSupportIssue,
   createTransaction,
   createUser,
+  trackRow,
 } from './fixtures/factories';
 
 test.describe.configure({ mode: 'serial' });
@@ -55,7 +63,7 @@ async function ensureStaffKycComplete(userId: number): Promise<void> {
 }
 
 /**
- * All 25 compliance routes with concrete placeholders for param segments.
+ * All 26 compliance routes with concrete placeholders for param segments.
  * `:queue` uses a non-enum placeholder — the guard runs before queue validation, so denial
  * still redirects away from the path regardless of whether the queue name is valid.
  */
@@ -79,6 +87,7 @@ const ALL_COMPLIANCE_PATHS = [
   '/compliance/mros/1',
   '/compliance/recalls',
   '/compliance/pending-chargebacks',
+  '/compliance/pending-merges',
   '/compliance/does-not-exist',
   '/compliance/user/1/kyc',
   '/compliance/call-queues',
@@ -97,10 +106,10 @@ test.describe('Compliance area (overview)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Access control — plain User must not see any of the 25 screens
+  // Access control — plain User must not see any of the 26 screens
   // -------------------------------------------------------------------------
 
-  test('plain User role is denied all 25 compliance routes', async ({ page }) => {
+  test('plain User role is denied all 26 compliance routes', async ({ page }) => {
     const { jwt } = await loginAs('User');
 
     for (const target of ALL_COMPLIANCE_PATHS) {
@@ -412,6 +421,294 @@ test.describe('Compliance area (overview)', () => {
     await waitForRow(`SELECT id FROM "user" WHERE id = $1 AND role = 'User'`, [customer.userId], 15000);
   });
 
+  test('/compliance/user/:id lets Admin edit personal data and the KYC status and logs the change', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffKycComplete(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-user-data-edit',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const newMail = `e2e-edit-${Date.now()}@example.com`;
+    const newStreet = 'E2E Editstrasse';
+    const reason = `e2e edit ${Date.now()}`;
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+
+    await expect(page.getByText('Personal Data', { exact: true })).toBeVisible({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+
+    await page.getByLabel('mail', { exact: true }).fill(newMail);
+    await page.getByLabel('street', { exact: true }).fill(newStreet);
+    await page.getByLabel('kycStatus', { exact: true }).selectOption('Rejected');
+    await page.getByLabel('Reason', { exact: true }).fill(reason);
+
+    const mutationResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/operatorMutation`,
+    );
+
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    expect((await mutationResponsePromise).status()).toBe(200);
+
+    await expect(page.getByRole('button', { name: 'Edit personal data', exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByText(newMail, { exact: true })).toBeVisible();
+
+    await waitForRow(
+      `SELECT id FROM user_data WHERE id = $1 AND mail = $2 AND street = $3 AND "kycStatus" = 'Rejected'`,
+      [customer.userDataId, newMail, newStreet],
+      15000,
+    );
+    await waitForRow(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'ManualLog'
+         AND comment LIKE $2 AND comment LIKE $3 AND comment LIKE $4 AND comment LIKE $5`,
+      [
+        customer.userDataId,
+        '%API UserData operator mutation%',
+        '%Editor: %',
+        `%comment: ${reason}%`,
+        `%"mail":"${newMail}"%`,
+      ],
+      15000,
+    );
+  });
+
+  test('/compliance/user/:id lets Compliance edit mail and address without the names and logs the change', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-user-data-edit-compliance',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const newMail = `e2e-edit-compliance-${Date.now()}@example.com`;
+    const newStreet = 'E2E Compliance Strasse';
+    const reason = `e2e compliance edit ${Date.now()}`;
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+
+    await expect(page.getByText('Personal Data', { exact: true })).toBeVisible({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+
+    await expect(page.getByLabel('mail', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('street', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('firstname', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('surname', { exact: true })).toHaveCount(0);
+
+    await page.getByLabel('mail', { exact: true }).fill(newMail);
+    await page.getByLabel('street', { exact: true }).fill(newStreet);
+    await page.getByLabel('Reason', { exact: true }).fill(reason);
+
+    const mutationResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/operatorMutation`,
+    );
+
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    expect((await mutationResponsePromise).status()).toBe(200);
+
+    await expect(page.getByRole('button', { name: 'Edit personal data', exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByText(newMail, { exact: true })).toBeVisible();
+
+    // The two editable fields landed, and the names the Compliance role never sent stayed as seeded.
+    await waitForRow(
+      `SELECT id FROM user_data WHERE id = $1 AND mail = $2 AND street = $3
+         AND firstname = 'E2E' AND surname = 'Tester'`,
+      [customer.userDataId, newMail, newStreet],
+      15000,
+    );
+    await waitForRow(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'ManualLog'
+         AND comment LIKE $2 AND comment LIKE $3 AND comment LIKE $4 AND comment LIKE $5
+         AND comment NOT LIKE '%"firstname"%' AND comment NOT LIKE '%"surname"%'`,
+      [
+        customer.userDataId,
+        '%API UserData operator mutation%',
+        '%Editor: E2E Test Staff%',
+        `%comment: ${reason}%`,
+        `%"mail":"${newMail}"%`,
+      ],
+      15000,
+    );
+  });
+
+  test('/compliance/user/:id refuses an invalid mail in the personal data edit form', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffKycComplete(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-user-data-edit-invalid',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+
+    await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+    await page.getByLabel('mail', { exact: true }).fill('not-an-email');
+    await page.getByLabel('Reason', { exact: true }).fill('Invalid mail check');
+
+    await expect(page.getByText('mail is not a valid e-mail address', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  });
+
+  test('/compliance/user/:id lets Compliance merge two accounts with a reason and logs it on both', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    // The kept account needs the higher KYC level; the form and the API both refuse the other way round.
+    const master = await createUser({
+      tag: 'cmp-merge-master',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const slave = await createUser({
+      tag: 'cmp-merge-slave',
+      kycLevel: 20,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    // The merge keeps the master's mail; only a master without one takes the other account's mail.
+    const masterMail = (
+      await queryOne<{ mail: string }>(`SELECT mail FROM user_data WHERE id = $1`, [master.userDataId])
+    )?.mail;
+    const slaveMail = (await queryOne<{ mail: string }>(`SELECT mail FROM user_data WHERE id = $1`, [slave.userDataId]))
+      ?.mail;
+    expect(masterMail, 'seeded master must have a mail').toBeTruthy();
+    expect(slaveMail, 'seeded slave must have a mail').toBeTruthy();
+    expect(masterMail).not.toBe(slaveMail);
+    const reason = `e2e merge ${Date.now()}`;
+
+    await openScreen(page, `/compliance/user/${master.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Merge accounts', exact: true }).click();
+    await page.locator('#account-merge-other-id').fill(String(slave.userDataId));
+    await page.getByRole('button', { name: 'Load', exact: true }).click();
+
+    await expect(page.getByText('Other account', { exact: true })).toBeVisible({ timeout: 15000 });
+    const mergeTable = page.locator('table').filter({ has: page.getByText('This account', { exact: true }) });
+    await expect(mergeTable.getByRole('cell', { name: String(master.userDataId), exact: true })).toBeVisible();
+    await expect(mergeTable.getByRole('cell', { name: String(slave.userDataId), exact: true })).toBeVisible();
+    await expect(page.getByRole('radio', { name: `Keep this account (${master.userDataId})` })).toBeChecked();
+    await expect(page.getByRole('radio', { name: `Keep other account (${slave.userDataId})` })).not.toBeChecked();
+
+    await page.locator('#account-merge-reason').fill(reason);
+    const mergeButton = page.getByRole('button', { name: 'Merge', exact: true });
+    await expect(mergeButton).toBeEnabled({ timeout: 15000 });
+    // The account that stays keeps its own mail, so the preview shows the master's mail.
+    await expect(page.getByText(`Mail after merge: ${masterMail}`, { exact: true })).toBeVisible();
+
+    const mergeResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${master.userDataId}/operatorMerge`,
+    );
+    await mergeButton.click();
+    expect((await mergeResponsePromise).status()).toBe(200);
+
+    // The kept account is the one on screen, so the panel reloads it and the form closes.
+    await expect(page.locator('#account-merge-other-id')).toHaveCount(0, { timeout: 20000 });
+    await expect(page.getByRole('button', { name: 'Merge accounts', exact: true })).toBeVisible({ timeout: 20000 });
+
+    await waitForRow(`SELECT id FROM user_data WHERE id = $1 AND status = 'Merged'`, [slave.userDataId], 20000);
+
+    // The merge keeps the master's mail instead of taking the merged account's one.
+    await waitForRow(`SELECT id FROM user_data WHERE id = $1 AND mail = $2`, [master.userDataId, masterMail], 20000);
+
+    // kyc_log.comment/result and support_log.message are stored encrypted, so they are matched after decryption.
+    for (const userDataId of [master.userDataId, slave.userDataId]) {
+      const kycLog = await waitForMatchingRow<{ id: number; comment: string | null; result: string | null }>(
+        `SELECT id, comment, result FROM kyc_log WHERE "userDataId" = $1 AND type = 'MergeLog' ORDER BY id DESC`,
+        [userDataId],
+        (row) => Boolean(decryptPii(row.result)?.includes('clerk=E2E Test Staff')),
+        20000,
+      );
+      expect(decryptPii(kycLog.comment)).toContain(reason);
+      trackRow('kyc_log', kycLog.id);
+    }
+
+    for (const userDataId of [master.userDataId, slave.userDataId]) {
+      const supportLog = await waitForMatchingRow<{ id: number; message: string | null; comment: string | null }>(
+        `SELECT id, message, comment FROM support_log
+         WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 ORDER BY id DESC`,
+        [userDataId, 'E2E Test Staff'],
+        (row) => Boolean(decryptPii(row.message)?.startsWith('operatorMerge applied')),
+        20000,
+      );
+      expect(supportLog.comment).toBe(reason);
+      trackRow('support_log', supportLog.id);
+    }
+  });
+
+  test('/compliance/user/:id refuses to keep the account with the lower KYC level', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const master = await createUser({
+      tag: 'cmp-merge-low-kyc',
+      kycLevel: 20,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const higher = await createUser({
+      tag: 'cmp-merge-high-kyc',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    const mergeRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'PUT' && new URL(request.url()).pathname.endsWith('/operatorMerge')) {
+        mergeRequests.push(request.url());
+      }
+    });
+
+    await openScreen(page, `/compliance/user/${master.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Merge accounts', exact: true }).click();
+    await page.locator('#account-merge-other-id').fill(String(higher.userDataId));
+    await page.getByRole('button', { name: 'Load', exact: true }).click();
+    await expect(page.getByText('Other account', { exact: true })).toBeVisible({ timeout: 15000 });
+
+    // The form preselects the account with the higher level; picking the lower one must be refused.
+    await expect(page.getByRole('radio', { name: `Keep other account (${higher.userDataId})` })).toBeChecked();
+    await page.getByRole('radio', { name: `Keep this account (${master.userDataId})` }).check();
+    await page.locator('#account-merge-reason').fill('Keep the lower level account');
+
+    await expect(
+      page.getByText(
+        `The account that stays (${master.userDataId}) has KYC level 20; the other account has 30. ` +
+          'Keep the account with the higher KYC level.',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Merge', exact: true })).toBeDisabled();
+    expect(mergeRequests).toEqual([]);
+  });
+
   test('/compliance/user/:id hides account access toggles after onboarding is complete', async ({ page }) => {
     const { jwt, userId } = await loginAs('Support');
     await ensureStaffKycComplete(userId);
@@ -467,9 +764,10 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByRole('button', { name: 'Reset', exact: true })).toHaveCount(0);
     await expect(page.getByText('Canceled', { exact: true }).first()).toBeVisible();
 
-    await waitForRow(
-      `SELECT id FROM kyc_step WHERE id = $1 AND status = 'Canceled' AND comment = $2`,
-      [step.kycStepId, `Reset: ${reason}`],
+    await waitForMatchingRow<{ id: number; comment: string | null }>(
+      `SELECT id, comment FROM kyc_step WHERE id = $1 AND status = 'Canceled'`,
+      [step.kycStepId],
+      (row) => decryptPii(row.comment) === `Reset: ${reason}`,
       15000,
     );
     await waitForRow(
@@ -719,6 +1017,97 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText('Block reasons', { exact: true })).toBeVisible({ timeout: 15000 });
 
     expect(pageErrors, `uncaught pageerror on pending-chargebacks quick link: ${pageErrors.join('; ')}`).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // /compliance/pending-merges
+  // -------------------------------------------------------------------------
+
+  test('/compliance/pending-merges lists an open merge request after a real login and opens the master account', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+
+    // Provision the compliance wallet's role and staff KYC clearance. The browser logs in itself
+    // below with the same wallet; the JWT returned here is deliberately not handed to the page.
+    const { userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const master = await createUser({ tag: 'cmp-pending-merge-master', kycLevel: 30, completePersonalData: true });
+    const slave = await createUser({ tag: 'cmp-pending-merge-slave', kycLevel: 30, completePersonalData: true });
+
+    const mergeId = await withDb(async (client) => {
+      const res = await client.query<{ id: number }>(
+        `INSERT INTO account_merge ("masterId", "slaveId", code, "isCompleted", expiration, reason)
+           VALUES ($1, $2, $3, false, now() + interval '30 days', 'Iban') RETURNING id`,
+        [master.userDataId, slave.userDataId, randomUUID()],
+      );
+      return res.rows[0].id;
+    });
+    trackRow('account_merge', mergeId);
+
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+
+    // Real command-line wallet login, exactly as auth.spec.ts — no injected session.
+    const wallet = testWallet(ROLE_WALLET_INDEX.Compliance);
+    await page.goto('/login?blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('img[src*="cryptowallet"]').click();
+    await page.locator('img[src*="command"]').click();
+
+    const address = page.locator('input[name="address"]');
+    await address.fill(wallet.address);
+    await address.blur();
+
+    const messageNode = page.locator('p.text-dfxBlue-800.min-w-0.break-words');
+    await expect(messageNode).toBeVisible({ timeout: 20000 });
+    const message = await messageNode.textContent();
+    if (message == null || message.length === 0) {
+      throw new Error('command-line sign message was empty');
+    }
+    const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+
+    const signatureInput = page.locator('input[type="password"]');
+    await signatureInput.fill(signature);
+    await signatureInput.blur();
+
+    const login = page.getByRole('button', { name: 'Login' });
+    await expect(login).toBeEnabled();
+    await login.click();
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).not.toBe('/login');
+    await page.waitForTimeout(3000);
+
+    // Visitor path: compliance dashboard → quick link → pending merges.
+    await page.goto('/compliance');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Quick links', { exact: true })).toBeVisible({ timeout: 20000 });
+    await page.getByText('Pending Merges', { exact: true }).click();
+
+    await expect(page).toHaveURL(/\/compliance\/pending-merges(\?|$)/);
+    const masterCell = page.getByRole('button', { name: `#${master.userDataId}`, exact: true });
+    await expect(masterCell).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: `#${slave.userDataId}`, exact: true })).toBeVisible();
+
+    const mergeRow = page.getByRole('row').filter({ has: masterCell });
+    await expect(mergeRow.getByText('Iban', { exact: true })).toBeVisible();
+    await expect(mergeRow.getByText('Waiting for confirmation', { exact: true })).toBeVisible();
+
+    await masterCell.click();
+
+    await expect(page).toHaveURL(new RegExp(`/compliance/user/${master.userDataId}(\\?|$)`));
+
+    expect(pageErrors, `uncaught pageerror on pending-merges: ${pageErrors.join('; ')}`).toEqual([]);
+  });
+
+  // Server-layer denial, like the other guarded compliance endpoints above: the redirect test only
+  // proves the frontend guard, so call the endpoint directly with a plain User role.
+  test('plain User role is denied GET support/pending-merges', async () => {
+    const { jwt } = await loginAs('User');
+    let status: number | undefined;
+    await apiGet('support/pending-merges', { jwt, expectOk: false, onStatus: (s) => (status = s) });
+    expect(status, 'GET /v1/support/pending-merges must reject a plain User role').toBe(403);
   });
 
   // -------------------------------------------------------------------------

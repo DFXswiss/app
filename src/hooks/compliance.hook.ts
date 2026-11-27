@@ -24,6 +24,7 @@ import { useMemo } from 'react';
 import { CreateMrosDto, MrosListEntry, UpdateMrosDto } from 'src/dto/mros.dto';
 import { CustodyOrderListEntry } from 'src/dto/order.dto';
 import { PendingChargebackEntry } from 'src/dto/chargeback.dto';
+import { PendingMergeEntry } from 'src/dto/account-merge.dto';
 import { CreateRecallDto, RecallListEntry } from 'src/dto/recall.dto';
 import { buildKycLogMessage, KycLogResult } from 'src/util/compliance-helpers';
 import { downloadFile, downloadPdfFromString, filenameDateFormat } from 'src/util/utils';
@@ -1018,6 +1019,13 @@ export function useCompliance() {
     });
   }
 
+  async function getPendingMerges(): Promise<PendingMergeEntry[]> {
+    return call<PendingMergeEntry[]>({
+      url: 'support/pending-merges',
+      method: 'GET',
+    });
+  }
+
   async function createRecall(dto: CreateRecallDto): Promise<void> {
     return call<void>({
       url: 'recall',
@@ -1632,6 +1640,7 @@ export function useCompliance() {
       updateMros,
       getRecalls,
       getPendingChargebacks,
+      getPendingMerges,
       createRecall,
       updateKycStep,
       updateUserData,

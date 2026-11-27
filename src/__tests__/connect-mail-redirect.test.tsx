@@ -88,6 +88,7 @@ describe('ConnectMail login redirect', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    window.sessionStorage.clear();
     delete process.env.REACT_APP_PUBLIC_URL;
     mockSignInWithMail.mockResolvedValue(undefined);
     mockRequestMailLoginCode.mockResolvedValue({ secret: 'secret' });
@@ -181,6 +182,17 @@ describe('ConnectMail login redirect', () => {
     expect(redirectUri).not.toContain('?');
   });
 
+  it('does not carry the redirect URI in the code login target when embedded', async () => {
+    window.sessionStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/done');
+    mockIsWidget.mockReturnValue(true);
+    mockRedirectPath.mockReturnValue('/sell');
+
+    renderConnectMail();
+    await submitNext(mockRequestMailLoginCode);
+
+    expect(mockRequestMailLoginCode.mock.calls[0][1]).toBe('http://localhost/sell');
+  });
+
   it('uses the app origin from the env when embedded on another site', async () => {
     process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
     locationStub.origin = 'https://embedding.example.org';
@@ -253,6 +265,32 @@ describe('ConnectMail login redirect', () => {
     await submitNext();
 
     expect(mockSignInWithMail.mock.calls[0][1]).toBeUndefined();
+  });
+
+  it('uses /account as the callback path without a login target when a redirect-uri is stored', async () => {
+    window.sessionStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/return/');
+    mockRedirectPath.mockReturnValue(undefined);
+    mockUseLocation.mockReturnValue({ search: '?user=user@example.com', pathname: '/' });
+
+    renderConnectMail();
+    await submitNext();
+
+    const redirectUri = new URL(mockSignInWithMail.mock.calls[0][1] as string);
+    expect(redirectUri.pathname).toBe('/account');
+    expect(redirectUri.searchParams.get('redirect-uri')).toBe('https://partner.example/return/');
+  });
+
+  it('keeps the login target as the callback path when a redirect-uri is stored', async () => {
+    window.sessionStorage.setItem('dfx.srv.redirectUri', 'https://partner.example/return/');
+    mockRedirectPath.mockReturnValue('/buy');
+    mockUseLocation.mockReturnValue({ search: '?user=user@example.com', pathname: '/' });
+
+    renderConnectMail();
+    await submitNext();
+
+    const redirectUri = new URL(mockSignInWithMail.mock.calls[0][1] as string);
+    expect(redirectUri.pathname).toBe('/buy');
+    expect(redirectUri.searchParams.get('redirect-uri')).toBe('https://partner.example/return/');
   });
 
   it('uses /buy as redirectUri on /login when redirectPath is undefined', async () => {

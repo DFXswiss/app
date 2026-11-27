@@ -15,7 +15,19 @@
  */
 
 import type { Locator, Page } from '@playwright/test';
-import { expect, loginAs, normPath, openScreen, queryOne, queryRows, test, waitForRow, withDb } from './fixtures';
+import {
+  decryptPii,
+  expect,
+  loginAs,
+  normPath,
+  openScreen,
+  queryOne,
+  queryRows,
+  test,
+  waitForMatchingRow,
+  waitForRow,
+  withDb,
+} from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -43,6 +55,50 @@ async function ensureStaffReady(userId: number, surname = 'Compliance'): Promise
       [userId, surname],
     );
   });
+}
+
+// The `onboardingFeeUsedRef` setting as it was before the first onboarding-fee test wrote it:
+// `undefined` = not captured yet, `null` = the row did not exist. Restored in afterAll.
+let previousOnboardingFeeRef: string | null | undefined;
+
+/**
+ * The onboarding-fee API reads `onboardingFeeUsedRef` to attribute the named address to the
+ * key-account manager. Create a customer, give it a ref, use that ref as the setting, and return it.
+ * A factory user has no ref (the API assigns one only on its own KYC path at level 50), so the ref is
+ * written here as starting state, in the API's `NNN-NNN` format and unused by any other user.
+ */
+async function seedOnboardingFeeRef(): Promise<string> {
+  const owner = await createUser({ tag: 'cmp-onboarding-ref-owner', kycLevel: 30, completePersonalData: true });
+  let ref: string | undefined;
+  for (let attempt = 0; attempt < 20 && !ref; attempt++) {
+    const candidate = `${String(Math.floor(Math.random() * 900) + 100)}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+    const taken = await queryOne<{ id: number }>(`SELECT id FROM "user" WHERE ref = $1`, [candidate]);
+    if (!taken) ref = candidate;
+  }
+  if (!ref) throw new Error('seedOnboardingFeeRef: no free ref found');
+  await queryRows(`UPDATE "user" SET ref = $1 WHERE id = $2`, [ref, owner.userId]);
+
+  if (previousOnboardingFeeRef === undefined) {
+    const row = await queryOne<{ value: string }>(`SELECT value FROM setting WHERE key = 'onboardingFeeUsedRef'`);
+    previousOnboardingFeeRef = row?.value ?? null;
+  }
+  await queryRows(
+    `INSERT INTO setting (key, value) VALUES ('onboardingFeeUsedRef', $1)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [ref],
+  );
+  return ref;
+}
+
+/** Put the `onboardingFeeUsedRef` setting back to its value before this file's tests. */
+async function restoreOnboardingFeeRef(): Promise<void> {
+  if (previousOnboardingFeeRef === undefined) return;
+  if (previousOnboardingFeeRef === null) {
+    await queryRows(`DELETE FROM setting WHERE key = 'onboardingFeeUsedRef'`);
+  } else {
+    await queryRows(`UPDATE setting SET value = $1 WHERE key = 'onboardingFeeUsedRef'`, [previousOnboardingFeeRef]);
+  }
+  previousOnboardingFeeRef = undefined;
 }
 
 /**
@@ -84,7 +140,12 @@ function styledInput(page: Page, fieldLabel: string): Locator {
 
 test.describe('Compliance area (cases)', () => {
   test.afterAll(async () => {
-    await cleanupCreatedData();
+    // Before the cleanup deletes the ref owner the setting points at.
+    try {
+      await restoreOnboardingFeeRef();
+    } finally {
+      await cleanupCreatedData();
+    }
   });
 
   // -------------------------------------------------------------------------
@@ -197,7 +258,7 @@ test.describe('Compliance area (cases)', () => {
       [step.kycStepId],
       20000,
     );
-    expect(after.comment).toBe('Falsches Dokument');
+    expect(decryptPii(after.comment)).toBe('Falsches Dokument');
   });
 
   // -------------------------------------------------------------------------
@@ -596,5 +657,613 @@ test.describe('Compliance area (cases)', () => {
       20000,
     );
     expect(ud.phoneCallStatus).toBe('Completed');
+  });
+
+  // -------------------------------------------------------------------------
+  // /compliance/user/:id — onboarding fee (Admin) via UI + DB proof
+  // -------------------------------------------------------------------------
+
+  test('/compliance/user/:id sets and removes an onboarding fee and attributes the address', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffReady(userId);
+
+    const ref = await seedOnboardingFeeRef();
+
+    const customer = await createUser({
+      tag: 'cmp-onboarding-fee',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    // Starting state the API transitions from: an NA account with an NA user.
+    await queryRows(`UPDATE "user" SET status = 'NA' WHERE id = $1`, [customer.userId]);
+    await queryRows(`UPDATE user_data SET status = 'NA' WHERE id = $1`, [customer.userDataId]);
+
+    const before = await queryOne<{ usedRef: string | null }>(`SELECT "usedRef" FROM "user" WHERE id = $1`, [
+      customer.userId,
+    ]);
+    expect(before?.usedRef).not.toBe(ref);
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    // Opening the form is what loads the suggested amounts, so the listener is registered before the
+    // click; registered afterwards, a fast answer could be missed.
+    const amountsResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname === '/v1/partner/onboardingFee/amounts',
+    );
+    await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+    const amountsAnswer = await amountsResponse;
+    expect(amountsAnswer.status()).toBe(200);
+    const { amounts } = (await amountsAnswer.json()) as { amounts: number[] };
+    // An empty answer would make the comparison below pass without proving that a list is offered.
+    expect(amounts.length).toBeGreaterThan(0);
+    await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
+
+    // The field offers exactly the amounts of the real API, in its order; the option values are the
+    // numbers rendered as attribute strings. toHaveCount waits until the list has rendered.
+    await expect(page.locator('#onboarding-fee-amount')).toHaveAttribute('list', 'onboarding-fee-amount-suggestions');
+    const suggestionOptions = page.locator('#onboarding-fee-amount-suggestions option');
+    await expect(suggestionOptions).toHaveCount(amounts.length, { timeout: 15000 });
+    const offered = await suggestionOptions.evaluateAll((options) =>
+      options.map((option) => option.getAttribute('value')),
+    );
+    expect(offered).toEqual(amounts.map(String));
+    // Makes the comment below true against the real API: 14000 is a free amount, not a suggestion.
+    expect(offered).not.toContain('14000');
+
+    // The amount is typed like the clerk does. 14000 is not one of the suggested amounts, so the
+    // case proves that the Admin route accepts and stores an agreed free amount. It is typed with the
+    // Swiss grouping the editor shows, using the ASCII apostrophe a keyboard produces (the Partner case
+    // covers the typographic one), and the PUT below proves it is sent as a plain number.
+    await page.locator('#onboarding-fee-amount').fill("14'000");
+    await page.locator('#onboarding-fee-address').selectOption(customer.address);
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    await expect(save).toBeEnabled({ timeout: 15000 });
+
+    const putResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
+    );
+    await save.click();
+    const put = await putResponse;
+    expect(put.status()).toBe(200);
+    expect(put.request().postDataJSON()).toEqual({ amount: 14000, address: customer.address });
+
+    // The notice shows the amount with the Swiss thousands separator; the separator character
+    // depends on the browser's locale data, so only its position is fixed here.
+    const notice = new RegExp(
+      `^Onboarding fee of CHF 14.000 set; ${customer.address} attributed to the key account manager\\.$`,
+    );
+    await expect(page.getByText(notice)).toBeVisible({ timeout: 20000 });
+
+    // Attribution and status transition, asserted from the database.
+    const userRow = await waitForRow<{ usedRef: string | null; status: string }>(
+      `SELECT "usedRef", status FROM "user" WHERE id = $1 AND status = 'Active'`,
+      [customer.userId],
+      20000,
+    );
+    expect(userRow.usedRef).toBe(ref);
+
+    const userDataRow = await waitForRow<{ status: string; individualFees: string | null }>(
+      `SELECT status, "individualFees" FROM user_data WHERE id = $1 AND status = 'Active'`,
+      [customer.userDataId],
+      20000,
+    );
+    const assignedFeeIds = (userDataRow.individualFees ?? '').split(';').filter(Boolean);
+    expect(assignedFeeIds.length).toBeGreaterThan(0);
+    const feeRow = await waitForRow<{ id: number }>(
+      `SELECT id FROM fee
+       WHERE id = ANY($1::int[]) AND label = 'Onboarding Fixed 14000' AND fixed = 14000 AND active = true`,
+      [assignedFeeIds.map(Number)],
+      20000,
+    );
+
+    const attributionMessage = new RegExp(
+      `^Onboarding fee usedRef of user ${customer.userId} [\\s\\S]* -> ${ref}; status NA -> Active; account status NA -> Active$`,
+    );
+    const log = await waitForMatchingRow<{ id: number; message: string | null }>(
+      `SELECT id, message FROM support_log
+       WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2`,
+      [customer.userDataId, 'E2E Test Staff'],
+      (row) => attributionMessage.test(decryptPii(row.message) ?? ''),
+      20000,
+    );
+    trackRow('support_log', log.id);
+
+    // The reloaded Users tab shows the new status. That table has no usedRef column, so the
+    // attribution itself is proven by the database assertion above.
+    await page.getByRole('button', { name: /Users \(/ }).click();
+    const usersRow = page.locator('tbody tr').filter({ hasText: customer.address }).first();
+    await expect(usersRow).toContainText('Active', { timeout: 20000 });
+
+    // Remove the fee again through the UI.
+    await page.getByRole('button', { name: 'Remove onboarding fee', exact: true }).click();
+    await expect(page.getByText('Remove the onboarding fee of this account?', { exact: true })).toBeVisible();
+    const deleteResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'DELETE' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
+    );
+    await page.getByRole('button', { name: 'Remove', exact: true }).click();
+    expect((await deleteResponse).status()).toBe(200);
+    await expect(page.getByText('Onboarding fee removed.', { exact: true })).toBeVisible({ timeout: 20000 });
+
+    await expect
+      .poll(
+        async () => {
+          const row = await queryOne<{ individualFees: string | null }>(
+            `SELECT "individualFees" FROM user_data WHERE id = $1`,
+            [customer.userDataId],
+          );
+          return (row?.individualFees ?? '').split(';').filter(Boolean).includes(String(feeRow.id));
+        },
+        { timeout: 20000, message: 'the onboarding fee id must be gone from user_data.individualFees' },
+      )
+      .toBe(false);
+  });
+
+  test('/compliance/user/:id refuses an onboarding fee outside the allowed range and sends nothing', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffReady(userId);
+    await seedOnboardingFeeRef();
+
+    const customer = await createUser({
+      tag: 'cmp-onboarding-fee-range',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    // Starting state the API transitions from: an NA account with an NA user.
+    await queryRows(`UPDATE "user" SET status = 'NA' WHERE id = $1`, [customer.userId]);
+    await queryRows(`UPDATE user_data SET status = 'NA' WHERE id = $1`, [customer.userDataId]);
+
+    // Every request the page sends is recorded, so the refusal is proven by the absence of a PUT and
+    // not only by the disabled button.
+    const requests: { method: string; pathname: string }[] = [];
+    page.on('request', (request) => {
+      requests.push({ method: request.method(), pathname: new URL(request.url()).pathname });
+    });
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+    const amountInput = page.locator('#onboarding-fee-amount');
+    await expect(amountInput).toBeVisible({ timeout: 15000 });
+    // The address is chosen first and the clerk is loaded, so the amount is what keeps Save disabled,
+    // which the positive control at the end of this case proves.
+    await page.locator('#onboarding-fee-address').selectOption(customer.address);
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    // The editor writes the maximum with the Swiss grouping; the separator character depends on the
+    // browser's locale data, so only its position is fixed here.
+    const rangeHint = /^Enter a whole CHF amount between 1 and 1.000.000\.$/;
+
+    await amountInput.fill('0');
+    await expect(page.getByText(rangeHint)).toBeVisible({ timeout: 10000 });
+    await expect(save).toBeDisabled();
+
+    await amountInput.fill('1000001');
+    await expect(page.getByText(rangeHint)).toBeVisible({ timeout: 10000 });
+    await expect(save).toBeDisabled();
+
+    const refusedPuts = requests.filter(
+      (request) => request.method === 'PUT' && request.pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
+    );
+    expect(refusedPuts).toEqual([]);
+
+    const userData = await queryOne<{ individualFees: string | null }>(
+      `SELECT "individualFees" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    expect(userData).toBeTruthy();
+    expect((userData?.individualFees ?? '').split(';').filter(Boolean)).toEqual([]);
+
+    // Positive control: with the same address and clerk a valid amount enables Save, so the disabled
+    // button above was caused by the amount alone. The amount is typed with the Swiss grouping and the
+    // ASCII apostrophe a keyboard produces, which the editor accepts as well. Save is not clicked.
+    await amountInput.fill("1'000'000");
+    await expect(page.getByText(rangeHint)).toHaveCount(0);
+    await expect(save).toBeEnabled({ timeout: 15000 });
+  });
+
+  test('/compliance/user/:id shows the blocked-address error for an onboarding fee and changes nothing', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffReady(userId);
+    await seedOnboardingFeeRef();
+
+    const customer = await createUser({
+      tag: 'cmp-onboarding-fee-blocked',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    await queryRows(`UPDATE "user" SET status = 'Blocked' WHERE id = $1`, [customer.userId]);
+
+    const beforeUser = await queryOne<{ usedRef: string | null; status: string }>(
+      `SELECT "usedRef", status FROM "user" WHERE id = $1`,
+      [customer.userId],
+    );
+    const beforeUserData = await queryOne<{ status: string; individualFees: string | null }>(
+      `SELECT status, "individualFees" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+    await expect(page.locator('#onboarding-fee-amount')).toBeVisible({ timeout: 15000 });
+    await page.locator('#onboarding-fee-amount').fill('400');
+    await page.locator('#onboarding-fee-address').selectOption(customer.address);
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    await expect(save).toBeEnabled({ timeout: 15000 });
+
+    const putResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/onboardingFee`,
+    );
+    await save.click();
+    expect((await putResponse).status()).toBe(400);
+
+    await expect(page.getByText('Address is blocked or deleted', { exact: true })).toBeVisible({ timeout: 20000 });
+
+    const afterUser = await queryOne<{ usedRef: string | null; status: string }>(
+      `SELECT "usedRef", status FROM "user" WHERE id = $1`,
+      [customer.userId],
+    );
+    const afterUserData = await queryOne<{ status: string; individualFees: string | null }>(
+      `SELECT status, "individualFees" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    expect(afterUser).toEqual(beforeUser);
+    expect(afterUserData).toEqual(beforeUserData);
+
+    // The refusal itself is audited: one rejection row naming the clerk, the amount, the address and
+    // the reason - and no attribution row.
+    await waitForMatchingRow<{ id: number; message: string | null }>(
+      `SELECT id, message FROM support_log
+       WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 AND comment = $3`,
+      [customer.userDataId, 'E2E Test Staff', 'Address is blocked or deleted'],
+      (row) => decryptPii(row.message) === `Onboarding fee 400 CHF for ${customer.address} rejected`,
+      15000,
+    );
+    const supportLogs = await queryRows<{ id: number; message: string | null }>(
+      `SELECT id, message FROM support_log WHERE "userDataId" = $1`,
+      [customer.userDataId],
+    );
+    const attributionLogs = supportLogs.filter((row) =>
+      decryptPii(row.message)?.startsWith('Onboarding fee usedRef of user '),
+    );
+    expect(attributionLogs).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // /compliance/user/:id — risk status (Support and up) via UI + DB proof
+  // -------------------------------------------------------------------------
+
+  test('/compliance/user/:id sets a risk status and the account shows it', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Support');
+    await ensureStaffReady(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-risk-status',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    const blockedReason = 'E2E risk status: blocked for review';
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+    await expect(page.locator('#risk-status-value')).toBeVisible({ timeout: 15000 });
+    await page.locator('#risk-status-value').selectOption('Blocked');
+    await page.locator('#risk-status-reason').fill(blockedReason);
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    await expect(save).toBeEnabled({ timeout: 15000 });
+
+    const putResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/riskStatus`,
+    );
+    await save.click();
+    expect((await putResponse).status()).toBe(200);
+
+    await expect(page.getByText('Risk status set to Blocked.', { exact: true })).toBeVisible({ timeout: 20000 });
+
+    // The reloaded UserData row shows the new value.
+    await expect(page.getByText('riskStatus', { exact: true }).locator('xpath=following-sibling::td')).toHaveText(
+      'Blocked',
+      { timeout: 20000 },
+    );
+    await waitForRow(
+      `SELECT id FROM user_data WHERE id = $1 AND "riskStatus" = 'Blocked'`,
+      [customer.userDataId],
+      20000,
+    );
+
+    const blockedKycLog = await waitForRow<{ id: number; comment: string }>(
+      `SELECT id, comment FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog' ORDER BY id DESC LIMIT 1`,
+      [customer.userDataId],
+      20000,
+    );
+    expect(blockedKycLog.comment).toContain('result: riskStatus: Blocked;');
+    expect(blockedKycLog.comment).toContain('Editor: E2E Test Staff;');
+    expect(blockedKycLog.comment).toContain(blockedReason);
+    trackRow('kyc_log', blockedKycLog.id);
+
+    const blockedKycLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog' ORDER BY id`,
+      [customer.userDataId],
+    );
+    expect(blockedKycLogs).toHaveLength(1);
+
+    const blockedSupportLogs = await queryRows<{ id: number; message: string; comment: string | null }>(
+      `SELECT id, message, comment FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 ORDER BY id`,
+      [customer.userDataId, 'E2E Test Staff'],
+    );
+    expect(blockedSupportLogs).toHaveLength(1);
+    expect(decryptPii(blockedSupportLogs[0].message)).toBe(
+      'riskStatus requested previous={"riskStatus":"NA"} next={"riskStatus":"Blocked"}',
+    );
+    expect(blockedSupportLogs[0].comment).toBe(blockedReason);
+    blockedSupportLogs.forEach((row) => trackRow('support_log', row.id));
+
+    // Set Released the same way; the form shows the value the reload brought in.
+    const releasedReason = 'E2E risk status: released after review';
+    await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+    await expect(page.locator('#risk-status-value')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Current: Blocked', { exact: true })).toBeVisible();
+    await page.locator('#risk-status-value').selectOption('Released');
+    await page.locator('#risk-status-reason').fill(releasedReason);
+    const saveReleased = page.getByRole('button', { name: 'Save', exact: true });
+    await expect(saveReleased).toBeEnabled({ timeout: 15000 });
+
+    const releasedPutResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/riskStatus`,
+    );
+    await saveReleased.click();
+    expect((await releasedPutResponse).status()).toBe(200);
+
+    await expect(page.getByText('Risk status set to Released.', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('riskStatus', { exact: true }).locator('xpath=following-sibling::td')).toHaveText(
+      'Released',
+      { timeout: 20000 },
+    );
+    await waitForRow(
+      `SELECT id FROM user_data WHERE id = $1 AND "riskStatus" = 'Released'`,
+      [customer.userDataId],
+      20000,
+    );
+
+    const releasedKycLog = await waitForRow<{ id: number; comment: string }>(
+      `SELECT id, comment FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog' ORDER BY id DESC LIMIT 1`,
+      [customer.userDataId],
+      20000,
+    );
+    expect(releasedKycLog.id).not.toBe(blockedKycLog.id);
+    expect(releasedKycLog.comment).toContain('result: riskStatus: Released;');
+    expect(releasedKycLog.comment).toContain('Editor: E2E Test Staff;');
+    expect(releasedKycLog.comment).toContain(releasedReason);
+    trackRow('kyc_log', releasedKycLog.id);
+
+    const releasedKycLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog' ORDER BY id`,
+      [customer.userDataId],
+    );
+    expect(releasedKycLogs).toHaveLength(2);
+
+    const releasedSupportLogs = await queryRows<{ id: number; message: string; comment: string | null }>(
+      `SELECT id, message, comment FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 ORDER BY id`,
+      [customer.userDataId, 'E2E Test Staff'],
+    );
+    expect(releasedSupportLogs).toHaveLength(2);
+    expect(decryptPii(releasedSupportLogs[1].message)).toBe(
+      'riskStatus requested previous={"riskStatus":"Blocked"} next={"riskStatus":"Released"}',
+    );
+    expect(releasedSupportLogs[1].comment).toBe(releasedReason);
+    releasedSupportLogs.forEach((row) => trackRow('support_log', row.id));
+  });
+
+  test('/compliance/user/:id keeps Save disabled without a reason and changes nothing', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Support');
+    await ensureStaffReady(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-risk-status-no-reason',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+
+    const beforeUserData = await queryOne<{ riskStatus: string | null }>(
+      `SELECT "riskStatus" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    const beforeKycLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog'`,
+      [customer.userDataId],
+    );
+    const beforeSupportLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog'`,
+      [customer.userDataId],
+    );
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+    await expect(page.locator('#risk-status-value')).toBeVisible({ timeout: 15000 });
+    await page.locator('#risk-status-value').selectOption('Blocked');
+    await page.locator('#risk-status-reason').fill('   ');
+
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    await expect(save).toBeDisabled();
+
+    const afterUserData = await queryOne<{ riskStatus: string | null }>(
+      `SELECT "riskStatus" FROM user_data WHERE id = $1`,
+      [customer.userDataId],
+    );
+    const afterKycLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog'`,
+      [customer.userDataId],
+    );
+    const afterSupportLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog'`,
+      [customer.userDataId],
+    );
+    expect(afterUserData).toEqual(beforeUserData);
+    expect(afterKycLogs).toEqual(beforeKycLogs);
+    expect(afterSupportLogs).toEqual(beforeSupportLogs);
+  });
+
+  for (const riskStatus of ['Suspicious', 'BlockedBuyCrypto', 'BlockedBuyFiat']) {
+    test(`/compliance/user/:id sets the risk status ${riskStatus}`, async ({ page }) => {
+      const { jwt, userId } = await loginAs('Support');
+      await ensureStaffReady(userId);
+
+      const customer = await createUser({
+        tag: `cmp-risk-status-${riskStatus.toLowerCase()}`,
+        kycLevel: 30,
+        completePersonalData: true,
+        language: 'EN',
+      });
+      const reason = `E2E risk status: ${riskStatus}`;
+
+      await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+      await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+      await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+      await page.locator('#risk-status-value').selectOption(riskStatus);
+      await page.locator('#risk-status-reason').fill(reason);
+      const save = page.getByRole('button', { name: 'Save', exact: true });
+      await expect(save).toBeEnabled({ timeout: 15000 });
+
+      const putResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PUT' &&
+          new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/riskStatus`,
+      );
+      await save.click();
+      expect((await putResponse).status()).toBe(200);
+
+      await expect(page.getByText(`Risk status set to ${riskStatus}.`, { exact: true })).toBeVisible({
+        timeout: 20000,
+      });
+      await expect(page.getByText('riskStatus', { exact: true }).locator('xpath=following-sibling::td')).toHaveText(
+        riskStatus,
+        { timeout: 20000 },
+      );
+      await waitForRow(
+        `SELECT id FROM user_data WHERE id = $1 AND "riskStatus" = $2`,
+        [customer.userDataId, riskStatus],
+        20000,
+      );
+
+      const kycLog = await waitForRow<{ id: number; comment: string }>(
+        `SELECT id, comment FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog'`,
+        [customer.userDataId],
+        20000,
+      );
+      expect(kycLog.comment).toBe(
+        `API UserData risk status; result: riskStatus: ${riskStatus}; Editor: E2E Test Staff; Reason: ${reason}`,
+      );
+      trackRow('kyc_log', kycLog.id);
+
+      const supportLogs = await queryRows<{ id: number; message: string; comment: string | null }>(
+        `SELECT id, message, comment FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2`,
+        [customer.userDataId, 'E2E Test Staff'],
+      );
+      expect(supportLogs).toHaveLength(1);
+      expect(decryptPii(supportLogs[0].message)).toBe(
+        `riskStatus requested previous={"riskStatus":"NA"} next={"riskStatus":"${riskStatus}"}`,
+      );
+      expect(supportLogs[0].comment).toBe(reason);
+      supportLogs.forEach((row) => trackRow('support_log', row.id));
+    });
+  }
+
+  test('/compliance/user/:id shows the error when the API cannot store the risk status', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Support');
+    await ensureStaffReady(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-risk-status-refused',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const reason = 'E2E risk status: refused by the database';
+
+    // Starting state: the database refuses this one account's change, so the real API fails after its audit
+    // records, the way a failing database write does in production.
+    const constraint = `e2e_risk_status_refused_${customer.userDataId}`;
+    await queryRows(
+      `ALTER TABLE user_data ADD CONSTRAINT ${constraint} CHECK (id <> ${customer.userDataId} OR "riskStatus" <> 'Suspicious')`,
+    );
+
+    try {
+      await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+      await expect(page.getByText('UserData', { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+      await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+      await page.locator('#risk-status-value').selectOption('Suspicious');
+      await page.locator('#risk-status-reason').fill(reason);
+      const save = page.getByRole('button', { name: 'Save', exact: true });
+      await expect(save).toBeEnabled({ timeout: 15000 });
+
+      const putResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PUT' &&
+          new URL(response.url()).pathname === `/v1/userData/${customer.userDataId}/riskStatus`,
+      );
+      await save.click();
+      const refused = await putResponse;
+      expect(refused.status()).toBe(500);
+      const refusedBody = (await refused.json()) as { message?: unknown };
+      expect(typeof refusedBody.message).toBe('string');
+
+      // The form stays open and shows the API's message; nothing claims the change was made.
+      await expect(page.getByText(refusedBody.message as string, { exact: true })).toBeVisible({ timeout: 20000 });
+      await expect(page.locator('#risk-status-value')).toBeVisible();
+      await expect(page.getByText('Risk status set to Suspicious.', { exact: true })).toHaveCount(0);
+    } finally {
+      await queryRows(`ALTER TABLE user_data DROP CONSTRAINT IF EXISTS ${constraint}`);
+    }
+
+    const userData = await queryOne<{ riskStatus: string | null }>(`SELECT "riskStatus" FROM user_data WHERE id = $1`, [
+      customer.userDataId,
+    ]);
+    expect(userData?.riskStatus).toBe('NA');
+
+    const supportLogs = await queryRows<{ id: number; message: string }>(
+      `SELECT id, message FROM support_log WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 ORDER BY id`,
+      [customer.userDataId, 'E2E Test Staff'],
+    );
+    expect(supportLogs.map((row) => decryptPii(row.message))).toEqual([
+      'riskStatus requested previous={"riskStatus":"NA"} next={"riskStatus":"Suspicious"}',
+      'riskStatus failed ["riskStatus"]',
+    ]);
+    supportLogs.forEach((row) => trackRow('support_log', row.id));
+
+    const kycLogs = await queryRows<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'RiskStatusLog'`,
+      [customer.userDataId],
+    );
+    expect(kycLogs).toHaveLength(1);
+    kycLogs.forEach((row) => trackRow('kyc_log', row.id));
   });
 });

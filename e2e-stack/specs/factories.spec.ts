@@ -8,7 +8,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { required } from './fixtures';
+import { expectSwapUnavailable, orSwapUnavailable, required, SwapUnavailableError } from './fixtures';
 import { queryOne, withDb } from './fixtures/db';
 import {
   cleanupCreatedData,
@@ -122,7 +122,17 @@ test.describe('e2e factories', () => {
 
   test('createSwap creates a crypto deposit_route row', async () => {
     const user = await createUser({ tag: 'spec-swap', kycLevel: 30, completePersonalData: true });
-    const swap = await createSwap(user.jwt, { blockchain: 'Ethereum' });
+    const swap = await orSwapUnavailable(createSwap(user.jwt, { blockchain: 'Ethereum' }));
+    if (swap instanceof SwapUnavailableError) {
+      // The API's loc feature flag keeps swap off: the factory reports the answer it got and writes no route.
+      expectSwapUnavailable(swap);
+      const routes = await queryOne<{ count: number }>(
+        `SELECT COUNT(*)::int AS count FROM deposit_route WHERE "userId" = $1 AND type = 'Crypto'`,
+        [user.userId],
+      );
+      expect(routes?.count).toBe(0);
+      return;
+    }
 
     expect(swap.swapId).toBeGreaterThan(0);
 

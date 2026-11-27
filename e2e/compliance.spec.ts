@@ -1,4 +1,4 @@
-import { test, expect, APIRequestContext } from '@playwright/test';
+import { test, expect, APIRequestContext, Route } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createTestCredentials } from './test-wallet';
@@ -98,11 +98,13 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await page.waitForTimeout(2000);
 
       // Wait for search results or "No entries found" message
-      await page.waitForSelector('text=Matching Entries, text=No entries found', {
-        timeout: 10000,
-      }).catch(() => {
-        // One of these should appear
-      });
+      await page
+        .waitForSelector('text=Matching Entries, text=No entries found', {
+          timeout: 10000,
+        })
+        .catch(() => {
+          // One of these should appear
+        });
 
       await expect(page).toHaveScreenshot('compliance-02-search-results.png', {
         fullPage: true,
@@ -153,11 +155,13 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await page.waitForTimeout(2000);
 
       // Wait for data to load - either user data table or error
-      await page.waitForSelector('text=User Data, text=Error', {
-        timeout: 15000,
-      }).catch(() => {
-        // One of these should appear
-      });
+      await page
+        .waitForSelector('text=User Data, text=Error', {
+          timeout: 15000,
+        })
+        .catch(() => {
+          // One of these should appear
+        });
 
       await expect(page).toHaveScreenshot('compliance-user-01-overview.png', {
         fullPage: true,
@@ -206,6 +210,135 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await expect(page.getByText('VIP: on')).toBeVisible();
 
       await expect(page).toHaveScreenshot('compliance-user-11-account-access-toggles.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the personal data edit form', async ({ page }) => {
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+      await expect(page.locator('#user-data-edit-mail')).toBeVisible();
+      // The dossier scrolls in its own column; start the shot at the section heading, not at the button.
+      await page
+        .getByText('Personal Data', { exact: true })
+        .evaluate((element) => element.scrollIntoView({ block: 'start' }));
+
+      await expect(page).toHaveScreenshot('compliance-user-18-edit-personal-data.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the account merge form', async ({ page }) => {
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Merge accounts', exact: true }).click();
+      await expect(page.locator('#account-merge-other-id')).toBeVisible();
+      await page.waitForTimeout(500);
+      // The dossier scrolls in its own column; start the shot at the section heading, not at the button.
+      await page
+        .getByText('UserData', { exact: true })
+        .first()
+        .evaluate((element) => element.scrollIntoView({ block: 'start' }));
+
+      await expect(page).toHaveScreenshot('compliance-user-24-account-merge.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the personal data edit form to Compliance without the names', async ({ page }) => {
+      // The browser's role guard reads the role from an unsigned token; the API never sees it, because
+      // every API request below is forwarded with the real Admin token.
+      const adminPayload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as Record<
+        string,
+        unknown
+      >;
+      const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+      const complianceToken = `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+        account: adminPayload.account,
+        user: adminPayload.user,
+        role: 'Compliance',
+        exp: adminPayload.exp,
+      })}.unsigned`;
+
+      const continueAsAdmin = (route: Route) =>
+        route.continue({ headers: { ...route.request().headers(), authorization: `Bearer ${token}` } });
+      await page.route('**/v1/**', continueAsAdmin);
+      await page.route('**/v2/**', continueAsAdmin);
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${complianceToken}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+      await expect(page.locator('#user-data-edit-mail')).toBeVisible();
+      await expect(page.locator('#user-data-edit-street')).toBeVisible();
+      await expect(page.locator('#user-data-edit-firstname')).toHaveCount(0);
+      await expect(page.locator('#user-data-edit-surname')).toHaveCount(0);
+      // The dossier scrolls in its own column; start the shot at the section heading, not at the button.
+      await page
+        .getByText('Personal Data', { exact: true })
+        .evaluate((element) => element.scrollIntoView({ block: 'start' }));
+
+      await expect(page).toHaveScreenshot('compliance-user-23-edit-personal-data-compliance.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows a validation error in the personal data edit form', async ({ page }) => {
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+      await page.getByLabel('mail', { exact: true }).fill('not-an-email');
+      const mailError = page.getByText('mail is not a valid e-mail address', { exact: true });
+      await expect(mailError).toBeVisible();
+      await mailError.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+
+      await expect(page).toHaveScreenshot('compliance-user-19-edit-personal-data-invalid.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows that saving personal data is not enabled', async ({ page }) => {
+      await page.route(`**/v1/userData/${TEST_USER_DATA_ID}/operatorMutation`, async (route) => {
+        if (route.request().method() === 'PUT') {
+          await route.fulfill({
+            status: 404,
+            contentType: 'application/json',
+            body: JSON.stringify({ statusCode: 404, message: 'Not Found' }),
+          });
+          return;
+        }
+        await route.fallback();
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Edit personal data', exact: true }).click();
+      await page.getByLabel('phone', { exact: true }).fill('+41791234568');
+      await page.getByLabel('Reason', { exact: true }).fill('Customer called to correct the phone number');
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+      const notEnabled = page.getByText('Editing personal data is not enabled on this environment yet.', {
+        exact: false,
+      });
+      await expect(notEnabled).toBeVisible();
+      await notEnabled.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+
+      await expect(page).toHaveScreenshot('compliance-user-20-edit-personal-data-not-enabled.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });
@@ -337,6 +470,235 @@ test.describe('Compliance Pages - Visual Regression Tests', () => {
       await expect(page.getByText('File could not be loaded')).toBeVisible();
 
       await expect(page).toHaveScreenshot('compliance-user-15-kyc-file-error.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the onboarding fee form with an amount and a selected address', async ({ page }) => {
+      await page.route(`**/v1/support/${TEST_USER_DATA_ID}`, async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const users =
+          Array.isArray(data.users) && data.users.length > 0
+            ? data.users
+            : [
+                {
+                  id: 1,
+                  address: '0x0000000000000000000000000000000000000001',
+                  role: 'User',
+                  status: 'NA',
+                  usedRef: '194-687',
+                  created: '2026-01-01T00:00:00.000Z',
+                },
+              ];
+
+        await route.fulfill({ response, json: { ...data, users } });
+      });
+      await page.route('**/v1/support/issue/clerk', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ clerk: 'E2E Clerk' }),
+        });
+      });
+      await page.route('**/v1/partner/onboardingFee/amounts', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ amounts: [400, 800] }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+      await page.locator('#onboarding-fee-amount').fill('400');
+      await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
+      await page.waitForTimeout(500);
+
+      await expect(page).toHaveScreenshot('compliance-user-16-onboarding-fee-form.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the API error when setting an onboarding fee is refused', async ({ page }) => {
+      await page.route(`**/v1/support/${TEST_USER_DATA_ID}`, async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const users =
+          Array.isArray(data.users) && data.users.length > 0
+            ? data.users
+            : [
+                {
+                  id: 1,
+                  address: '0x0000000000000000000000000000000000000001',
+                  role: 'User',
+                  status: 'NA',
+                  usedRef: '194-687',
+                  created: '2026-01-01T00:00:00.000Z',
+                },
+              ];
+
+        await route.fulfill({ response, json: { ...data, users } });
+      });
+      await page.route('**/v1/support/issue/clerk', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ clerk: 'E2E Clerk' }),
+        });
+      });
+      await page.route(`**/v1/userData/${TEST_USER_DATA_ID}/onboardingFee`, async (route) => {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ statusCode: 400, message: 'Address is blocked or deleted' }),
+        });
+      });
+      await page.route('**/v1/partner/onboardingFee/amounts', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ amounts: [400, 800] }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+      await page.locator('#onboarding-fee-amount').fill('400');
+      await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
+
+      const save = page.getByRole('button', { name: 'Save', exact: true });
+      await expect(save).toBeEnabled({ timeout: 10000 });
+      await save.click();
+      await expect(page.getByText('Address is blocked or deleted', { exact: true })).toBeVisible({
+        timeout: 10000,
+      });
+
+      await expect(page).toHaveScreenshot('compliance-user-17-onboarding-fee-error.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the range hint for an onboarding fee amount outside the allowed range', async ({ page }) => {
+      await page.route(`**/v1/support/${TEST_USER_DATA_ID}`, async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const users =
+          Array.isArray(data.users) && data.users.length > 0
+            ? data.users
+            : [
+                {
+                  id: 1,
+                  address: '0x0000000000000000000000000000000000000001',
+                  role: 'User',
+                  status: 'NA',
+                  usedRef: '194-687',
+                  created: '2026-01-01T00:00:00.000Z',
+                },
+              ];
+
+        await route.fulfill({ response, json: { ...data, users } });
+      });
+      await page.route('**/v1/support/issue/clerk', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ clerk: 'E2E Clerk' }),
+        });
+      });
+      await page.route('**/v1/partner/onboardingFee/amounts', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ amounts: [400, 800] }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Set onboarding fee', exact: true }).click();
+      await page.locator('#onboarding-fee-amount').fill('0');
+      await page.locator('#onboarding-fee-address').selectOption({ index: 1 });
+
+      // The upper bound carries the Swiss thousands separator, whose character depends on the
+      // browser's locale data, so only its position is fixed here.
+      await expect(page.getByText(/^Enter a whole CHF amount between 1 and 1.000.000\.$/)).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+      await page.waitForTimeout(500);
+
+      await expect(page).toHaveScreenshot('compliance-user-24-onboarding-fee-invalid-amount.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the risk status form with a selected value and a reason', async ({ page }) => {
+      await page.route('**/v1/support/issue/clerk', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ clerk: 'E2E Clerk' }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+      await page.locator('#risk-status-value').selectOption('Blocked');
+      await page.locator('#risk-status-reason').fill('E2E reason');
+      await page.waitForTimeout(500);
+
+      await expect(page).toHaveScreenshot('compliance-user-21-risk-status-form.png', {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      });
+    });
+
+    test('shows the API error when setting a risk status is refused', async ({ page }) => {
+      await page.route('**/v1/support/issue/clerk', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ clerk: 'E2E Clerk' }),
+        });
+      });
+      await page.route(`**/v1/userData/${TEST_USER_DATA_ID}/riskStatus`, async (route) => {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ statusCode: 400, message: 'Risk status change refused' }),
+        });
+      });
+
+      await page.goto(`/compliance/user/${TEST_USER_DATA_ID}?session=${token}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+
+      await page.getByRole('button', { name: 'Set risk status', exact: true }).click();
+      await page.locator('#risk-status-value').selectOption('Blocked');
+      await page.locator('#risk-status-reason').fill('E2E reason');
+
+      const save = page.getByRole('button', { name: 'Save', exact: true });
+      await expect(save).toBeEnabled({ timeout: 10000 });
+      await save.click();
+      await expect(page.getByText('Risk status change refused', { exact: true })).toBeVisible({ timeout: 10000 });
+
+      await expect(page).toHaveScreenshot('compliance-user-22-risk-status-error.png', {
         fullPage: true,
         maxDiffPixels: 5000,
       });

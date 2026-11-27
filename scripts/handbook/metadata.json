@@ -41,7 +41,11 @@
   },
   "sell-process": {
     "title": "Verkaufsprozess",
-    "description": "Sell-Flow: geladene Seite, Betrag und Sepolia-ETH/USDT-Verkaufsschritte."
+    "description": "Sell-Flow: geladene Seite, Betrag und Sepolia-ETH/USDT-Verkaufsschritte. Ein Konto mit KYC-Stufe 0 ohne Bankkonto sieht unter der IBAN-Auswahl den Link „I am already verified with DFX“."
+  },
+  "sell-info": {
+    "title": "Verkaufs-Infoseite",
+    "description": "Sell-Info-Flow (/sell/info): Liegt der Betrag unter dem Minimum, zeigt die Seite den Mindestbetrag und den Button zum Schliessen. Verlangt das Angebot eine Verifizierung, zeigt sie den KYC-Hinweis mit dem Button zum KYC-Verfahren. Beide Varianten erscheinen ohne Zahlungsinformationen."
   },
   "sell-bitcoin": {
     "title": "Bitcoin verkaufen",
@@ -69,7 +73,7 @@
   },
   "compliance": {
     "title": "Compliance",
-    "description": "Compliance-Suche mit Quick-Links (Aktennotiz, unzugeordnete Bankeingänge, offene Chargebacks), Trefferliste und Nutzerdossier mit Tabs (KYC, Transaktionen, Bankdaten, Routen) sowie Provisional-Approval- und VIP-Toggles für Kunden im laufenden Onboarding. Eine Zahl wird zugleich als Kunden-ID und als Transaktions-ID gesucht; eine gefundene Transaktion erscheint als eigener Treffer mit Link zum Kunden. Hat die Transaktion keinen Kunden, bleiben UserData-ID und Name leer und der Link fehlt. Beim Wechsel zu einem anderen Kunden erscheint ein Ladezustand, bis dessen Dossier geladen ist; schlägt der Wechsel fehl, ersetzt eine Fehlermeldung das vorherige Dossier. Kann eine KYC-Datei nicht geladen werden, bleibt das Dossier sichtbar und der Fehler erscheint im Dateivorschaubereich."
+    "description": "Compliance-Suche mit Quick-Links (Aktennotiz, unzugeordnete Bankeingänge, offene Chargebacks, offene Kontozusammenlegungen), Trefferliste und Nutzerdossier mit Tabs (KYC, Transaktionen, Bankdaten, Routen) sowie Provisional-Approval- und VIP-Toggles für Kunden im laufenden Onboarding. Eine Zahl wird zugleich als Kunden-ID und als Transaktions-ID gesucht; eine gefundene Transaktion erscheint als eigener Treffer mit Link zum Kunden. Hat die Transaktion keinen Kunden, bleiben UserData-ID und Name leer und der Link fehlt. Beim Wechsel zu einem anderen Kunden erscheint ein Ladezustand, bis dessen Dossier geladen ist; schlägt der Wechsel fehl, ersetzt eine Fehlermeldung das vorherige Dossier. Kann eine KYC-Datei nicht geladen werden, bleibt das Dossier sichtbar und der Fehler erscheint im Dateivorschaubereich. Für Admins zeigt das Dossier zusätzlich das Onboarding-Fee-Formular: frei eingegebener ganzer CHF-Betrag von 1 bis 1'000'000 mit den vorgeschlagenen Beträgen als Auswahlliste (ein Betrag ausserhalb des Bereichs zeigt einen Hinweis mit dem erlaubten Bereich und sperrt das Speichern), Adresse, die Zuordnung zum Key-Account-Manager und das Entfernen der Gebühr. Im Nutzerdossier kann Admin die persönlichen Daten und den KYC-Status mit Pflicht-Begründung bearbeiten, Compliance dieselben Angaben ohne Vor- und Nachname; jede Änderung wird im KYC-Log protokolliert. Für Support, Compliance und Admin zeigt es zudem das Risikostatus-Formular: die fünf Werte der bisherigen Tabelle, eine Pflicht-Begründung und den verifizierten Bearbeiter; die Fehlermeldung der API erscheint unverändert, ein abgeschalteter Endpunkt als Hinweis. Compliance und Admin können im Nutzerdossier zwei Konten zusammenführen: andere UserData-ID laden, bleibendes Konto wählen, die künftige Mailadresse sehen und mit Pflicht-Begründung bestätigen; ein niedrigeres KYC-Level beim bleibenden Konto oder ein bereits zusammengeführtes Konto wird vorab abgelehnt."
   },
   "compliance-recommendation-graph": {
     "title": "Compliance-Empfehlungsgraph",
@@ -78,6 +82,10 @@
   "compliance-chargeback-list": {
     "title": "Compliance: Offene Chargebacks",
     "description": "Liste offener Chargebacks mit Blockgründen, Namensvergleich und Leerzustand."
+  },
+  "compliance-pending-merges": {
+    "title": "Compliance: Offene Kontozusammenlegungen",
+    "description": "Liste offener Merge-Anfragen mit Grund, Ablaufdatum, Status und beiden Konten (Link zum Nutzerdossier) sowie Leerzustand."
   },
   "compliance-tag-list": {
     "title": "Compliance: Tag-Liste",
@@ -187,6 +195,10 @@
     "title": "Link-Screen: Weiterleitung bei zusammengeführtem Account",
     "description": "/link-Screen für einen Account, der zu einem anderen zusammengeführt wurde: statt des rohen Backend-Fehlertexts landet die Nutzerin auf dem KYC-Screen des Hauptaccounts."
   },
+  "account-merge": {
+    "title": "Wallet-Adresse hinzugefügt (Account-Merge)",
+    "description": "Bestätigungsseite /account-merge nach dem Link aus der Merge-Mail, geöffnet ohne Anmeldung (z. B. in der Mail-App): „Wallet address added“ mit dem Button „My account“."
+  },
   "known-rejections": {
     "title": "Bekannte API-Ablehnungen",
     "description": "Nicht unterstützte Zeichen im KYC-Formular als Feldfehler; lehnt die API Name oder Adresse trotzdem ab, erscheint ein übersetzter Hinweis statt «Something went wrong»; eine gesperrte Bank im Rückerstattungsformular zeigt einen Hinweis, das Formular bleibt sichtbar."
@@ -205,7 +217,7 @@
   },
   "login-redirect": {
     "title": "Login-Weiterleitung",
-    "description": "Hat kein Screen zur Anmeldung geschickt, führt die Anmeldung auf /login per Wallet oder Alby nach /buy und der Mail-Link ebenfalls über /buy; weil eine Mail-Session keine Adresse hat, geht es danach weiter auf /connect. Eine Anmeldung per Wallet oder Alby auf /connect endet dann auf /account. Hat ein Screen zur Anmeldung geschickt, führen Wallet, Alby und Mail-Link stattdessen direkt dorthin zurück. Im eingebetteten Widget mit service=connect schließt sich nach einer Anmeldung auf der Seite stattdessen das Widget, auf /login wie auf /connect und auch dann, wenn ein Screen zur Anmeldung geschickt hat. Die Bilder zeigen die Kommandozeilen-Wallet."
+    "description": "Hat kein Screen zur Anmeldung geschickt, führt die Anmeldung auf /login per Wallet nach /buy und der Mail-Link ebenfalls über /buy; weil eine Mail-Session keine Adresse hat, geht es danach weiter auf /connect. Eine Anmeldung per Wallet auf /connect endet dann auf /account. Hat ein Screen zur Anmeldung geschickt, führen Wallet und Mail-Link stattdessen direkt dorthin zurück. Im eingebetteten Widget mit service=connect schließt sich nach einer Anmeldung auf der Seite stattdessen das Widget, auf /login wie auf /connect und auch dann, wenn ein Screen zur Anmeldung geschickt hat. Die Bilder zeigen die Kommandozeilen-Wallet."
   },
   "tfa-merged-redirect": {
     "title": "2FA-Screen: Weiterleitung bei zusammengeführtem Account",
@@ -226,6 +238,10 @@
   "support-dashboard": {
     "title": "Support-Dashboard",
     "description": "Support-Dashboard: Übersicht und Detailansichten; Limit-Requests-Tab neben Open."
+  },
+  "support-limit-request": {
+    "title": "Support-Ticket Limit-Antrag",
+    "description": "Ticket eines Limit-Antrags im Support-Dashboard: beantragtes Limit, Mittelherkunft und, wenn der Kunde sie beschrieben hat, die Mittelherkunft in seinen Worten (Fund Origin Details); die interne Mail trägt sie nicht mehr."
   },
   "support-dashboard-overview": {
     "title": "Support-Dashboard Übersicht",
@@ -271,6 +287,18 @@
     "title": "KYC Wallet-Hinweis",
     "description": "Die KYC-Seite, wenn die verbundene Wallet nicht die Adresse aus dem Link ist. Der Hinweis nennt die verlangte Adresse und bietet Abmelden. Einwilligung und Ident starten nicht."
   },
+  "wallet-cancel": {
+    "title": "Abbruch im Wallet",
+    "description": "Bricht der Benutzer im Wallet ab (EIP-1193-Code 4001), endet der Vorgang ohne Fehlermeldung und ohne Fehlerbericht: beim Verbinden wieder bei der Wallet-Auswahl, beim Verkauf im Formular, wo ein neuer Versuch möglich ist. Varianten: abgebrochene Verbindung zurück bei der Wallet-Auswahl; eine vom Wallet fehlgeschlagene Verbindung, die weiterhin \"Connection failed!\" mit der Meldung des Wallets zeigt; eine im Wallet abgebrochene Verkaufstransaktion, nach der das Formular ohne Fehler stehen bleibt; eine vom Wallet fehlgeschlagene Verkaufstransaktion, die weiterhin \"Transaction failed\" zeigt."
+  },
+  "partner-onboarding-fee": {
+    "title": "Partner-Onboarding-Gebühr",
+    "description": "Der Partner-Screen /partner/onboarding-fee zum Zuweisen einer Onboarding-Gebühr zu einer Kundenadresse und zum Entfernen mit Bestätigung. Der Betrag ist frei: ein ganzer CHF-Betrag von 1 bis 1'000'000; die vorgeschlagenen Beträge der API erscheinen als Schnellauswahl, die das Feld füllt. Ein ungültiger Betrag zeigt nach Verlassen des Feldes einen Hinweis mit dem erlaubten Bereich, und Zuweisen bleibt gesperrt. Schlägt das Laden der Vorschläge fehl, erscheint ein Hinweis, das Zuweisen bleibt möglich."
+  },
+  "partner-wallet-selection": {
+    "title": "Partner-Wallet-Auswahl",
+    "description": "Die Wallet-Liste der zwei geänderten Partner-Verkaufsflüsse und die Bitcoin-Lightning-Wallet-Liste nach dem Entfernen von Alby, ohne Alby-Kachel: bitcoinonly → Verkaufen → Bitcoin mit der Wallet-Auswahl des Partners (Hardware-Wallets; die DFX-App-Kachel ist Lightning-only und wird durch die vorausgewählte Bitcoin-Blockchain ausgeblendet), kevinsoell → Verkaufen → Bitcoin, wo nur die Hardware-Wallet-Kachel erlaubt ist und die App direkt zur Hardware-Wallet-Auswahl weitergeht, sowie die Bitcoin-Lightning-Seite mit DFX-App und Kommandozeilen-Wallet."
+  },
   "docs": {
     "docs/EIP7702-Implementierungsplan.md": {
       "title": "EIP-7702 Implementierungsplan"
@@ -281,5 +309,9 @@
     "src/README.md": {
       "title": "NPM-Package: Export und Einbindung"
     }
+  },
+  "service-notice-banner": {
+    "title": "Service-Hinweis",
+    "description": "Schmaler Hinweis zuoberst im Inhalt, nur auf Verkaufen und Tauschen über dem Formular. Varianten: Verkaufen, Tauschen."
   }
 }

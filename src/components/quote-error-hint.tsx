@@ -1,15 +1,10 @@
-import { KycStepName, KycStepType, TransactionError, TransactionType, useUserContext } from '@dfx.swiss/react';
-import {
-  StyledButton,
-  StyledButtonWidth,
-  StyledInfoText,
-  StyledLink,
-  StyledVerticalStack,
-} from '@dfx.swiss/react-components';
+import { KycStepName, KycStepType, TransactionError, TransactionType } from '@dfx.swiss/react';
+import { StyledButton, StyledButtonWidth, StyledInfoText, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { useSettingsContext } from '../contexts/settings.context';
 import { useKycHelper } from '../hooks/kyc-helper.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import { useReportDisplayedError } from '../hooks/report-displayed-error.hook';
+import { AlreadyVerifiedLink } from './already-verified-link';
 
 export function QuoteErrorHint({
   type,
@@ -24,7 +19,6 @@ export function QuoteErrorHint({
   const { translate } = useSettingsContext();
   const { start, startStep, limit, defaultLimit, limitToString, isComplete } = useKycHelper();
   const { navigate } = useNavigation();
-  const { user } = useUserContext();
 
   function getHint(error: TransactionError): string | undefined {
     switch (error) {
@@ -165,13 +159,7 @@ export function QuoteErrorHint({
                 : start
             }
           />
-          {user?.kyc.level === 0 && (
-            <StyledLink
-              label={translate('screens/kyc', 'I am already verified with DFX')}
-              onClick={() => navigate('/link', { setRedirect: true })}
-              dark
-            />
-          )}
+          <AlreadyVerifiedLink />
         </>
       )}
     </StyledVerticalStack>

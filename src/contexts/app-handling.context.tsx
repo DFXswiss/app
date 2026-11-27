@@ -6,14 +6,19 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useChange } from 'src/hooks/change.hook';
 import { Service } from '../App';
 import { useIframe } from '../hooks/iframe.hook';
 import { useStore } from '../hooks/store.hook';
+import { APP_PARAM_URL_NAMES } from '../util/app-param-names';
+import { launchCredentials } from '../util/session-renewal';
 import { isSafeRedirectUri, relativeUrl, url } from '../util/utils';
 import { useBalanceContext } from './balance.context';
+
+const HAND_OFF_BUSY_MS = 3000;
 
 // --- INTERFACES --- //
 // CAUTION: params need to be added to index-widget.tsx
@@ -188,9 +193,20 @@ interface AppHandlingContextInterface {
   params: AppParams;
   setParams: (params: Partial<AppParams>) => void;
   closeServices: (params: CloseServicesParams, navigate: boolean) => boolean;
+  /**
+   * Hands a confirmed sell or swap to the integrator to pay: closes like
+   * `closeServices`, but redirects at once and keeps the redirect URI, so
+   * the page stays a hand-off page and can hand off again.
+   */
+  handOff: (params: SellServicesParams | SwapServicesParams) => boolean;
   redirectPath?: string;
   setRedirectPath: (path?: string) => void;
   canClose: boolean;
+  /**
+   * True for three seconds (HAND_OFF_BUSY_MS) after `handOff` closed by redirect,
+   * close message or widget callback.
+   */
+  isHandingOff: boolean;
   service?: Service;
 }
 
@@ -223,6 +239,16 @@ export function removeNonStorageParams(params: AppParams): AppParams {
   return copy;
 }
 
+// The redirect URI is kept for one browser session only (store.hook.ts), never in the stored parameters;
+// on a reload in the same session, loadQueryParams takes it from the session store.
+function removeRedirectUri(params: AppParams): AppParams {
+  const copy = { ...params };
+
+  delete copy.redirectUri;
+
+  return copy;
+}
+
 export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.Element {
   const { redirectUri: storeRedirectUri, queryParams: storeQueryParams } = useStore();
   const { isUsedByIframe, sendMessage } = useIframe();
@@ -232,6 +258,8 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasSession, setHasSession] = useState(false);
   const [redirectUri, setRedirectUri] = useState<string>();
+  const [isHandingOff, setIsHandingOff] = useState(false);
+  const handOffTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [params, setParams] = useState<AppParams>({});
   const [redirectPath, setRedirectPath] = useState<string | undefined>(() => {
     try {
@@ -250,13 +278,19 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
     }
   }, isLoggedIn);
 
+  // runs once on mount, when redirectUri is still unset, and before init reads the stored parameters; a widget
+  // does not take the redirect URI an earlier widget left in the host page's session store (see loadQueryParams)
+  useEffect(() => {
+    removeLegacyRedirectUri();
+    if (!props.params) setRedirectUri(storeRedirectUri.get());
+  }, []);
+
   useEffect(() => {
     isSessionInitialized && init();
   }, [isSessionInitialized]);
 
-  // runs once on mount, when redirectUri is still unset
   useEffect(() => {
-    setRedirectUri(storeRedirectUri.get());
+    return () => clearTimeout(handOffTimer.current);
   }, []);
 
   // parameters
@@ -264,9 +298,18 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
     return query.get(key) ?? undefined;
   }
 
+  // an older version kept the redirect URI in localStorage, which outlived the browser session
+  function removeLegacyRedirectUri() {
+    storeRedirectUri.removeLegacy();
+
+    const storedParams = storeQueryParams.get();
+    if (storedParams?.redirectUri !== undefined) storeQueryParams.set(removeRedirectUri(storedParams));
+  }
+
   function clearCustomerSessionState() {
     storeQueryParams.remove();
     storeRedirectUri.remove();
+    launchCredentials.remove();
     // The widget's attributes are the host page's configuration, not customer session state: keep
     // them (minus the one-shot credentials) so a forced logout returns to the configured flow.
     setParams(props.params ? removeNonStorageParams(extractWidgetParams(props.params)) : {});
@@ -276,7 +319,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   function setParameters(params: Partial<AppParams>) {
     setParams((p) => {
       const updatedParams = { ...p, ...params };
-      storeQueryParams.set(removeNonStorageParams(updatedParams));
+      storeQueryParams.set(removeRedirectUri(removeNonStorageParams(updatedParams)));
       return updatedParams;
     });
   }
@@ -295,10 +338,14 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
 
     const storedParams = storeQueryParams.get();
     if (paramsIsNotEmpty(storeParams)) {
-      storeQueryParams.set(storeParams);
+      storeQueryParams.set(removeRedirectUri(storeParams));
     } else {
-      Object.assign(queryParams, storedParams ?? {});
+      Object.assign(queryParams, removeRedirectUri(storedParams ?? {}));
     }
+
+    // standalone only: after a reload in the same session, the redirect URI comes from the session store; a widget
+    // takes it from its attributes alone, not from a value an earlier widget left in the host page's session
+    if (!props.params) queryParams.redirectUri ??= storeRedirectUri.get();
 
     setParams(queryParams);
     return queryParams;
@@ -310,6 +357,10 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
     if (params.redirectUri && isSafeRedirectUri(params.redirectUri)) {
       setRedirectUri(params.redirectUri);
       storeRedirectUri.set(params.redirectUri);
+    }
+
+    if (!props.params && params.address && params.signature) {
+      launchCredentials.set({ address: params.address, signature: params.signature, pubkey: params.pubkey });
     }
 
     const hasSession = paramsHasSession(params);
@@ -332,54 +383,12 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
           ...extractWidgetParams(params),
         }
       : {
-          headless: getParameter(query, 'headless'),
-          borderless: getParameter(query, 'borderless'),
-          hideTargetSelection: getParameter(query, 'hide-target-selection'),
-          flags: getParameter(query, 'flags'),
-          lang: getParameter(query, 'lang'),
-          address: getParameter(query, 'address'),
-          signature: getParameter(query, 'signature'),
-          pubkey: getParameter(query, 'pubkey'),
-          mail: getParameter(query, 'mail'),
-          accountType: getParameter(query, 'account-type'),
-          firstName: getParameter(query, 'first-name'),
-          lastName: getParameter(query, 'last-name'),
-          street: getParameter(query, 'street'),
-          houseNumber: getParameter(query, 'house-number'),
-          zip: getParameter(query, 'zip'),
-          city: getParameter(query, 'city'),
-          country: getParameter(query, 'country'),
-          organizationName: getParameter(query, 'organization-name'),
-          organizationStreet: getParameter(query, 'organization-street'),
-          organizationHouseNumber: getParameter(query, 'organization-house-number'),
-          organizationZip: getParameter(query, 'organization-zip'),
-          organizationCity: getParameter(query, 'organization-city'),
-          organizationCountry: getParameter(query, 'organization-country'),
-          phone: getParameter(query, 'phone'),
-          wallet: getParameter(query, 'wallet'),
-          wallets: getParameter(query, 'wallets'),
-          refcode: getParameter(query, 'refcode'),
-          specialCode: getParameter(query, 'special-code'),
-          recommendationCode: getParameter(query, 'recommendation-code'),
-          session: getParameter(query, 'session'),
-          redirect: getParameter(query, 'redirect'),
-          type: getParameter(query, 'type'),
-          redirectUri: getParameter(query, 'redirect-uri'),
-          autoStart: getParameter(query, 'auto-start'),
-          mode: getParameter(query, 'mode'),
+          ...(Object.fromEntries(
+            Object.entries(APP_PARAM_URL_NAMES).map(([key, name]) => [key, getParameter(query, name)]),
+          ) as AppParams),
           blockchain: Object.values(Blockchain).find(
-            (b) => b.toLowerCase() === getParameter(query, 'blockchain')?.toLowerCase(),
+            (b) => b.toLowerCase() === getParameter(query, APP_PARAM_URL_NAMES.blockchain)?.toLowerCase(),
           ),
-          blockchains: getParameter(query, 'blockchains'),
-          balances: getParameter(query, 'balances'),
-          amountIn: getParameter(query, 'amount-in'),
-          amountOut: getParameter(query, 'amount-out'),
-          assets: getParameter(query, 'assets'),
-          assetIn: getParameter(query, 'asset-in'),
-          assetOut: getParameter(query, 'asset-out'),
-          paymentMethod: getParameter(query, 'payment-method'),
-          bankAccount: getParameter(query, 'bank-account'),
-          externalTransactionId: getParameter(query, 'external-transaction-id'),
         };
   }
 
@@ -445,6 +454,42 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
     return closed;
   }
 
+  function handOff(params: SellServicesParams | SwapServicesParams): boolean {
+    let closed = false;
+
+    if (props.isWidget) {
+      if (props.closeCallback) {
+        props.closeCallback(createCloseMessageData(params));
+        closed = true;
+      }
+    } else {
+      if (isUsedByIframe) {
+        sendMessage(createCloseMessageData(params));
+        closed = true;
+      }
+
+      if (redirectUri) {
+        // discard unsafe URIs (e.g. javascript:) to prevent script execution and phishing redirects
+        if (isSafeRedirectUri(redirectUri)) {
+          // keep the URI for this page and session, so the user can hand off again, also after a reload
+          (window as Window).location = getRedirectUri(redirectUri, params);
+          closed = true;
+        } else {
+          storeRedirectUri.remove();
+          setRedirectUri(undefined);
+        }
+      }
+    }
+
+    if (closed) {
+      setIsHandingOff(true);
+      clearTimeout(handOffTimer.current);
+      handOffTimer.current = setTimeout(() => setIsHandingOff(false), HAND_OFF_BUSY_MS);
+    }
+
+    return closed;
+  }
+
   function getRedirectUri(baseUri: string, params: CloseServicesParams): string {
     let uri = new URL(baseUri);
 
@@ -460,6 +505,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
           asset: params.sell.asset.name,
           blockchain: params.sell.asset.blockchain,
           isComplete: params.isComplete.toString(),
+          ...(params.sell.uid ? { orderUid: params.sell.uid } : {}),
         });
         break;
 
@@ -470,6 +516,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
           asset: params.swap.sourceAsset.name,
           blockchain: params.swap.sourceAsset.blockchain,
           isComplete: params.isComplete.toString(),
+          ...(params.swap.uid ? { orderUid: params.swap.uid } : {}),
         });
         break;
 
@@ -522,6 +569,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       hasSession,
       isDfxHosted: window.location.hostname?.split('.').slice(-2).join('.') === 'dfx.swiss',
       closeServices,
+      handOff,
       isInitialized,
       params,
       setParams: setParameters,
@@ -536,6 +584,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       redirectPath,
       setRedirectPath,
       canClose: redirectUri != null,
+      isHandingOff,
       service: props.service,
     }),
     [
@@ -544,6 +593,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
       props.service,
       isUsedByIframe,
       redirectUri,
+      isHandingOff,
       isInitialized,
       params,
       redirectPath,

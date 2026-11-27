@@ -109,6 +109,7 @@ const REQUESTS: [string, (a: Api) => Promise<unknown>, { url: string; method: st
   ['updateMros', (a) => a.updateMros(4, { x: 2 } as never), { url: 'mros/4', method: 'PUT', data: { x: 2 } }],
   ['getRecalls', (a) => a.getRecalls(), { url: 'recall', method: 'GET' }],
   ['getPendingChargebacks', (a) => a.getPendingChargebacks(), { url: 'support/pending-chargebacks', method: 'GET' }],
+  ['getPendingMerges', (a) => a.getPendingMerges(), { url: 'support/pending-merges', method: 'GET' }],
   ['createRecall', (a) => a.createRecall({ y: 1 } as never), { url: 'recall', method: 'POST', data: { y: 1 } }],
   ['getCallQueues', (a) => a.getCallQueues(), { url: 'support/call-queues', method: 'GET' }],
   [

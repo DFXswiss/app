@@ -130,6 +130,34 @@ The harness does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` other
 
 The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (override listen port with `E2E_LOOPBACK_PORT`, upstream with `E2E_API_URL`) that relays to the real API service. Under `Environment.LOC` the API builds some URLs (notably KYC-step endpoints) as `http://localhost:3000/...` because it assumes frontend and API share a host; without the forwarder, the browser inside the Playwright container would hit itself and fail with `net::ERR_CONNECTION_REFUSED`.
 
+### Encrypted columns
+
+The API encrypts some columns at rest, for example `notification.data`, `support_log.message`,
+`kyc_step.comment` and `support_message.fileUrl`; the authoritative list is
+`src/shared/pii/pii-encrypted-columns.ts` in the backend repository. SQL returns `enc:v1:…` for them.
+Tests read such a column only through `decryptPii` (`fixtures/pii.ts`) and never compare it in SQL:
+select the rows by unencrypted columns and compare the decrypted value in the test, waiting with
+`waitForMatchingRow` (`fixtures/db.ts`) where needed. Values without the prefix are plaintext, so
+fixtures may still insert plaintext. The key comes from `E2E_PII_ENCRYPTION_KEYS`, set in
+`compose.tests.yml`, and must match `PII_ENCRYPTION_KEYS` in `env/api.env`.
+
+### Sell on, swap off
+
+`env/api.env` enables the sell request gate (`!Sell` in `DISABLED_PROCESSES`), so a sell case fails
+on any refusal it does not assert itself, including HTTP 503 `TRANSACTIONS_PAUSED`. The wallet-AML
+refusals, the `/sell/info` KYC and amount errors and the runtime pause each assert their own answer.
+
+Swap stays off whatever `env/api.env` says: the API's `loc` environment sets the feature flag
+`swap: false`, which forces the swap process off and leaves the swap routes unmounted, so a swap quote
+or payment-info request (`POST /v1/swap`, `PUT /v1/swap/paymentInfos`) answers HTTP 404
+(`Cannot PUT /v1/swap/paymentInfos`); with the flag on and the process off it would answer HTTP 503
+`TRANSACTIONS_PAUSED`. `fixtures/paused.ts` holds the swap helpers: `createSwap` throws
+`SwapUnavailableError` on either answer, `orSwapUnavailable` turns it into a value a test can branch
+on, and `expectUnavailableQuoteOnScreen` checks that the swap screen shows the API's message and no
+payment information (it also serves the sell case that pauses sell at runtime). A swap quote or
+payment-info case asserts the answer it got and ends there; its other assertions run only once the API
+serves swaps. The swap cases that only render the swap form or its asset lists do not depend on it.
+
 ## Relation to the existing suite under `e2e/`
 
 The suite under `e2e/` is visual-regression testing (screenshot baselines). It deliberately does not run in CI, because baselines are platform- and font-dependent.
@@ -138,10 +166,103 @@ This harness checks function, not appearance. Draft pull requests run the
 job after Build and test. GitHub may hold fork runs as `action_required`.
 Ready does not start CI. After a fresh A38 enforce pass, `dfx pr guard`
 approves those waiting initial runs. A develop PR
-without `ci:full` records `mode=none` and does
+without `ci:full` and without a pair records `mode=none` and does
 not bring the stack up. There is no selected/partial mode: `ci:full`, PRs
 into `main`, and a bare `workflow_dispatch` (empty `base_ref`) force a full
-run. Both suites exist side by side and serve different purposes.
+run. A develop pull request that declares a pair instead records
+`mode=paired-attested`; the local job verifies the newest App status, and the
+coordinator reruns the local job once the shared run posts its result. A release
+pull request into `main` always runs the full stack. Both
+suites exist side by side and serve different purposes.
+
+## Paired app and backend pull requests
+
+The app repository hosts the trusted coordinator in
+[`.github/workflows/e2e-paired.yml`](../.github/workflows/e2e-paired.yml). It
+uses `e2e-companion.json` in the root of each repository to pair one app pull
+request with one backend pull request. The file is active only when that pull
+request's own diff changes it, including `added`, `modified`, `renamed`,
+`copied`, and `changed` rows; `removed` and `unchanged` are inactive. Both files
+must name each other and both pull requests must target `develop`. Every open side must carry
+its own repository's complete A38 review state at its exact head before the
+coordinator runs any pull-request code. Each repository is checked with its
+own pinned A38 checkout and the guard identity from
+`.github/e2e-pairing/guard-identities.json`.
+
+The coordinator runs once on an ephemeral GitHub-hosted `ubuntu-latest`
+runner. Resolve and publish are privileged jobs that use a dedicated GitHub
+App token on both repositories. Execution is a separate job with only
+`contents: read`; it checks out both exact heads, verifies each unmerged head
+against `refs/pull/<n>/head`, uses the backend deploy key only in the single
+fetch step that removes it before any PR code runs, and then runs the same
+stack steps as this workflow. Its checkout steps opt in with
+`allow-unsafe-pr-checkout`: tooling pins `github.workflow_sha` (the
+default-branch definition, never fork code), and the run job executes the
+reviewed exact head without a write token and starts only after both review
+gates pass. Before the run, the App posts `pending` on every
+open head with a description naming both full heads and the run:
+`pair app#<A>@<app head> backend#<B>@<backend head> running <run id>`. Each
+head must be exactly 40 lowercase hex characters, so a 7-character prefix never
+matches. The attestation replaces `running` with `run`; the full description
+stays under GitHub's 140-character limit. The app-side `verify-attestation`
+runs in the app's `pull_request` workflow without a token for the private
+backend repository. It binds the exact app head, the app pull request, the
+backend pull request number, and the newest App status on that app head; it
+cannot read the backend head. The backend side (DFXswiss/backend#6154,
+`scripts/e2e-pairing` `verify-attestation`) binds both exact heads. When the
+backend head moves, the backend notifier dispatches to the coordinator, which
+re-resolves and replaces the App status on the app head (`pending` or
+`failure`), so the app-side check then fails. A `pending` running marker is not
+an attestation. The coordinator polls that local run every 30 seconds for at
+most 60 minutes after posting the result, then reruns its `Full-stack E2E` job
+once the run has completed. After the deadline it warns without replacing the
+posted status. It never falls back to an older success and never matches by
+wildcard, so no second stack is started. A develop pull request that declares a
+pair also takes precedence over `ci:full`: the local stack scope checks the pair
+first and records `mode=paired-attested`.
+
+A push to either side posts `pending`, reruns the local jobs, and invalidates
+the old result. Review comments do not cancel a running shared run. A backend
+`repository_dispatch` takes the same invalidation path, using its `before` head
+as a hint to find the previous companion at that SHA. The coordinator cancels
+a run only after the re-resolved heads prove that a head of the pair moved.
+Merge order is free for merges into `develop`: a merged companion is resolved
+through its immutable merge commit, and the remaining open side is
+re-resolved, re-reviewed and re-attested against the companion's merge
+commit. A companion closed without merge or merged into `main` or any other
+base posts `failure` on the open companion. If both sides are merged,
+nothing is run. A green paired run proves that the exact app and backend
+heads started together against a real Postgres database and passed the full
+suite and route gate. It does not prove external providers, money movement,
+the migration chain, or a future merge result.
+The coordinator also reconciles every open paired pull request in both
+repositories every 30 minutes, on any base, and repairs divergent and stale
+pending statuses. It catches a retarget away from `develop` and any lost
+notification. After it invalidates a pair, it also reruns the local required
+`Full-stack E2E` jobs so branch protection cannot keep seeing their previous
+green result. A running marker whose shared run ended without a result is
+replaced with a terminal `failure`, and the local jobs are rerun so a later
+trigger can start a new shared run.
+Reconcile leaves a stale review-gate pending only when every open head carries
+that marker; otherwise it posts `pending`, reruns the local jobs of the open
+sides, and publishes the gate result. A close-path inspection error and an
+internal review-gate error are failures, never review-pending verdicts. The
+resolve job sets up Node 24 before any CLI step, and a final cleanup step fails
+closed after an earlier failure before the CLI runs.
+
+Administrators install the pairing GitHub App on both repositories with commit
+status read/write, Actions read/write, Contents read/write, Pull requests read,
+Issues read, and Metadata read. The App is `dfx-e2e-pairing`; install it only on
+`DFXswiss/app` and `DFXswiss/backend`, never on all repositories of the
+organisation. Both repositories set `E2E_PAIR_APP_CLIENT_ID` and
+`E2E_PAIR_APP_SLUG` as variables. The private key is **not** a repository
+secret: in `DFXswiss/app`, create the GitHub Actions environment `e2e-pairing`
+with a deployment-branch policy limited to `develop`, and store
+`E2E_PAIR_APP_PRIVATE_KEY` as an environment secret there. The `resolve` and
+`publish` jobs declare `environment: e2e-pairing`, so no pull-request workflow
+— including a same-repository pull request that edits a workflow — can read it.
+No `A38_GUARD_APP_SLUG` variable is used; the guard identity is the committed
+per-repository map.
 
 ## Relationship with the API repository
 

@@ -44,6 +44,19 @@ export async function waitForRow<T = Record<string, unknown>>(
   params?: unknown[],
   timeoutMs = 15000,
 ): Promise<T> {
+  return waitForMatchingRow<T>(sql, params, () => true, timeoutMs);
+}
+
+/**
+ * Like waitForRow, but polls until a returned row satisfies `matches`. For conditions Postgres cannot
+ * evaluate because the API encrypts the column: select it and compare `decryptPii(...)` in `matches`.
+ */
+export async function waitForMatchingRow<T = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] | undefined,
+  matches: (row: T) => boolean,
+  timeoutMs = 15000,
+): Promise<T> {
   const started = Date.now();
   const intervalMs = 500;
   let lastCount = 0;
@@ -51,8 +64,9 @@ export async function waitForRow<T = Record<string, unknown>>(
   while (Date.now() - started < timeoutMs) {
     const rows = await queryRows<T>(sql, params);
     lastCount = rows.length;
-    if (rows.length > 0) {
-      return rows[0];
+    const index = rows.findIndex(matches);
+    if (index >= 0) {
+      return rows[index];
     }
     await new Promise((r) => setTimeout(r, intervalMs));
   }

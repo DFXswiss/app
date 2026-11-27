@@ -96,7 +96,7 @@ DFX services can be integrated as a web component. See the [code example](#web-c
 
 For web component integration, a closing callback (`on-close` attribute) should be provided. On cancel or completion, this callback is called. See [below](#close-message) for details on the message format.
 
-Logins that leave the page and return through a link or a redirect — the e-mail login link and the Alby account login — do not return to the embedding page. They continue in the DFX app ([app.dfx.swiss](https://app.dfx.swiss/)), where the user arrives logged in at the selected service. Of the parameters supplied to the widget as attributes, only the personal IBAN provider (`personal-iban`) is carried over to the app; others, such as a preselected asset or amount, are not. Sign-up parameters sent with the login request itself, such as `wallet`, still apply. The login redirect carries the session, so the API only accepts the DFX app itself as its target.
+Logins that leave the page and return through a link — the e-mail login link — do not return to the embedding page. They continue in the DFX app ([app.dfx.swiss](https://app.dfx.swiss/)), where the user arrives logged in at the selected service. Of the parameters supplied to the widget as attributes, only the personal IBAN provider (`personal-iban`) is carried over to the app; others, such as a preselected asset or amount, are not. Sign-up parameters sent with the login request itself, such as `wallet`, still apply. The login redirect carries the session, so the API only accepts the DFX app itself as its target.
 
 #### React Component
 
@@ -126,7 +126,6 @@ If no credentials are provided during opening, the user will be presented with a
 - Browser extensions
   - [MetaMask](https://metamask.io/)
   - [Rabby](https://rabby.io/)
-  - [Alby](https://getalby.com/)
 - Hardware wallets
   - [BitBox](https://bitbox.swiss/)
   - [Ledger](https://www.ledger.com/)
@@ -188,9 +187,9 @@ _Hint: Asset selection parameters may be overwritten when using [wallet login](#
 
 #### Hints
 
-- To select an asset, either the name of the asset (e.g. `BTC`, caution when using multi-chain accounts - not recommended), the unique name (e.g. `Ethereum/ETH`) or the DFX asset ID (get from [asset endpoint](https://api.dfx.swiss/swagger#/Asset/AssetController_getAllAsset)) can be used.
-- To select a currency, either the name (e.g. `USD`) or the DFX fiat ID (get from [fiat endpoint](https://api.dfx.swiss/swagger#/Fiat/FiatController_getAllFiat)) can be used.
-- To select a bank account, either an IBAN, the account id or the account label (get from [bank accounts endpoint](https://api.dfx.swiss/swagger#/BankAccount/BankAccountController_getAllUserBankAccount)) can be used.
+- To select an asset, either the name of the asset (e.g. `BTC`, caution when using multi-chain accounts - not recommended), the unique name (e.g. `Ethereum/ETH`) or the DFX asset ID (get from the asset endpoint `GET /v1/asset`) can be used.
+- To select a currency, either the name (e.g. `USD`) or the DFX fiat ID (get from the fiat endpoint `GET /v1/fiat`) can be used.
+- To select a bank account, either an IBAN, the account id or the account label (get from the bank accounts endpoint `GET /v1/bankAccount`, authentication required) can be used.
 
 ### Closing
 
@@ -205,17 +204,20 @@ In case of a sell or swap, the service returns the information (`isComplete`) as
 
 #### Redirect
 
-If a redirect URI was provided (`redirect-uri` parameter), the user will be redirected to this URI on cancel or completion. Depending on the type of closing, a suffix will be appended to the URI and parameters will be provided.
+If a redirect URI was provided (`redirect-uri` parameter), the user will be redirected to this URI on cancel or completion. Depending on the type of closing, a suffix will be appended to the URI and parameters will be provided. The redirect URI is kept for the current browser session only (`sessionStorage`): a page opened in a new session without `redirect-uri` does not redirect. A login by mail link carries the redirect URI in the link, so the page the link opens keeps it for its own session.
 
 - Cancel: redirected to `{redirect-url}`
 - Buy: redirected to `{redirect-url}/buy`
 - Sell/swap: redirected to `{redirect-url}/sell` or `{redirect-url}/swap` with the following parameters:
 
-  - `routeId`: sell/swap route ID (get details from [sell route](https://api.dfx.swiss/swagger#/Sell/SellController_getSell) or [swap route](https://api.dfx.swiss/swagger#/Swap/SwapController_getSwap) endpoint, authentication required)
+  - `routeId`: sell/swap route ID (get details from the sell route endpoint `GET /v1/sell/{id}` or the swap route endpoint `GET /v1/swap/{id}`, authentication required)
   - `amount`: amount to send
   - `asset`: asset to send
   - `blockchain`: transfer blockchain
   - `isComplete`: is `true`, if blockchain transaction is already executed
+  - `orderUid`: uid of the order the user confirmed; the order's status page is `https://app.dfx.swiss/tx/<orderUid>` and `GET /v1/transaction/single?order-uid=<orderUid>` returns the full transaction with the user's session token and a public summary without it
+
+On the sell and swap pages (`/sell`, `/swap`), a sell or swap the integrator still has to pay (`isComplete` is `false`) is redirected as soon as the user confirms. The page keeps the redirect URI after that redirect, also across a reload in the same browser session. If the page stays open, for example because an in-app browser intercepts the redirect, it behaves as it did before the redirect: the user can confirm again after a short wait and each further confirmation redirects; another close (for example a cancel) redirects once and then drops the redirect URI. An integrator must therefore expect more than one redirect, possibly with other parameters.
 
 #### Close Message
 
@@ -239,7 +241,7 @@ interface CloseMessage {
 }
 ```
 
-Documentation on `BuyPaymentInfoDto`, `SellPaymentInfoDto` and `SwapPaymentInfoDto` can be found in the [DFX API Swagger documentation](https://api.dfx.swiss/).
+`BuyPaymentInfoDto`, `SellPaymentInfoDto` and `SwapPaymentInfoDto` are the payment info objects returned by the DFX API.
 
 ### Code Examples
 

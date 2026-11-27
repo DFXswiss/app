@@ -6,12 +6,13 @@ import { jwtDecode } from 'jwt-decode';
 import { PropsWithChildren, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../hooks/store.hook';
 import { WalletType as MetaMaskWalletType, useMetaMask } from '../hooks/wallets/metamask.hook';
+import { storageGet } from '../util/safe-storage';
+import { installSessionRenewal, launchCredentials } from '../util/session-renewal';
 import { useAppHandlingContext } from './app-handling.context';
 import { useBalanceContext } from './balance.context';
 
 export enum WalletType {
   META_MASK = 'MetaMask',
-  ALBY = 'Alby',
   LEDGER_BTC = 'LedgerBtc',
   LEDGER_ETH = 'LedgerEth',
   BITBOX_BTC = 'BitBoxBtc',
@@ -57,7 +58,6 @@ export const WalletBlockchains: { [w in WalletType]?: Blockchain[] } = {
     Blockchain.CITREA_TESTNET,
     Blockchain.SEPOLIA,
   ],
-  [WalletType.ALBY]: [Blockchain.LIGHTNING],
   [WalletType.LEDGER_BTC]: [Blockchain.BITCOIN],
   [WalletType.LEDGER_ETH]: [Blockchain.ETHEREUM, Blockchain.ARBITRUM, Blockchain.OPTIMISM, Blockchain.POLYGON],
   [WalletType.BITBOX_BTC]: [Blockchain.BITCOIN],
@@ -118,7 +118,6 @@ export function supportsBlockchain(wallet: WalletType, blockchain: Blockchain): 
 
 const WalletTypeMap: { [k in WalletType]: AuthWalletType | undefined } = {
   [WalletType.META_MASK]: AuthWalletType.METAMASK,
-  [WalletType.ALBY]: AuthWalletType.ALBY,
   [WalletType.LEDGER_BTC]: AuthWalletType.LEDGER,
   [WalletType.LEDGER_ETH]: AuthWalletType.LEDGER,
   [WalletType.BITBOX_BTC]: AuthWalletType.BIT_BOX,
@@ -176,14 +175,18 @@ export function useWalletContext(): WalletInterface {
   return useContext(WalletContext);
 }
 
+// The SDK keeps the session it sends as the Bearer token under this key.
+const SESSION_KEY = 'dfx.authenticationToken';
+
+function knownWalletType(value?: string): WalletType | undefined {
+  return Object.values(WalletType).includes(value as WalletType) ? (value as WalletType) : undefined;
+}
+
 export function WalletContextProvider(props: WalletContextProps): JSX.Element {
   const { isInitialized: isSessionInitialized, isLoggedIn, logout } = useSessionContext();
   const { updateSession } = useApiSession();
   const api = useSessionContext();
-  const {
-    isInitialized: isParamsInitialized,
-    params: appParams,
-  } = useAppHandlingContext();
+  const { isInitialized: isParamsInitialized, params: appParams, isWidget } = useAppHandlingContext();
   const { getSignMessage } = useAuth();
   const { readBalances } = useBalanceContext();
   const { activeWallet: activeWalletStore } = useStore();
@@ -191,9 +194,21 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
   const { getWalletType } = useMetaMask();
 
   const [isInitialized, setIsInitialized] = useState(false);
-  const [activeWallet, setActiveWallet] = useState<WalletType | undefined>(activeWalletStore.get());
+  const [activeWallet, setActiveWallet] = useState<WalletType | undefined>(() =>
+    knownWalletType(activeWalletStore.get()),
+  );
   const [activeBlockchain, setActiveBlockchain] = useState<Blockchain>();
   const lastAppliedCredentials = useRef<{ address?: string; signature?: string; session?: string }>({});
+  const renewSession = useRef(createSession);
+  renewSession.current = createSession;
+
+  useEffect(() => {
+    if (isWidget) return;
+    return installSessionRenewal(
+      ({ address, signature, pubkey }) => renewSession.current(address, signature, pubkey),
+      () => storageGet('localStorage', SESSION_KEY),
+    );
+  }, [isWidget]);
 
   // initialize
   useEffect(() => {
@@ -249,12 +264,15 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
           throw new Error('Invalid session');
         }
         authenticatedCustomerIdentity(appParams.session);
+        // A start with a session is not the launch login: it ends the renewal by an earlier launch in this tab.
+        launchCredentials.remove();
         updateSession(appParams.session);
         return true;
       }
     } catch (e) {
       // Reset on error to allow retry
       lastAppliedCredentials.current = {};
+      launchCredentials.remove();
       logout();
     }
 
@@ -283,6 +301,7 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
     try {
       const message = await getSignMessage(address);
       const signature = await onSignMessage(address, message);
+      launchCredentials.remove();
       await createSession(address, signature, key, wallet);
     } catch (e) {
       api.logout();
@@ -297,7 +316,10 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
     reloadUser();
   }
 
+  // Only the launch with address and signature may renew a session; every other login (this one, a wallet login, a
+  // start with a session, the account merge) drops the launch credentials.
   async function setSession(session: string, wallet?: WalletType, blockchain?: Blockchain): Promise<void> {
+    launchCredentials.remove();
     updateSession(session);
 
     setWallet(wallet);

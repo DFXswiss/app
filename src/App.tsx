@@ -87,6 +87,7 @@ const ComplianceMrosCreateScreen = lazyScreen(() => import('./screens/compliance
 const ComplianceMrosDetailScreen = lazyScreen(() => import('./screens/compliance-mros-detail.screen'));
 const ComplianceRecallListScreen = lazyScreen(() => import('./screens/compliance-recall-list.screen'));
 const ComplianceChargebackListScreen = lazyScreen(() => import('./screens/compliance-chargeback-list.screen'));
+const CompliancePendingMergesScreen = lazyScreen(() => import('./screens/compliance-pending-merges.screen'));
 const ComplianceReviewScreen = lazyScreen(() => import('./screens/compliance-review.screen'));
 const ComplianceCallQueuesScreen = lazyScreen(() => import('./screens/compliance-call-queues.screen'));
 const ComplianceCallQueueScreen = lazyScreen(() => import('./screens/compliance-call-queue.screen'));
@@ -135,6 +136,7 @@ const DashboardFinancialKundengelderLinesScreen = lazyScreen(() =>
   })),
 );
 const SitemapScreen = lazyScreen(() => import('./screens/sitemap.screen'));
+const PartnerOnboardingFeeScreen = lazyScreen(() => import('./screens/partner-onboarding-fee.screen'));
 
 setupLanguages();
 
@@ -494,6 +496,10 @@ export const Routes = [
         element: withSuspense(<ComplianceChargebackListScreen />),
       },
       {
+        path: 'compliance/pending-merges',
+        element: withSuspense(<CompliancePendingMergesScreen />),
+      },
+      {
         path: 'compliance/user/:id/kyc',
         element: withSuspense(<ComplianceReviewScreen />),
       },
@@ -514,6 +520,10 @@ export const Routes = [
       {
         path: 'compliance/*',
         element: withSuspense(<ComplianceNotFoundScreen />),
+      },
+      {
+        path: 'partner/onboarding-fee',
+        element: withSuspense(<PartnerOnboardingFeeScreen />),
       },
       {
         path: 'sitemap',

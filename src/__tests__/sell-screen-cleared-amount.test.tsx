@@ -7,6 +7,7 @@ const mockCanSendTransaction = jest.fn();
 const mockGetBalances = jest.fn();
 const mockNavigate = jest.fn();
 const mockLogout = jest.fn();
+const mockHandOff = jest.fn();
 const mockCloseServices = jest.fn();
 const mockSwitchBlockchain = jest.fn();
 const mockLayoutOptions = jest.fn();
@@ -45,6 +46,8 @@ let mockSession: { address: string } | undefined;
 let mockActiveWallet: string | undefined;
 let mockFlags: string | undefined;
 let mockHideTarget = true;
+let mockUser: { kyc: { level: number } } | undefined;
+let mockHasBankAccount = true;
 const mockGetAsset = (list: any[], name?: string) =>
   name ? (list ?? []).find((a: any) => a.name === name) : undefined;
 const mockGetAssets = () => mockAssets;
@@ -56,6 +59,7 @@ const mockFormatIban = jest.fn((iban: string): string | undefined => iban);
 let mockWalletBlockchain: string | undefined = 'Ethereum';
 let mockPrefCurrency: { name: string } | undefined;
 let mockIsInitialized = true;
+let mockIsHandingOff = false;
 const mockSellInterface = {
   get currencies() {
     return mockCurrencies;
@@ -108,7 +112,7 @@ jest.mock('@dfx.swiss/react', () => ({
   }),
   useAuthContext: () => ({ session: mockSession }),
   useBankAccountContext: () => ({
-    bankAccounts: [bankAccount],
+    bankAccounts: mockHasBankAccount ? [bankAccount] : [],
     updateAccount: (...args: unknown[]) => mockUpdateAccount(...args),
   }),
   useFiat: () => ({
@@ -118,6 +122,7 @@ jest.mock('@dfx.swiss/react', () => ({
   }),
   useSell: () => mockSellInterface,
   useSessionContext: () => ({ logout: mockLogout }),
+  useUserContext: () => ({ user: mockUser }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => {
@@ -139,7 +144,11 @@ jest.mock('@dfx.swiss/react-components', () => {
 
   return {
     AssetIconVariant: {},
+    CopyButton: () => null,
+    DfxIcon: () => null,
     IconColor: { RED: 'Red' },
+    IconSize: {},
+    IconVariant: {},
     Form: ({ children, control, onSubmit }: any) => (
       <div>
         {enrich(children, control)}
@@ -153,8 +162,8 @@ jest.mock('@dfx.swiss/react-components', () => {
       </div>
     ),
     SpinnerSize: { SM: 'sm', LG: 'lg' },
-    StyledButton: ({ label, onClick }: any) => (
-      <button type="button" onClick={onClick}>
+    StyledButton: ({ label, onClick, isLoading }: any) => (
+      <button type="button" onClick={onClick} aria-busy={isLoading}>
         {label}
       </button>
     ),
@@ -205,7 +214,14 @@ jest.mock('@dfx.swiss/react-components', () => {
           )}
         />
       ) : null,
-    StyledLink: ({ children, label }: any) => <div>{label ?? children}</div>,
+    StyledLink: ({ children, label, onClick }: any) =>
+      onClick ? (
+        <button type="button" onClick={onClick}>
+          {label}
+        </button>
+      ) : (
+        <div>{label ?? children}</div>
+      ),
     StyledLoadingSpinner: () => <div data-testid="loading-spinner" />,
     StyledSearchDropdown: ({ name, items, labelFunc, control, filterFunc, balanceFunc, descriptionFunc, assetIconFunc }: any) => (
       <Controller
@@ -241,7 +257,7 @@ jest.mock('src/components/order/bank-account-selector', () => ({
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const React = require('react');
     React.useEffect(() => {
-      onChange(bankAccount);
+      if (mockHasBankAccount) onChange(bankAccount);
     }, []);
     return (
       <div data-testid="bank-account-selector">
@@ -277,9 +293,16 @@ jest.mock('../components/payment/address-switch', () => ({
     </div>
   ),
 }));
-jest.mock('../components/payment/sell-completion', () => ({
-  SellCompletion: () => <div data-testid="sell-completion" />,
-}));
+jest.mock('../components/payment/sell-completion', () => {
+  const { SellCompletion } = jest.requireActual('../components/payment/sell-completion');
+  return {
+    SellCompletion: (props: any) => (
+      <div data-testid="sell-completion">
+        <SellCompletion {...props} />
+      </div>
+    ),
+  };
+});
 jest.mock('../components/private-asset-hint', () => ({
   PrivateAssetHint: () => <div data-testid="private-asset-hint" />,
 }));
@@ -290,7 +313,12 @@ jest.mock('../components/sanction-hint', () => ({ SanctionHint: () => <div data-
 jest.mock('../config/labels', () => ({ addressLabel: (wallet: any) => wallet?.address ?? '' }));
 jest.mock('../contexts/app-handling.context', () => ({
   CloseType: { SELL: 'Sell' },
-  useAppHandlingContext: () => ({ isInitialized: mockIsInitialized, closeServices: mockCloseServices }),
+  useAppHandlingContext: () => ({
+    isInitialized: mockIsInitialized,
+    handOff: mockHandOff,
+    closeServices: mockCloseServices,
+    isHandingOff: mockIsHandingOff,
+  }),
 }));
 jest.mock('../contexts/layout.context', () => ({
   useLayoutContext: () => ({ scrollToTop: jest.fn(), rootRef: { current: null } }),
@@ -394,9 +422,12 @@ describe('SellScreen', () => {
     mockActiveWallet = undefined;
     mockFlags = undefined;
     mockHideTarget = true;
+    mockUser = undefined;
+    mockHasBankAccount = true;
     mockWalletBlockchain = 'Ethereum';
     mockPrefCurrency = chf;
     mockIsInitialized = true;
+    mockIsHandingOff = false;
     mockFormatIban.mockImplementation((iban: string) => iban);
     mockCanSendTransaction.mockReturnValue(false);
     mockGetBalances.mockResolvedValue([{ asset: eth, amount: 10 }]);
@@ -866,7 +897,7 @@ describe('SellScreen', () => {
     expect(screen.queryByTestId('select-asset-BTC')).not.toBeInTheDocument();
   });
 
-  it('closes services when the wallet can send but is not connected', async () => {
+  it('hands off to the integrator when the wallet can send but is not connected', async () => {
     mockCanSendTransaction.mockReturnValue(true);
     mockActiveWallet = undefined;
     render(<SellScreen />);
@@ -874,8 +905,50 @@ describe('SellScreen', () => {
     await act(async () => {
       screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
     });
-    expect(mockCloseServices).toHaveBeenCalled();
+    expect(mockHandOff).toHaveBeenCalledTimes(1);
+    expect(mockHandOff).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'Sell', isComplete: false, sell: expect.anything() }),
+    );
     expect(mockUpdateAccount).toHaveBeenCalled();
+  });
+
+  it('keeps the confirm button busy during a hand-off', async () => {
+    mockCanSendTransaction.mockReturnValue(true);
+    mockIsHandingOff = true;
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByRole('button', { name: 'Complete transaction in your wallet' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+  });
+
+  it('ignores a click during a hand-off', async () => {
+    mockCanSendTransaction.mockReturnValue(true);
+    mockActiveWallet = undefined;
+    mockIsHandingOff = true;
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
+      await Promise.resolve();
+    });
+    expect(mockHandOff).not.toHaveBeenCalled();
+    expect(mockUpdateAccount).not.toHaveBeenCalled();
+  });
+
+  it('ignores a form submit during a hand-off', async () => {
+    mockCanSendTransaction.mockReturnValue(true);
+    mockActiveWallet = undefined;
+    mockIsHandingOff = true;
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
+      await Promise.resolve();
+    });
+    expect(mockHandOff).not.toHaveBeenCalled();
+    expect(mockUpdateAccount).not.toHaveBeenCalled();
   });
 
   it('completes after a successful wallet send', async () => {
@@ -889,6 +962,47 @@ describe('SellScreen', () => {
       await Promise.resolve();
     });
     expect(screen.getByTestId('sell-completion')).toBeInTheDocument();
+  });
+
+  it('closes with the confirmed order when the amount changes while the wallet send is pending', async () => {
+    let resolveSend: (value: unknown) => void = () => undefined;
+    mockCanSendTransaction.mockReturnValue(true);
+    mockActiveWallet = 'mm';
+    mockSendTransaction.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    mockReceiveFor.mockImplementation((req: any) => {
+      const quote = quoteFor(req);
+      return Promise.resolve({ ...quote, uid: `uid-${quote.amount}` });
+    });
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
+      await Promise.resolve();
+    });
+    expect(mockSendTransaction).toHaveBeenCalledWith(expect.objectContaining({ uid: 'uid-0.1' }));
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '0.2' } });
+    });
+    await flushQuote();
+    expect(screen.getByTestId('payment-info')).toHaveTextContent('0.2');
+    await act(async () => {
+      resolveSend('0xtx');
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('sell-completion')).toBeInTheDocument();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Close' }).click();
+    });
+    expect(mockCloseServices).toHaveBeenCalledTimes(1);
+    expect(mockCloseServices).toHaveBeenCalledWith(
+      { type: 'Sell', isComplete: true, sell: expect.objectContaining({ uid: 'uid-0.1', amount: 0.1 }) },
+      true,
+    );
   });
 
   it('swallows a wallet rejection (4001)', async () => {
@@ -1553,5 +1667,61 @@ describe('SellScreen', () => {
     });
     expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+  });
+
+  it('shows the already-verified link at KYC level 0 without a bank account', async () => {
+    mockUser = { kyc: { level: 0 } };
+    mockHasBankAccount = false;
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByRole('button', { name: 'I am already verified with DFX' })).toBeInTheDocument();
+    expect(mockReceiveFor).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+  });
+
+  it('navigates to /link with the redirect set when the already-verified link is clicked', async () => {
+    mockUser = { kyc: { level: 0 } };
+    mockHasBankAccount = false;
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      screen.getByRole('button', { name: 'I am already verified with DFX' }).click();
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('/link', { setRedirect: true });
+  });
+
+  it('does not show the already-verified link above KYC level 0', async () => {
+    mockUser = { kyc: { level: 10 } };
+    mockHasBankAccount = false;
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('bank-account-selector')).toBeInTheDocument();
+    expect(screen.queryByText('I am already verified with DFX')).not.toBeInTheDocument();
+  });
+
+  it('does not show the already-verified link once a quote is shown', async () => {
+    mockUser = { kyc: { level: 0 } };
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
+    expect(screen.queryByText('I am already verified with DFX')).not.toBeInTheDocument();
+  });
+
+  it('does not show the already-verified link once a quote error is shown', async () => {
+    mockUser = { kyc: { level: 0 } };
+    mockReceiveFor.mockRejectedValue({ statusCode: 400, message: 'KycRequired' });
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('quote-error')).toHaveTextContent('KycRequired');
+    expect(screen.queryByText('I am already verified with DFX')).not.toBeInTheDocument();
+  });
+
+  it('does not show the already-verified link once a quote request error is shown', async () => {
+    mockUser = { kyc: { level: 0 } };
+    mockReceiveFor.mockRejectedValue({ statusCode: 500, message: 'boom' });
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('boom');
+    expect(screen.queryByText('I am already verified with DFX')).not.toBeInTheDocument();
   });
 });
