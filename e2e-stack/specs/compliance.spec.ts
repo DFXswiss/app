@@ -30,7 +30,6 @@ import {
   ROLE_WALLET_INDEX,
   test,
   testWallet,
-  trackRow,
   waitForMatchingRow,
   waitForRow,
   withDb,
