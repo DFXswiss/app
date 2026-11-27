@@ -264,6 +264,8 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
           throw new Error('Invalid session');
         }
         authenticatedCustomerIdentity(appParams.session);
+        // A start with a session is not the launch login: it ends the renewal by an earlier launch in this tab.
+        launchCredentials.remove();
         updateSession(appParams.session);
         return true;
       }
@@ -314,7 +316,8 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
     reloadUser();
   }
 
-  // Only the launch with address and signature may renew a session; every other login ends that.
+  // Only the launch with address and signature may renew a session; every other login (this one, a wallet login, a
+  // start with a session, the account merge) drops the launch credentials.
   async function setSession(session: string, wallet?: WalletType, blockchain?: Blockchain): Promise<void> {
     launchCredentials.remove();
     updateSession(session);

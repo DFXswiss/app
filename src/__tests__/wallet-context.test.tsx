@@ -342,6 +342,34 @@ describe('WalletContextProvider param sessions', () => {
     expect(result.current.isInitialized).toBe(true);
   });
 
+  it('drops the launch credentials of an earlier launch when a start applies a session', async () => {
+    launchCredentials.set(LAUNCH);
+    mockAppParams = { session: 'jwt.token' };
+    await ready();
+
+    expect(mockUpdateSession).toHaveBeenCalledWith('jwt.token');
+    expect(launchCredentials.get()).toBeUndefined();
+  });
+
+  it('keeps the launch credentials when the launch with address and signature creates the session', async () => {
+    launchCredentials.set(LAUNCH);
+    mockAppParams = { address: LAUNCH.address, signature: LAUNCH.signature };
+    await ready();
+
+    expect(mockAuthenticate).toHaveBeenCalledTimes(1);
+    expect(launchCredentials.get()).toEqual(LAUNCH);
+  });
+
+  it('takes the launch with address and signature over a session and keeps the launch credentials', async () => {
+    launchCredentials.set(LAUNCH);
+    mockAppParams = { address: LAUNCH.address, signature: LAUNCH.signature, session: 'jwt.token' };
+    await ready();
+
+    expect(mockAuthenticate).toHaveBeenCalledTimes(1);
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(launchCredentials.get()).toEqual(LAUNCH);
+  });
+
   it('does not apply the same session twice', async () => {
     mockLoggedIn = true;
     mockAppParams = { session: 'jwt.token' };

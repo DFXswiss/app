@@ -36,6 +36,7 @@ jest.mock('react-router-dom', () => ({
 
 import AccountMerge from '../screens/account-merge.screen';
 import { JobStatus } from '../util/job';
+import { launchCredentials } from '../util/session-renewal';
 
 const MERGE_URL = 'auth/mail/confirm';
 const JOB = { uid: 'job-uid', expectedSeconds: 65 };
@@ -67,6 +68,7 @@ function mergeCalls(): number {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  sessionStorage.clear();
   mockUrlParams = new URLSearchParams('otp=the-otp');
 });
 
@@ -80,6 +82,18 @@ describe('AccountMerge', () => {
     expect(mockSetAuthToken).toHaveBeenCalledWith('token');
     expect(mergeCalls()).toBe(1);
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  // The access token signs in as the merged account; launch credentials of the tab's partner launch must not renew it.
+  it('drops the launch credentials when the confirmation issues an access token', async () => {
+    launchCredentials.set({ address: 'launch-address', signature: 'launch-signature' });
+    respondWith({ merge: [{ kycHash: 'hash', accessToken: 'token' }] });
+
+    render(<AccountMerge />);
+
+    expect(await screen.findByText('Wallet address added')).toBeInTheDocument();
+    expect(mockSetAuthToken).toHaveBeenCalledWith('token');
+    expect(launchCredentials.get()).toBeUndefined();
   });
 
   // The regression from the issue: a 202 used to leave the screen on the spinner forever.

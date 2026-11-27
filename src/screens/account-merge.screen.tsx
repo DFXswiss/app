@@ -7,6 +7,7 @@ import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { JobResponse, JobStatus, isJobResponse, isJobTerminal, pollJobUntilTerminal } from 'src/util/job';
 import { LOGIN_PARAMS } from 'src/util/login-params';
+import { launchCredentials } from 'src/util/session-renewal';
 
 interface MergeRedirect {
   kycHash: string;
@@ -59,6 +60,8 @@ export default function AccountMerge() {
       .then((result: MergeRedirect) => {
         if (isCancelled.current) return;
 
+        // The merge signs in as the merged account, so the launch credentials of the old one must not renew it.
+        launchCredentials.remove();
         setAuthToken(result.accessToken);
         setMerge(result);
       })
