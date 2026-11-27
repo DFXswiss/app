@@ -223,6 +223,10 @@ export default function KycScreen(): JSX.Element {
     if (!isInitialized) return;
     if (params.autoStart !== 'true') {
       setIsAutoStarting(false);
+    } else if (needsStepConfirm) {
+      // a step link waiting for its confirmation does not continue on its own
+      setIsAutoStarting(false);
+      setParams({ autoStart: undefined });
     } else if (!processingKycData && kycCode) {
       onLoad(true).finally(() => {
         setIsAutoStarting(false);
