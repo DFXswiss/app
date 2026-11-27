@@ -4031,15 +4031,26 @@ describe('ConnectPasskey opt-in', () => {
       expect(loggedOutBeforeFirstLogin()).toBe(true);
       expect(mockLogout).toHaveBeenCalledTimes(1);
       expect(mockWalletLogin).toHaveBeenCalledTimes(3);
-      expect(mockWalletLogin).toHaveBeenNthCalledWith(1, WalletType.PASSKEY, SEED, 'Ethereum', expect.any(Function));
+      expect(mockWalletLogin).toHaveBeenNthCalledWith(
+        1,
+        WalletType.PASSKEY,
+        SEED,
+        'Ethereum',
+        expect.any(Function),
+        undefined,
+        false,
+      );
       expect(mockWalletLogin).toHaveBeenNthCalledWith(
         2,
         WalletType.PASSKEY,
         BITCOIN_RECEIVE,
         'Bitcoin',
         expect.any(Function),
+        undefined,
+        false,
       );
       expect(mockWalletLogin).toHaveBeenNthCalledWith(3, WalletType.PASSKEY, SEED, 'Ethereum', expect.any(Function));
+      expect(mockWalletLogin.mock.calls[2]).toHaveLength(4);
       await expectSigner(mockWalletLogin.mock.calls[0]);
       await expectSigner(mockWalletLogin.mock.calls[1]);
       await expectSigner(mockWalletLogin.mock.calls[2]);
@@ -4243,12 +4254,14 @@ describe('ConnectPasskey opt-in', () => {
   it('stops before the second Ethereum login after unmount during the Bitcoin login, then logs out without navigating, calling onLogin, or a state update warning', async () => {
     const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     let releaseBitcoin: () => void = () => undefined;
-    mockWalletLogin.mockImplementationOnce(() => Promise.resolve()).mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          releaseBitcoin = resolve;
-        }),
-    );
+    mockWalletLogin
+      .mockImplementationOnce(() => Promise.resolve())
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseBitcoin = resolve;
+          }),
+      );
     mockGetAuthToken.mockReturnValue(accountToken(7));
     try {
       const view = await openDesk();
@@ -4387,12 +4400,14 @@ describe('ConnectPasskey opt-in', () => {
 
   it('logs out without navigating when the open session is replaced while the Bitcoin login runs', async () => {
     let releaseBitcoin: () => void = () => undefined;
-    mockWalletLogin.mockImplementationOnce(() => Promise.resolve()).mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          releaseBitcoin = resolve;
-        }),
-    );
+    mockWalletLogin
+      .mockImplementationOnce(() => Promise.resolve())
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseBitcoin = resolve;
+          }),
+      );
     mockGetAuthToken.mockReturnValue(accountToken(7));
     await openDesk();
     fireEvent.click(screen.getByRole('button', { name: 'Buy' }));

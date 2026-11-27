@@ -469,6 +469,24 @@ describe('WalletContextProvider', () => {
     expect(mockAuthenticate.mock.calls[0][6]).toBe(AuthWalletType.ALBY);
   });
 
+  it('sets the wallet and blockchain without reloading the user when reloadsUser is false', async () => {
+    mockSession.isInitialized = true;
+    mockSession.isLoggedIn = true;
+    mockParams.isInitialized = false;
+    await renderProvider();
+
+    await act(async () => {
+      await ctx.login(WalletType.ALBY, 'ln-addr', Blockchain.LIGHTNING, mockOnSignMessage, undefined, false);
+    });
+
+    expect(mockGetSignMessage).toHaveBeenCalledWith('ln-addr');
+    expect(mockOnSignMessage).toHaveBeenCalledWith('ln-addr', 'sign-message');
+    expect(mockWalletSet).toHaveBeenCalledWith(WalletType.ALBY);
+    expect(ctx.blockchain).toBe(Blockchain.LIGHTNING);
+    expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(mockAuthenticate.mock.calls[0][6]).toBe(AuthWalletType.ALBY);
+  });
+
   it('logs out and rethrows when login fails', async () => {
     mockSession.isInitialized = true;
     mockSession.isLoggedIn = true;

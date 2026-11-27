@@ -258,8 +258,13 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
       const env = walletEnvForHost(window.location.hostname);
       signingRef.current = true;
       setPasskeySigningIn(true);
-      await login(WalletType.PASSKEY, keys.evm(0).address, Blockchain.ETHEREUM, async (address, message) =>
-        new LoginAutoSigner(keys, env).sign('evm', address, message),
+      await login(
+        WalletType.PASSKEY,
+        keys.evm(0).address,
+        Blockchain.ETHEREUM,
+        async (address, message) => new LoginAutoSigner(keys, env).sign('evm', address, message),
+        undefined,
+        false,
       );
       const evmAccount = accountClaim(getAuthToken());
       if (priorAccount !== undefined && evmAccount !== priorAccount) throw new Error(PASSKEY_EVM_OTHER_ACCOUNT);
@@ -274,6 +279,8 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
           loginRing.ring.bitcoinAddress(0, 0).address,
           Blockchain.BITCOIN,
           async (address, message) => new LoginAutoSigner(loginRing.ring, env).sign('bitcoin', address, message),
+          undefined,
+          false,
         );
         if (accountClaim(getAuthToken()) !== evmAccount) throw new Error(PASSKEY_OTHER_ACCOUNT);
         if (abandonedRef.current || !sameSession(getOpenPasskey(), session)) {
