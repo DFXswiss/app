@@ -73,6 +73,7 @@ jest.mock('@dfx.swiss/react', () => ({
   }),
   useUserContext: () => ({ user: undefined, reloadUser: mockReloadUser }),
   useSessionContext: () => ({ logout: jest.fn() }),
+  useAuthContext: () => ({}),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => {

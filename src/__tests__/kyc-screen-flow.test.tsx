@@ -47,10 +47,16 @@ const mockKyc = {
 };
 
 const mockSession: { logout: jest.Mock; isLoggedIn: boolean } = { logout: mockLogout, isLoggedIn: false };
-const mockUser: { user?: { kyc: { hash: string }; activeAddress?: { address: string } }; reloadUser: jest.Mock } = {
+const mockUser: {
+  user?: { accountId?: number; kyc: { hash: string }; activeAddress?: { address: string } };
+  isUserLoading: boolean;
+  reloadUser: jest.Mock;
+} = {
   user: undefined,
+  isUserLoading: false,
   reloadUser: mockReloadUser,
 };
+const mockAuth: { session?: { account: number } } = {};
 const mockApp: {
   isInitialized: boolean;
   isWidget: boolean;
@@ -132,6 +138,7 @@ jest.mock('@dfx.swiss/react', () => ({
   isStepDone: (...args: unknown[]) => mockIsStepDone(...args),
   useKyc: () => mockKyc,
   useSessionContext: () => mockSession,
+  useAuthContext: () => mockAuth,
   useUserContext: () => mockUser,
 }));
 
@@ -381,6 +388,8 @@ beforeEach(() => {
   sessionStorage.removeItem('dfx.kyc.address');
   mockUser.user = undefined;
   mockSession.isLoggedIn = false;
+  mockUser.isUserLoading = false;
+  mockAuth.session = undefined;
   routerNavigate = undefined;
   routerLocation = undefined;
   mockApp.isInitialized = true;
@@ -549,6 +558,61 @@ describe('KycScreen links with the code of another account', () => {
     });
   });
 
+  it('does not carry an opened link over to another account', async () => {
+    const rendered = renderPath('/kyc?code=CODE');
+    fireEvent.click(await screen.findByRole('button', { name: 'Open link' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
+    await settle();
+
+    mockGetKycInfo.mockClear();
+    mockUser.user = { kyc: { hash: 'OTHER' } };
+    rendered.rerender(tree('/kyc?code=CODE'));
+    expect(await screen.findByText(CODE_PROMPT, undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+
+  it('waits for the user of the session account and loads it once', async () => {
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'PREVIOUS' } };
+    const rendered = renderPath('/kyc');
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+
+    mockUser.isUserLoading = true;
+    rendered.rerender(tree('/kyc'));
+    mockUser.isUserLoading = false;
+    rendered.rerender(tree('/kyc'));
+    await settle();
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+
+    mockUser.user = { accountId: 2, kyc: { hash: 'CURRENT' } };
+    rendered.rerender(tree('/kyc'));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CURRENT'), { timeout: 10000 });
+    expect(mockGetKycInfo).not.toHaveBeenCalledWith('PREVIOUS');
+  });
+
+  it('does not load the user again while it is already loading', async () => {
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'PREVIOUS' } };
+    mockUser.isUserLoading = true;
+    renderPath('/kyc');
+    await settle();
+    expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+
+  it('loads the own code when the user belongs to the session account', async () => {
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'USER' } };
+    await overview(info(), '/kyc');
+    expect(mockGetKycInfo).toHaveBeenCalledWith('USER');
+    expect(mockReloadUser).not.toHaveBeenCalled();
+  });
+
   it('keeps the code handoff that signs out', async () => {
     routeNavigation();
     mockLogout.mockImplementation(() => {
@@ -595,11 +659,41 @@ describe('KycScreen step links for a signed-in user', () => {
   });
 
   it('starts a step opened inside the app without asking', async () => {
-    renderPath({ pathname: '/kyc', search: '?step=PersonalData', state: { kycStep: 'PersonalData' } });
+    renderPath({
+      pathname: '/kyc',
+      search: '?step=PersonalData',
+      state: { kycStep: 'PersonalData', kycOwner: 'USER' },
+    });
     await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('USER', 'PersonalData', undefined, undefined), {
       timeout: 10000,
     });
     expect(screen.queryByText(stepPrompt('step:PersonalData'))).not.toBeInTheDocument();
+  });
+
+  it('asks when the in-app state was set for another account', async () => {
+    renderPath({
+      pathname: '/kyc',
+      search: '?step=PersonalData',
+      state: { kycStep: 'PersonalData', kycOwner: 'OTHER' },
+    });
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalled();
+  });
+
+  it('does not carry a confirmed step over to another account', async () => {
+    const rendered = renderPath('/kyc?step=PersonalData');
+    fireEvent.click(await screen.findByRole('button', { name: 'Start' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('USER', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    await settle();
+
+    mockUser.user = { kyc: { hash: 'OTHER' } };
+    rendered.rerender(tree('/kyc?step=PersonalData'));
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalledWith('OTHER', 'PersonalData', undefined, undefined);
   });
 
   it('asks when the in-app state names another step', async () => {
@@ -633,6 +727,80 @@ describe('KycScreen step links for a signed-in user', () => {
     renderPath('/kyc?step=Unknown');
     expect(await screen.findByText(stepPrompt('Unknown'), undefined, { timeout: 10000 })).toBeInTheDocument();
     expect(mockStartStep).not.toHaveBeenCalled();
+  });
+});
+
+describe('KycScreen results of a code that is no longer shown', () => {
+  function moveTo(search: string) {
+    act(() => {
+      (routerNavigate as ReturnType<typeof useNavigate>)({ pathname: '/kyc', search });
+    });
+  }
+
+  it.each([
+    ['an error', { message: 'stale' }],
+    ['a code handoff', { statusCode: 401, switchToCode: 'HANDOFF', message: 'switch' }],
+    ['a second factor request', { code: 'TFA_REQUIRED', message: 'tfa' }],
+  ])('drops %s of the previous code', async (_label, failure) => {
+    const previous = deferred();
+    mockGetKycInfo.mockImplementation((code: string) =>
+      code === 'ONE' ? previous.promise : Promise.resolve(info({ kycSteps: [step('ContactData')] })),
+    );
+    renderPath('/kyc?code=ONE');
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('ONE'), { timeout: 10000 });
+    moveTo('?code=TWO');
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+
+    await act(async () => {
+      previous.reject(failure);
+    });
+    await settle();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(mockApp.setParams).not.toHaveBeenCalledWith({ autoStart: 'true' });
+  });
+
+  it('drops the information of the previous code', async () => {
+    mockParams.lang = undefined;
+    const previous = deferred();
+    mockGetKycInfo.mockImplementation((code: string) =>
+      code === 'ONE' ? previous.promise : Promise.resolve(info({ language: { symbol: 'EN' } })),
+    );
+    renderPath('/kyc?code=ONE');
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('ONE'), { timeout: 10000 });
+    moveTo('?code=TWO');
+    await waitFor(() => expect(mockSettings.changeLanguage).toHaveBeenCalledWith({ symbol: 'EN' }), {
+      timeout: 10000,
+    });
+
+    await act(async () => {
+      previous.resolve(info({ language: { symbol: 'DE' } }));
+    });
+    await settle();
+    expect(mockSettings.changeLanguage).not.toHaveBeenCalledWith({ symbol: 'DE' });
+  });
+
+  it('drops a started step of the previous code', async () => {
+    routeNavigation();
+    const previous = deferred();
+    mockStartStep.mockImplementation((code: string, name: string, type: string) =>
+      code === 'ONE' ? previous.promise : Promise.resolve(session(step(name, { type }))),
+    );
+    renderPath('/kyc?code=ONE&step=PersonalData');
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('ONE', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    moveTo('?code=TWO&step=PersonalData');
+    await waitFor(() => expect(mockClearParams).toHaveBeenCalledWith(['step']), { timeout: 10000 });
+    await settle();
+    expect(mockClearParams).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      previous.resolve(session(step('PersonalData')));
+    });
+    await settle();
+    expect(mockClearParams).toHaveBeenCalledTimes(1);
   });
 });
 

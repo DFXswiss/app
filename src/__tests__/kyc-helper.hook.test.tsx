@@ -15,7 +15,9 @@ import { renderHook } from '@testing-library/react';
 import { useKycHelper } from '../hooks/kyc-helper.hook';
 
 const mockNavigate = jest.fn();
-const mockUserContext: { user?: { tradingLimit: { limit: number; period: string }; kyc: { level: number } } } = {};
+const mockUserContext: {
+  user?: { tradingLimit: { limit: number; period: string }; kyc: { level: number; hash?: string } };
+} = {};
 
 // The SDK ships ES modules that Jest does not transform, so its enums are mirrored here.
 jest.mock('@dfx.swiss/react', () => ({
@@ -73,11 +75,12 @@ describe('useKycHelper navigation', () => {
     );
   });
 
-  it('starts a step with a type and keeps the type in the router state', () => {
+  it('starts a step with a type and keeps the type and the own KYC code in the router state', () => {
+    mockUserContext.user = { tradingLimit: { limit: 0, period: LimitPeriod.YEAR }, kyc: { level: 0, hash: 'OWN' } };
     helper().startStep(KycStepName.IDENT, KycStepType.SUMSUB_VIDEO);
     expect(mockNavigate).toHaveBeenCalledWith(
       { pathname: '/kyc', search: `step=Ident/${KycStepType.SUMSUB_VIDEO}` },
-      { state: { kycStep: `Ident/${KycStepType.SUMSUB_VIDEO}` } },
+      { state: { kycStep: `Ident/${KycStepType.SUMSUB_VIDEO}`, kycOwner: 'OWN' } },
     );
   });
 });
