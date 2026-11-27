@@ -227,7 +227,7 @@ jest.mock('src/util/message-composer', () => ({
   isSendShortcut: (e: { key: string; metaKey: boolean }) => e.key === 'Enter' && e.metaKey,
 }));
 
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import SupportDashboardIssueScreen from 'src/screens/support-dashboard-issue.screen';
 
@@ -254,6 +254,9 @@ function rowText(label: string): string | null {
 async function renderLoaded(): Promise<ReturnType<typeof render>> {
   const view = render(<SupportDashboardIssueScreen />);
   expect(await screen.findByTestId('row-UID')).toBeInTheDocument();
+  // The loaded issue can be painted before the effect that starts its message load has run, so a
+  // test that settles that load itself would otherwise act on a request that does not exist yet.
+  await waitFor(() => expect(mockGetIssueMessages).toHaveBeenCalled());
   // Lets the clerk and message loads that the first render started settle inside act.
   await act(async () => undefined);
   return view;
