@@ -556,6 +556,11 @@ screen shows the paused message and no payment information`) adds `Sell` to the 
   `e2e-stack/specs/kyc-continue-race.spec.ts` upserts ContactData, PersonalData, NationalityData
   and Ident (`SumsubAuto`) to `Completed`. A green run does **not** prove those steps complete
   through the product path, including live ident.
+- **The full-stack KYC link spec SQL-marks an account as merged.**
+  `e2e-stack/specs/kyc.spec.ts` (`/kyc?code of a merged account hands over …`) sets
+  `user_data.status = 'Merged'` and `firstname = 'Merged into <id>'` on a fresh account so that the API
+  answers its KYC code with the `switchToCode` of the target account. A green run does **not** prove
+  that a real account merge writes that status and target.
 - **Full-stack compliance specs SQL-insert a pending Recommendation step.**
   `e2e-stack/specs/compliance.spec.ts` inserts a `kyc_step` named `Recommendation` in status
   `InternalReview`, on a synthetic account at KYC level 30 with completed personal data. A green run
