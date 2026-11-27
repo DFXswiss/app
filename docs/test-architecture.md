@@ -504,8 +504,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   in `e2e-stack/env/api.env` says and leaves the swap routes unmounted, so `POST /v1/swap` and
   `PUT /v1/swap/paymentInfos` answer HTTP 404; with the flag on and the process off they answer HTTP 503
   `TRANSACTIONS_PAUSED`. The swap quote and payment-info cases in `e2e-stack/specs/sell-swap.spec.ts` and the
-  `createSwap` case in `e2e-stack/specs/factories.spec.ts` assert whichever of the two answers they get, that the
-  swap screen shows the API's message and no payment information, and that no swap route is written, and end there.
+  `createSwap` case in `e2e-stack/specs/factories.spec.ts` assert whichever of the two answers they get and end
+  there; the screen cases also assert the API's message and no payment information. Only the UI write case and the
+  two `createSwap` cases also assert that no swap route is written.
   The swap cases that only render the swap form or compare its assets with `GET /v1/asset` do not depend on that
   answer. A green swap quote or payment-info case does **not** prove a swap quote, a swap route, the swap payment
   panel, the swap hand-off, its reload or its completion redirect, or the swap form submit.
