@@ -924,9 +924,18 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   a KYC level above 0 and no visit to `/login`. A green run does not prove that a return within 10 seconds of the
   confirmation renews the session, that a mail reaches a mailbox, that a real
   mail app or WebView keeps its storage as a browser context does, what `/account` shows without a session (the case
-  checks only the target the button opens), that a verified account reaches level 50 through the product path, or
-  the return to the `return-url` with a session after a confirmation in the signed-in browser, which only
-  `src/__tests__/account-merge.screen.test.tsx` covers.
+  checks only the target the button opens), or that a verified account reaches level 50 through the product path.
+- **The full-stack `/sell` merge case with a session confirms the mail in the signed-in browser context.** A second
+  case in `e2e-stack/specs/sell-swap.spec.ts` starts like the partner case above (two new accounts of the same kind, the `/sell`
+  launch with `address`, `signature`, amount, asset and partner redirect URI, the mail form on `/link`, the
+  `redirectUri` check and the merge mail from the `notification` table), but opens the mail's link in a new page of
+  the WebView's own browser context (`page.context().newPage()`). That page shares the cookies and `localStorage`,
+  and with them the signed-in session, but starts with its own empty `sessionStorage`. The case asserts the
+  confirmation and the completed `account_merge` row, then clicks "My account" and expects `/sell` with the amount,
+  the partner redirect URI in `sessionStorage`, no `session` left in the address bar and a session whose `account` is
+  the verified account's `userDataId`. A green run does not prove that a real mail app opens the link in the browser
+  where the partner WebView is signed in, that a mail reaches a mailbox, or what the WebView page itself shows after
+  the confirmation in the other page.
 - **The re-login after a merge is proven by unit tests against a replaced `fetch`.**
   `src/__tests__/session-renewal.test.ts` and the session-renewal cases of `src/__tests__/wallet-context.test.tsx`
   answer `window.fetch` with synthetic 401 and 200 responses and replace `renew` or the SDK's `authenticate`. A green
@@ -952,6 +961,15 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   `KycRequired`, and `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get `501`. A green run proves
   how `/sell/info` renders those two answers. It does not prove production auth, that the API returns them for a
   given amount or account, or that the client-error endpoint stores the report.
+- **The account-merge visual answers the API itself.** `e2e/account-merge.spec.ts` opens
+  `/account-merge?otp=synthetic-merge-otp&lang=en` without a session and without a real login, and fulfils the
+  bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset` with an empty list, `/v1/country` with an empty list,
+  `/v1/setting/infoBanner` with `null`), `GET /v1/auth/mail/confirm?code=synthetic-merge-otp` with a synthetic
+  `kycHash` and no `accessToken` (a confirmation from a mail app where nobody is signed in), and
+  `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get `501`; without a token the app requests no
+  user, KYC or bank accounts. A green run proves how `/account-merge` renders "Wallet address added" and the
+  "My account" button for that answer. It does not prove production auth, that the API answers a real merge link that
+  way, or where "My account" leads; the full-stack merge cases in `e2e-stack/specs/sell-swap.spec.ts` cover that.
 - **The wallet rejection unit test answers for the wallets and their SDKs.**
   `src/__tests__/connect-wallet-rejection.test.tsx` renders the real connect components, wallet hooks,
   `ConnectBase` and `ConnectError` with the real web3 and viem (its mock installs Node's `TextEncoder` and

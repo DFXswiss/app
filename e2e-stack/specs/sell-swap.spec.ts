@@ -22,10 +22,12 @@
  * One /sell case follows "I am already verified with DFX" from a KYC level 0 account without a bank
  * account to /link and back to /sell. Another one starts like a partner WebView with `address`+`signature`,
  * enters the mail of a verified account there, confirms the merge mail in a new browser context and checks
- * that OK in the WebView stays on /sell, signed in to the verified account.
+ * that OK in the WebView stays on /sell, signed in to the verified account. A third one starts the same way but
+ * confirms the merge mail in a new page of the signed-in browser context and checks that "My account" returns to
+ * /sell with a session of the verified account.
  */
 
-import type { Page, Response } from '@playwright/test';
+import type { Locator, Page, Response } from '@playwright/test';
 import { ethers } from 'ethers';
 import {
   apiPut,
@@ -481,6 +483,109 @@ async function sessionAccount(page: Page): Promise<number | undefined> {
 /** `columns` of the user_data row `id`. */
 async function userDataRow<T>(id: number, columns: string): Promise<T> {
   return required(await queryOne<T>(`SELECT ${columns} FROM user_data WHERE id = $1`, [id]), `user_data row ${id}`);
+}
+
+/**
+ * The start of both merge cases: a verified account from `createUser` (KYC level 50) and a fresh sign-up without a
+ * mail as the KYC level 0 account. `page` opens `/sell` like a partner WebView with `address`+`signature` of that
+ * wallet, the amount, the asset and the partner redirect URI, follows "I am already verified with DFX" to `/link`,
+ * enters the verified account's mail there and checks the `redirectUri` it sends. Returns the two accounts, the launch
+ * signature, the spend field and the `/account-merge` link of the merge mail, whose `return-url` is that redirectUri.
+ */
+async function startPartnerMerge(
+  page: Page,
+  tag: string,
+): Promise<{
+  master: SellSwapUser;
+  slave: { id: number; userDataId: number };
+  signature: string;
+  spend: Locator;
+  mergeLink: URL;
+}> {
+  const master = await createUser({
+    walletIndex: nextWalletIndex(),
+    tag: `${tag}-master`,
+    kycLevel: 50,
+    completePersonalData: true,
+    language: 'EN',
+  });
+  const masterMail = required(master.mail, 'createUser returns the mail it set');
+
+  // A fresh sign-up without a mail, so ContactData is still open and /link shows the mail form.
+  const slaveWallet = testWallet(nextWalletIndex());
+  const slaveJwt = await signatureLogin(slaveWallet);
+  const slave = required(
+    await queryOne<{ id: number; userDataId: number }>(
+      `SELECT id, "userDataId" AS "userDataId" FROM "user" WHERE address = $1 LIMIT 1`,
+      [slaveWallet.address],
+    ),
+    'the "user" row of the signed-up slave wallet',
+  );
+  trackRow('user_data', slave.userDataId);
+  trackRow('user', slave.id);
+  const english = required(
+    await queryOne<{ id: number }>(`SELECT id FROM language WHERE symbol = 'EN' LIMIT 1`),
+    'the EN language row',
+  );
+  await apiPut<unknown>('user', { language: { id: english.id } }, { jwt: slaveJwt, version: 'v2', expectOk: true });
+
+  const signature = await loginSignature(slaveWallet);
+  await page.goto(
+    `/sell?address=${encodeURIComponent(slaveWallet.address)}&signature=${encodeURIComponent(signature)}` +
+      `&blockchain=Ethereum&asset-in=ETH&asset-out=CHF&amount-in=0.2${WALLET_REDIRECT_QUERY}`,
+  );
+  await expect.poll(() => sessionAccount(page), { timeout: 20000 }).toBe(slave.userDataId);
+  const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
+  await expect(spend).toHaveValue('0.2', { timeout: 15000 });
+  expect(new URL(page.url()).searchParams.has('signature')).toBe(false);
+
+  await page.getByText('I am already verified with DFX', { exact: true }).click({ timeout: 15000 });
+  await page.waitForURL((url) => normPath(url.pathname) === '/link', { timeout: 15000 });
+
+  const mailInput = page.getByPlaceholder('example@mail.com');
+  await expect(mailInput).toBeVisible({ timeout: 20000 });
+  await mailInput.fill(masterMail);
+
+  const contactPut = page.waitForResponse((response) => {
+    const request = response.request();
+    return request.method() === 'PUT' && (request.postData() ?? '').includes(masterMail);
+  });
+  await page.getByRole('button', { name: 'Next' }).click();
+  const contactResponse = await contactPut;
+  expect(contactResponse.ok(), `contact data PUT returned ${contactResponse.status()}`).toBe(true);
+
+  // What the app sends does not depend on the backend change: the page to return to, on this origin.
+  const sent = contactResponse.request().postDataJSON() as { mail?: string; redirectUri?: string };
+  const returnTarget = new URL(required(sent.redirectUri, 'redirectUri in the contact data body'));
+  expect(returnTarget.origin).toBe(new URL(page.url()).origin);
+  expect(returnTarget.pathname).toBe('/sell');
+  expect(returnTarget.searchParams.get('amount-in')).toBe('0.2');
+  expect(returnTarget.searchParams.get('asset-in')).toBe('ETH');
+  expect(returnTarget.searchParams.get('asset-out')).toBe('CHF');
+  expect(returnTarget.searchParams.get('redirect-uri')).toBe(WALLET_REDIRECT_URI);
+  for (const login of ['session', 'address', 'signature', 'code']) {
+    expect(returnTarget.searchParams.has(login), `redirectUri carries "${login}"`).toBe(false);
+  }
+
+  await expect(page.getByText(/It looks like you already have an account with DFX\./)).toBeVisible({
+    timeout: 20000,
+  });
+
+  await waitForRow<{ id: number }>(
+    `SELECT id FROM account_merge WHERE "masterId" = $1 AND "slaveId" = $2 ORDER BY id DESC LIMIT 1`,
+    [master.userDataId, slave.userDataId],
+    20000,
+  );
+  const mail = await waitForMatchingRow<{ data: string }>(
+    `SELECT n.data FROM notification n WHERE n."userDataId" IN ($1, $2) ORDER BY n.id DESC`,
+    [master.userDataId, slave.userDataId],
+    (row) => accountMergeLink(decryptPii(row.data)) !== undefined,
+    20000,
+  );
+  const mergeLink = required(accountMergeLink(decryptPii(mail.data)), 'the /account-merge link in the merge mail');
+  expect(mergeLink.searchParams.get('return-url')).toBe(sent.redirectUri);
+
+  return { master, slave, signature, spend, mergeLink };
 }
 
 /**
@@ -1488,89 +1593,7 @@ test.describe('Sell + Swap e2e', () => {
     browser,
   }) => {
     test.setTimeout(180000);
-    const master = await createUser({
-      walletIndex: nextWalletIndex(),
-      tag: 'sell-merge-master',
-      kycLevel: 50,
-      completePersonalData: true,
-      language: 'EN',
-    });
-    const masterMail = required(master.mail, 'createUser returns the mail it set');
-
-    // A fresh sign-up without a mail, so ContactData is still open and /link shows the mail form.
-    const slaveWallet = testWallet(nextWalletIndex());
-    const slaveJwt = await signatureLogin(slaveWallet);
-    const slave = required(
-      await queryOne<{ id: number; userDataId: number }>(
-        `SELECT id, "userDataId" AS "userDataId" FROM "user" WHERE address = $1 LIMIT 1`,
-        [slaveWallet.address],
-      ),
-      'the "user" row of the signed-up slave wallet',
-    );
-    trackRow('user_data', slave.userDataId);
-    trackRow('user', slave.id);
-    const english = required(
-      await queryOne<{ id: number }>(`SELECT id FROM language WHERE symbol = 'EN' LIMIT 1`),
-      'the EN language row',
-    );
-    await apiPut<unknown>('user', { language: { id: english.id } }, { jwt: slaveJwt, version: 'v2', expectOk: true });
-
-    const signature = await loginSignature(slaveWallet);
-    await page.goto(
-      `/sell?address=${encodeURIComponent(slaveWallet.address)}&signature=${encodeURIComponent(signature)}` +
-        `&blockchain=Ethereum&asset-in=ETH&asset-out=CHF&amount-in=0.2${WALLET_REDIRECT_QUERY}`,
-    );
-    await expect.poll(() => sessionAccount(page), { timeout: 20000 }).toBe(slave.userDataId);
-    const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
-    await expect(spend).toHaveValue('0.2', { timeout: 15000 });
-    expect(new URL(page.url()).searchParams.has('signature')).toBe(false);
-
-    await page.getByText('I am already verified with DFX', { exact: true }).click({ timeout: 15000 });
-    await page.waitForURL((url) => normPath(url.pathname) === '/link', { timeout: 15000 });
-
-    const mailInput = page.getByPlaceholder('example@mail.com');
-    await expect(mailInput).toBeVisible({ timeout: 20000 });
-    await mailInput.fill(masterMail);
-
-    const contactPut = page.waitForResponse((response) => {
-      const request = response.request();
-      return request.method() === 'PUT' && (request.postData() ?? '').includes(masterMail);
-    });
-    await page.getByRole('button', { name: 'Next' }).click();
-    const contactResponse = await contactPut;
-    expect(contactResponse.ok(), `contact data PUT returned ${contactResponse.status()}`).toBe(true);
-
-    // What the app sends does not depend on the backend change: the page to return to, on this origin.
-    const sent = contactResponse.request().postDataJSON() as { mail?: string; redirectUri?: string };
-    const returnTarget = new URL(required(sent.redirectUri, 'redirectUri in the contact data body'));
-    expect(returnTarget.origin).toBe(new URL(page.url()).origin);
-    expect(returnTarget.pathname).toBe('/sell');
-    expect(returnTarget.searchParams.get('amount-in')).toBe('0.2');
-    expect(returnTarget.searchParams.get('asset-in')).toBe('ETH');
-    expect(returnTarget.searchParams.get('asset-out')).toBe('CHF');
-    expect(returnTarget.searchParams.get('redirect-uri')).toBe(WALLET_REDIRECT_URI);
-    for (const login of ['session', 'address', 'signature', 'code']) {
-      expect(returnTarget.searchParams.has(login), `redirectUri carries "${login}"`).toBe(false);
-    }
-
-    await expect(page.getByText(/It looks like you already have an account with DFX\./)).toBeVisible({
-      timeout: 20000,
-    });
-
-    await waitForRow<{ id: number }>(
-      `SELECT id FROM account_merge WHERE "masterId" = $1 AND "slaveId" = $2 ORDER BY id DESC LIMIT 1`,
-      [master.userDataId, slave.userDataId],
-      20000,
-    );
-    const mail = await waitForMatchingRow<{ data: string }>(
-      `SELECT n.data FROM notification n WHERE n."userDataId" IN ($1, $2) ORDER BY n.id DESC`,
-      [master.userDataId, slave.userDataId],
-      (row) => accountMergeLink(decryptPii(row.data)) !== undefined,
-      20000,
-    );
-    const mergeLink = required(accountMergeLink(decryptPii(mail.data)), 'the /account-merge link in the merge mail');
-    const returnUrl = mergeLink.searchParams.get('return-url');
-    expect(returnUrl).toBe(sent.redirectUri);
+    const { master, slave, signature, spend, mergeLink } = await startPartnerMerge(page, 'sell-merge');
 
     let mergeConfirmedAt = 0;
     const mailBrowser = await browser.newContext();
@@ -1635,6 +1658,53 @@ test.describe('Sell + Swap e2e', () => {
     expect(visited).not.toContain('/login');
     expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
     expect(await page.evaluate(() => JSON.stringify(window.localStorage))).not.toContain(signature);
+  });
+
+  // The return with a session: the merge mail is confirmed in a new page of the WebView's own browser context, which
+  // shares its localStorage and with it the signed-in session, so the API issues an access token and "My account"
+  // continues to the return-url with that session.
+  test('/sell: a partner launch with address and signature enters the mail of a verified account on /link, the merge mail is confirmed in the signed-in browser, and My account returns to /sell signed in to the verified account', async ({
+    page,
+  }) => {
+    test.setTimeout(180000);
+    const { master, slave, mergeLink } = await startPartnerMerge(page, 'sell-merge-signed-in');
+
+    const mailPage = await page.context().newPage();
+    try {
+      await isolateFromExternalHosts(mailPage);
+      await mailPage.goto(mergeLink.href);
+      await expect(mailPage.getByText('Wallet address added', { exact: true })).toBeVisible({ timeout: 30000 });
+
+      const merge = await waitForRow<{ isCompleted: boolean }>(
+        `SELECT "isCompleted" AS "isCompleted" FROM account_merge
+         WHERE "masterId" = $1 AND "slaveId" = $2 AND "isCompleted" = true
+         ORDER BY id DESC LIMIT 1`,
+        [master.userDataId, slave.userDataId],
+        20000,
+      );
+      expect(merge.isCompleted).toBe(true);
+
+      await mailPage.getByRole('button', { name: 'My account', exact: true }).click();
+      await mailPage.waitForURL((url) => normPath(url.pathname) === '/sell', { timeout: 15000 });
+      // The start applies the session the return-url carries and removes it from the address bar.
+      await expect.poll(() => new URL(mailPage.url()).searchParams.has('session'), { timeout: 15000 }).toBe(false);
+      await expect.poll(() => sessionAccount(mailPage), { timeout: 20000 }).toBe(master.userDataId);
+
+      await expect(mailPage.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+      const spend = mailPage
+        .locator('h2', { hasText: 'You spend' })
+        .locator('..')
+        .locator('input[type="number"]')
+        .first();
+      await expect(spend).toHaveValue('0.2', { timeout: 15000 });
+      expect(await mailPage.evaluate((key) => window.sessionStorage.getItem(key), REDIRECT_URI_KEY)).toBe(
+        WALLET_REDIRECT_URI,
+      );
+      expect(normPath(new URL(mailPage.url()).pathname)).toBe('/sell');
+      expect(new URL(mailPage.url()).searchParams.has('session')).toBe(false);
+    } finally {
+      await mailPage.close();
+    }
   });
 
   test('/sell: closing a sell the wallet sent redirects once as complete with the route and the order', async ({

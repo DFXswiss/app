@@ -191,6 +191,10 @@
     "title": "Link-Screen: Weiterleitung bei zusammengeführtem Account",
     "description": "/link-Screen für einen Account, der zu einem anderen zusammengeführt wurde: statt des rohen Backend-Fehlertexts landet die Nutzerin auf dem KYC-Screen des Hauptaccounts."
   },
+  "account-merge": {
+    "title": "Wallet-Adresse hinzugefügt (Account-Merge)",
+    "description": "Bestätigungsseite /account-merge nach dem Link aus der Merge-Mail, geöffnet ohne Anmeldung (z. B. in der Mail-App): „Wallet address added“ mit dem Button „My account“."
+  },
   "known-rejections": {
     "title": "Bekannte API-Ablehnungen",
     "description": "Nicht unterstützte Zeichen im KYC-Formular als Feldfehler; lehnt die API Name oder Adresse trotzdem ab, erscheint ein übersetzter Hinweis statt «Something went wrong»; eine gesperrte Bank im Rückerstattungsformular zeigt einen Hinweis, das Formular bleibt sichtbar."
