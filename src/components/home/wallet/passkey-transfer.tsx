@@ -25,9 +25,12 @@ const SCAN_UNAVAILABLE = 'QR scanning is not available in this browser.';
 
 export function PasskeyReceivePanel({
   keys,
+  failed,
   onReceiveError,
 }: {
   keys: KeyRing;
+  // Non-production handbook hook: treat the derivation as failed.
+  failed?: boolean;
   onReceiveError: (message?: string) => void;
 }): JSX.Element {
   const { translate } = useSettingsContext();
@@ -38,13 +41,14 @@ export function PasskeyReceivePanel({
 
   useEffect(() => {
     try {
+      if (failed) throw new Error();
       setAddress(receiveAddress(keys));
       onReceiveErrorRef.current(undefined);
     } catch (caught) {
       setAddress(undefined);
       onReceiveErrorRef.current(passkeyMessage(caught));
     }
-  }, [keys]);
+  }, [keys, failed]);
 
   return (
     <div className="w-full pt-4">

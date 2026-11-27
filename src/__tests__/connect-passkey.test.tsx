@@ -382,6 +382,11 @@ describe('ConnectPasskey', () => {
       expect(within(row).getByText('Something went wrong. Please try again.')).toBeInTheDocument();
       expect(screen.queryByTitle(BITCOIN_RECEIVE)).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Copy address Bitcoin' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Receive' }));
+      const dialog = screen.getByRole('dialog', { name: 'Receive' });
+      expect(within(dialog).getByRole('alert')).toHaveTextContent('Something went wrong. Please try again.');
+      expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('qr-code')).not.toBeInTheDocument();
     } finally {
       delete window.__dfxHandbookPasskeyReceiveError;
     }
@@ -2588,7 +2593,7 @@ describe('ConnectPasskey', () => {
     await waitFor(() => expect(mockWallets).toHaveBeenCalledWith('token'));
     expect(wiped).toHaveBeenCalledTimes(2);
     expect(keys.wipe).not.toHaveBeenCalled();
-    mockVerify.mockReturnValue([{ address: 'bc1qlogin', family: 'Bitcoin', matches: true }]);
+    mockVerify.mockReturnValue([{ address: 'bc1qlogin', matches: true }]);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     await waitFor(() => expect(screen.getByRole('button', { name: /Check addresses/ })).toBeEnabled());
@@ -3664,6 +3669,8 @@ describe('ConnectPasskey', () => {
       expect(screen.getByRole('dialog', { name: 'Receive' })).toBeInTheDocument();
       expect(screen.queryByTestId('passkey-receive-address')).not.toBeInTheDocument();
       expect(screen.queryByTestId('passkey-receive-qr')).not.toBeInTheDocument();
+      // The panel is not mounted at all: no derivation runs, so no error is shown either.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it('shows receive and send on an unlocked desk with the existing actions', () => {

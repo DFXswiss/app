@@ -512,6 +512,22 @@ test.describe('Passkey login', () => {
     ]);
   });
 
+  test('shows the receive error when bitcoin derivation fails', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as HistoryWindow).__dfxHandbookPasskeyReceiveError = true;
+    });
+    await registerUnlockedDesk(page);
+    await page.getByRole('button', { name: 'Receive' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Receive' });
+    const alert = dialog.getByRole('alert');
+    await expect(alert).toHaveText('Something went wrong. Please try again.');
+    await expect(dialog.getByTestId('passkey-receive-address')).toHaveCount(0);
+    await expect(page.locator('[data-testid=passkey-receive-qr]')).toHaveCount(0);
+    await expect(dialog.getByRole('button')).toHaveCount(1);
+    await expectBitcoinOnly(page);
+    await shoot(page, 'passkey-desk-receive-error.png', [...(await deskControls(page)), alert]);
+  });
+
   test('shows the send form without sending', async ({ page }) => {
     await registerUnlockedDesk(page);
     await page.getByRole('button', { name: 'Send' }).click();

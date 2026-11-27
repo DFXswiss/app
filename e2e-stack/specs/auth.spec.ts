@@ -555,9 +555,11 @@ test.describe('Auth area e2e', () => {
       await expect(page.getByText(/Spark|EVM|Ethereum/)).toHaveCount(0);
       await page.getByRole('button', { name: 'Receive', exact: true }).click();
       const receive = page.getByRole('dialog', { name: 'Receive' });
-      await expect(receive.getByRole('button', { name: /^(EVM|Spark)$/ })).toHaveCount(0);
       const shownReceive = receive.getByTestId('passkey-receive-address');
       await expect(shownReceive).toHaveText(address);
+      // Only after the dialog shows the address: its sole buttons are Close and Copy address.
+      await expect(receive.getByRole('button')).toHaveCount(2);
+      await expect(receive.getByRole('button', { name: /^(EVM|Spark)$/ })).toHaveCount(0);
       await expect(shownReceive).not.toHaveText(row.address);
       await receive.getByRole('button', { name: 'Close' }).click();
       await page.getByRole('button', { name: 'Send', exact: true }).click();

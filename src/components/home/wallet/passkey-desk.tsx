@@ -588,6 +588,7 @@ export default function PasskeyDesk({
           {canUseKeys(open) && (
             <PasskeyReceivePanel
               keys={open.keys}
+              failed={receiveError}
               onReceiveError={(message) => {
                 if (message !== undefined) setNote(message, 'receive');
                 else if (noteKindRef.current === 'receive') setNote(undefined);
