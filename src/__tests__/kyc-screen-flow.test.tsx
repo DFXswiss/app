@@ -598,6 +598,36 @@ describe('KycScreen links with the code of another account', () => {
     expect(mockGetKycInfo).not.toHaveBeenCalledWith('PREVIOUS');
   });
 
+  it('does not offer the account choice for the previous account while the session user loads', async () => {
+    routeNavigation();
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'PREVIOUS' } };
+    const rendered = renderPath('/kyc?code=CODE');
+    await settle();
+    expect(screen.queryByRole('button', { name: 'Continue with my account' })).not.toBeInTheDocument();
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(mockClearParams).not.toHaveBeenCalledWith(['code']);
+
+    mockUser.user = { accountId: 2, kyc: { hash: 'CURRENT' } };
+    rendered.rerender(tree('/kyc?code=CODE'));
+    expect(await screen.findByText(CODE_PROMPT, undefined, { timeout: 10000 })).toBeInTheDocument();
+    expect(routerLocation?.search).toContain('code=CODE');
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+
+  it('hides the previous account overview while the session user loads', async () => {
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'USER' } };
+    const rendered = await overview(info(), '/kyc');
+
+    mockAuth.session = { account: 2 };
+    rendered.rerender(tree('/kyc'));
+    await settle();
+    expect(screen.queryByTestId('kyc-status')).not.toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+  });
+
   it('does not load the user again while it is already loading', async () => {
     mockAuth.session = { account: 2 };
     mockUser.user = { accountId: 1, kyc: { hash: 'PREVIOUS' } };
