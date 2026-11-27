@@ -827,6 +827,50 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   enums, the order hook, the debounce hook and the payment-info component. A green run proves the
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
+- **The payment-simulation full-stack case books through the API's own bank simulator.**
+  In `e2e-stack/specs/buy.spec.ts` ("Simulate payment books a test transfer for the pending buy"), the
+  click calls `PUT /v1/buy/:id/simulatePayment` on the loc API, which writes one synthetic `bank_tx`
+  credit instead of importing a bank statement; the spec reads `buy` and `bank_tx` with SQL, raises the
+  user's `depositLimit` with SQL as the other quote cases do, and repeats the same booking through the API
+  client to check the idempotency key. A green run proves the button, the request body, the API's answer,
+  the booked credit and that a repeated booking adds no second credit. It does not prove a real bank
+  transfer or statement import, that the credit is assigned to the buy or paid out (the `BankTx` and
+  `BuyCrypto` processes are off), or that a production API refuses the call.
+- **The payment-simulation visuals answer the quote, the confirmation and the simulation themselves.**
+  `e2e/buy-process.spec.ts` and `e2e/buy-info.spec.ts` ("shows the payment simulation on the completion of a
+  pending buy") fulfil `**/v1/buy/paymentInfos`, on `/buy` also the confirmation, and
+  `**/v1/buy/17/simulatePayment` or `**/v1/buy/18/simulatePayment` (first a 400 with a fixed message, then an
+  empty 200). A green run proves the tool renders ready, with that error and after the booking on both
+  completions. It does not prove that the API returns those answers or books anything.
+- **The payment-simulation unit tests replace the SDK, the build gate and the components.**
+  `src/__tests__/simulate-payment.test.tsx` replaces `useApi` of `@dfx.swiss/react`, the component library
+  and the settings context; `src/__tests__/buy-completion-simulate.test.tsx` and
+  `src/__tests__/buy-completion-close.test.tsx` replace `src/util/test-network` (`isTestEnvironment` on or
+  off), the simulation component, the mail form and the navigation and app-handling hooks. A green run
+  proves the request the hook builds, the shown states, and that the completion shows the tool only when
+  the stubbed gate is on. It does not prove the real SDK call, that a real build turns the gate on or
+  off, or the published components.
+- **The regtest unit tests replace the wallet package and the regtest module.**
+  `src/__tests__/passkey-regtest-keys.test.ts` replaces `@dfx.swiss/wallet` with a `KeyRing` that returns
+  fixed addresses (including the regtest test vector `bcrt1q6rz28mcfaxtmd6v789l9rrlrusdprr9pz3cppk` of the
+  "abandon … about" mnemonic) and an `EsploraClient` whose balance is a stub, and replaces
+  `src/util/test-network` and `src/config/api`. `src/__tests__/passkey-regtest.test.tsx` replaces the key
+  and balance functions, the clipboard hook, the QR code and the settings context.
+  `src/__tests__/passkey-desk-regtest.test.tsx` replaces `@dfx.swiss/wallet`, the component library, the
+  settings context, the passkey host and bytes helpers, the wallet client, the transfer panels, the wallet
+  card, actions and history, the four sheets, the regtest card and `regtestAvailable`. A green
+  run proves the probe, the gate, the URL and options passed to the client, the shown balance states and
+  that the desk shows the card only when the stubbed gate is on. It does not prove a real regtest
+  derivation, that a released `@dfx.swiss/wallet` passes the probe, a real Esplora answer, that the API
+  forward serves `BitcoinRegtest`, or that a visitor ever sees the card: the pinned 0.1.1-beta.3 fails the
+  probe, so the card stays hidden.
+- **The test-network unit test replaces the compiled API URL.** `src/__tests__/test-network.test.ts`
+  replaces `src/config/api` with a mutable URL. A green run proves which hosts count as DEV, STG and LOC.
+  It does not prove which URL a real build compiles in.
+- **The blockchain-label unit test replaces the SDK enum.** `src/__tests__/blockchain.hook.test.ts`
+  replaces `@dfx.swiss/react` with the `Blockchain` values the hook reads. A green run proves the names,
+  headers, protocols and main tokens, including Bitcoin Regtest as a test network. It does not prove that
+  the published enum has those values or that the API serves `BitcoinRegtest`.
 
 ## Known gaps
 

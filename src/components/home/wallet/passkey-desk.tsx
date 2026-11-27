@@ -15,6 +15,8 @@ import PasskeyRevokeSheet from './passkey-revoke-sheet';
 import PasskeySettingsSheet from './passkey-settings-sheet';
 import PasskeySheet from './passkey-sheet';
 import PasskeyWalletHistory, { PasskeyHistory } from './passkey-wallet-history';
+import PasskeyRegtest from './passkey-regtest';
+import { regtestAvailable } from './passkey-regtest-keys';
 
 const TOAST_DURATION_MS = 4000;
 
@@ -113,6 +115,8 @@ export default function PasskeyDesk({
   const [noteKind, setNoteKind] = useState<'message' | 'refresh' | 'status' | 'diagnostics' | 'receive'>('message');
   const [words, setWords] = useState<string[]>();
   const [checks, setChecks] = useState<{ family: string; address: string; matches: boolean }[]>();
+  // Test networks only (DEV, STG, LOC) and only once the wallet package supports regtest; never on PRD.
+  const [showRegtest] = useState(regtestAvailable);
   const busyRef = useRef(false);
   const mounted = useRef(false);
   const sheetRef = useRef<typeof sheet>();
@@ -432,6 +436,11 @@ export default function PasskeyDesk({
         onSettings={() => openSheet('settings')}
       />
       <PasskeyWalletActions busy={busy} onAction={onAction} />
+      {showRegtest && (
+        <div className="mt-6">
+          <PasskeyRegtest unlocked={canUseKeys(open)} />
+        </div>
+      )}
       {expanded && (
         <section id="passkey-wallet-details" className="mt-6">
           <h2 className="mb-2 text-xl font-bold">{t('Your wallet')}</h2>

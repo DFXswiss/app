@@ -38,6 +38,9 @@ jest.mock('../hooks/navigation.hook', () => ({
 
 jest.mock('../components/edit/mail.edit', () => ({ MailEdit: () => null }));
 
+// The close handling does not depend on the build; a local .env must not turn the test tool on here.
+jest.mock('../util/test-network', () => ({ isTestEnvironment: () => false }));
+
 import { fireEvent, render, screen } from '@testing-library/react';
 import { BuyCompletion } from '../components/payment/buy-completion';
 

@@ -1,5 +1,6 @@
 import { Blockchain } from '@dfx.swiss/react';
 import { useMemo } from 'react';
+import { BITCOIN_REGTEST } from '../util/test-network';
 
 export interface BlockchainInterface {
   toHeader: (blockchain: Blockchain) => string;
@@ -60,6 +61,7 @@ export function useBlockchain(): BlockchainInterface {
       [Blockchain.HAQQ]: 'ISLM',
       [Blockchain.CITREA]: 'cBTC',
       [Blockchain.CITREA_TESTNET]: 'cBTC',
+      [BITCOIN_REGTEST]: 'BTC',
     },
     stringValue: {
       [Blockchain.ETHEREUM]: 'Ethereum',
@@ -86,6 +88,8 @@ export function useBlockchain(): BlockchainInterface {
       [Blockchain.ARKADE]: 'Arkade',
       [Blockchain.CITREA]: 'Citrea',
       [Blockchain.CITREA_TESTNET]: 'Citrea Testnet',
+      // Not yet in the Blockchain enum of @dfx.swiss/react; the API serves it outside PRD only.
+      [BITCOIN_REGTEST]: 'Bitcoin Regtest (test network)',
     },
   };
 

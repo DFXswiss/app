@@ -15,7 +15,9 @@ import { useState } from 'react';
 import { CloseType, useAppHandlingContext } from '../../contexts/app-handling.context';
 import { useSettingsContext } from '../../contexts/settings.context';
 import { useNavigation } from '../../hooks/navigation.hook';
+import { isTestEnvironment } from '../../util/test-network';
 import { MailEdit } from '../edit/mail.edit';
+import { SimulatePayment } from './simulate-payment';
 
 interface BuyCompletionProps {
   user?: User;
@@ -64,6 +66,8 @@ export function BuyCompletion({ user, paymentInfo, navigateOnClose }: BuyComplet
         <DfxIcon size={IconSize.XXL} icon={IconVariant.PROCESS_DONE} color={IconColor.BLUE} />
       </div>
       <p className="text-base font-bold text-center text-dfxBlue-800">{getHeader()}</p>
+
+      {paymentInfo && isTestEnvironment() ? <SimulatePayment buy={paymentInfo} /> : null}
 
       {hasMail ? (
         <>

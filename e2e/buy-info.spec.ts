@@ -204,6 +204,91 @@ test.describe('Buy Info - UI Flow', () => {
     });
   });
 
+  // REACT_APP_API_URL is http://localhost:3000 for these visuals, so the build counts as a test build and the
+  // completion offers the payment simulation. /buy/info shows the completion without a confirm request; the quote
+  // and both simulation answers are fixtures.
+  test('shows the payment simulation on the completion of a pending buy', async ({ page, request }) => {
+    const token = await getToken(request);
+    let simulateStatus = 400;
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          id: 10,
+          routeId: 18,
+          isValid: true,
+          exactPrice: true,
+          amount: 100,
+          estimatedAmount: 0.0251,
+          rate: 3862.5,
+          exchangeRate: 3984.06,
+          priceSteps: [],
+          minVolume: 10,
+          maxVolume: 990000,
+          minVolumeTarget: 0.0026,
+          maxVolumeTarget: 248.5,
+          fees: {
+            rate: 0.0099,
+            fixed: 0,
+            min: 0,
+            dfx: 0.99,
+            network: 0,
+            bank: 0,
+            bankFixed: 2,
+            bankVariable: 0,
+            platform: 0,
+            total: 2.99,
+          },
+          currency: { id: 2, name: 'EUR' },
+          asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
+          bic: 'UBSWCHZH80A',
+          iban: 'CH9300762011623852957',
+          name: 'DFX AG',
+          street: 'Bahnhofstrasse',
+          number: '7',
+          zip: '6300',
+          city: 'Zug',
+          country: 'Schweiz',
+          remittanceInfo: 'DFX-BUY-10',
+          sepaInstant: false,
+          isPersonalIban: false,
+        },
+      });
+    });
+    await page.route('**/v1/buy/18/simulatePayment', async (route) => {
+      if (simulateStatus === 400) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          json: { statusCode: 400, message: 'Payment simulation is only available on DEV, LOC and STG' },
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, body: '' });
+    });
+
+    await page.goto(`/buy/info?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&lang=en`);
+
+    const confirm = page.getByRole('button', { name: 'Click here once you have issued the transfer' });
+    await expect(confirm).toBeVisible({ timeout: 15000 });
+    await confirm.click();
+
+    const tool = page.getByTestId('simulate-payment');
+    await expect(tool.getByText('Test environment: no real money is moved.')).toBeVisible({ timeout: 15000 });
+    await expect(tool).toHaveScreenshot('buy-info-simulate-payment-idle.png');
+
+    await tool.getByRole('button', { name: 'Simulate payment' }).click();
+    await expect(tool.getByText('Payment simulation is only available on DEV, LOC and STG')).toBeVisible();
+    await expect(tool).toHaveScreenshot('buy-info-simulate-payment-error.png');
+
+    simulateStatus = 200;
+    await tool.getByRole('button', { name: 'Simulate payment' }).click();
+    await expect(tool.getByText('Payment simulated. The test transfer of 100 EUR is booked.')).toBeVisible();
+    await expect(tool).toHaveScreenshot('buy-info-simulate-payment-done.png');
+  });
+
   // USD is in the displayed Frick set, so the mismatch sentence names EUR, CHF and USD.
   // The live fiat list hides USD until the display flag is on. This fixture injects it.
   test('shows the mismatch sentence naming USD when USD is displayed', async ({ page, request }) => {
