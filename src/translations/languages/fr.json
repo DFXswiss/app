@@ -738,7 +738,18 @@
     "Too many incorrect attempts. Please request a new code.": "Trop de tentatives incorrectes. Demandez un nouveau code.",
     "We have sent you a new code.": "Nous vous avons envoyé un nouveau code.",
     "Too many attempts. Please wait a moment and try again.": "Trop de tentatives. Attendez un instant et réessayez.",
-    "Something went wrong. Please try again.": "Une erreur s'est produite. Réessayez."
+    "Something went wrong. Please try again.": "Une erreur s'est produite. Réessayez.",
+    "Bitcoin Regtest": "Bitcoin Regtest",
+    "Test network": "Réseau de test",
+    "Regtest coins exist only on the DFX test environment and have no value.": "Les coins regtest n'existent que dans l'environnement de test DFX et n'ont aucune valeur.",
+    "Balance: {{amount}} BTC (regtest)": "Solde : {{amount}} BTC (regtest)",
+    "Balance not available: {{reason}}": "Solde non disponible : {{reason}}",
+    "Loading balance…": "Chargement du solde…",
+    "Refresh balance": "Actualiser le solde",
+    "Pending: {{amount}} BTC": "En attente : {{amount}} BTC",
+    "Unlock the wallet to show this address.": "Déverrouillez le wallet pour afficher cette adresse.",
+    "This wallet cannot derive a regtest address.": "Ce wallet ne peut pas dériver d'adresse regtest.",
+    "Bitcoin regtest is not available in this build.": "Bitcoin Regtest n'est pas disponible dans ce build."
   },
   "screens/buy": {
     "You spend": "Vous dépensez",
@@ -761,7 +772,11 @@
     "PDF Invoice": "Facture PDF",
     "QR-bill": "QR-facture",
     "The output amount is computed as the input amount minus the DFX fee, bank fee and the network fee over the base rate. That is, {{output}} {{outputSymbol}} = ({{input}} {{inputSymbol}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}) ÷ {{baseRate}}.": "Le montant de sortie est calculé comme le montant d'entrée moins les frais DFX, les frais bancaires et les frais de réseau sur le taux de base. C'est-à-dire, {{output}} {{outputSymbol}} = ({{input}} {{inputSymbol}} - {{dfxFee}} {{feeSymbol}} - {{bankFee}} {{feeSymbol}} - {{networkFee}} {{feeSymbol}}) ÷ {{baseRate}}.",
-    "Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.": "Montant de sortie = (Montant d'entrée - Frais DFX - Frais de réseau) ÷ Taux de base."
+    "Output amount = (Input amount - DFX fee - Network fee) ÷ Base rate.": "Montant de sortie = (Montant d'entrée - Frais DFX - Frais de réseau) ÷ Taux de base.",
+    "Test environment: no real money is moved.": "Environnement de test : aucun argent réel n'est transféré.",
+    "Simulate payment": "Simuler le paiement",
+    "Unknown error": "Erreur inconnue",
+    "Payment simulated. The test transfer of {{amount}} {{currency}} is booked.": "Paiement simulé. Le virement de test de {{amount}} {{currency}} est comptabilisé."
   },
   "screens/sell": {
     "Add or select your IBAN": "Ajouter ou sélectionner votre IBAN",

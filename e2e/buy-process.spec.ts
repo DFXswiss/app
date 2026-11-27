@@ -173,6 +173,54 @@ test.describe('Buy Process - UI Flow', () => {
     });
   });
 
+  // REACT_APP_API_URL is http://localhost:3000 for these visuals, so the build counts as a test build and the
+  // completion offers the payment simulation. The quote, the confirmation and both simulation answers are fixtures.
+  test('shows the payment simulation on the completion of a pending buy', async ({ page, request }) => {
+    const token = await getToken(request);
+    let simulateStatus = 400;
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: { ...COLLECTION_IBAN_TOGGLE_PAYMENT_INFOS, id: 9, routeId: 17, exactPrice: true, isPersonalIban: false },
+      });
+    });
+    await page.route('**/v1/buy/paymentInfos/9/confirm', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', json: {} });
+    });
+    await page.route('**/v1/buy/17/simulatePayment', async (route) => {
+      if (simulateStatus === 400) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          json: { statusCode: 400, message: 'Payment simulation is only available on DEV, LOC and STG' },
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, body: '' });
+    });
+
+    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&lang=en`);
+
+    const confirm = page.getByRole('button', { name: 'Click here once you have issued the transfer' });
+    await expect(confirm).toBeEnabled({ timeout: 15000 });
+    await confirm.click();
+
+    const tool = page.getByTestId('simulate-payment');
+    await expect(tool.getByText('Test environment: no real money is moved.')).toBeVisible({ timeout: 15000 });
+    await expect(tool).toHaveScreenshot('buy-simulate-payment-idle.png');
+
+    await tool.getByRole('button', { name: 'Simulate payment' }).click();
+    await expect(tool.getByText('Payment simulation is only available on DEV, LOC and STG')).toBeVisible();
+    await expect(tool).toHaveScreenshot('buy-simulate-payment-error.png');
+
+    simulateStatus = 200;
+    await tool.getByRole('button', { name: 'Simulate payment' }).click();
+    await expect(tool.getByText('Payment simulated. The test transfer of 100 EUR is booked.')).toBeVisible();
+    await expect(tool).toHaveScreenshot('buy-simulate-payment-done.png');
+  });
+
   test('should apply the personal IBAN selector directly and display Bank Frick details', async ({ page, request }) => {
     const token = await getToken(request);
     let receivedProvider: unknown;

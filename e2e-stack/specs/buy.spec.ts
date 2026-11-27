@@ -18,7 +18,7 @@ import {
   withDb,
 } from './fixtures';
 import { apiGet, apiPut } from './fixtures/api-client';
-import { cleanupCreatedData, createBuy, createTransaction, createUser } from './fixtures/factories';
+import { cleanupCreatedData, createBuy, createTransaction, createUser, trackRow } from './fixtures/factories';
 
 // ---------------------------------------------------------------------------
 // Types & helpers
@@ -40,6 +40,7 @@ interface ApiFiat {
 
 interface PaymentInfoPayload {
   id?: number;
+  routeId?: number;
   amount?: number;
   iban?: string;
   remittanceInfo?: string;
@@ -765,12 +766,71 @@ test.describe('Buy flow', () => {
   });
 
   async function openChfEthAmountIn(page: Page, tag: string, amountIn: string) {
-    await openQuoteCapableBuy(page, tag);
+    const user = await openQuoteCapableBuy(page, tag);
     await page.goto(`/buy?asset-in=CHF&asset-out=ETH&amount-in=${amountIn}&blockchain=Ethereum`);
     await page.waitForLoadState('networkidle');
     await expect.poll(() => normPath(new URL(page.url()).pathname)).toBe('/buy');
     await expect(spendAmountInput(page)).toHaveValue(amountIn);
+    return user;
   }
+
+  // The harness builds the frontend against http://localhost:3000 and runs the API with
+  // ENVIRONMENT=loc, so the test tool is shown and the API books the simulated transfer.
+  test('/buy: Simulate payment books a test transfer for the pending buy', async ({ page }) => {
+    test.setTimeout(90000);
+    const capture = attachPaymentInfoCapture(page);
+    const user = await openChfEthAmountIn(page, 'buy-simulate', '100');
+    expect(await waitForQuoteUi(page, 45000)).toBe('payment');
+
+    const confirmBtn = page.getByRole('button', { name: /Click here once you have issued the transfer/i });
+    await expect(confirmBtn).toBeEnabled();
+    await confirmBtn.click();
+    await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
+
+    const quote = capture.get();
+    expect(quote?.routeId, 'PUT /buy/paymentInfos must name the buy route').toBeTruthy();
+    expect(quote?.id, 'PUT /buy/paymentInfos must name the request').toBeTruthy();
+    const route = await queryOne<{ bankUsage: string }>(`SELECT "bankUsage" AS "bankUsage" FROM buy WHERE id = $1`, [
+      quote!.routeId,
+    ]);
+    expect(route?.bankUsage).toBeTruthy();
+
+    await expect(page.getByText('Test environment: no real money is moved.')).toBeVisible();
+    const simulateResponse = page.waitForResponse(
+      (r) => r.url().includes(`/buy/${quote!.routeId}/simulatePayment`) && r.request().method() === 'PUT',
+      { timeout: 15000 },
+    );
+    await page.getByRole('button', { name: 'Simulate payment' }).click();
+    const response = await simulateResponse;
+    expect(response.status(), 'the API must accept the simulation on a loc stack').toBe(200);
+    expect(response.request().postDataJSON()).toEqual({
+      amount: quote!.amount,
+      currency: 'CHF',
+      idempotencyKey: `request-${quote!.id}`,
+    });
+
+    await expect(page.getByText(/^Payment simulated\. The test transfer of 100 CHF is booked\.$/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Simulate payment' })).toHaveCount(0);
+
+    // The outcome is the booked credit the API wrote, matched to the route by its remittance info.
+    const bankTx = await waitForRow<{ id: number; amount: string | number; currency: string }>(
+      `SELECT id, amount, currency FROM bank_tx WHERE "remittanceInfo" = $1 AND "creditDebitIndicator" = 'CRDT'`,
+      [route!.bankUsage],
+      15000,
+    );
+    trackRow('bank_tx', bankTx.id);
+    expect(Number(bankTx.amount)).toBeCloseTo(Number(quote!.amount), 2);
+    expect(bankTx.currency).toBe('CHF');
+
+    // A repeated booking of the same order (a second click from another tab, or a retry after a lost answer)
+    // sends the same body; the request id as idempotency key makes the API book nothing a second time.
+    await apiPut(`buy/${quote!.routeId}/simulatePayment`, response.request().postDataJSON(), { jwt: user.jwt });
+    const credits = await queryRows<{ id: number }>(
+      `SELECT id FROM bank_tx WHERE "remittanceInfo" = $1 AND "creditDebitIndicator" = 'CRDT'`,
+      [route!.bankUsage],
+    );
+    expect(credits.map((row) => row.id)).toEqual([bankTx.id]);
+  });
 
   test('/buy: default spend amount stays 300 after quote settlement', async ({ page }) => {
     test.setTimeout(90000);
