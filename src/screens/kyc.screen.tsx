@@ -170,6 +170,7 @@ export default function KycScreen(): JSX.Element {
   const loadSerial = useRef(createKeyedSerial());
   const loadGen = useRef(0);
   const reloadedForAccount = useRef<number>();
+  const shownKycCode = useRef<string>();
 
   const mode = pathname.includes('/profile') ? Mode.PROFILE : pathname.includes('/contact') ? Mode.CONTACT : Mode.KYC;
   const urlParams = new URLSearchParams(search);
@@ -228,8 +229,11 @@ export default function KycScreen(): JSX.Element {
   }, [requestedAddress]);
 
   const loggedInAddress = user?.activeAddress?.address;
+  // compared only once it is clear which account is signed in
   const mismatchAddress =
-    requestedAddress && (!loggedInAddress || loggedInAddress.toLowerCase() !== requestedAddress.toLowerCase())
+    requestedAddress &&
+    !isIdentityPending &&
+    (!loggedInAddress || loggedInAddress.toLowerCase() !== requestedAddress.toLowerCase())
       ? requestedAddress
       : undefined;
 
@@ -302,6 +306,15 @@ export default function KycScreen(): JSX.Element {
   useEffect(() => {
     if (mismatchAddress) return;
     if (!kycCode) return;
+    if (shownKycCode.current !== undefined && shownKycCode.current !== kycCode) {
+      // another code: nothing of the previous one stays on screen, and its running loads are dropped
+      loadGen.current++;
+      setInfo(undefined);
+      setStepInProgress(undefined);
+      setIsSubmitting(false);
+      setIsLoading(true);
+    }
+    shownKycCode.current = kycCode;
     if (needsStepConfirm) {
       setIsLoading(false);
       return;
@@ -355,7 +368,8 @@ export default function KycScreen(): JSX.Element {
       setError(undefined);
       setShowLinkHint(false);
       setConsentClient(undefined);
-      return (next ? callKyc(() => continueKyc(kycCode)) : callKyc(() => getKycInfo(kycCode)))
+      const isCurrent = () => gen === loadGen.current;
+      return (next ? callKyc(() => continueKyc(kycCode), isCurrent) : callKyc(() => getKycInfo(kycCode), isCurrent))
         .then((info) => {
           if (gen !== loadGen.current) return;
           return handleReload(info);
@@ -400,7 +414,7 @@ export default function KycScreen(): JSX.Element {
     }
   }
 
-  async function callKyc<T>(call: () => Promise<T>, isCurrent: () => boolean = () => true): Promise<T> {
+  async function callKyc<T>(call: () => Promise<T>, isCurrent: () => boolean): Promise<T> {
     return call().catch((e: ApiError) => {
       if (!isCurrent()) {
         // a dropped request does not navigate or change the screen
