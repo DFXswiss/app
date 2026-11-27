@@ -191,7 +191,8 @@ export default function KycScreen(): JSX.Element {
   const isChosen = (choice: KycChoice | undefined, value: string | null) =>
     choice?.owner === ownKycCode && choice?.value === value;
   const isOtherCode = isSignedIn && !!paramKycCode && paramKycCode !== ownKycCode;
-  const needsCodeChoice = isOtherCode && !isChosen(acceptedCode, paramKycCode);
+  // the choice is offered only once it is clear which account is signed in
+  const needsCodeChoice = !isIdentityPending && isOtherCode && !isChosen(acceptedCode, paramKycCode);
   const kycCode =
     isIdentityPending || needsCodeChoice
       ? undefined
@@ -532,7 +533,7 @@ export default function KycScreen(): JSX.Element {
 
   return (
     <>
-      {isLoading || isAutoStarting ? (
+      {isLoading || isAutoStarting || isIdentityPending ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : needsStepConfirm ? (
         <StyledVerticalStack gap={6} full>
