@@ -861,6 +861,18 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   `handbook`, opens `/kyc` with a placeholder code of another account and with a step parameter, and
   does not call a live API. A green run proves the account prompt and the step confirmation render
   for that fixture. It does not prove a real session, a real KYC response, or what the buttons do.
+- **The KYC screen flow unit test replaces the SDK, the app contexts, navigation and the components.**
+  `src/__tests__/kyc-screen-flow.test.tsx` renders the real `KycScreen` in a memory router with in-memory
+  session, auth, user and KYC hooks, a stubbed navigation hook (routed to the memory router in some
+  cases), stubbed settings and app-handling contexts and passthrough components. A green run proves the
+  screen's branches against those stubs: which KYC code it uses, when it asks before using a link's code
+  or starting a step, and which results it drops. It does not prove a real session or account change, a
+  real KYC response, the real navigation hook, or the real timing of the SDK's user and session updates.
+- **The KYC helper hook unit test replaces the SDK, the settings context and navigation.**
+  `src/__tests__/kyc-helper.hook.test.tsx` runs the real `useKycHelper` with mirrored SDK enums, an
+  in-memory user, an identity translation and a recorded `navigate`. A green run proves the formatting
+  functions and the location and router state `startStep` asks for. It does not prove the real
+  translations, that the router delivers that state to the KYC screen, or a real step start.
 - **The account screen coverage test replaces the SDK and the component library.**
   `src/__tests__/account-screen-coverage.test.tsx` replaces the user, auth, session, API and
   transaction hooks with in-memory stubs, and replaces the styled components with passthrough

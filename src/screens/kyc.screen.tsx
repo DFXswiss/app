@@ -42,6 +42,7 @@ import {
   Utils,
   Validations,
   isStepDone,
+  useAuthContext,
   useKyc,
   useSessionContext,
   useUserContext,
@@ -114,6 +115,12 @@ const RequiredKycLevel = {
   [Mode.PROFILE]: KycLevel.Sell,
 };
 
+// a choice on this screen (opened link, confirmed step) and the account it was made for
+interface KycChoice {
+  owner?: string;
+  value: string | null;
+}
+
 function readRequestedKycAddress(search: string, address?: string | null): string | undefined {
   const searchAddress = new URLSearchParams(search).get('address');
   if (searchAddress) return searchAddress;
@@ -135,7 +142,8 @@ function readRequestedKycAddress(search: string, address?: string | null): strin
 export default function KycScreen(): JSX.Element {
   const { clearParams } = useNavigation();
   const { translate, changeLanguage, processingKycData } = useSettingsContext();
-  const { user, reloadUser } = useUserContext();
+  const { user, isUserLoading, reloadUser } = useUserContext();
+  const { session } = useAuthContext();
   const { getKycInfo, continueKyc, startStep, addTransferClient, cancelStep } = useKyc();
   const { nameToString } = useKycHelper();
   const { pathname, search, state } = useLocation();
@@ -153,11 +161,12 @@ export default function KycScreen(): JSX.Element {
   const [error, setError] = useState<string>();
   const [showLinkHint, setShowLinkHint] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
-  const [acceptedCode, setAcceptedCode] = useState<string | null>();
-  const [confirmedStep, setConfirmedStep] = useState<string | null>();
+  const [acceptedCode, setAcceptedCode] = useState<KycChoice>();
+  const [confirmedStep, setConfirmedStep] = useState<KycChoice>();
   const { rootRef } = useLayoutContext();
   const loadSerial = useRef(createKeyedSerial());
   const loadGen = useRef(0);
+  const reloadedForAccount = useRef<number>();
 
   const mode = pathname.includes('/profile') ? Mode.PROFILE : pathname.includes('/contact') ? Mode.CONTACT : Mode.KYC;
   const urlParams = new URLSearchParams(search);
@@ -170,11 +179,16 @@ export default function KycScreen(): JSX.Element {
   const [stepName, stepType] = step?.split('/') ?? [];
   const paramKycCode = urlParams.get('code');
   const ownKycCode = user?.kyc.hash;
+  // a loaded user of another account than the session's is still the previous one
+  const sessionAccount = session?.account;
+  const isPreviousUser = !!user && sessionAccount !== undefined && user.accountId !== sessionAccount;
   // a signed-in user only works on another account's code after choosing to open the link
-  const isIdentityPending = !isInitialized || (isLoggedIn && !user);
+  const isIdentityPending = !isInitialized || (isLoggedIn && (!user || isPreviousUser));
   const isSignedIn = !!isLoggedIn && !!ownKycCode;
+  const isChosen = (choice: KycChoice | undefined, value: string | null) =>
+    choice?.owner === ownKycCode && choice?.value === value;
   const isOtherCode = isSignedIn && !!paramKycCode && paramKycCode !== ownKycCode;
-  const needsCodeChoice = isOtherCode && acceptedCode !== paramKycCode;
+  const needsCodeChoice = isOtherCode && !isChosen(acceptedCode, paramKycCode);
   const kycCode =
     isIdentityPending || needsCodeChoice
       ? undefined
@@ -185,9 +199,12 @@ export default function KycScreen(): JSX.Element {
           : (paramKycCode ?? ownKycCode);
   // a step from a link starts for a signed-in user only when opened inside the app or confirmed
   const stepParam = urlParams.get('step');
+  const appStep = state as { kycStep?: string; kycOwner?: string } | null;
   const canStartStep =
     !!stepName &&
-    (!isSignedIn || (state as { kycStep?: string } | null)?.kycStep === stepParam || confirmedStep === stepParam);
+    (!isSignedIn ||
+      (appStep?.kycOwner === ownKycCode && appStep?.kycStep === stepParam) ||
+      isChosen(confirmedStep, stepParam));
   const needsStepConfirm = !!stepName && !!kycCode && !canStartStep;
   const redirectUri = urlParams.get('kyc-redirect');
   const client = urlParams.get('client') ?? undefined;
@@ -213,6 +230,14 @@ export default function KycScreen(): JSX.Element {
       : undefined;
 
   useUserGuard('/login', !paramKycCode && !ownKycCode);
+
+  // the user is not loaded again when the session changes to another account, so load it once
+  useEffect(() => {
+    if (isPreviousUser && !isUserLoading && reloadedForAccount.current !== sessionAccount) {
+      reloadedForAccount.current = sessionAccount;
+      reloadUser();
+    }
+  }, [isPreviousUser, isUserLoading, sessionAccount]);
 
   useEffect(() => {
     if (!lang && info) changeLanguage(info.language);
@@ -278,30 +303,43 @@ export default function KycScreen(): JSX.Element {
       return;
     }
 
+    // a result for a code or step that is no longer shown is dropped
+    let isCurrent = true;
+    const current = () => isCurrent;
     const request = stepName
-      ? callKyc(() =>
-          startStep(
-            kycCode,
-            stepName as KycStepName,
-            stepType?.toLowerCase() === KycStepType.VIDEO.toLowerCase()
-              ? KycStepType.SUMSUB_VIDEO
-              : stepType?.toLowerCase() === KycStepType.AUTO.toLowerCase()
-                ? KycStepType.SUMSUB_AUTO
-                : (stepType as KycStepType),
-            stepSequence ? +stepSequence : undefined,
-          ),
-        )
-          .then((session) => {
-            setError(undefined);
-            return handleReload(session);
-          })
-          .then(() => clearParams(['step']))
-      : callKyc(() => getKycInfo(kycCode)).then(async (info) => {
+      ? callKyc(
+          () =>
+            startStep(
+              kycCode,
+              stepName as KycStepName,
+              stepType?.toLowerCase() === KycStepType.VIDEO.toLowerCase()
+                ? KycStepType.SUMSUB_VIDEO
+                : stepType?.toLowerCase() === KycStepType.AUTO.toLowerCase()
+                  ? KycStepType.SUMSUB_AUTO
+                  : (stepType as KycStepType),
+              stepSequence ? +stepSequence : undefined,
+            ),
+          current,
+        ).then((stepSession) => {
+          if (!isCurrent) return;
+          setError(undefined);
+          return handleReload(stepSession).then(() => clearParams(['step']));
+        })
+      : callKyc(() => getKycInfo(kycCode), current).then(async (info) => {
+          if (!isCurrent) return;
           setError(undefined);
           await handleInitial(info);
         });
 
-    request.catch((error: ApiError) => setError(error.message ?? 'Unknown error')).finally(() => setIsLoading(false));
+    request
+      .catch((error: ApiError) => {
+        if (isCurrent) setError(error.message ?? 'Unknown error');
+      })
+      .finally(() => setIsLoading(false));
+
+    return () => {
+      isCurrent = false;
+    };
   }, [kycCode, stepName, stepType, mismatchAddress, canStartStep]);
 
   async function onLoad(next: boolean): Promise<void> {
@@ -358,9 +396,11 @@ export default function KycScreen(): JSX.Element {
     }
   }
 
-  async function callKyc<T>(call: () => Promise<T>): Promise<T> {
+  async function callKyc<T>(call: () => Promise<T>, isCurrent: () => boolean = () => true): Promise<T> {
     return call().catch((e: ApiError) => {
-      if (e.statusCode === 401 && 'switchToCode' in e) {
+      if (!isCurrent()) {
+        // a dropped request does not navigate or change the screen
+      } else if (e.statusCode === 401 && 'switchToCode' in e) {
         setIsLoading(true);
         navigate({ search: `?code=${e.switchToCode}` });
         logout();
@@ -480,7 +520,7 @@ export default function KycScreen(): JSX.Element {
           label={translate('screens/kyc', 'Open link')}
           onClick={() => {
             resetForCode();
-            setAcceptedCode(paramKycCode);
+            setAcceptedCode({ owner: ownKycCode, value: paramKycCode });
           }}
         />
       </StyledVerticalStack>
@@ -505,7 +545,7 @@ export default function KycScreen(): JSX.Element {
             label={translate('general/actions', 'Start')}
             onClick={() => {
               setIsLoading(true);
-              setConfirmedStep(stepParam);
+              setConfirmedStep({ owner: ownKycCode, value: stepParam });
             }}
           />
           <StyledButton
