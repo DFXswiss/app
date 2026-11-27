@@ -630,24 +630,24 @@ test.describe('Compliance area (overview)', () => {
     // The merge keeps the master's mail instead of taking the merged account's one.
     await waitForRow(`SELECT id FROM user_data WHERE id = $1 AND mail = $2`, [master.userDataId, masterMail], 20000);
 
+    // kyc_log.comment/result and support_log.message are stored encrypted, so they are matched after decryption.
     for (const userDataId of [master.userDataId, slave.userDataId]) {
-      const kycLog = await waitForRow<{ id: number; comment: string | null; result: string | null }>(
-        `SELECT id, comment, result FROM kyc_log
-         WHERE "userDataId" = $1 AND type = 'MergeLog' ORDER BY id DESC LIMIT 1`,
+      const kycLog = await waitForMatchingRow<{ id: number; comment: string | null; result: string | null }>(
+        `SELECT id, comment, result FROM kyc_log WHERE "userDataId" = $1 AND type = 'MergeLog' ORDER BY id DESC`,
         [userDataId],
+        (row) => Boolean(decryptPii(row.result)?.includes('clerk=E2E Test Staff')),
         20000,
       );
-      expect(kycLog.comment).toContain(reason);
-      expect(kycLog.result).toContain('clerk=E2E Test Staff');
+      expect(decryptPii(kycLog.comment)).toContain(reason);
       trackRow('kyc_log', kycLog.id);
     }
 
     for (const userDataId of [master.userDataId, slave.userDataId]) {
-      const supportLog = await waitForRow<{ id: number; message: string; comment: string | null }>(
+      const supportLog = await waitForMatchingRow<{ id: number; message: string | null; comment: string | null }>(
         `SELECT id, message, comment FROM support_log
-         WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2
-           AND message LIKE 'operatorMerge applied%' ORDER BY id DESC LIMIT 1`,
+         WHERE "userDataId" = $1 AND type = 'SupportLog' AND clerk = $2 ORDER BY id DESC`,
         [userDataId, 'E2E Test Staff'],
+        (row) => Boolean(decryptPii(row.message)?.startsWith('operatorMerge applied')),
         20000,
       );
       expect(supportLog.comment).toBe(reason);
