@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { Location, MemoryRouter, MemoryRouterProps, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import KycScreen from '../screens/kyc.screen';
+
+type Entry = NonNullable<MemoryRouterProps['initialEntries']>[number];
 
 jest.setTimeout(30000);
 
@@ -44,6 +46,7 @@ const mockKyc = {
   setRecallData: jest.fn(),
 };
 
+const mockSession: { logout: jest.Mock; isLoggedIn: boolean } = { logout: mockLogout, isLoggedIn: false };
 const mockUser: { user?: { kyc: { hash: string }; activeAddress?: { address: string } }; reloadUser: jest.Mock } = {
   user: undefined,
   reloadUser: mockReloadUser,
@@ -128,7 +131,7 @@ jest.mock('@dfx.swiss/react', () => ({
   Validations: { Required: {}, Phone: {}, Mail: {}, Custom: (validator: unknown) => ({ validate: validator }) },
   isStepDone: (...args: unknown[]) => mockIsStepDone(...args),
   useKyc: () => mockKyc,
-  useSessionContext: () => ({ logout: mockLogout }),
+  useSessionContext: () => mockSession,
   useUserContext: () => mockUser,
 }));
 
@@ -263,17 +266,58 @@ function session(currentStep?: Record<string, any>, overrides: Record<string, an
   return { ...info(), currentStep, ...overrides };
 }
 
-function tree(path: string) {
+let routerNavigate: ReturnType<typeof useNavigate> | undefined;
+let routerLocation: Location | undefined;
+
+function RouterProbe(): null {
+  routerNavigate = useNavigate();
+  routerLocation = useLocation();
+  return null;
+}
+
+function tree(path: Entry) {
   return (
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="*" element={<KycScreen />} />
+        <Route
+          path="*"
+          element={
+            <>
+              <RouterProbe />
+              <KycScreen />
+            </>
+          }
+        />
       </Routes>
     </MemoryRouter>
   );
 }
 
-function renderPath(path: string) {
+// Lets clearParams and navigate move the real router, like the app's navigation hook does (replace, no state).
+function routeNavigation() {
+  mockClearParams.mockImplementation((keys: string[]) => {
+    const location = routerLocation as Location;
+    const params = new URLSearchParams(location.search);
+    keys.forEach((key) => params.delete(key));
+    (routerNavigate as ReturnType<typeof useNavigate>)(
+      { pathname: location.pathname, search: `?${params}` },
+      { replace: true },
+    );
+  });
+  mockNavigate.mockImplementation((to: { search: string }) => {
+    const location = routerLocation as Location;
+    (routerNavigate as ReturnType<typeof useNavigate>)({ pathname: location.pathname, search: to.search });
+  });
+}
+
+const CODE_PROMPT =
+  'This link belongs to a different account than the one you are signed in with. If you open the link, the data you enter is saved to that account.';
+
+function stepPrompt(label: string): string {
+  return `Do you want to start the step "${label}"?`;
+}
+
+function renderPath(path: Entry) {
   return render(tree(path));
 }
 
@@ -336,6 +380,9 @@ beforeEach(() => {
   sessionStorage.removeItem('dfx.kyc.redirect');
   sessionStorage.removeItem('dfx.kyc.address');
   mockUser.user = undefined;
+  mockSession.isLoggedIn = false;
+  routerNavigate = undefined;
+  routerLocation = undefined;
   mockApp.isInitialized = true;
   mockApp.isWidget = false;
   mockApp.params = {};
@@ -367,10 +414,27 @@ afterEach(() => {
 });
 
 describe('KycScreen overview and parameter loading', () => {
-  it('uses the URL code, renders Start, and exposes the normal layout', async () => {
+  it('asks a signed-in user before using a code of another account', async () => {
+    mockSession.isLoggedIn = true;
+    mockUser.user = { kyc: { hash: 'USER' } };
+    renderPath('/kyc?code=CODE');
+    expect(await screen.findByText(CODE_PROMPT, undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+    expect(mockStartStep).not.toHaveBeenCalled();
+    expect(mockGuard).toHaveBeenCalledWith('/login', false);
+    expect(screen.getByRole('button', { name: 'Continue with my account' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument();
+    expect(layout()).toMatchObject({ title: 'DFX KYC', backButton: false, noPadding: false });
+  });
+
+  it('uses the URL code when signed out, renders Start, and exposes the normal layout', async () => {
     mockUser.user = { kyc: { hash: 'USER' } };
     await overview(info({ kycSteps: [step('ContactData', { status: 'NotStarted' })] }));
     expect(mockGetKycInfo).toHaveBeenCalledWith('CODE');
+    expect(mockGetKycInfo).not.toHaveBeenCalledWith('USER');
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
     expect(mockGuard).toHaveBeenCalledWith('/login', false);
     expect(await screen.findByRole('button', { name: 'Start' }, { timeout: 10000 })).toBeInTheDocument();
     expect(layout()).toMatchObject({ title: 'DFX KYC', backButton: false, noPadding: false });
@@ -415,6 +479,140 @@ describe('KycScreen overview and parameter loading', () => {
     }
     renderPath(`/kyc?code=CODE${kind === 'step' ? '&step=PersonalData' : ''}`);
     expect(await screen.findByTestId('error-hint', undefined, { timeout: 10000 })).toHaveTextContent(expected);
+  });
+});
+
+describe('KycScreen links with the code of another account', () => {
+  beforeEach(() => {
+    mockSession.isLoggedIn = true;
+    mockUser.user = { kyc: { hash: 'USER' } };
+  });
+
+  it('continues with the own account and drops the URL code', async () => {
+    routeNavigation();
+    renderPath('/kyc?code=CODE');
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue with my account' }, { timeout: 10000 }));
+    expect(mockClearParams).toHaveBeenCalledWith(['code']);
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('USER'), { timeout: 10000 });
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+    expect(routerLocation?.search).not.toContain('code=');
+    expect(mockGetKycInfo).not.toHaveBeenCalledWith('CODE');
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
+  });
+
+  it('opens the link with the URL code after a click and asks again on the next visit', async () => {
+    const first = renderPath('/kyc?code=CODE');
+    fireEvent.click(await screen.findByRole('button', { name: 'Open link' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+    expect(mockGetKycInfo).not.toHaveBeenCalledWith('USER');
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
+    first.unmount();
+
+    mockGetKycInfo.mockClear();
+    renderPath('/kyc?code=CODE');
+    expect(await screen.findByText(CODE_PROMPT, undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+
+  it('does not ask when the URL code is the own code', async () => {
+    await overview(info(), '/kyc?code=USER');
+    expect(mockGetKycInfo).toHaveBeenCalledWith('USER');
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
+  });
+
+  it('waits for the signed-in user before using any code', async () => {
+    mockUser.user = undefined;
+    const rendered = renderPath('/kyc?code=CODE');
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+    expect(mockGuard).toHaveBeenCalledWith('/login', false);
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    mockUser.user = { kyc: { hash: 'USER' } };
+    rendered.rerender(tree('/kyc?code=CODE'));
+    expect(await screen.findByText(CODE_PROMPT, undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+
+  it('asks for the code first and then for the step', async () => {
+    renderPath('/kyc?code=CODE&step=PersonalData');
+    fireEvent.click(await screen.findByRole('button', { name: 'Open link' }, { timeout: 10000 }));
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('CODE', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+  });
+
+  it('keeps the code handoff that signs out', async () => {
+    routeNavigation();
+    mockLogout.mockImplementation(() => {
+      mockSession.isLoggedIn = false;
+    });
+    mockGetKycInfo.mockRejectedValueOnce({ statusCode: 401, switchToCode: 'OTHER', message: 'switch' });
+    renderPath('/kyc');
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ search: '?code=OTHER' }), { timeout: 10000 });
+    expect(mockLogout).toHaveBeenCalled();
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('OTHER'), { timeout: 10000 });
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
+  });
+});
+
+describe('KycScreen step links for a signed-in user', () => {
+  beforeEach(() => {
+    mockSession.isLoggedIn = true;
+    mockUser.user = { kyc: { hash: 'USER' } };
+  });
+
+  it('asks before starting a step from the URL and starts it on Start', async () => {
+    renderPath('/kyc?step=PersonalData');
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalled();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('USER', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    await waitFor(() => expect(mockClearParams).toHaveBeenCalledWith(['step']), { timeout: 10000 });
+  });
+
+  it('drops the step on Cancel and shows the overview', async () => {
+    routeNavigation();
+    renderPath('/kyc?step=PersonalData');
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }, { timeout: 10000 }));
+    expect(mockClearParams).toHaveBeenCalledWith(['step']);
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('USER'), { timeout: 10000 });
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+    expect(mockStartStep).not.toHaveBeenCalled();
+  });
+
+  it('starts a step opened inside the app without asking', async () => {
+    renderPath({ pathname: '/kyc', search: '?step=PersonalData', state: { kycStep: 'PersonalData' } });
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('USER', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    expect(screen.queryByText(stepPrompt('step:PersonalData'))).not.toBeInTheDocument();
+  });
+
+  it('asks when the in-app state names another step', async () => {
+    renderPath({ pathname: '/kyc', search: '?step=PersonalData', state: { kycStep: 'Ident' } });
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalled();
+  });
+
+  it('shows the raw name of an unknown step', async () => {
+    renderPath('/kyc?step=Unknown');
+    expect(await screen.findByText(stepPrompt('Unknown'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    expect(mockStartStep).not.toHaveBeenCalled();
   });
 });
 
@@ -536,9 +734,14 @@ describe('KycScreen API error routing', () => {
 describe('KycScreen startup and route modes', () => {
   it('waits for initialization', async () => {
     mockApp.isInitialized = false;
-    renderPath('/kyc?code=CODE');
-    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalled(), { timeout: 10000 });
+    const rendered = renderPath('/kyc?code=CODE');
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    mockApp.isInitialized = true;
+    rendered.rerender(tree('/kyc?code=CODE'));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
   });
 
   it('auto-starts and clears its parameter', async () => {
