@@ -387,14 +387,17 @@ else: its path filter covers `src/static/assets/**` and no other path below `src
 ## Colours come from the Tailwind theme
 
 `tailwind.config.js` sets `theme.colors`, not `theme.extend.colors`, so it
-replaces Tailwind's default colour palette. Only the colours defined there exist.
-A default colour class such as `text-red-600`, `bg-red-50` or `border-blue-500`
-generates no CSS: the element takes up its space but paints no colour.
+replaces Tailwind's default colour palette. Only the colours defined there exist
+as named classes. A default colour class such as `text-red-600`, `bg-red-50` or
+`border-blue-500` generates no CSS, so the element shows the wrong colour instead
+of the intended one: text keeps its inherited colour, the background stays
+transparent and a border is drawn in `currentColor`.
 
 - Use a theme colour from `tailwind.config.js`, for example `text-dfxRed-100`,
   `text-primary-red` or `border-dfxBlue-300`. Opacity modifiers work, for
   example `bg-dfxRed-100/20`.
-- For an exact colour the theme does not define, use an inline style such as
+- For an exact colour the theme does not define, use an arbitrary value such as
+  `text-[#FF4444]` or `bg-[#4BB543]/10`, or an inline style such as
   `style={{ color: '#…' }}`.
 - A test that checks the DOM passes either way, because the class is present.
   The missing colour only shows in a screenshot, so check the colours in the
