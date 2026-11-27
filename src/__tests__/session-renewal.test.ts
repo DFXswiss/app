@@ -281,7 +281,9 @@ describe('installSessionRenewal', () => {
         ['Authorization', `Bearer ${MASTER_SESSION}`],
       ],
     });
-    expect(mockFetch).toHaveBeenNthCalledWith(4, USER_URL, { headers: [['Authorization', `Bearer ${MASTER_SESSION}`]] });
+    expect(mockFetch).toHaveBeenNthCalledWith(4, USER_URL, {
+      headers: [['Authorization', `Bearer ${MASTER_SESSION}`]],
+    });
     expect(mockRenew).toHaveBeenCalledTimes(1);
   });
 
