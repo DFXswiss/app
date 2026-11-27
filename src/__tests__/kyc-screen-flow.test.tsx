@@ -609,6 +609,26 @@ describe('KycScreen step links for a signed-in user', () => {
     expect(mockStartStep).not.toHaveBeenCalled();
   });
 
+  it('does not continue automatically while the step confirmation is pending', async () => {
+    mockApp.params = { autoStart: 'true' };
+    mockApp.setParams.mockImplementation((update: Record<string, string | undefined>) =>
+      Object.assign(mockApp.params, update),
+    );
+    renderPath('/kyc?step=PersonalData');
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+    expect(mockStartStep).not.toHaveBeenCalled();
+    expect(mockApp.setParams).toHaveBeenCalledWith({ autoStart: undefined });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('USER', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    await settle();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+  });
+
   it('shows the raw name of an unknown step', async () => {
     renderPath('/kyc?step=Unknown');
     expect(await screen.findByText(stepPrompt('Unknown'), undefined, { timeout: 10000 })).toBeInTheDocument();
