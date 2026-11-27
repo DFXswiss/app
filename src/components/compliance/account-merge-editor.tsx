@@ -166,7 +166,13 @@ function AccountMergeForm({ userDataId, userData, onMerged, onClose }: Readonly<
   const plan = otherAccount ? planAccountMerge(current, otherAccount, keep) : undefined;
   const canLoad = isPositiveInteger(otherId) && !isLoadingOther;
   const canSubmit =
-    !!plan && plan.errors.length === 0 && reason.trim().length > 0 && !!clerk && !isLoadingClerk && !isSaving;
+    !!plan &&
+    plan.errors.length === 0 &&
+    reason.trim().length > 0 &&
+    !!clerk &&
+    !isLoadingClerk &&
+    !isLoadingOther &&
+    !isSaving;
 
   function changeOtherId(value: string): void {
     loadRef.current += 1;
@@ -180,6 +186,8 @@ function AccountMergeForm({ userDataId, userData, onMerged, onClose }: Readonly<
     const attempt = attemptRef.current;
     const load = ++loadRef.current;
     const requestedId = Number(otherId);
+    // A reload of the account already shown keeps the clerk's choice of the account that stays.
+    const shownId = otherAccount?.id;
     setIsLoadingOther(true);
     setLoadError(undefined);
 
@@ -192,7 +200,7 @@ function AccountMergeForm({ userDataId, userData, onMerged, onClose }: Readonly<
       }
       const loaded = toMergeAccount(result.userData);
       setOtherAccount(loaded);
-      setKeep((loaded.kycLevel ?? 0) > (current.kycLevel ?? 0) ? 'other' : 'current');
+      if (loaded.id !== shownId) setKeep((loaded.kycLevel ?? 0) > (current.kycLevel ?? 0) ? 'other' : 'current');
     } catch (e: unknown) {
       if (mountedRef.current && attemptRef.current === attempt && loadRef.current === load) {
         setLoadError(loadFailureMessage(e));
@@ -214,7 +222,8 @@ function AccountMergeForm({ userDataId, userData, onMerged, onClose }: Readonly<
       plan.errors.length > 0 ||
       reason.trim().length === 0 ||
       !clerk ||
-      isLoadingClerk
+      isLoadingClerk ||
+      isLoadingOther
     ) {
       return;
     }

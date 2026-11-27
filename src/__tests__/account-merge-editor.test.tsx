@@ -216,6 +216,48 @@ describe('AccountMergeEditor', () => {
     expect(expected === 'other' ? keepOther : keepCurrent).toBeChecked();
   });
 
+  it('keeps the chosen account when the same account is loaded again', async () => {
+    render(element());
+    await openAndLoad(detail({ id: 88002, kycLevel: 30 }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Keep other account (88002)' }));
+
+    fireEvent.click(loadButton());
+    await waitFor(() => expect(mockGetUserData).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(loadButton()).toBeEnabled());
+
+    expect(screen.getByRole('radio', { name: 'Keep other account (88002)' })).toBeChecked();
+  });
+
+  it('preselects again when a different account is loaded', async () => {
+    render(element());
+    await openAndLoad(detail({ id: 88002, kycLevel: 30 }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Keep other account (88002)' }));
+
+    await load(detail({ id: 88003, kycLevel: 30 }));
+
+    expect(screen.getByRole('radio', { name: 'Keep this account (88001)' })).toBeChecked();
+  });
+
+  it('disables Merge and ignores a submit while the shown account is reloaded', async () => {
+    render(element());
+    await openLoadAndFill(detail({ id: 88002, mail: 'other@example.com', kycLevel: 20 }));
+    expect(mergeButton()).toBeEnabled();
+
+    const deferred = createDeferred<{ userData: UserDataDetail }>();
+    mockGetUserData.mockReturnValue(deferred.promise);
+    fireEvent.click(loadButton());
+
+    expect(mergeButton()).toBeDisabled();
+    submit();
+    expect(mockMergeUserData).not.toHaveBeenCalled();
+
+    await act(async () => {
+      deferred.resolve({ userData: detail({ id: 88002, mail: 'other@example.com', kycLevel: 20 }) });
+      await deferred.promise;
+    });
+    expect(mergeButton()).toBeEnabled();
+  });
+
   it('shows a dash for empty values', async () => {
     render(element());
     await openAndLoad(detail({ id: 88002, status: '', mail: undefined, kycLevel: undefined, verifiedName: '' }));
