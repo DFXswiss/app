@@ -944,10 +944,11 @@ without bank account`) passes a synthetic unsigned JWT as `session` and fulfils 
   address exactly) signs in once with the launch credentials and resends the request with the new session, and that
   every other 401 (no launch credentials, another address, a session that is no longer the current one, a session
   another login replaced during the re-login, the sign-in itself, a failed re-login, a rejected new session) reaches
-  the caller unchanged, and that a wallet login or a set session drops the launch credentials. The current session
-  is read from `localStorage['dfx.authenticationToken']`, which the tests set themselves. It does not prove what the
-  SDK does with the answer, nor that the SDK keeps that key in step with the session it sends; the full-stack merge
-  case above covers the real path.
+  the caller unchanged, and that a wallet login or a set session drops the launch credentials.
+  `session-renewal.test.ts` passes its own current-session reader; the wallet-context cases let the provider read
+  `localStorage['dfx.authenticationToken']`, which they set themselves. It does not prove what the SDK does with the
+  answer, nor that the SDK keeps that key in step with the session it sends; the full-stack merge case above covers
+  the real path.
 - **A widget ignoring a stale redirect URI in the session store is proven by the unit test only.**
   `src/__tests__/app-handling-context.test.tsx` ("does not take the redirect URI an earlier widget left in the
   session store") puts a value in `sessionStorage['dfx.srv.redirectUri']`, mounts the real app-handling context in
