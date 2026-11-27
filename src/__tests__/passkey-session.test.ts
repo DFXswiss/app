@@ -1,11 +1,28 @@
 import {
   getOpenPasskey,
   installHandbookSessionHook,
+  isPasskeySigningIn,
   sameSession,
   setOpenPasskey,
+  setPasskeySigningIn,
   subscribeOpenPasskey,
   type OpenPasskey,
 } from '../components/home/wallet/passkey-session';
+
+it('defaults the sign-in flag to false and notifies subscribers when it changes', () => {
+  expect(isPasskeySigningIn()).toBe(false);
+  const seen: boolean[] = [];
+  const unsubscribe = subscribeOpenPasskey(() => {
+    seen.push(isPasskeySigningIn());
+  });
+  setPasskeySigningIn(true);
+  expect(isPasskeySigningIn()).toBe(true);
+  expect(seen).toEqual([true]);
+  setPasskeySigningIn(false);
+  expect(isPasskeySigningIn()).toBe(false);
+  expect(seen).toEqual([true, false]);
+  unsubscribe();
+});
 
 it('compares wallet, credential and token when identifying a session', () => {
   const session = { accessToken: 'token', wallet: { id: 7, credentialId: 'credential' } } as unknown as OpenPasskey;

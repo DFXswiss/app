@@ -55,6 +55,7 @@ interface SettingsInterface {
   locale: string;
   language?: Language;
   currency?: Fiat;
+  changeAppLanguage: (language: Language) => void;
   changeLanguage: (language: Language) => void;
   changeCurrency: (currency: Fiat) => void;
   changeMail: (mail: string) => void;
@@ -114,6 +115,8 @@ export function SettingsContextProvider(props: PropsWithChildren): JSX.Element {
   const { getInfoBanner } = useSettings();
 
   const [language, setLanguage] = useState<Language>();
+  const languageRef = useRef<Language>();
+  languageRef.current = language;
   const [currency, setCurrency] = useState<Fiat>();
   const [countries, setCountries] = useState<Country[]>([]);
   const [store, setStore] = useState<Record<string, any>>({});
@@ -150,9 +153,9 @@ export function SettingsContextProvider(props: PropsWithChildren): JSX.Element {
     const newAppLanguage =
       availableLanguages.find((l) => l.symbol === customLanguage) ?? getDefaultLanguage(availableLanguages);
 
-    newAppLanguage && newAppLanguage.id !== language?.id && changeAppLanguage(newAppLanguage);
+    newAppLanguage && newAppLanguage.id !== languageRef.current?.id && changeAppLanguage(newAppLanguage);
     customCurrency && customCurrency.id !== currency?.id && setCurrency(customCurrency);
-  }, [user, lang, language, currencies, availableLanguages]);
+  }, [user, lang, currencies, availableLanguages]);
 
   useEffect(() => {
     // Normalised like the API (trim + lowercase), or a padded/mixed-case parameter would never close
@@ -295,6 +298,7 @@ export function SettingsContextProvider(props: PropsWithChildren): JSX.Element {
       locale: languageToLocale[language?.symbol.toLowerCase() ?? 'en'],
       language,
       currency,
+      changeAppLanguage,
       changeLanguage,
       changeCurrency,
       changeMail,

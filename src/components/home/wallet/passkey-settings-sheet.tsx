@@ -26,6 +26,8 @@ const icons = {
   status: 'M12 3a9 9 0 110 18 9 9 0 010-18zM12 8h.01M11 12h1v4h1',
   diagnostic: 'M4 12h3l2-6 4 12 2-6h5',
   another: 'M16 17l5-5-5-5M21 12H9M12 21H5a2 2 0 01-2-2V5a2 2 0 012-2h7',
+  language:
+    'M12 3a9 9 0 110 18 9 9 0 010-18zM3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z',
   revoke: 'M12 3a9 9 0 110 18 9 9 0 010-18zM5.6 5.6l12.8 12.8',
 };
 
@@ -68,7 +70,7 @@ function Chevron(): JSX.Element {
 }
 
 export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): JSX.Element {
-  const { translate } = useSettingsContext();
+  const { translate, language, availableLanguages, changeAppLanguage } = useSettingsContext();
   const t = (key: string) => translate('screens/home', key);
   const row =
     'flex min-h-[60px] w-full items-center gap-3 border-b border-dfxGray-400 px-4 py-3 text-left last:border-b-0 focus-visible:outline focus-visible:outline-2';
@@ -205,6 +207,31 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
           </span>
           <Chevron />
         </button>
+      </div>
+      <h3 className={group}>{t('App')}</h3>
+      <div className={card}>
+        <label className={row} htmlFor="passkey-language">
+          <Icon path={icons.language} />
+          <span className={text}>
+            {t('Language')}
+            <small className={sub}>{t('Applies to the whole DFX app')}</small>
+          </span>
+          <select
+            id="passkey-language"
+            className="min-h-[44px] rounded border border-dfxGray-500 bg-white px-2"
+            value={language?.symbol ?? ''}
+            onChange={(event) => {
+              const next = availableLanguages.find((item) => item.symbol === event.target.value);
+              if (next) changeAppLanguage(next);
+            }}
+          >
+            {availableLanguages.map((item) => (
+              <option key={item.symbol} value={item.symbol}>
+                {item.symbol}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <h3 className={group}>{t('Danger zone')}</h3>
       <div className={card}>

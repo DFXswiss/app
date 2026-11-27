@@ -93,6 +93,7 @@ function HomeScreenContent(): JSX.Element {
   const selectedBlockchain = (connectTo?.blockchain ?? appParams.blockchain) as Blockchain | undefined;
   const specialMode = getMode(pathname);
   const waitingForSession = specialMode === SpecialMode.WALLET && !isSessionInitialized;
+  const keepPasskeyDesk = Boolean(openPasskey) && connectTo?.type === WalletType.PASSKEY;
 
   useEffect(() => {
     if (closedPasskey.current && !sameSession(openPasskey, closedPasskey.current)) closedPasskey.current = undefined;
@@ -223,7 +224,7 @@ function HomeScreenContent(): JSX.Element {
 
   return (
     <>
-      {!isInitialized || isUserLoading || !currentPage || waitingForSession ? (
+      {((!isInitialized || isUserLoading) && !keepPasskeyDesk) || !currentPage || waitingForSession ? (
         <div className="mt-4">
           <StyledLoadingSpinner size={SpinnerSize.LG} />
         </div>

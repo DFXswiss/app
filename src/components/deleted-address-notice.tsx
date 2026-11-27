@@ -6,13 +6,15 @@ import {
   StyledLoadingSpinner,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { PropsWithChildren, useRef, useState } from 'react';
+import { PropsWithChildren, useRef, useState, useSyncExternalStore } from 'react';
+import { isPasskeySigningIn, subscribeOpenPasskey } from 'src/components/home/wallet/passkey-session';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-address';
 
 export function DeletedAddressGate({ children }: PropsWithChildren): JSX.Element {
   const { user, isUserLoading } = useUserContext();
   const { isInitialized, isLoggedIn } = useApiSession();
+  const passkeySigningIn = useSyncExternalStore(subscribeOpenPasskey, isPasskeySigningIn, isPasskeySigningIn);
   // A load seen before a logout must not release the app after the next login.
   const sawLoad = useRef(false);
   if (!isLoggedIn) sawLoad.current = false;
@@ -25,12 +27,13 @@ export function DeletedAddressGate({ children }: PropsWithChildren): JSX.Element
       hasUser: user != null,
       isUserLoading,
       sawLoad: sawLoad.current,
+      passkeySigningIn,
     })
   ) {
     return <StyledLoadingSpinner size={SpinnerSize.LG} />;
   }
 
-  if (!isLoggedIn || !isDeletedSessionAddress(user)) return <>{children}</>;
+  if (passkeySigningIn || !isLoggedIn || !isDeletedSessionAddress(user)) return <>{children}</>;
 
   return <DeletedAddressNotice />;
 }

@@ -2,7 +2,6 @@ import {
   DfxHttpClient,
   PasskeyApi,
   type DfxApiClient,
-  type PasskeyAddress,
   type PasskeyCredentialStatusResult,
   type PasskeyDiagnosticParams,
   type PasskeyWallet,
@@ -24,15 +23,6 @@ import { walletEnvForHost } from './passkey-host';
 export interface WalletClient {
   login(): Promise<AuthResult>;
   register(extras: RegisterExtras): Promise<AuthResult>;
-  link(
-    family: 'evm' | 'bitcoin',
-    sessionToken: string,
-    keys: KeyRing,
-    evmIndex?: number,
-  ): Promise<{
-    accessToken: string;
-    address: PasskeyAddress;
-  }>;
   revoke(reason: 'Lost' | 'Compromised', credentialId: string): Promise<PasskeyWallet>;
   exportMnemonic(credentialId?: Uint8Array): Promise<string[]>;
   verifyServerAddresses(wallet: PasskeyWallet, keys: KeyRing): { address: string; family: string; matches: boolean }[];
@@ -55,7 +45,6 @@ export function createWalletClient(): WalletClient {
   return {
     login: (...args) => auth.login(...args),
     register: (...args) => auth.register(...args),
-    link: (...args) => auth.link(...args),
     revoke: (reason, credentialId) => revokePasskey(reason, credentialId),
     exportMnemonic: (...args) => auth.exportMnemonic(...args),
     verifyServerAddresses: (...args) => auth.verifyServerAddresses(...args),

@@ -5,6 +5,10 @@ import { DESK_CREDENTIAL_BYTES, deskBase64Url, installDeskAuthenticator } from '
 const DESK_DERIVED_EVM = '0xA6EC3c72017965c5fAeEdaF020895ef1aDD7Ad72';
 // BIP-84 receive index 1 on testnet4 (the loc network) derived from the fixed DESK_PRF_BYTES by the wallet package.
 const DESK_DERIVED_BITCOIN_RECEIVE = 'tb1q0cxey6x9nz35jky4v0rh77ta34z63j4hzl6tvt';
+// The DFX login text for the loc environment, byte-for-byte as @dfx.swiss/wallet builds it
+// (SIGN_MESSAGE_PREFIX.loc + LOGIN_TEMPLATES.general + address). The package itself does not load under Playwright.
+const LOC_LOGIN_TEXT =
+  '[loc]_By_signing_this_message,_you_confirm_that_you_are_the_sole_owner_of_the_provided_Blockchain_address._Your_ID:_';
 
 type HistoryWindow = {
   __dfxHandbookPasskeyBalance?: { chf: number; eur: number };
@@ -46,14 +50,6 @@ const DIFFER_BITCOIN = {
 
 async function fulfillJson(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-}
-
-async function fulfillNotOk(route: Route): Promise<void> {
-  await route.fulfill({
-    status: 400,
-    contentType: 'application/json',
-    body: JSON.stringify({ message: 'Link body is invalid.' }),
-  });
 }
 
 async function installLoginRoutes(page: Page): Promise<void> {
@@ -204,30 +200,19 @@ function deskAuth(seedCheckAddress: string, addresses: Record<string, unknown>[]
   return { accessToken: 'visual-passkey-token', wallet: deskWallet(seedCheckAddress, addresses) };
 }
 
-function postedLinkAddress(raw: string | null): { address: string; family: string; path: string } | undefined {
-  if (raw === null) return undefined;
-  let body: unknown;
-  try {
-    body = JSON.parse(raw) as unknown;
-  } catch {
-    return undefined;
-  }
-  if (body === null || typeof body !== 'object') return undefined;
-  if (!('address' in body) || !('family' in body) || !('path' in body)) return undefined;
-  const { address, family, path } = body;
-  if (typeof address !== 'string' || typeof family !== 'string' || typeof path !== 'string') return undefined;
-  return { address, family, path };
+function shortened(address: string): string {
+  return `${address.slice(0, 10)}…${address.slice(-8)}`;
 }
 
-async function installDeskRoutes(
-  page: Page,
-  seedCheckAddress: string,
-  linkedBitcoin?: { address?: string },
-): Promise<void> {
-  const linkedAddresses: Record<string, unknown>[] = [];
+// Unsigned on purpose: the shot only needs jwt-decode to read `account`. The header is base64url of `{}`.
+function unsignedAccountToken(account: number, address: string): string {
+  const payload = Buffer.from(JSON.stringify({ account, address, exp: 4102444800 })).toString('base64url');
+  return ['e30', payload, 'sig'].join('.');
+}
 
+async function installDeskRoutes(page: Page, seedCheckAddress: string): Promise<void> {
   function listedWallet(): Record<string, unknown> {
-    return deskWallet('', [DESK_EVM, DESK_SPARK, ...linkedAddresses, DIFFER_BITCOIN]);
+    return deskWallet('', [DESK_EVM, DESK_SPARK, DIFFER_BITCOIN]);
   }
 
   await page.route('**/v1/passkey/wallets**', async (route) => {
@@ -249,18 +234,6 @@ async function installDeskRoutes(
     if (method === 'POST' && path.endsWith('/authenticate/begin')) return fulfillJson(route, DESK_CHALLENGE);
     if (method === 'POST' && path.endsWith('/authenticate/finish')) {
       return fulfillJson(route, deskAuth(seedCheckAddress));
-    }
-    if (method === 'POST' && path.endsWith('/link')) {
-      const posted = postedLinkAddress(request.postData());
-      if (posted === undefined) return fulfillNotOk(route);
-      if (posted.address.startsWith('bc1') && linkedBitcoin) linkedBitcoin.address = posted.address;
-      const address = { ...posted, status: 'Active', blockchains: [] };
-      const key = `${posted.family}:${posted.path}:${posted.address}`;
-      const alreadyLinked = linkedAddresses.some(
-        (item) => `${String(item.family)}:${String(item.path)}:${String(item.address)}` === key,
-      );
-      if (!alreadyLinked) linkedAddresses.push(address);
-      return fulfillJson(route, { accessToken: 'visual-passkey-token', address });
     }
     if (method === 'GET' && path.endsWith('/credentialStatus')) {
       return fulfillJson(route, [{ credentialId: deskBase64Url(DESK_CREDENTIAL_BYTES), status: 'Active' }]);
@@ -300,15 +273,10 @@ async function installRegisterErrorRoutes(page: Page): Promise<void> {
   });
 }
 
-async function openDesk(
-  page: Page,
-  mode: 'unlocked' | 'locked',
-  dismissFirstGet = false,
-  linkedBitcoin?: { address?: string },
-): Promise<void> {
+async function openDesk(page: Page, mode: 'unlocked' | 'locked', dismissFirstGet = false): Promise<void> {
   await installDeskAuthenticator(page, mode !== 'locked', dismissFirstGet);
   await installLoginRoutes(page);
-  await installDeskRoutes(page, '', linkedBitcoin);
+  await installDeskRoutes(page, '');
   await page.goto('/login?feature=Passkey&lang=en');
   await expect(page.getByText('Login to DFX Services', { exact: true })).toBeVisible();
   await page.locator('img[src$="login-passkey.jpg"]').click();
@@ -327,23 +295,10 @@ async function expectDerivedReceiveRows(page: Page): Promise<void> {
   await expect(page.locator(`li [title="${DESK_EVM.address}"]`)).toHaveCount(0);
 }
 
-async function registerUnlockedDesk(page: Page): Promise<string> {
-  const linkedBitcoin: { address?: string } = {};
-  await openDesk(page, 'unlocked', true, linkedBitcoin);
-  const listed = page.waitForResponse(async (response) => {
-    const posted = linkedBitcoin.address;
-    if (!posted) return false;
-    const url = new URL(response.url());
-    if (response.request().method() !== 'GET' || url.pathname !== '/v1/passkey/wallets') return false;
-    const text = await response.text();
-    return text.includes(posted);
-  });
+async function registerUnlockedDesk(page: Page): Promise<void> {
+  await openDesk(page, 'unlocked', true);
   await registerThroughGuidance(page);
   await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
-  await listed;
-  const posted = linkedBitcoin.address;
-  if (!posted || !posted.startsWith('bc1')) throw new Error('Missing Bitcoin login address');
-  return posted;
 }
 
 async function openSettings(page: Page): Promise<void> {
@@ -744,14 +699,20 @@ test.describe('Passkey login', () => {
     await expect(page).toHaveScreenshot('passkey-desk-wallets.png', { fullPage: true });
   });
 
-  test('checks server addresses after the auto-link', async ({ page }) => {
-    const bitcoinAddress = await registerUnlockedDesk(page);
+  test('checks server addresses', async ({ page }) => {
+    await registerUnlockedDesk(page);
     await openSettings(page);
     await page.getByRole('button', { name: /Check addresses/ }).click();
-    await expect(page.getByText('1 / 4 addresses match', { exact: true })).toBeVisible();
-    const linkedBitcoin = `${bitcoinAddress.slice(0, 10)}…${bitcoinAddress.slice(-8)}`;
-    await expect(page.getByRole('listitem').filter({ hasText: linkedBitcoin })).toContainText('Matches');
-    await expect(page.getByRole('listitem').filter({ hasText: 'bc1qdeskdi…kdiffers' })).toContainText('Differs');
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    // Check addresses reads the register-finish session wallet, not the GET list.
+    await expect(dialog.getByText('0 / 2 addresses match', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('listitem')).toHaveCount(2);
+    await expect(dialog.getByRole('listitem').filter({ hasText: shortened(DESK_EVM.address) })).toContainText(
+      'Differs',
+    );
+    await expect(dialog.getByRole('listitem').filter({ hasText: shortened(DESK_SPARK.address) })).toContainText(
+      'Differs',
+    );
     await expect(page).toHaveScreenshot('passkey-desk-addresses.png', { fullPage: true });
   });
 
@@ -906,6 +867,54 @@ test.describe('Passkey wallet design', () => {
     await openDesk(page, 'unlocked', true);
     await registerThroughGuidance(page);
     await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
+  }
+
+  // Registered after openWallet so these beat the catch-all `**/v1/**`. LoginAutoSigner signs only
+  // the loc login text of the requested address, so the sign-message fixture cannot be arbitrary text.
+  async function installOptInRoutes(
+    page: Page,
+    options: { holdFirstAuth: boolean; evmAccount: number; bitcoinAccount: number },
+  ): Promise<{ releaseAuth: () => void; authHeld: () => boolean }> {
+    let releaseAuth = (): void => undefined;
+    const authGate = new Promise<void>((resolve) => {
+      releaseAuth = resolve;
+    });
+    let heldFirst = false;
+    await page.route('**/v1/auth', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() !== 'POST' || url.pathname !== '/v1/auth') return route.fallback();
+      if (options.holdFirstAuth && !heldFirst) {
+        heldFirst = true;
+        await authGate;
+      }
+      const body = request.postDataJSON() as { address?: unknown };
+      const address = typeof body.address === 'string' ? body.address : '';
+      const account = address.startsWith('0x') ? options.evmAccount : options.bitcoinAccount;
+      await fulfillJson(route, { accessToken: unsignedAccountToken(account, address) });
+    });
+    await page.route('**/v1/auth/signMessage**', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() !== 'GET' || url.pathname !== '/v1/auth/signMessage') return route.fallback();
+      const address = url.searchParams.get('address') ?? '';
+      await fulfillJson(route, { message: LOC_LOGIN_TEXT + address });
+    });
+    // Registered after openWallet, so this beats the 401 catch-all on `**/v2/**`. A 401 here clears
+    // the session the opt-in just signed, and Buy never stays on /buy.
+    await page.route('**/v2/user**', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() !== 'GET' || url.pathname !== '/v2/user') return route.fallback();
+      await fulfillJson(route, {
+        accountId: 1,
+        mail: 'user@example.com',
+        language: { id: 2, name: 'English', symbol: 'EN' },
+        kyc: { hash: '' },
+        addresses: [],
+      });
+    });
+    return { releaseAuth: () => releaseAuth(), authHeld: () => heldFirst };
   }
 
   test('shows the wallet, expanded addresses and settings', async ({ page }) => {
@@ -1147,34 +1156,104 @@ test.describe('Passkey wallet design', () => {
     await expect(page.getByRole('dialog', { name: 'Block passkey' })).toBeVisible();
     await expect(page).toHaveScreenshot('passkey-wallet-revoke.png');
   });
-});
 
-test('wallet shows Bitcoin reconnect after an auto-link failure', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.clock.install();
-  await page.clock.resume();
-  await openDesk(page, 'unlocked', true);
-  let releaseLink = (): void => undefined;
-  const linkGate = new Promise<void>((resolve) => {
-    releaseLink = resolve;
+  test('holds Buy while the wallet signs in', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWallet(page);
+    const optIn = await installOptInRoutes(page, { holdFirstAuth: true, evmAccount: 1, bitcoinAccount: 1 });
+    await page.getByRole('button', { name: 'Buy', exact: true }).click();
+    await expect.poll(() => optIn.authHeld()).toBe(true);
+    for (const name of ['Buy', 'Sell', 'Swap', 'Send', 'Receive', 'Pay']) {
+      await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
+    }
+    await expect(page).toHaveScreenshot('passkey-wallet-opt-in-waiting.png');
+    const finished = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'POST' && url.pathname === '/v1/auth';
+    });
+    optIn.releaseAuth();
+    await finished;
+    await expect(page).toHaveURL(/\/buy/);
   });
-  await page.route('**/v1/auth/passkey/link', async (route) => {
-    await linkGate;
-    await fulfillNotOk(route);
+
+  test('stays on the wallet when Bitcoin belongs to another account', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWallet(page);
+    await installOptInRoutes(page, { holdFirstAuth: false, evmAccount: 1, bitcoinAccount: 2 });
+    await page.getByRole('button', { name: 'Buy', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText(
+      'This Bitcoin address belongs to another DFX account. Please contact support.',
+    );
+    await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
+    await expect(page).toHaveURL(/\/login\?feature=Passkey/);
+    await expect(page).toHaveScreenshot('passkey-wallet-opt-in-other-account.png');
   });
-  await registerThroughGuidance(page);
-  await page.getByRole('button', { name: 'Show wallet' }).first().click();
-  const bitcoinRow = page.locator('li', { has: page.getByText('Bitcoin', { exact: true }) });
-  await expect(bitcoinRow).toHaveCount(1);
-  await bitcoinRow.scrollIntoViewIfNeeded();
-  await expect(bitcoinRow.locator(`[title="${DESK_DERIVED_BITCOIN_RECEIVE}"]`)).toHaveCount(1);
-  await expect(bitcoinRow.getByText('Not connected yet')).toBeInViewport();
-  await expect(bitcoinRow.getByRole('button', { name: 'Connect again' })).toBeInViewport();
-  await expect(bitcoinRow.getByRole('button', { name: 'Copy address Bitcoin' })).toBeEnabled();
-  await expectDerivedReceiveRows(page);
-  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 10000);
-  releaseLink();
-  await expect(page.getByRole('status')).toHaveText('Link body is invalid.');
-  await expect(page.getByRole('status')).toBeVisible();
-  await expect(page).toHaveScreenshot('passkey-wallet-bitcoin-offline.png');
+
+  test('shows the language row in settings', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWallet(page);
+    await page.getByRole('button', { name: 'Settings' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    const row = dialog.locator('label[for="passkey-language"]');
+    await row.evaluate((element) => {
+      element.scrollIntoView({ block: 'end', inline: 'nearest' });
+      const scroller = element.closest('[role="dialog"]');
+      if (!(scroller instanceof HTMLElement)) throw new Error('language row has no dialog');
+      scroller.scrollTop += 48;
+      const rowBox = element.getBoundingClientRect();
+      const view = scroller.getBoundingClientRect();
+      if (rowBox.top < view.top || rowBox.bottom > view.bottom - 16) {
+        throw new Error(
+          `language row is clipped: row ${rowBox.top}..${rowBox.bottom}, dialog ${view.top}..${view.bottom}`,
+        );
+      }
+    });
+    await expect(row).toBeInViewport();
+    await expect(row).toContainText('Language');
+    await expect(row).toContainText('Applies to the whole DFX app');
+    await expect(page).toHaveScreenshot('passkey-wallet-settings-language.png');
+  });
+
+  test('shows the payment camera', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          ...navigator.mediaDevices,
+          getUserMedia: () => Promise.resolve(new MediaStream()),
+        },
+      });
+    });
+    await openWallet(page);
+    await page.getByRole('button', { name: 'Pay', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Scan QR code' });
+    await expect(
+      dialog.getByText('Point the camera at the payment QR code at the till.', { exact: true }),
+    ).toBeVisible();
+    await expect(dialog.getByRole('alert')).toHaveCount(0);
+    await expect(page).toHaveScreenshot('passkey-wallet-pay-camera.png');
+  });
+
+  test('shows the denied payment camera', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          ...navigator.mediaDevices,
+          getUserMedia: () => Promise.reject(new Error('denied')),
+        },
+      });
+    });
+    await openWallet(page);
+    await page.getByRole('button', { name: 'Pay', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Scan QR code' });
+    await expect(
+      dialog.getByText('No camera access. Allow it in your browser settings or paste the payment link.', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page).toHaveScreenshot('passkey-wallet-pay-denied.png');
+  });
 });

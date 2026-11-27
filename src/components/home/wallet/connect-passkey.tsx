@@ -1,14 +1,24 @@
+import { Blockchain, useAuthContext, useSessionContext } from '@dfx.swiss/react';
 import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
-import { checkPasskeyPlatform, openInSystemBrowser, type AuthResult, type PlatformReport } from '@dfx.swiss/wallet';
+import {
+  checkPasskeyPlatform,
+  LoginAutoSigner,
+  openInSystemBrowser,
+  type AuthResult,
+  type PlatformReport,
+} from '@dfx.swiss/wallet';
+import { jwtDecode } from 'jwt-decode';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
+import { useWalletContext, WalletType } from '../../../contexts/wallet.context';
 import { ConnectProps } from '../connect-shared';
 import { useNavigation } from '../../../hooks/navigation.hook';
-import PasskeyDesk from './passkey-desk';
+import PasskeyDesk, { bitcoinLoginRing } from './passkey-desk';
 import type { ReceiveFamily } from './passkey-transfer';
 import type { PasskeyHistory } from './passkey-wallet-history';
 import {
   passkeyDismissed,
+  passkeyMessage,
   passkeyOsTooOld,
   passkeyPlatformBlock,
   passkeyPlatformView,
@@ -37,7 +47,13 @@ import {
   PASSKEY_UNKNOWN_HEADING,
   walletEnvForHost,
 } from './passkey-host';
-import { getOpenPasskey, setOpenPasskey, subscribeOpenPasskey } from './passkey-session';
+import {
+  getOpenPasskey,
+  sameSession,
+  setOpenPasskey,
+  setPasskeySigningIn,
+  subscribeOpenPasskey,
+} from './passkey-session';
 import { createWalletClient } from './wallet-client';
 
 export { passkeyPlatformBlock, walletEnvForHost };
@@ -47,6 +63,16 @@ type CeremonyEntry = 'login' | 'authenticate' | 'register';
 
 const PASSKEY_DID_NOT_UNLOCK =
   'This passkey did not unlock the wallet. Please try again with the passkey of this wallet.';
+
+const PASSKEY_OTHER_ACCOUNT = 'This Bitcoin address belongs to another DFX account. Please contact support.';
+const PASSKEY_EVM_OTHER_ACCOUNT = 'This Ethereum address belongs to another DFX account. Please contact support.';
+
+function accountClaim(token: string | undefined): number {
+  if (token === undefined) throw new Error('');
+  const account = jwtDecode<{ account?: number }>(token).account;
+  if (typeof account !== 'number') throw new Error('');
+  return account;
+}
 
 declare global {
   interface Window {
@@ -96,13 +122,18 @@ async function copyPageUrl(): Promise<boolean> {
 // merged passkey routes can be tried. /wallet opens this screen without a flag. The tile on /login
 // stays behind ?feature=Passkey.
 export default function ConnectPasskey(props: ConnectProps): JSX.Element {
-  const { onCancel }: ConnectProps = props;
+  const { isConnect, onCancel, onLogin }: ConnectProps = props;
   const { translate } = useSettingsContext();
+  const { login } = useWalletContext();
+  const { logout } = useSessionContext();
+  const { getAuthToken } = useAuthContext();
   const { navigate } = useNavigation();
   const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
   const [report, setReport] = useState<PlatformReport | undefined>();
   const [mail, setMail] = useState('');
   const [busy, setBusy] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [view, setView] = useState<SheetView>('idle');
   const [entry, setEntry] = useState<CeremonyEntry>('login');
@@ -112,6 +143,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const unknownOfferedRef = useRef(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout>>();
   const abandonedRef = useRef(false);
+  const signingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +158,10 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   useEffect(() => {
     return () => {
       abandonedRef.current = true;
+      if (signingRef.current) {
+        signingRef.current = false;
+        setPasskeySigningIn(false);
+      }
       if (copiedTimer.current !== undefined) clearTimeout(copiedTimer.current);
     };
   }, []);
@@ -204,6 +240,81 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     }
   }
 
+  async function openApp(path: '/buy' | '/sell' | '/swap'): Promise<void> {
+    if (busyRef.current) return;
+    const session = getOpenPasskey();
+    if (!session?.keys) return;
+    const keys = session.keys;
+    busyRef.current = true;
+    setOpening(true);
+    setError(undefined);
+    try {
+      if (!isConnect) {
+        await logout();
+        if (abandonedRef.current || !sameSession(getOpenPasskey(), session)) return;
+      }
+      const priorToken = isConnect ? getAuthToken() : undefined;
+      const priorAccount = priorToken ? accountClaim(priorToken) : undefined;
+      const env = walletEnvForHost(window.location.hostname);
+      signingRef.current = true;
+      setPasskeySigningIn(true);
+      await login(WalletType.PASSKEY, keys.evm(0).address, Blockchain.ETHEREUM, async (address, message) =>
+        new LoginAutoSigner(keys, env).sign('evm', address, message),
+      );
+      const evmAccount = accountClaim(getAuthToken());
+      if (priorAccount !== undefined && evmAccount !== priorAccount) throw new Error(PASSKEY_EVM_OTHER_ACCOUNT);
+      if (abandonedRef.current || !sameSession(getOpenPasskey(), session)) {
+        await logout();
+        return;
+      }
+      const loginRing = bitcoinLoginRing(keys);
+      try {
+        await login(
+          WalletType.PASSKEY,
+          loginRing.ring.bitcoinAddress(0, 0).address,
+          Blockchain.BITCOIN,
+          async (address, message) => new LoginAutoSigner(loginRing.ring, env).sign('bitcoin', address, message),
+        );
+        if (accountClaim(getAuthToken()) !== evmAccount) throw new Error(PASSKEY_OTHER_ACCOUNT);
+        if (abandonedRef.current || !sameSession(getOpenPasskey(), session)) {
+          await logout();
+          return;
+        }
+        await login(WalletType.PASSKEY, keys.evm(0).address, Blockchain.ETHEREUM, async (address, message) =>
+          new LoginAutoSigner(keys, env).sign('evm', address, message),
+        );
+        if (accountClaim(getAuthToken()) !== evmAccount) throw new Error(PASSKEY_OTHER_ACCOUNT);
+      } finally {
+        loginRing.release();
+      }
+      if (abandonedRef.current || !sameSession(getOpenPasskey(), session)) {
+        await logout();
+        return;
+      }
+      if (isConnect) {
+        onLogin();
+        onCancel();
+      } else {
+        navigate(path);
+      }
+    } catch (caught) {
+      try {
+        await logout();
+      } catch {
+        void 0;
+      }
+      if (abandonedRef.current) return;
+      setError(passkeyMessage(caught));
+    } finally {
+      busyRef.current = false;
+      if (!abandonedRef.current) {
+        signingRef.current = false;
+        setPasskeySigningIn(false);
+      }
+      if (!abandonedRef.current) setOpening(false);
+    }
+  }
+
   function startLogin(): void {
     void run('login', async (initialSession) => {
       const result = await createWalletClient().login();
@@ -277,7 +388,14 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   if (open) {
     return (
       <StyledVerticalStack gap={2} center full>
+        {error ? (
+          <p role="alert" className="text-center text-dfxRed-150">
+            {translate('screens/home', error)}
+          </p>
+        ) : null}
         <PasskeyDesk
+          opening={opening}
+          onOpenApp={(path) => void openApp(path)}
           onHome={() => navigate('/')}
           balance={process.env.NODE_ENV === 'production' ? undefined : window.__dfxHandbookPasskeyBalance}
           assets={process.env.NODE_ENV === 'production' ? undefined : window.__dfxHandbookPasskeyAssets}
