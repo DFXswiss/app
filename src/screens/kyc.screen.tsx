@@ -88,6 +88,7 @@ import { ErrorHint } from '../components/error-hint';
 import { KycIdentNewTab } from '../components/kyc-ident-new-tab';
 import { KycStatusTable } from '../components/kyc-status';
 import { useSettingsContext } from '../contexts/settings.context';
+import { useWalletContext } from '../contexts/wallet.context';
 import { useGeoLocation } from '../hooks/geo-location.hook';
 import { useUserGuard } from '../hooks/guard.hook';
 import { useKycHelper } from '../hooks/kyc-helper.hook';
@@ -150,6 +151,8 @@ export default function KycScreen(): JSX.Element {
   const { navigate, goBack } = useNavigation();
   const { logout, isLoggedIn } = useSessionContext();
   const { isInitialized, params, setParams } = useAppHandlingContext();
+  // a session or launch credentials from the link are applied once the wallet context is initialized
+  const { isInitialized: isWalletInitialized } = useWalletContext();
   const { lang } = useAppParams();
 
   const [info, setInfo] = useState<KycInfo | KycSession>();
@@ -183,7 +186,7 @@ export default function KycScreen(): JSX.Element {
   const sessionAccount = session?.account;
   const isPreviousUser = !!user && sessionAccount !== undefined && user.accountId !== sessionAccount;
   // a signed-in user only works on another account's code after choosing to open the link
-  const isIdentityPending = !isInitialized || (isLoggedIn && (!user || isPreviousUser));
+  const isIdentityPending = !isInitialized || !isWalletInitialized || (isLoggedIn && (!user || isPreviousUser));
   const isSignedIn = !!isLoggedIn && !!ownKycCode;
   const isChosen = (choice: KycChoice | undefined, value: string | null) =>
     choice?.owner === ownKycCode && choice?.value === value;
