@@ -170,7 +170,8 @@ export default function KycScreen(): JSX.Element {
   const loadSerial = useRef(createKeyedSerial());
   const loadGen = useRef(0);
   const reloadedForAccount = useRef<number>();
-  const shownKycCode = useRef<string>();
+  const [shownKycCode, setShownKycCode] = useState<string>();
+  const wasWalletInitialized = useRef(false);
   const activeKycCode = useRef<string>();
 
   const mode = pathname.includes('/profile') ? Mode.PROFILE : pathname.includes('/contact') ? Mode.CONTACT : Mode.KYC;
@@ -188,7 +189,10 @@ export default function KycScreen(): JSX.Element {
   const sessionAccount = session?.account;
   const isPreviousUser = !!user && sessionAccount !== undefined && user.accountId !== sessionAccount;
   // a signed-in user only works on another account's code after choosing to open the link
-  const isIdentityPending = !isInitialized || !isWalletInitialized || (isLoggedIn && (!user || isPreviousUser));
+  // the wallet context initializes again on every change of the app parameters; only its first initialization counts
+  if (isWalletInitialized) wasWalletInitialized.current = true;
+  const isIdentityPending =
+    !isInitialized || !wasWalletInitialized.current || (isLoggedIn && (!user || isPreviousUser));
   const isSignedIn = !!isLoggedIn && !!ownKycCode;
   const isChosen = (choice: KycChoice | undefined, value: string | null) =>
     choice?.owner === ownKycCode && choice?.value === value;
@@ -214,6 +218,8 @@ export default function KycScreen(): JSX.Element {
   const needsStepConfirm = !!stepName && !!kycCode && !canStartStep;
   // the code of this render; loads and actions of another code are dropped
   activeKycCode.current = kycCode;
+  // until the load effect has taken over a new code, nothing of the previous one (an open step) is rendered with it
+  const isOtherCodeShown = !!kycCode && kycCode !== shownKycCode;
   const redirectUri = urlParams.get('kyc-redirect');
   const client = urlParams.get('client') ?? undefined;
   const [requestedAddress] = useState(() => readRequestedKycAddress(search, params.address));
@@ -309,7 +315,7 @@ export default function KycScreen(): JSX.Element {
   useEffect(() => {
     if (mismatchAddress) return;
     if (!kycCode) return;
-    if (shownKycCode.current !== undefined && shownKycCode.current !== kycCode) {
+    if (shownKycCode !== undefined && shownKycCode !== kycCode) {
       // another code: nothing of the previous one stays on screen, and its running loads are dropped
       loadGen.current++;
       setInfo(undefined);
@@ -320,7 +326,7 @@ export default function KycScreen(): JSX.Element {
       setIsSubmitting(false);
       setIsLoading(true);
     }
-    shownKycCode.current = kycCode;
+    if (shownKycCode !== kycCode) setShownKycCode(kycCode);
     if (needsStepConfirm) {
       setIsLoading(false);
       return;
@@ -557,7 +563,7 @@ export default function KycScreen(): JSX.Element {
 
   return (
     <>
-      {isLoading || isAutoStarting || isIdentityPending ? (
+      {isLoading || isAutoStarting || isIdentityPending || isOtherCodeShown ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : needsStepConfirm ? (
         <StyledVerticalStack gap={6} full>
