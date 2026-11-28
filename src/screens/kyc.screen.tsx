@@ -311,6 +311,9 @@ export default function KycScreen(): JSX.Element {
       loadGen.current++;
       setInfo(undefined);
       setStepInProgress(undefined);
+      setShowLinkHint(false);
+      setConsentClient(undefined);
+      setError(undefined);
       setIsSubmitting(false);
       setIsLoading(true);
     }
@@ -352,7 +355,9 @@ export default function KycScreen(): JSX.Element {
       .catch((error: ApiError) => {
         if (isCurrent) setError(error.message ?? 'Unknown error');
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (isCurrent) setIsLoading(false);
+      });
 
     return () => {
       isCurrent = false;
