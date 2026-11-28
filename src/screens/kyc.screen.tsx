@@ -116,7 +116,7 @@ const RequiredKycLevel = {
   [Mode.PROFILE]: KycLevel.Sell,
 };
 
-// a choice on this screen (opened link, confirmed step) and the account it was made for
+// a choice on this screen and the KYC code it was made for (the own code for an opened link, the code in use for a confirmed step)
 interface KycChoice {
   owner?: string;
   value: string | null;
@@ -207,14 +207,15 @@ export default function KycScreen(): JSX.Element {
         : isSignedIn
           ? ownKycCode
           : (paramKycCode ?? ownKycCode);
-  // a step from a link starts for a signed-in user only when opened inside the app or confirmed
+  // a step from a link starts for a signed-in user only when opened inside the app for the own code,
+  // or confirmed for the code in use
   const stepParam = urlParams.get('step');
   const appStep = state as { kycStep?: string; kycOwner?: string } | null;
   const canStartStep =
     !!stepName &&
     (!isSignedIn ||
-      (appStep?.kycOwner === ownKycCode && appStep?.kycStep === stepParam) ||
-      isChosen(confirmedStep, stepParam));
+      (appStep?.kycOwner === ownKycCode && kycCode === ownKycCode && appStep?.kycStep === stepParam) ||
+      (confirmedStep?.owner === kycCode && confirmedStep?.value === stepParam));
   const needsStepConfirm = !!stepName && !!kycCode && !canStartStep;
   // the code of this render; loads and actions of another code are dropped
   activeKycCode.current = kycCode;
@@ -579,7 +580,7 @@ export default function KycScreen(): JSX.Element {
             label={translate('general/actions', 'Start')}
             onClick={() => {
               setIsLoading(true);
-              setConfirmedStep({ owner: ownKycCode, value: stepParam });
+              setConfirmedStep({ owner: kycCode, value: stepParam });
             }}
           />
           <StyledButton
