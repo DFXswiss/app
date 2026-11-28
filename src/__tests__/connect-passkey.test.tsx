@@ -4172,7 +4172,8 @@ describe('ConnectPasskey opt-in', () => {
       .mockReturnValueOnce(accountToken(8));
     await openDesk();
     fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(OTHER_ACCOUNT);
+    expect(await screen.findByRole('alert')).toHaveTextContent(EVM_OTHER_ACCOUNT);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(OTHER_ACCOUNT);
     expect(mockWalletLogin).toHaveBeenCalledTimes(3);
     expect(mockWalletLogin.mock.calls[2][2]).toBe('Ethereum');
     expect(loggedOutAfter(2)).toBe(true);

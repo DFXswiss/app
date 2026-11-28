@@ -296,7 +296,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
           undefined,
           false,
         );
-        if (accountClaim(getAuthToken()) !== evmAccount) throw new Error(PASSKEY_OTHER_ACCOUNT);
+        if (accountClaim(getAuthToken()) !== evmAccount) throw new Error(PASSKEY_EVM_OTHER_ACCOUNT);
       } finally {
         loginRing.release();
       }

@@ -22,7 +22,7 @@ describe('Passkey payment camera', () => {
     expect(getUserMedia).not.toHaveBeenCalled();
   });
 
-  it('requests the rear camera, pastes a payment link, and stops every track on close', async () => {
+  it('requests the rear camera, calls the paste handler, and stops every track on close', async () => {
     const stop = jest.fn();
     const getUserMedia = jest.fn(async () => ({ getTracks: () => [{ stop }] }));
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });

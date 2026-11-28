@@ -873,13 +873,14 @@ test.describe('Passkey wallet design', () => {
   // the loc login text of the requested address, so the sign-message fixture cannot be arbitrary text.
   async function installOptInRoutes(
     page: Page,
-    options: { holdFirstAuth: boolean; evmAccount: number; bitcoinAccount: number },
+    options: { holdFirstAuth: boolean; evmAccount: number; bitcoinAccount: number; lastEvmAccount?: number },
   ): Promise<{ releaseAuth: () => void; authHeld: () => boolean }> {
     let releaseAuth = (): void => undefined;
     const authGate = new Promise<void>((resolve) => {
       releaseAuth = resolve;
     });
     let heldFirst = false;
+    let evmAuthCount = 0;
     await page.route('**/v1/auth', async (route) => {
       const request = route.request();
       const url = new URL(request.url());
@@ -890,7 +891,12 @@ test.describe('Passkey wallet design', () => {
       }
       const body = request.postDataJSON() as { address?: unknown };
       const address = typeof body.address === 'string' ? body.address : '';
-      const account = address.startsWith('0x') ? options.evmAccount : options.bitcoinAccount;
+      let account = options.bitcoinAccount;
+      if (address.startsWith('0x')) {
+        evmAuthCount += 1;
+        account = options.evmAccount;
+        if (evmAuthCount === 2 && options.lastEvmAccount !== undefined) account = options.lastEvmAccount;
+      }
       await fulfillJson(route, { accessToken: unsignedAccountToken(account, address) });
     });
     await page.route('**/v1/auth/signMessage**', async (route) => {
@@ -1189,6 +1195,19 @@ test.describe('Passkey wallet design', () => {
     await expect(page).toHaveScreenshot('passkey-wallet-opt-in-other-account.png');
   });
 
+  test('stays on the wallet when the last Ethereum login returns another account', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWallet(page);
+    await installOptInRoutes(page, { holdFirstAuth: false, evmAccount: 1, bitcoinAccount: 1, lastEvmAccount: 2 });
+    await page.getByRole('button', { name: 'Buy', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText(
+      'This Ethereum address belongs to another DFX account. Please contact support.',
+    );
+    await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
+    await expect(page).toHaveURL(/\/login\?feature=Passkey/);
+    await expect(page).toHaveScreenshot('passkey-wallet-opt-in-ethereum-other-account.png');
+  });
+
   test('shows the language row in settings', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openWallet(page);
@@ -1255,5 +1274,24 @@ test.describe('Passkey wallet design', () => {
       }),
     ).toBeVisible();
     await expect(page).toHaveScreenshot('passkey-wallet-pay-denied.png');
+  });
+
+  test('shows Coming soon after Paste in Pay', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          ...navigator.mediaDevices,
+          getUserMedia: () => Promise.resolve(new MediaStream()),
+        },
+      });
+    });
+    await openWallet(page);
+    await page.getByRole('button', { name: 'Pay', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Scan QR code' });
+    await dialog.getByRole('button', { name: 'Paste payment link' }).click();
+    await expect(page.getByRole('status')).toHaveText('Coming soon');
+    await expect(page).toHaveScreenshot('passkey-wallet-pay-paste-soon.png');
   });
 });
