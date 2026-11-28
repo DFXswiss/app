@@ -7,8 +7,6 @@ interface PasskeyRevokeSheetProps {
   acknowledged: boolean;
   busy: boolean;
   returnFocus?: HTMLElement | null;
-  reason: 'Lost' | 'Compromised';
-  onReason: (value: 'Lost' | 'Compromised') => void;
   onAcknowledged: (value: boolean) => void;
   onRevoke: () => void;
   onClose: () => void;
@@ -33,34 +31,6 @@ export default function PasskeyRevokeSheet(props: PasskeyRevokeSheetProps): JSX.
       <p className="text-sm leading-5 text-dfxGray-800">
         {t('This passkey will no longer open the wallet. This cannot be undone.')}
       </p>
-      <fieldset className="mt-5">
-        <legend className="text-sm font-semibold text-dfxGray-800">{t('What happened?')}</legend>
-        {(['Lost', 'Compromised'] as const).map((item) => (
-          <label
-            key={item}
-            className={`mt-2 flex min-h-[60px] cursor-pointer items-start gap-3 rounded-md border p-3.5 ${props.reason === item ? 'border-dfxBlue-800 bg-[#EEF2F8] shadow-[inset_0_0_0_1px_#072440]' : 'border-dfxGray-600'}`}
-          >
-            <input
-              type="radio"
-              name="reason"
-              aria-label={t(item === 'Lost' ? 'Passkey lost' : 'Passkey compromised')}
-              checked={props.reason === item}
-              onChange={() => props.onReason(item)}
-              className="mt-0.5 h-5 w-5 shrink-0 accent-dfxBlue-800"
-            />
-            <span>
-              <b className="block text-base font-semibold">
-                {t(item === 'Lost' ? 'Passkey lost' : 'Passkey compromised')}
-              </b>
-              {item === 'Lost' && (
-                <span className="mt-0.5 block text-sm leading-5 text-dfxGray-800">
-                  {t('Device gone, deleted or no longer accessible')}
-                </span>
-              )}
-            </span>
-          </label>
-        ))}
-      </fieldset>
       <p className="mt-5 text-sm leading-5 text-dfxGray-800">{t('You confirm one last time with this passkey.')}</p>
       <label className="mt-5 flex min-h-[44px] items-start gap-3 text-[15px] leading-[22px]">
         <input

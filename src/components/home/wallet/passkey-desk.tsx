@@ -1,33 +1,63 @@
-import type { PasskeyDiagnosticParams, PasskeyWallet } from '@dfx.swiss/core';
+import { useWalletApi } from '@dfx.swiss/react';
 import { StyledVerticalStack } from '@dfx.swiss/react-components';
-import { checkPasskeyPlatform, KeyRing, passkeyDiagnostic, type PlatformReport } from '@dfx.swiss/wallet';
+import { checkPasskeyPlatform, passkeyDiagnostic, type KeyRing, type PlatformReport } from '@dfx.swiss/wallet';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
+import { useNavigation } from '../../../hooks/navigation.hook';
+import { bitcoinBlockchain, bitcoinLabel, discoverAccount, formatBtc, historyItems } from './passkey-bitcoin';
+import { usePasskeyDfxAccount } from './passkey-dfx-account';
 import { passkeyMessage, walletEnvForHost } from './passkey-host';
-import { credentialBytes } from './passkey-bytes';
-import { createWalletClient, type WalletClient } from './wallet-client';
-import { getOpenPasskey, sameSession, setOpenPasskey, subscribeOpenPasskey, type OpenPasskey } from './passkey-session';
-import { PasskeyReceivePanel, PasskeySendPanel, receiveAddress, type ReceiveFamily } from './passkey-transfer';
-import PasskeyWalletCard, { formatWalletAmount } from './passkey-wallet-card';
-import PasskeyWalletActions, { WalletAction } from './passkey-wallet-actions';
-import PasskeyWordsSheet from './passkey-words-sheet';
+import { passkeySend } from './passkey-payment';
 import PasskeyRevokeSheet from './passkey-revoke-sheet';
+import {
+  getOpenPasskey,
+  sameSession,
+  setOpenPasskey,
+  subscribeOpenPasskey,
+  updateOpenPasskey,
+  type OpenPasskey,
+} from './passkey-session';
 import PasskeySettingsSheet from './passkey-settings-sheet';
 import PasskeySheet from './passkey-sheet';
+import {
+  PasskeyReceivePanel,
+  PasskeySendPanel,
+  RECEIVE_FAMILIES,
+  receiveAddress,
+  type ReceiveFamily,
+  type SendPayment,
+} from './passkey-transfer';
+import PasskeyWalletActions, { WalletAction } from './passkey-wallet-actions';
+import PasskeyWalletCard, { formatWalletAmount } from './passkey-wallet-card';
 import PasskeyWalletHistory, { PasskeyHistory } from './passkey-wallet-history';
+import PasskeyWordsSheet from './passkey-words-sheet';
+import { createWalletClient, type WalletClient } from './wallet-client';
 
 const TOAST_DURATION_MS = 4000;
 
-// One automatic Bitcoin link per key ring, shared by every desk in this tab.
-// A wallet refresh keeps the ring; a new sign-in replaces it.
-const bitcoinLinksStarted = new WeakSet<object>();
+// One address registration per key ring, shared by every desk in this tab. A new sign-in replaces the ring.
+const addressSyncStarted = new WeakSet<object>();
+
+type WalletApiHook = ReturnType<typeof useWalletApi>;
+type BitcoinAccount = Awaited<ReturnType<WalletApiHook['getBitcoinAccount']>>;
+type WalletConfig = Awaited<ReturnType<WalletApiHook['getConfig']>>;
+type DiagnosticPayload = Parameters<WalletClient['diagnostics']>[1];
+type NoteKind = 'message' | 'refresh' | 'status' | 'diagnostics' | 'receive';
+
+interface ShownAsset {
+  name: string;
+  amount: string;
+  chf?: number;
+  eur?: number;
+  network?: string;
+}
 
 type ShownReceive =
   { family: ReceiveFamily; label: string; address: string } | { family: ReceiveFamily; label: string; error: string };
 
 export interface PasskeyDeskProps {
   balance?: { chf: number; eur: number };
-  assets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
+  assets?: ShownAsset[];
   history?: PasskeyHistory;
   receiveError?: ReceiveFamily;
   onCancel: () => void;
@@ -39,21 +69,9 @@ function canUseKeys(open: OpenPasskey): open is OpenPasskey & { keys: KeyRing } 
   return open.keys !== undefined;
 }
 
-function releaseNothing(): void {
-  return undefined;
-}
-
-// The API accepts only the mainnet BIP-84 login address. A testnet receive key is a different address.
-function bitcoinLoginRing(keys: KeyRing): { ring: KeyRing; release: () => void } {
-  if (keys.bitcoinNetwork !== 'testnet4') return { ring: keys, release: releaseNothing };
-  const ring = KeyRing.fromMnemonic(keys.mnemonic(), { bitcoinNetwork: 'mainnet' });
-  return { ring, release: () => ring.wipe() };
-}
-
-function readReceive(family: ReceiveFamily): string {
-  const session = getOpenPasskey();
-  if (!session?.keys) throw new Error('locked');
-  return receiveAddress(session.keys, family);
+// The app offers exactly the families GET /v1/wallet/config enables; none is assumed.
+export function enabledFamilies(config: WalletConfig): ReceiveFamily[] {
+  return RECEIVE_FAMILIES.filter((family) => config.families[family] === true);
 }
 
 function diagnosticPrf(prf: PlatformReport['prf']): boolean | undefined {
@@ -70,10 +88,7 @@ async function readClientCapabilities(): Promise<Record<string, boolean> | undef
   return credential.getClientCapabilities();
 }
 
-function diagnosticRecord(
-  report: PlatformReport,
-  capabilities: Record<string, boolean> | undefined,
-): PasskeyDiagnosticParams {
+function diagnosticRecord(report: PlatformReport, capabilities: Record<string, boolean> | undefined): DiagnosticPayload {
   const prf = diagnosticPrf(report.prf);
   return passkeyDiagnostic({
     stage: 'Capability',
@@ -81,10 +96,10 @@ function diagnosticRecord(
     ...(prf === undefined ? {} : { prf }),
     ...(report.os === undefined ? {} : { os: report.os }),
     ...(capabilities === undefined ? {} : { clientCapabilities: capabilities }),
-  }) as PasskeyDiagnosticParams;
+  }) as DiagnosticPayload;
 }
 
-// Keys stay in tab memory; existing account operations are exposed by the wallet interface.
+// Keys stay in tab memory. Account data, fees and the prepared payment come from wallet-api.
 export default function PasskeyDesk({
   onCancel,
   onHome = onCancel,
@@ -95,6 +110,10 @@ export default function PasskeyDesk({
   receiveError,
 }: PasskeyDeskProps): JSX.Element {
   const { translate, locale } = useSettingsContext();
+  const { navigate } = useNavigation();
+  const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
+  const walletApi = useWalletApi(open?.token);
+  const dfxAccount = usePasskeyDfxAccount();
   const [currentSymbol, setCurrentSymbol] = useState<'CHF' | 'EUR'>(() => {
     try {
       return localStorage.getItem('dfx.wallet.currency') === 'EUR' ? 'EUR' : 'CHF';
@@ -106,13 +125,12 @@ export default function PasskeyDesk({
   const [sheet, setSheet] = useState<'settings' | 'words' | 'revoke' | 'receive' | 'send'>();
   const [toast, setToast] = useState<string>();
   const [revokeAcknowledged, setRevokeAcknowledged] = useState(false);
-  const [reason, setReason] = useState<'Lost' | 'Compromised'>('Lost');
-  const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
   const [busy, setBusy] = useState(false);
   const [note, setNoteValue] = useState<string>();
-  const [noteKind, setNoteKind] = useState<'message' | 'refresh' | 'status' | 'diagnostics' | 'receive'>('message');
+  const [noteKind, setNoteKind] = useState<NoteKind>('message');
   const [words, setWords] = useState<string[]>();
-  const [checks, setChecks] = useState<{ family: string; address: string; matches: boolean }[]>();
+  const [families, setFamilies] = useState<ReceiveFamily[]>();
+  const [account, setAccount] = useState<BitcoinAccount>();
   const busyRef = useRef(false);
   const mounted = useRef(false);
   const sheetRef = useRef<typeof sheet>();
@@ -123,6 +141,8 @@ export default function PasskeyDesk({
   const wordsKeys = useRef<KeyRing>();
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const noteKindRef = useRef(noteKind);
+  const walletApiRef = useRef(walletApi);
+  walletApiRef.current = walletApi;
 
   function clearToastTimer(): void {
     if (toastTimer.current !== undefined) {
@@ -145,20 +165,13 @@ export default function PasskeyDesk({
     setToast(undefined);
   }
 
-  function setNote(
-    message?: string,
-    kind: 'message' | 'refresh' | 'status' | 'diagnostics' | 'receive' = 'message',
-  ): void {
+  function setNote(message?: string, kind: NoteKind = 'message'): void {
     noteKindRef.current = kind;
     setNoteValue(message);
     setNoteKind(kind);
   }
 
-  function showMessage(message: string, kind: 'message' | 'link' = 'message'): void {
-    if (kind === 'link') {
-      displayToast(message);
-      return;
-    }
+  function showMessage(message: string): void {
     const current = sheetRef.current;
     if (current === 'settings' || current === 'words' || current === 'revoke' || current === 'receive') {
       setNote(message);
@@ -177,7 +190,6 @@ export default function PasskeyDesk({
     setWords(undefined);
     setRevokeAcknowledged(false);
     setNote(undefined);
-    setChecks(undefined);
   }
 
   useEffect(() => {
@@ -210,6 +222,10 @@ export default function PasskeyDesk({
     };
   }, []);
 
+  function isLive(session: OpenPasskey): boolean {
+    return mounted.current && sameSession(getOpenPasskey(), session);
+  }
+
   async function run(
     action: (client: WalletClient, session: OpenPasskey, isCurrent: () => boolean) => Promise<void>,
   ): Promise<void> {
@@ -233,106 +249,50 @@ export default function PasskeyDesk({
     }
   }
 
-  function liveSession(session: OpenPasskey): OpenPasskey | undefined {
-    const latest = getOpenPasskey();
-    if (!mounted.current || !sameSession(latest, session)) return undefined;
-    return latest;
+  // Families, then the Bitcoin account with the device's gap-limit discovery. wallet-api answers
+  // balance, used flags and history; the device only chooses which of its addresses to ask about.
+  async function loadWallet(session: OpenPasskey): Promise<void> {
+    const api = walletApiRef.current;
+    const config = await api.getConfig();
+    if (!isLive(session)) return;
+    const enabled = enabledFamilies(config);
+    setFamilies(enabled);
+    if (!enabled.includes('bitcoin') || !canUseKeys(session)) return;
+    const blockchain = bitcoinBlockchain(session.bitcoinNetwork);
+    const found = await discoverAccount(session.keys, session.receiveIndex ?? 0, (addresses) =>
+      api.getBitcoinAccount(blockchain, { addresses }),
+    );
+    if (!isLive(session)) return;
+    setAccount(found.account);
+    updateOpenPasskey(session, { receiveIndex: found.receiveIndex });
   }
 
-  function isLive(session: OpenPasskey): boolean {
-    return liveSession(session) !== undefined;
-  }
-
-  function replaceWallet(wallet: PasskeyWallet, session: OpenPasskey): void {
-    // The open session outlives this desk. A mounted sibling reads the update.
-    const latest = getOpenPasskey();
-    if (!latest || !sameSession(latest, session)) return;
-    setOpenPasskey({ ...latest, wallet });
-  }
-
-  async function refreshWallet(
-    client: WalletClient,
-    session: OpenPasskey,
-    isCurrent: () => boolean,
-    reportCount: boolean,
-  ): Promise<PasskeyWallet | undefined> {
-    const list = await client.wallets(session.accessToken);
-    const match = list.find((item) => item.id === session.wallet.id);
-    if (match) replaceWallet(match, session);
-    if (reportCount && isLive(session) && isCurrent()) {
-      setNote(translate('screens/home', 'Wallets on this account: {{count}}.', { count: list.length }), 'refresh');
-    }
-    return match;
-  }
-
-  async function onLink(accountIndex: number, reportSuccess: boolean): Promise<void> {
-    const session = getOpenPasskey();
-    if (!session || !session.wallet || !canUseKeys(session)) return;
-    const keys = session.keys;
-    const token = session.accessToken;
-    await run(async (client, original, isCurrent) => {
-      const login = bitcoinLoginRing(keys);
-      let linked: Awaited<ReturnType<WalletClient['link']>>;
-      try {
-        linked = await client.link('bitcoin', token, login.ring, accountIndex);
-      } finally {
-        login.release();
-      }
-      // The link response is an address token. Further account routes still need the ceremony token.
-      const linkedText = translate('screens/home', 'Linked {{family}} {{address}}.', {
-        family: linked.address.family,
-        address: linked.address.address,
-      });
-      try {
-        await refreshWallet(client, original, isCurrent, false);
-      } catch (caught) {
-        if (isCurrent()) {
-          showMessage(`${linkedText} ${translate('screens/home', passkeyMessage(caught))}`);
-        }
-        return;
-      }
-      if (isCurrent() && reportSuccess) showMessage(linkedText, 'link');
-    });
-  }
-
-  async function onRevokeWithPasskey(reason: 'Lost' | 'Compromised'): Promise<void> {
-    await run(async (client, session, isCurrent) => {
-      const revoked = await client.revoke(reason, session.wallet.credentialId);
-      if (revoked.status === 'Active') {
-        if (isCurrent() && sameSession(getOpenPasskey(), session)) {
-          setNote('The passkey was not blocked. Please try again.');
-        }
-        return;
-      }
-      if (isCurrent()) {
-        setWords(undefined);
-        setSheet(undefined);
-      }
-      const current = getOpenPasskey();
-      if (current && sameSession(current, session)) {
-        current.keys?.wipe();
-        setOpenPasskey(undefined);
-        onRevoked();
-      }
-    });
-  }
-
-  const addresses = open?.wallet?.addresses ?? [];
-  const sessionWallet = open?.wallet;
+  const token = open?.token;
+  const keys = open?.keys;
 
   useEffect(() => {
-    if (busy || busyRef.current) return;
-    if (!open || !canUseKeys(open)) return;
-    if (sessionWallet === undefined) return;
-    if (addresses.some((address) => address.family === 'Bitcoin')) return;
-    if (bitcoinLinksStarted.has(open.keys)) return;
-    bitcoinLinksStarted.add(open.keys);
-    void onLink(0, false);
-  }, [busy, open, sessionWallet, addresses, onLink]);
+    const session = getOpenPasskey();
+    if (!session) return;
+    setFamilies(undefined);
+    setAccount(undefined);
+    loadWallet(session).catch((caught) => {
+      if (isLive(session)) displayToast(translate('screens/home', passkeyMessage(caught)));
+    });
+    if (session.keys && !addressSyncStarted.has(session.keys)) {
+      addressSyncStarted.add(session.keys);
+      createWalletClient()
+        .syncAddresses(session, session.keys)
+        .catch((caught: unknown) => {
+          if (isLive(session)) displayToast(translate('screens/home', passkeyMessage(caught)));
+        });
+    }
+  }, [token, keys]);
 
-  if (!open?.wallet) return <StyledVerticalStack gap={2} center />;
+  if (!open) return <StyledVerticalStack gap={2} center />;
 
   const t = (key: string) => translate('screens/home', key);
+  const network = open.bitcoinNetwork;
+  const shownFamilies = families ?? [];
   const button =
     'min-h-[44px] rounded-lg px-4 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2';
   const openSheet = (next: typeof sheet) => {
@@ -346,71 +306,96 @@ export default function PasskeyDesk({
   const requestCloseSheet = () => {
     if (!busyRef.current) closeSheet();
   };
-  const toastMessage = (message: string) => displayToast(t(message));
   const copyAddress = async (address: string) => {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard is not available.');
       await navigator.clipboard.writeText(address);
-      toastMessage('Address copied');
+      displayToast(t('Address copied'));
     } catch (caught) {
       displayToast(translate('screens/home', passkeyMessage(caught)));
     }
+  };
+  const endSession = () => {
+    getOpenPasskey()?.keys?.wipe();
+    setOpenPasskey(undefined);
+    dfxAccount.disconnect().catch(() => undefined);
   };
   const startAnother = () => {
     wordsGeneration.current += 1;
     wordsKeys.current = undefined;
     setWords(undefined);
-    setChecks(undefined);
     setSheet(undefined);
-    getOpenPasskey()?.keys?.wipe();
-    setOpenPasskey(undefined);
+    endSession();
   };
+  const readReceive = (family: ReceiveFamily): string => {
+    const session = getOpenPasskey();
+    if (!session?.keys) throw new Error('locked');
+    return receiveAddress(session.keys, family, session.receiveIndex ?? 0);
+  };
+  const sendPayment: SendPayment = async (input, confirm) => {
+    const sent = await passkeySend(input, (prepared) => confirm(prepared));
+    const session = getOpenPasskey();
+    if (session) loadWallet(session).catch(() => undefined);
+    return sent;
+  };
+
   async function showWords(): Promise<void> {
-    if (busyRef.current) return;
-    const openNow = getOpenPasskey();
-    if (!openNow || !canUseKeys(openNow)) return;
     await run(async (client, session) => {
       if (!canUseKeys(session)) return;
       const generation = ++wordsGeneration.current;
       wordsKeys.current = session.keys;
       setWords(undefined);
-      const exportPromise = client.exportMnemonic(
-        session.wallet.credentialId ? credentialBytes(session.wallet.credentialId) : undefined,
-      );
+      const exportPromise = client.exportMnemonic(session);
       if (generation === wordsGeneration.current) openSheet('words');
       const exported = await exportPromise;
       const current = getOpenPasskey();
-      if (generation === wordsGeneration.current && current && canUseKeys(current) && current.keys === session.keys) {
-        setWords(exported);
-      }
+      if (generation === wordsGeneration.current && current?.keys === session.keys) setWords(exported);
     });
   }
+
+  async function openDfx(path: '/buy' | '/sell'): Promise<void> {
+    await run(async (_client, session) => {
+      if (!canUseKeys(session)) return;
+      await dfxAccount.connect(session.keys);
+      if (isLive(session)) navigate(path);
+    });
+  }
+
   function onAction(action: WalletAction): void {
-    if (action === 'Buy' || action === 'Sell' || action === 'Swap' || action === 'Pay') return;
+    if (action === 'Swap' || action === 'Pay') return;
     const openNow = getOpenPasskey();
     if (!openNow || !canUseKeys(openNow)) return;
-    if (action === 'Send') openSheet('send');
+    if (action === 'Buy') void openDfx('/buy');
+    else if (action === 'Sell') void openDfx('/sell');
+    else if (action === 'Send') openSheet('send');
     else openSheet('receive');
   }
-  const bitcoin = addresses.some((address) => address.family === 'Bitcoin');
+
   const receiveLabel: Record<ReceiveFamily, string> = {
     evm: t('Ethereum & EVM'),
-    bitcoin: 'Bitcoin',
+    bitcoin: t(bitcoinLabel(network)),
     spark: t('Lightning (Spark)'),
   };
   const sessionKeys = expanded && canUseKeys(open) ? open.keys : undefined;
   const receiveRows: ShownReceive[] =
     sessionKeys === undefined
       ? []
-      : (['evm', 'bitcoin', 'spark'] as const).map((family): ShownReceive => {
+      : shownFamilies.map((family): ShownReceive => {
           const label = receiveLabel[family];
           try {
             if (receiveError === family) throw new Error();
-            return { family, label, address: receiveAddress(sessionKeys, family) };
+            return { family, label, address: receiveAddress(sessionKeys, family, open.receiveIndex ?? 0) };
           } catch (caught) {
             return { family, label, error: t(passkeyMessage(caught)) };
           }
         });
+  const accountAssets: ShownAsset[] | undefined = account && [
+    { name: 'Bitcoin', amount: formatBtc(account.balance.total), network: t(bitcoinLabel(network)) },
+  ];
+  const shownAssets = assets ?? accountAssets;
+  const shownHistory: PasskeyHistory | undefined =
+    history ?? (account && { items: historyItems(account.history, t, locale), hasMore: false });
+  const bitcoinEnabled = shownFamilies.includes('bitcoin');
 
   return (
     <main className="mx-auto w-full max-w-[560px] pb-10 text-left text-dfxBlue-800">
@@ -436,23 +421,28 @@ export default function PasskeyDesk({
         <section id="passkey-wallet-details" className="mt-6">
           <h2 className="mb-2 text-xl font-bold">{t('Your wallet')}</h2>
           <div className="overflow-hidden rounded-[16px] bg-dfxGray-300">
-            {assets?.map((asset, index) => (
-              <div
-                key={`${asset.name}:${index}`}
-                className="flex min-h-[60px] items-center justify-between gap-2 border-b border-white px-4 py-3"
-              >
-                <div>
-                  <b>{asset.name}</b>
-                  {asset.network && <p className="text-sm">{asset.network}</p>}
-                </div>
-                <div className="text-right">
-                  <div>{asset.amount}</div>
-                  <div className="text-sm">
-                    {currentSymbol} {formatWalletAmount(asset[currentSymbol.toLowerCase() as 'chf' | 'eur'], locale)}
+            {shownAssets?.map((asset, index) => {
+              const fiat = asset[currentSymbol.toLowerCase() as 'chf' | 'eur'];
+              return (
+                <div
+                  key={`${asset.name}:${index}`}
+                  className="flex min-h-[60px] items-center justify-between gap-2 border-b border-white px-4 py-3"
+                >
+                  <div>
+                    <b>{asset.name}</b>
+                    {asset.network && <p className="text-sm">{asset.network}</p>}
+                  </div>
+                  <div className="text-right">
+                    <div>{asset.amount}</div>
+                    {fiat !== undefined && (
+                      <div className="text-sm">
+                        {currentSymbol} {formatWalletAmount(fiat, locale)}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <h3 className="px-4 pt-4 font-semibold">{t('Addresses')}</h3>
             <ul>
               {receiveRows.map((row) => (
@@ -468,18 +458,6 @@ export default function PasskeyDesk({
                       </p>
                     ) : (
                       <p className="text-sm">{row.error}</p>
-                    )}
-                    {row.family === 'bitcoin' && !bitcoin && (
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <p className="text-sm">{t('Not connected yet')}</p>
-                        <button
-                          className={`${button} border border-dfxGray-500`}
-                          disabled={busy}
-                          onClick={() => void onLink(0, true)}
-                        >
-                          {t('Connect again')}
-                        </button>
-                      </div>
                     )}
                   </div>
                   {'address' in row && (
@@ -497,7 +475,7 @@ export default function PasskeyDesk({
           </div>
         </section>
       )}
-      <PasskeyWalletHistory history={history} />
+      <PasskeyWalletHistory history={shownHistory} />
       {toast && (
         <div
           role="status"
@@ -509,58 +487,35 @@ export default function PasskeyDesk({
       )}
       {sheet === 'settings' && (
         <PasskeySettingsSheet
-          credentialId={open.wallet.credentialId}
+          credentialId={open.credentialId}
           busy={busy}
           note={note}
           noteKind={
             noteKind === 'refresh' || noteKind === 'status' || noteKind === 'diagnostics' ? noteKind : 'message'
           }
-          checks={checks}
           onWords={() => void showWords()}
-          onVerify={() =>
-            void run(async (client, session, isCurrent) => {
-              if (!canUseKeys(session)) return;
-              const login = bitcoinLoginRing(session.keys);
-              try {
-                const rows = client.verifyServerAddresses(session.wallet, login.ring);
-                if (isLive(session) && isCurrent()) {
-                  setChecks(
-                    rows.map((item) => ({ family: item.family, address: item.address, matches: item.matches })),
-                  );
-                }
-              } finally {
-                login.release();
-              }
-            })
-          }
           onRefresh={() =>
-            void run(async (client, session, isCurrent) => {
-              await refreshWallet(client, session, isCurrent, true);
+            void run(async (_client, session, isCurrent) => {
+              await loadWallet(session);
+              if (isCurrent()) setNote(t('Data reloaded.'), 'refresh');
             })
           }
           onStatus={() =>
             void run(async (client, session, isCurrent) => {
-              const rows = await client.credentialStatus([session.wallet.credentialId]);
+              const rows = await client.credentials(session);
               if (isCurrent()) {
                 setNote(
-                  rows
-                    .map((item) =>
-                      translate('screens/home', '{{credentialId}}: {{status}}', {
-                        credentialId: item.credentialId,
-                        status: translate('screens/home', item.status),
-                      }),
-                    )
-                    .join(', ') || translate('screens/home', 'No credential status.'),
+                  translate('screens/home', 'Passkeys on this account: {{count}}.', { count: rows.length }),
                   'status',
                 );
               }
             })
           }
           onDiagnostics={() =>
-            void run(async (client, _session, isCurrent) => {
+            void run(async (client, session, isCurrent) => {
               const report = await checkPasskeyPlatform(walletEnvForHost(window.location.hostname));
               const capabilities = await readClientCapabilities();
-              await client.diagnostics(diagnosticRecord(report, capabilities));
+              await client.diagnostics(session, diagnosticRecord(report, capabilities));
               if (isCurrent()) setNote('Diagnostic recorded.', 'diagnostics');
             })
           }
@@ -588,20 +543,27 @@ export default function PasskeyDesk({
           acknowledged={revokeAcknowledged}
           busy={busy}
           returnFocus={sheetOrigin.current}
-          reason={reason}
-          onReason={setReason}
           onAcknowledged={setRevokeAcknowledged}
           onClose={requestCloseSheet}
-          onRevoke={() => {
-            setChecks(undefined);
-            void onRevokeWithPasskey(reason);
-          }}
+          onRevoke={() =>
+            void run(async (client, session) => {
+              await client.revoke(session);
+              setWords(undefined);
+              setSheet(undefined);
+              if (sameSession(getOpenPasskey(), session)) {
+                endSession();
+                onRevoked();
+              }
+            })
+          }
         />
       )}
       {sheet === 'receive' && (
         <PasskeySheet title={t('Receive')} busy={busy} onClose={requestCloseSheet}>
           {note && <p role="alert">{t(note)}</p>}
           <PasskeyReceivePanel
+            families={shownFamilies}
+            bitcoinLabel={bitcoinLabel(network)}
             readReceive={readReceive}
             onReceiveError={(message) => {
               if (message !== undefined) setNote(message, 'receive');
@@ -612,7 +574,14 @@ export default function PasskeyDesk({
       )}
       {sheet === 'send' && (
         <PasskeySheet title={t('Send')} busy={busy} onClose={requestCloseSheet}>
-          <PasskeySendPanel />
+          {bitcoinEnabled ? (
+            <PasskeySendPanel
+              loadFees={() => walletApiRef.current.getBitcoinFees(bitcoinBlockchain(network))}
+              send={sendPayment}
+            />
+          ) : (
+            <p className="pt-4 text-dfxGray-700">{t('Sending is not available for this wallet yet.')}</p>
+          )}
         </PasskeySheet>
       )}
     </main>

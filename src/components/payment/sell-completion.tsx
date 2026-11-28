@@ -17,6 +17,7 @@ import { CloseType, useAppHandlingContext } from '../../contexts/app-handling.co
 import { useSettingsContext } from '../../contexts/settings.context';
 import { useClipboard } from '../../hooks/clipboard.hook';
 import { blankedAddress } from '../../util/utils';
+import { SimulatePayout } from './test-simulation';
 
 interface SellCompletionProps {
   paymentInfo: Sell;
@@ -65,6 +66,8 @@ export function SellCompletion({ paymentInfo, navigateOnClose, txId }: SellCompl
           )}{' '}
         {translate('screens/payment', 'We will inform you by email about the progress of your transactions.')}
       </p>
+
+      <SimulatePayout sell={paymentInfo} />
 
       <StyledButton
         label={translate('general/actions', 'Close')}

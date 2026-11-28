@@ -1,6 +1,7 @@
 import { Asset, Blockchain, Sell, Swap, useAuthContext, useSell, useSwap } from '@dfx.swiss/react';
 import BigNumber from 'bignumber.js';
 import { useMemo } from 'react';
+import { sendPasskeyPayment } from '../components/home/wallet/passkey-payment';
 import { useAppHandlingContext } from '../contexts/app-handling.context';
 import { AssetBalance, useBalanceContext } from '../contexts/balance.context';
 import { WalletType, useWalletContext } from '../contexts/wallet.context';
@@ -167,6 +168,10 @@ export function useTxHelper(): TxHelperInterface {
         if (!session?.address) throw new Error('Address is not defined');
         return createTransactionTronLinkTrx(new BigNumber(tx.amount), asset, session.address, tx.depositAddress);
 
+      case WalletType.PASSKEY:
+        // wallet-api prepares and submits; the device only signs (see passkey-payment.ts).
+        return sendPasskeyPayment(tx.depositAddress, tx.amount);
+
       default:
         throw new Error('Not supported yet');
     }
@@ -181,6 +186,7 @@ export function useTxHelper(): TxHelperInterface {
       case WalletType.WALLET_CONNECT:
       case WalletType.PHANTOM_SOL:
       case WalletType.TRUST_SOL:
+      case WalletType.PASSKEY:
         return true;
 
       default:

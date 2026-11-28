@@ -9,11 +9,14 @@ export interface PasskeyTx {
   direction: 'in' | 'out';
   fiatValue: string;
   pending?: boolean;
+  // Text under a pending row; DFX payouts say "Payout pending", own on-chain rows "Unconfirmed".
+  pendingLabel?: string;
 }
 export interface PasskeyHistory {
   items: PasskeyTx[];
   hasMore: boolean;
-  loadMore: () => Promise<void>;
+  // Absent when the source has no further pages (wallet-api returns a capped history).
+  loadMore?: () => Promise<void>;
 }
 
 const icons: Record<PasskeyTx['type'] | 'clock', string> = {
@@ -39,18 +42,19 @@ export default function PasskeyWalletHistory({ history }: { history?: PasskeyHis
       loading ||
       error ||
       !history?.hasMore ||
+      !history.loadMore ||
       !marker.current ||
       typeof IntersectionObserver === 'undefined'
     )
       return;
+    const loadMore = history.loadMore;
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting) || pending.current) return;
         pending.current = true;
         setLoading(true);
         setError(false);
-        void history
-          .loadMore()
+        void loadMore()
           .catch(() => setError(true))
           .finally(() => {
             pending.current = false;
@@ -99,7 +103,7 @@ export default function PasskeyWalletHistory({ history }: { history?: PasskeyHis
                   {tx.date}
                   {tx.pending && (
                     <span className="block font-medium text-[#8A5A00]">
-                      {translate('screens/home', 'Payout pending')}
+                      {translate('screens/home', tx.pendingLabel ?? 'Payout pending')}
                     </span>
                   )}
                 </div>

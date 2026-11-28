@@ -170,4 +170,26 @@ describe('Passkey wallet history', () => {
       global.IntersectionObserver = original;
     }
   });
+
+  it('labels an unconfirmed own transaction and observes nothing without a page source', () => {
+    const observe = jest.fn();
+    const original = global.IntersectionObserver;
+    global.IntersectionObserver = class {
+      observe = observe;
+      disconnect = jest.fn();
+    } as unknown as typeof IntersectionObserver;
+    try {
+      render(
+        <PasskeyWalletHistory
+          history={{ items: [{ ...items[0], pending: true, pendingLabel: 'Unconfirmed' }], hasMore: true }}
+        />,
+      );
+      expect(screen.getByText('Unconfirmed')).toBeInTheDocument();
+      expect(screen.queryByText('Payout pending')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      expect(observe).not.toHaveBeenCalled();
+    } finally {
+      global.IntersectionObserver = original;
+    }
+  });
 });

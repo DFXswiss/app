@@ -37,6 +37,9 @@ jest.mock('../hooks/navigation.hook', () => ({
 }));
 
 jest.mock('../components/edit/mail.edit', () => ({ MailEdit: () => null }));
+jest.mock('../components/payment/test-simulation', () => ({
+  SimulatePayment: ({ buy }: { buy: { id: number } }) => <div data-testid="simulate-payment">{buy.id}</div>,
+}));
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { BuyCompletion } from '../components/payment/buy-completion';
@@ -59,6 +62,14 @@ describe('BuyCompletion close handling', () => {
       expect.anything(),
     );
     expect(mockCloseServices.mock.calls[0][0].buy).toBe(paymentInfo);
+  });
+
+  it('offers the payment simulation for the shown buy and none without payment information', () => {
+    mockUseAppHandlingContext.mockReturnValue({ closeServices: mockCloseServices });
+    const view = renderCompletion({ id: 42 } as any);
+    expect(screen.getByTestId('simulate-payment')).toHaveTextContent('42');
+    view.rerender(<BuyCompletion user={{ mail: 'user@example.com' } as any} navigateOnClose={false} />);
+    expect(screen.queryByTestId('simulate-payment')).not.toBeInTheDocument();
   });
 
   function renderCompletion(paymentInfo = { id: 1 } as any) {

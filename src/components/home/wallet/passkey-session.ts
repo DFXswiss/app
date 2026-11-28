@@ -1,16 +1,20 @@
-import type { AuthResult } from '@dfx.swiss/wallet';
+import type { KeyRing } from '@dfx.swiss/wallet';
+import type { PasskeyBitcoinNetwork } from './passkey-bitcoin';
 
 // The open passkey stays in this tab. It is not written to localStorage, sessionStorage or a cookie.
-// Keys and the account token disappear when the tab closes.
-export type OpenPasskey = AuthResult;
+// Keys and the wallet session token disappear when the tab closes.
+export interface OpenPasskey {
+  // wallet-api session token. It is never the DFX customer session; that one lives in the SDK session.
+  token: string;
+  credentialId: string;
+  keys?: KeyRing;
+  bitcoinNetwork: PasskeyBitcoinNetwork;
+  // BIP-84 receive index the device found by gap-limit discovery against the wallet-api account.
+  receiveIndex?: number;
+}
 
 export function sameSession(a: OpenPasskey | undefined, b: OpenPasskey): boolean {
-  return Boolean(
-    a?.wallet &&
-    a.wallet.id === b.wallet.id &&
-    a.wallet.credentialId === b.wallet.credentialId &&
-    a.accessToken === b.accessToken,
-  );
+  return Boolean(a && a.token === b.token && a.credentialId === b.credentialId);
 }
 
 declare global {
@@ -29,6 +33,12 @@ export function getOpenPasskey(): OpenPasskey | undefined {
 export function setOpenPasskey(next: OpenPasskey | undefined): void {
   current = next;
   listeners.forEach((listener) => listener());
+}
+
+// Applies a change only while the same session is still open, so a late answer never lands on a newer login.
+export function updateOpenPasskey(session: OpenPasskey, patch: Partial<Pick<OpenPasskey, 'receiveIndex'>>): void {
+  if (!current || !sameSession(current, session)) return;
+  setOpenPasskey({ ...current, ...patch });
 }
 
 export function subscribeOpenPasskey(listener: () => void): () => void {

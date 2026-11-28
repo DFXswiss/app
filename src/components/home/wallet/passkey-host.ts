@@ -10,9 +10,6 @@ export const PASSKEY_CHOICE_HEADING = 'Do you already have an account?';
 export const PASSKEY_EXISTING = 'Log in with existing account';
 export const PASSKEY_CREATE = 'Open a new account';
 export const PASSKEY_RETRY = 'Try again';
-export const PASSKEY_EMAIL_HEADING = 'Your email';
-export const PASSKEY_EMAIL_BODY = 'This email is saved with the new passkey account.';
-export const PASSKEY_EMAIL_CONTINUE = 'Continue';
 export const PASSKEY_UNKNOWN_HEADING = 'This passkey is not an account';
 export const PASSKEY_UNKNOWN_BODY =
   'This device offered a passkey that DFX does not recognize. Open a new account. If the device offers that same passkey again, delete the saved DFX passkey in your password settings, then try again.';

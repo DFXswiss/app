@@ -1,5 +1,5 @@
 import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
-import { checkPasskeyPlatform, openInSystemBrowser, type AuthResult, type PlatformReport } from '@dfx.swiss/wallet';
+import { checkPasskeyPlatform, openInSystemBrowser, type PlatformReport } from '@dfx.swiss/wallet';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { ConnectProps } from '../connect-shared';
@@ -18,9 +18,6 @@ import {
   PASSKEY_CHOICE_HEADING,
   PASSKEY_COPY_LINK,
   PASSKEY_CREATE,
-  PASSKEY_EMAIL_BODY,
-  PASSKEY_EMAIL_CONTINUE,
-  PASSKEY_EMAIL_HEADING,
   PASSKEY_EXISTING,
   PASSKEY_GENERIC_ERROR,
   PASSKEY_IN_APP_BODY,
@@ -37,12 +34,12 @@ import {
   PASSKEY_UNKNOWN_HEADING,
   walletEnvForHost,
 } from './passkey-host';
-import { getOpenPasskey, setOpenPasskey, subscribeOpenPasskey } from './passkey-session';
+import { getOpenPasskey, setOpenPasskey, subscribeOpenPasskey, type OpenPasskey } from './passkey-session';
 import { createWalletClient } from './wallet-client';
 
 export { passkeyPlatformBlock, walletEnvForHost };
 
-type SheetView = 'idle' | 'choice' | 'email' | 'unknown' | 'error';
+type SheetView = 'idle' | 'choice' | 'unknown' | 'error';
 type CeremonyEntry = 'login' | 'authenticate' | 'register';
 
 const PASSKEY_DID_NOT_UNLOCK =
@@ -55,10 +52,6 @@ declare global {
     __dfxHandbookPasskeyAssets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
     __dfxHandbookPasskeyReceiveError?: ReceiveFamily;
   }
-}
-
-function isMail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 function pageUrl(): string {
@@ -101,7 +94,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
   const { navigate } = useNavigation();
   const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
   const [report, setReport] = useState<PlatformReport | undefined>();
-  const [mail, setMail] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [view, setView] = useState<SheetView>('idle');
@@ -139,13 +131,13 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     }, 1200);
   }
 
-  async function remember(result: AuthResult, initialSession: AuthResult | undefined): Promise<void> {
+  // A wallet-api session without an unlocked key ring cannot open the wallet; it is dropped.
+  function remember(result: OpenPasskey, initialSession: OpenPasskey | undefined): void {
     if (abandonedRef.current || getOpenPasskey() !== initialSession) {
       result.keys?.wipe();
       return;
     }
-    if (result.state !== 'unlocked' || !result.keys) {
-      result.keys?.wipe();
+    if (!result.keys) {
       setSheetError(PASSKEY_DID_NOT_UNLOCK);
       return;
     }
@@ -156,10 +148,6 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
     if (passkeyDismissed(caught)) {
       if (nextEntry === 'login' && unknownOfferedRef.current) {
         setView('unknown');
-        return;
-      }
-      if (nextEntry === 'register') {
-        setView('email');
         return;
       }
       setView('choice');
@@ -181,7 +169,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
 
   async function run(
     nextEntry: CeremonyEntry,
-    action: (initialSession: AuthResult | undefined) => Promise<void>,
+    action: (initialSession: OpenPasskey | undefined) => Promise<void>,
   ): Promise<void> {
     if (busyRef.current) return;
     const initialSession = getOpenPasskey();
@@ -206,35 +194,26 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
 
   function startLogin(): void {
     void run('login', async (initialSession) => {
-      const result = await createWalletClient().login();
-      await remember(result, initialSession);
+      remember(await createWalletClient().login(), initialSession);
     });
   }
 
   function startAuthenticate(): void {
     void run('authenticate', async (initialSession) => {
-      const result = await createWalletClient().login();
-      await remember(result, initialSession);
+      remember(await createWalletClient().login(), initialSession);
     });
   }
 
+  // wallet-api registers the passkey without an e-mail. The DFX account asks for it during buy or KYC.
   function startRegister(): void {
-    const address = mail.trim();
-    if (!isMail(address)) return;
     void run('register', async (initialSession) => {
-      const result = await createWalletClient().register({ mail: address });
-      await remember(result, initialSession);
+      remember(await createWalletClient().register(), initialSession);
     });
-  }
-
-  function openEmail(): void {
-    setView('email');
   }
 
   function retryError(): void {
     if (entry === 'register') {
-      setSheetError(undefined);
-      setView('email');
+      startRegister();
       return;
     }
     if (entry === 'authenticate') {
@@ -359,37 +338,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
           width={StyledButtonWidth.FULL}
           color={StyledButtonColor.GRAY}
           label={translate('screens/home', PASSKEY_CREATE)}
-          onClick={() => openEmail()}
-        />
-      </StyledVerticalStack>
-    );
-  }
-
-  if (view === 'email') {
-    const mailReady = isMail(mail);
-    return (
-      <StyledVerticalStack gap={2} center>
-        <p className="text-center text-dfxBlue-800">{translate('screens/home', PASSKEY_EMAIL_HEADING)}</p>
-        <p className="text-center text-dfxGray-700">{translate('screens/home', PASSKEY_EMAIL_BODY)}</p>
-        <label className="w-full text-left text-dfxBlue-800" htmlFor="passkey-mail">
-          {translate('screens/kyc', 'Email address')}
-          <input
-            id="passkey-mail"
-            type="email"
-            name="mail"
-            autoComplete="email"
-            value={mail}
-            disabled={busy}
-            placeholder={translate('screens/kyc', 'example@mail.com')}
-            onChange={(event) => setMail(event.target.value)}
-            className="mt-1 w-full rounded-md border border-dfxGray-500 p-4 text-base font-normal"
-          />
-        </label>
-        <StyledButton
-          width={StyledButtonWidth.FULL}
-          label={translate('screens/home', PASSKEY_EMAIL_CONTINUE)}
           onClick={() => startRegister()}
-          disabled={!mailReady}
         />
       </StyledVerticalStack>
     );
@@ -409,7 +358,7 @@ export default function ConnectPasskey(props: ConnectProps): JSX.Element {
           width={StyledButtonWidth.FULL}
           color={StyledButtonColor.GRAY}
           label={translate('screens/home', PASSKEY_CREATE)}
-          onClick={() => openEmail()}
+          onClick={() => startRegister()}
         />
       </StyledVerticalStack>
     );

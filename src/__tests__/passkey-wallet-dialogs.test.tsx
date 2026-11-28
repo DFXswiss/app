@@ -3,13 +3,9 @@ import PasskeyRevokeSheet from '../components/home/wallet/passkey-revoke-sheet';
 import PasskeySettingsSheet from '../components/home/wallet/passkey-settings-sheet';
 import PasskeyWordsSheet from '../components/home/wallet/passkey-words-sheet';
 
-let mockTranslateAddresses = false;
 jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({
-    translate: (_namespace: string, text: string) =>
-      mockTranslateAddresses && ['Bitcoin', 'Lightning (Spark)', 'Ethereum & EVM'].includes(text)
-        ? `translated ${text}`
-        : text,
+    translate: (_namespace: string, text: string) => text,
   }),
 }));
 
@@ -21,8 +17,6 @@ describe('Passkey wallet dialogs', () => {
     const props = {
       acknowledged: false,
       busy: false,
-      reason: 'Lost' as const,
-      onReason: jest.fn(),
       onAcknowledged: jest.fn(),
       onRevoke: jest.fn(),
       onClose: jest.fn(),
@@ -71,32 +65,24 @@ describe('Passkey wallet dialogs', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('displays revocation choices', () => {
-    const onReason = jest.fn(),
-      onAcknowledged = jest.fn();
+  it('confirms the revocation without a reason choice', () => {
+    const onAcknowledged = jest.fn();
     const onRevoke = jest.fn(),
       onClose = jest.fn();
     const props = {
       acknowledged: false,
       busy: false,
-      reason: 'Lost' as const,
-      onReason,
       onAcknowledged,
       onRevoke,
       onClose,
     };
     const view = render(<PasskeyRevokeSheet {...props} />);
     expect(screen.getByText('You confirm one last time with this passkey.')).toBeInTheDocument();
-    expect(screen.getByText('Device gone, deleted or no longer accessible')).toBeInTheDocument();
-    expect(
-      screen.queryByText('Someone else may have access. Move your funds to a safe address with “Send” first.'),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText('Confirm with')).not.toBeInTheDocument();
+    // wallet-api revokes without a reason, so the sheet no longer asks for one.
+    expect(screen.queryByText('What happened?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Block', exact: true })).toBeDisabled();
-    fireEvent.click(screen.getByLabelText('Passkey compromised'));
-    expect(screen.queryByText('New login')).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
-    expect(onReason).toHaveBeenCalledWith('Compromised');
     expect(onAcknowledged).toHaveBeenCalledWith(true);
     view.rerender(<PasskeyRevokeSheet {...props} acknowledged />);
     fireEvent.click(screen.getByRole('button', { name: 'Block', exact: true }));
@@ -115,7 +101,6 @@ describe('Passkey wallet dialogs', () => {
 
   it('exposes the remaining settings actions', () => {
     const onWords = jest.fn(),
-      onVerify = jest.fn(),
       onRefresh = jest.fn();
     const onStatus = jest.fn(),
       onDiagnostics = jest.fn(),
@@ -127,7 +112,6 @@ describe('Passkey wallet dialogs', () => {
       credentialId: 'credential',
       busy: false,
       onWords,
-      onVerify,
       onRefresh,
       onStatus,
       onDiagnostics,
@@ -143,64 +127,30 @@ describe('Passkey wallet dialogs', () => {
     expect(
       screen.queryByText('Only on this device. If it is lost, you need your recovery words.'),
     ).not.toBeInTheDocument();
-    expect(screen.getByText('Checks that DFX shows your own addresses')).toBeInTheDocument();
+    // Address verification against a server list is gone; wallet-api checks the payment instead.
+    expect(screen.queryByRole('button', { name: /Check addresses/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Export recovery phrase/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: /Export recovery phrase/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Check addresses/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Reload data' }));
     fireEvent.click(screen.getByRole('button', { name: 'Check passkey status' }));
     fireEvent.click(screen.getByRole('button', { name: 'Record a diagnostic' }));
     fireEvent.click(screen.getByRole('button', { name: 'Use another passkey' }));
     fireEvent.click(screen.getByRole('button', { name: 'Block passkey' }));
-    [onWords, onVerify, onRefresh, onStatus, onDiagnostics, onAnotherPasskey, onRevoke].forEach((fn) =>
+    [onWords, onRefresh, onStatus, onDiagnostics, onAnotherPasskey, onRevoke].forEach((fn) =>
       expect(fn).toHaveBeenCalledTimes(1),
     );
     fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[1]);
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
 
-    view.rerender(
-      <PasskeySettingsSheet
-        {...props}
-        credentialId=""
-        note="failure"
-        checks={[{ family: 'Evm', address: 'a', matches: false }]}
-      />,
-    );
+    view.rerender(<PasskeySettingsSheet {...props} credentialId="" note="failure" />);
     expect(screen.getByText('Unlocked')).toBeInTheDocument();
     expect(screen.queryByText('Unlock to view')).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('failure');
-    expect(screen.getByText('0 / 1 addresses match')).toHaveClass('text-dfxRed-150');
     expect(screen.getByRole('button', { name: 'Check passkey status' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Check addresses/ })).toBeEnabled();
     expect(screen.getByRole('button', { name: /Export recovery phrase/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: /Export recovery phrase/ }));
     expect(onWords).toHaveBeenCalledTimes(2);
-
-    view.rerender(<PasskeySettingsSheet {...props} checks={[]} />);
-    expect(screen.getByText('0 / 0 addresses match')).not.toHaveClass('text-dfxGreen-300');
-    expect(screen.getByText('0 / 0 addresses match')).not.toHaveClass('text-dfxRed-150');
-    view.rerender(<PasskeySettingsSheet {...props} checks={[{ family: 'Evm', address: 'a', matches: true }]} />);
-    expect(screen.getByText('1 / 1 addresses match')).toHaveClass('text-dfxGreen-300');
-
-    mockTranslateAddresses = true;
-    try {
-      view.rerender(
-        <PasskeySettingsSheet
-          {...props}
-          checks={[
-            { family: 'Evm', address: 'a', matches: true },
-            { family: 'Spark', address: 'b', matches: true },
-            { family: 'Bitcoin', address: 'c', matches: true },
-          ]}
-        />,
-      );
-      expect(screen.getByText(/translated Ethereum & EVM/)).toBeInTheDocument();
-      expect(screen.getByText(/translated Lightning \(Spark\)/)).toBeInTheDocument();
-      expect(screen.getByText(/translated Bitcoin/)).toBeInTheDocument();
-    } finally {
-      mockTranslateAddresses = false;
-    }
 
     view.rerender(<PasskeySettingsSheet {...props} noteKind="refresh" note="Konten: 1" />);
     expect(screen.getByRole('button', { name: 'Reload data' })).toHaveTextContent('Konten: 1');
@@ -214,7 +164,6 @@ describe('Passkey wallet dialogs', () => {
 
     view.rerender(<PasskeySettingsSheet {...props} busy />);
     expect(screen.getByRole('button', { name: /Export recovery phrase/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Check addresses/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
     screen.getAllByRole('button', { name: 'Close' }).forEach((button) => expect(button).toBeDisabled());
   });
