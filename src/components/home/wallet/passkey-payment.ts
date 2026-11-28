@@ -1,4 +1,4 @@
-import { bitcoinBlockchain, satsFromBtc, sendAddresses } from './passkey-bitcoin';
+import { satsFromBtc, sendAddresses } from './passkey-bitcoin';
 import { getOpenPasskey } from './passkey-session';
 import { createWalletClient, type BitcoinSendConfirm, type BitcoinSendParams } from './wallet-client';
 
@@ -34,8 +34,8 @@ export async function passkeySend(
   const session = getOpenPasskey();
   if (!session?.keys) throw new Error(PASSKEY_LOCKED);
   const keys = session.keys;
+  // No blockchain in the request: BitcoinSend takes it from the ring's Bitcoin network.
   const params: BitcoinSendParams = {
-    blockchain: bitcoinBlockchain(session.bitcoinNetwork),
     ...sendAddresses(keys, session.receiveIndex ?? 0),
     destination: input.destination,
     amount: sendAmount(input.amount),

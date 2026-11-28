@@ -56,7 +56,7 @@ jest.mock('../components/home/wallet/passkey-host', () => ({
 
 import { credentialBytes } from '../components/home/wallet/passkey-bytes';
 import type { OpenPasskey } from '../components/home/wallet/passkey-session';
-import { createWalletApi, createWalletClient } from '../components/home/wallet/wallet-client';
+import { MISSING_CREDENTIAL_ID, createWalletApi, createWalletClient } from '../components/home/wallet/wallet-client';
 import { Api } from '../config/api';
 
 const apiConfig = Api as { url: string };
@@ -118,6 +118,15 @@ describe('createWalletClient', () => {
     });
     expect(mockAuth.login).toHaveBeenCalledWith();
     expect(mockAuth.register).toHaveBeenCalledWith();
+  });
+
+  it('refuses a session answer without a passkey credential id', async () => {
+    mockAuth.login.mockResolvedValue({ token: 'login-token', keys });
+    mockAuth.register.mockResolvedValue({ token: 'register-token', credentialId: '' });
+    const client = createWalletClient();
+
+    await expect(client.login()).rejects.toThrow(MISSING_CREDENTIAL_ID);
+    await expect(client.register()).rejects.toThrow(MISSING_CREDENTIAL_ID);
   });
 
   it('passes the wallet token and the credential bytes to the session routes', async () => {

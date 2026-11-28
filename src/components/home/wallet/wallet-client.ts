@@ -14,12 +14,23 @@ import { credentialBytes } from './passkey-bytes';
 import { walletEnvForHost } from './passkey-host';
 import type { OpenPasskey } from './passkey-session';
 
-// What WalletApiAuth.login() and register() hand back. Assigning the SDK result to this type makes a
-// shape change in the package a compile error here instead of a silent undefined at runtime.
-interface WalletApiLogin {
-  token: string;
-  credentialId: string;
-  keys?: KeyRing;
+// What WalletApiAuth.login() and register() hand back (WalletApiAuthResult). Taking the session fields
+// from the SDK type makes a shape change in the package a compile error here instead of a silent
+// undefined at runtime.
+type WalletApiAuthResult =
+  | Awaited<ReturnType<WalletApiAuth['login']>>
+  | Awaited<ReturnType<WalletApiAuth['register']>>;
+type WalletApiLogin = Pick<WalletApiAuthResult, 'token' | 'keys'>;
+
+export const MISSING_CREDENTIAL_ID = 'The wallet session has no passkey credential id.';
+
+// wallet-api answers register/finish and authenticate/finish with the session token and the id of the
+// passkey that opened it; WalletApiAuthResult carries that answer but does not declare the id. Revoke and
+// the recovery-word export need it, so a session without one is refused instead of opened half-usable.
+function credentialIdOf(result: WalletApiAuthResult): string {
+  const id: unknown = 'credentialId' in result ? result.credentialId : undefined;
+  if (typeof id !== 'string' || !id) throw new Error(MISSING_CREDENTIAL_ID);
+  return id;
 }
 
 type DiagnosticPayload = Parameters<WalletApi['diagnostics']>[0];
@@ -43,20 +54,16 @@ export function createWalletClient() {
   const auth = new WalletApiAuth({ api, ceremonies, env, cache });
   const bitcoinNetwork: PasskeyBitcoinNetwork = walletApiBitcoinNetwork(env);
 
-  function open(result: WalletApiLogin): OpenPasskey {
-    return { token: result.token, credentialId: result.credentialId, keys: result.keys, bitcoinNetwork };
+  function open(result: WalletApiAuthResult): OpenPasskey {
+    const credentialId = credentialIdOf(result);
+    const session: WalletApiLogin = result;
+    return { token: session.token, credentialId, keys: session.keys, bitcoinNetwork };
   }
 
   return {
     bitcoinNetwork,
-    login: async (): Promise<OpenPasskey> => {
-      const result: WalletApiLogin = await auth.login();
-      return open(result);
-    },
-    register: async (): Promise<OpenPasskey> => {
-      const result: WalletApiLogin = await auth.register();
-      return open(result);
-    },
+    login: async (): Promise<OpenPasskey> => open(await auth.login()),
+    register: async (): Promise<OpenPasskey> => open(await auth.register()),
     // Registers the addresses of the families GET /v1/wallet/config enables; nothing else is derived.
     syncAddresses: (session: OpenPasskey, keys: KeyRing) => auth.syncAddresses(session.token, keys),
     revoke: (session: OpenPasskey) => auth.revoke(session.token, credentialBytes(session.credentialId)),

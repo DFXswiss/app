@@ -42,7 +42,6 @@ describe('passkey payment', () => {
 
     expect(mockBitcoinSend).toHaveBeenCalledWith(session, keys);
     expect(mockSend.mock.calls[0][0]).toEqual({
-      blockchain: 'BitcoinRegtest',
       addresses: ['bcrt1qown0', 'bcrt1qown1', 'bcrt1qown2', 'bcrt1qown3', 'bcrt1qown4'],
       changeAddress: 'bcrt1qown0',
       destination: 'bcrt1qdeposit',
@@ -61,11 +60,12 @@ describe('passkey payment', () => {
     });
 
     expect(mockSend.mock.calls[0][0]).toMatchObject({
-      blockchain: 'Bitcoin',
       changeAddress: 'bcrt1qown2',
       amount: 'max',
       feeRate: 'slow',
     });
+    // BitcoinSend derives the blockchain from the ring; the request carries none.
+    expect(mockSend.mock.calls[0][0]).not.toHaveProperty('blockchain');
     expect(mockSend.mock.calls[0][0].addresses).toHaveLength(7);
     expect(mockSend.mock.calls[0][1]).toBe(confirm);
   });

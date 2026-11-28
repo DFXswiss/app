@@ -334,7 +334,7 @@ export default function PasskeyDesk({
     return receiveAddress(session.keys, family, session.receiveIndex ?? 0);
   };
   const sendPayment: SendPayment = async (input, confirm) => {
-    const sent = await passkeySend(input, (prepared) => confirm(sendReview(prepared)));
+    const sent = await passkeySend(input, (prepared) => confirm(sendReview(prepared, input)));
     const session = getOpenPasskey();
     if (session) loadWallet(session).catch(() => undefined);
     return sent;

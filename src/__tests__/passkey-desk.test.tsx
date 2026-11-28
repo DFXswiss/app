@@ -288,7 +288,16 @@ describe('PasskeyDesk', () => {
     mockPasskeySend.mockImplementation(async (_input: unknown, check: (prepared: unknown) => Promise<boolean>) => {
       await check({
         prepare: { destination: 'server-d', amount: 9, fee: 9, feeRate: 2, change: 9 },
-        summary: { destination: 'd', amount: 1, fee: 141, change: 500 },
+        // BitcoinPsbtSummary: inputs 642 sats, fee 141 sats; 1 sat to the destination leaves 500 change.
+        summary: {
+          network: 'regtest',
+          inputs: [
+            { txid: 'a', vout: 0, amount: BigInt(400), path: "m/84'/1'/0'/0/0" },
+            { txid: 'b', vout: 1, amount: BigInt(242), path: "m/84'/1'/0'/0/1" },
+          ],
+          outputs: [],
+          fee: BigInt(141),
+        },
       });
       return { txid: 'tx' };
     });
@@ -298,7 +307,7 @@ describe('PasskeyDesk', () => {
       sent = await props.send({ destination: 'd', amount: '1', feeRate: 'normal' }, confirm);
     });
     expect(sent).toEqual({ txid: 'tx' });
-    // The confirm screen gets the verified summary; only the fee rate comes from the prepare response.
+    // The confirm screen gets the verified request and PSBT; only the fee rate comes from the prepare response.
     expect(confirm).toHaveBeenCalledWith({ destination: 'd', amount: '1', fee: '141', feeRate: '2', change: '500' });
     expect(mockGetAccount).toHaveBeenCalled();
 
