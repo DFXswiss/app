@@ -878,6 +878,56 @@ describe('KycScreen results of a code that is no longer shown', () => {
     expect(mockSettings.changeLanguage).not.toHaveBeenCalledWith({ symbol: 'DE' });
   });
 
+  it('keeps the spinner when a dropped request of the previous code ends', async () => {
+    const previous = deferred();
+    const current = deferred();
+    mockGetKycInfo.mockImplementation((code: string) => (code === 'ONE' ? previous.promise : current.promise));
+    renderPath('/kyc?code=ONE');
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('ONE'), { timeout: 10000 });
+    moveTo('?code=TWO');
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('TWO'), { timeout: 10000 });
+
+    await act(async () => {
+      previous.resolve(info());
+    });
+    await settle();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    await act(async () => {
+      current.resolve(info());
+    });
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+  });
+
+  it('does not keep a consent of the previous account after the account changes', async () => {
+    mockSession.isLoggedIn = true;
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'FIRST' } };
+    mockGetKycInfo.mockImplementation((code: string) =>
+      Promise.resolve(
+        info({
+          kycClients: code === 'SECOND' ? ['CLIENT'] : [],
+          kycSteps: [step('ContactData', { status: 'Completed' })],
+        }),
+      ),
+    );
+    const rendered = renderPath('/kyc?client=CLIENT');
+    expect(await screen.findByText(/I hereby authorize/, undefined, { timeout: 10000 })).toBeInTheDocument();
+
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 2, kyc: { hash: 'SECOND' } };
+    rendered.rerender(tree('/kyc?client=CLIENT'));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('SECOND'), { timeout: 10000 });
+    await settle();
+
+    const next = screen.queryByRole('button', { name: 'Next' });
+    if (next) fireEvent.click(next);
+    await settle();
+    expect(mockAddTransferClient).not.toHaveBeenCalled();
+    expect(screen.queryByText(/I hereby authorize/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('kyc-status')).toBeInTheDocument();
+  });
+
   it('drops a started step of the previous code', async () => {
     routeNavigation();
     const previous = deferred();
