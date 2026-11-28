@@ -4,26 +4,26 @@ import {
   sameSession,
   setOpenPasskey,
   subscribeOpenPasskey,
+  updateOpenPasskey,
   type OpenPasskey,
 } from '../components/home/wallet/passkey-session';
 
-it('compares wallet, credential and token when identifying a session', () => {
-  const session = { accessToken: 'token', wallet: { id: 7, credentialId: 'credential' } } as unknown as OpenPasskey;
-  const equal = { accessToken: 'token', wallet: { id: 7, credentialId: 'credential' } } as unknown as OpenPasskey;
-  expect(sameSession(equal, session)).toBe(true);
+const session: OpenPasskey = { token: 'token', credentialId: 'credential', bitcoinNetwork: 'regtest' };
+
+it('compares sessions by wallet token and credential', () => {
+  expect(sameSession({ ...session }, session)).toBe(true);
+  expect(sameSession({ ...session, receiveIndex: 4 }, session)).toBe(true);
   expect(sameSession(undefined, session)).toBe(false);
-  expect(sameSession({ ...session, wallet: undefined } as unknown as OpenPasskey, session)).toBe(false);
-  expect(sameSession({ ...session, wallet: { ...session.wallet, id: 8 } }, session)).toBe(false);
-  expect(sameSession({ ...session, wallet: { ...session.wallet, credentialId: 'other' } }, session)).toBe(false);
-  expect(sameSession({ ...session, accessToken: 'other' }, session)).toBe(false);
+  expect(sameSession({ ...session, token: 'other' }, session)).toBe(false);
+  expect(sameSession({ ...session, credentialId: 'other' }, session)).toBe(false);
 });
 
 describe('installHandbookSessionHook', () => {
-  it('does not install the hook on a production target', () => {
-    // The module-load call already installs the hook on the test window because NODE_ENV is `test`.
+  it('skips production and a missing window', () => {
     const target = {} as Window;
     installHandbookSessionHook(target, 'production');
     expect('__dfxSetOpenPasskey' in target).toBe(false);
+    expect(() => installHandbookSessionHook(undefined, 'test')).not.toThrow();
   });
 
   it('installs setOpenPasskey when env is test', () => {
@@ -32,15 +32,7 @@ describe('installHandbookSessionHook', () => {
     expect(target.__dfxSetOpenPasskey).toBe(setOpenPasskey);
   });
 
-  it('returns without throwing when the target is missing', () => {
-    const target = {} as Window;
-    installHandbookSessionHook(target, 'test');
-    expect(target.__dfxSetOpenPasskey).toBe(setOpenPasskey);
-    expect(() => installHandbookSessionHook(undefined, 'test')).not.toThrow();
-    expect(target.__dfxSetOpenPasskey).toBe(setOpenPasskey);
-  });
-
-  it('skips the assignment when the build target is production', () => {
+  it('skips the hook when the bundle is a production build', () => {
     const previous = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
     try {
@@ -51,21 +43,32 @@ describe('installHandbookSessionHook', () => {
       process.env.NODE_ENV = previous;
     }
   });
+});
 
-  it('stores the tab session and stops notifying after unsubscribe', () => {
-    setOpenPasskey(undefined);
-    expect(getOpenPasskey()).toBeUndefined();
+describe('open passkey store', () => {
+  afterEach(() => setOpenPasskey(undefined));
+
+  it('notifies subscribers until they unsubscribe', () => {
     const seen: Array<OpenPasskey | undefined> = [];
-    const unsubscribe = subscribeOpenPasskey(() => {
-      seen.push(getOpenPasskey());
-    });
-    const next = { state: 'compromised' } as OpenPasskey;
-    setOpenPasskey(next);
-    expect(getOpenPasskey()).toBe(next);
-    expect(seen).toEqual([next]);
+    const unsubscribe = subscribeOpenPasskey(() => seen.push(getOpenPasskey()));
+    setOpenPasskey(session);
+    expect(getOpenPasskey()).toBe(session);
     unsubscribe();
     setOpenPasskey(undefined);
+    expect(seen).toEqual([session]);
     expect(getOpenPasskey()).toBeUndefined();
-    expect(seen).toEqual([next]);
+  });
+
+  it('updates the receive index only on the same open session', () => {
+    updateOpenPasskey(session, { receiveIndex: 1 });
+    expect(getOpenPasskey()).toBeUndefined();
+
+    setOpenPasskey({ ...session, token: 'newer' });
+    updateOpenPasskey(session, { receiveIndex: 2 });
+    expect(getOpenPasskey()?.receiveIndex).toBeUndefined();
+
+    setOpenPasskey(session);
+    updateOpenPasskey(session, { receiveIndex: 3 });
+    expect(getOpenPasskey()).toEqual({ ...session, receiveIndex: 3 });
   });
 });

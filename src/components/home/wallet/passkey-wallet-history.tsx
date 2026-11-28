@@ -9,12 +9,19 @@ export interface PasskeyTx {
   direction: 'in' | 'out';
   fiatValue: string;
   pending?: boolean;
+  // Text under a pending row; DFX payouts say "Payout pending", own on-chain rows "Unconfirmed".
+  pendingLabel?: string;
 }
 export interface PasskeyHistory {
   items: PasskeyTx[];
   hasMore: boolean;
-  loadMore: () => Promise<void>;
+  // Absent when the source has no further pages (wallet-api returns a capped history).
+  loadMore?: () => Promise<void>;
+  // True when the source cut the list (wallet-api historyComplete: false); older rows exist but are not shown.
+  truncated?: boolean;
 }
+
+export const HISTORY_TRUNCATED = 'Only your most recent transactions are shown.';
 
 const icons: Record<PasskeyTx['type'] | 'clock', string> = {
   buy: 'M12 5v14M5 12h14',
@@ -39,18 +46,19 @@ export default function PasskeyWalletHistory({ history }: { history?: PasskeyHis
       loading ||
       error ||
       !history?.hasMore ||
+      !history.loadMore ||
       !marker.current ||
       typeof IntersectionObserver === 'undefined'
     )
       return;
+    const loadMore = history.loadMore;
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting) || pending.current) return;
         pending.current = true;
         setLoading(true);
         setError(false);
-        void history
-          .loadMore()
+        void loadMore()
           .catch(() => setError(true))
           .finally(() => {
             pending.current = false;
@@ -99,7 +107,7 @@ export default function PasskeyWalletHistory({ history }: { history?: PasskeyHis
                   {tx.date}
                   {tx.pending && (
                     <span className="block font-medium text-[#8A5A00]">
-                      {translate('screens/home', 'Payout pending')}
+                      {translate('screens/home', tx.pendingLabel ?? 'Payout pending')}
                     </span>
                   )}
                 </div>
@@ -142,7 +150,7 @@ export default function PasskeyWalletHistory({ history }: { history?: PasskeyHis
           {expanded && history.hasMore && <div ref={marker} className="h-px" />}
           {expanded && !history.hasMore && history.items.length > 0 && (
             <p className="pb-1 pt-5 text-center text-sm text-dfxGray-800">
-              {translate('screens/home', 'That is all your transactions.')}
+              {translate('screens/home', history.truncated ? HISTORY_TRUNCATED : 'That is all your transactions.')}
             </p>
           )}
         </>

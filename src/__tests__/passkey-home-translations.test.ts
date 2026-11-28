@@ -114,10 +114,54 @@ const addedHomeKeys = [
   'No credential status.',
   'Matches',
   'Differs',
+  'Bitcoin Regtest',
+  'Bitcoin Testnet4',
+  'Received Bitcoin',
+  'Sent Bitcoin',
+  'Sent to yourself',
+  'Unconfirmed',
+  'Amount (sats)',
+  'Everything spendable',
+  'Send everything',
+  'Network fee',
+  'Fast',
+  'Normal',
+  'Slow',
+  '{{rate}} sat/vB',
+  'Fee estimates are not available.',
+  'Review payment',
+  'Preparing the payment…',
+  'Check the payment',
+  'Change back to your wallet',
+  'Confirm and send',
+  'Sending…',
+  'Back',
+  'Payment submitted.',
+  'This payment was already submitted.',
+  'Transaction ID',
+  'It appears in the history once the network has seen it.',
+  'Sending is not available for this wallet yet.',
+  'Data reloaded.',
+  'Passkeys on this account: {{count}}.',
+  'Only your most recent transactions are shown.',
+  'All Bitcoin addresses of this wallet are used. This address is shown again; payments to a reused address are easier to link to you.',
 ];
 
+// Network names and the fee unit read the same in every language.
+const sameEverywhere = ['Bitcoin Regtest', 'Bitcoin Testnet4', '{{rate}} sat/vB'];
+
 const unchangedTranslations: Record<string, string[]> = {
-  de: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'Lightning (Spark)', 'Ethereum & EVM', '{{credentialId}}: {{status}}'],
+  de: [
+    'EVM',
+    'Bitcoin',
+    'Spark',
+    'Wallet',
+    'Lightning (Spark)',
+    'Ethereum & EVM',
+    '{{credentialId}}: {{status}}',
+    'Normal',
+    ...sameEverywhere,
+  ],
   fr: [
     'EVM',
     'Bitcoin',
@@ -127,9 +171,40 @@ const unchangedTranslations: Record<string, string[]> = {
     'Lightning (Spark)',
     'Ethereum & EVM',
     '{{credentialId}}: {{status}}',
+    'Normal',
+    ...sameEverywhere,
   ],
-  it: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'Lightning (Spark)', 'Ethereum & EVM', '{{credentialId}}: {{status}}'],
+  it: [
+    'EVM',
+    'Bitcoin',
+    'Spark',
+    'Wallet',
+    'Lightning (Spark)',
+    'Ethereum & EVM',
+    '{{credentialId}}: {{status}}',
+    ...sameEverywhere,
+  ],
 };
+
+const paymentSimulationKeys = [
+  'Test environment only',
+  'Simulate payment',
+  'Payment simulated. The purchase is now processed like a real bank transfer.',
+  'Simulate payout',
+  'Payout simulated.',
+  'The simulation failed. Please try again.',
+];
+
+it('translates the STG/DEV simulation texts in German, French and Italian', () => {
+  for (const messages of [de['screens/payment'], fr['screens/payment'], italian['screens/payment']]) {
+    for (const key of paymentSimulationKeys) {
+      const value = (messages as Record<string, string>)[key];
+      expect(typeof value).toBe('string');
+      expect(value.trim()).not.toBe('');
+      expect(value).not.toBe(key);
+    }
+  }
+});
 
 function checkAddedTranslations(language: string, messages: Record<string, string>): void {
   for (const key of addedHomeKeys) {

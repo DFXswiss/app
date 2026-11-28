@@ -472,6 +472,10 @@ test.describe('Auth area e2e', () => {
   });
 
   test('/login?feature=Passkey registers, lists the wallet, and logs in to the desk', async ({ page }) => {
+    // The passkey wallet now runs against DFXswiss/wallet-api (/v1/wallet/*), not the DFX API passkey
+    // routes this test drives, and the stack starts no wallet-api. A green run therefore does not prove
+    // passkey registration, login or the desk (see docs/test-architecture.md, declared in the PR).
+    test.skip(true, 'The passkey wallet runs on wallet-api, which this stack does not start');
     test.setTimeout(120000);
     const route = await passkeyRegistrationRoute();
     if (process.env.E2E_REQUIRE_PASSKEY === '1') {

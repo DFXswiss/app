@@ -74,5 +74,13 @@ module.exports = function override(config, env) {
     asyncWebAssembly: true,
   };
 
+  // Some dependencies (e.g. @dfx.swiss/core) ship source maps that point at src/*.ts files they do
+  // not publish. source-map-loader then warns for every file, and with CI=true react-scripts turns
+  // those warnings into a failed build. Only these dependency source-map warnings are ignored.
+  config.ignoreWarnings = [
+    ...(config.ignoreWarnings || []),
+    { module: /node_modules/, message: /Failed to parse source map/ },
+  ];
+
   return config;
 };

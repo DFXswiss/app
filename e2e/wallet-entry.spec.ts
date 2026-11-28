@@ -1,8 +1,9 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
-import type { AuthResult } from '@dfx.swiss/wallet';
+// The open passkey session of the app (src/components/home/wallet/passkey-session.ts).
+type OpenPasskeySession = { token: string; credentialId: string; bitcoinNetwork: 'mainnet' | 'testnet4' | 'regtest' };
 
 type PasskeyWindow = {
-  __dfxSetOpenPasskey?: (next: AuthResult | undefined) => void;
+  __dfxSetOpenPasskey?: (next: OpenPasskeySession | undefined) => void;
 };
 
 // A value jwt-decode cannot read is removed on boot. The expiry is in the future. The signature is not checked.
@@ -35,6 +36,10 @@ async function installRoutes(page: Page, holdUser?: Promise<void>): Promise<void
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (request.method() === 'GET' && path === '/v1/language') return fulfillJson(route, LANGUAGES);
+    // wallet-api launch configuration behind front-api: Bitcoin on-chain only.
+    if (request.method() === 'GET' && path === '/v1/wallet/config') {
+      return fulfillJson(route, { families: { bitcoin: true, evm: false, spark: false } });
+    }
     if (request.method() === 'GET' && path === '/v1/fiat') {
       return fulfillJson(route, [{ id: 1, name: 'CHF', buyable: true, sellable: true }]);
     }
@@ -226,22 +231,12 @@ test.describe('/wallet passkey entry', () => {
     await expect(page.locator('img[alt="logo"]')).toBeVisible();
     await page.waitForFunction(() => typeof (window as unknown as PasskeyWindow).__dfxSetOpenPasskey === 'function');
     await page.evaluate(() => {
+      // A wallet-api session without a key ring: the desk renders, loads no account and derives nothing.
       (window as unknown as PasskeyWindow).__dfxSetOpenPasskey?.({
-        state: 'unlocked',
-        accessToken: 'handbook-passkey-token',
-        wallet: {
-          id: 7,
-          credentialId: 'handbook-credential',
-          status: 'Active',
-          created: '2026-11-04',
-          derivationVersion: 'V1',
-          seedCheckAddress: '',
-          backupEligible: false,
-          backedUp: false,
-          backupRequired: true,
-          addresses: [],
-        },
-      } as AuthResult);
+        token: 'handbook-wallet-token',
+        credentialId: 'handbook-credential',
+        bitcoinNetwork: 'regtest',
+      });
     });
     const settings = page.getByRole('button', { name: 'Settings' });
     await expect(settings).toBeVisible();

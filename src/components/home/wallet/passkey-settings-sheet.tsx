@@ -6,9 +6,7 @@ interface PasskeySettingsSheetProps {
   busy: boolean;
   note?: string;
   noteKind?: 'message' | 'refresh' | 'status' | 'diagnostics';
-  checks?: { family: string; address: string; matches: boolean }[];
   onWords: () => void;
-  onVerify: () => void;
   onRefresh: () => void;
   onStatus: () => void;
   onDiagnostics: () => void;
@@ -21,7 +19,6 @@ interface PasskeySettingsSheetProps {
 const icons = {
   key: 'M8 11a4 4 0 100 8 4 4 0 000-8zM11 12l8-8M16 7l2 2M14 9l2 2',
   words: 'M5 3h14v18H5zM9 8h6M9 12h6M9 16h3',
-  verify: 'M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6zM9 12l2 2 4-4',
   refresh: 'M20 12a8 8 0 11-2.3-5.6M20 4v4h-4',
   status: 'M12 3a9 9 0 110 18 9 9 0 010-18zM12 8h.01M11 12h1v4h1',
   diagnostic: 'M4 12h3l2-6 4 12 2-6h5',
@@ -81,11 +78,6 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
   const refreshResult = props.noteKind === 'refresh';
   const diagnosticsResult = props.noteKind === 'diagnostics';
   const statusResult = props.noteKind === 'status';
-  const checksColor = !props.checks?.length
-    ? ''
-    : props.checks.every((item) => item.matches)
-      ? 'text-dfxGreen-300'
-      : 'text-dfxRed-150';
   return (
     <PasskeySheet title={t('Settings')} onClose={props.onClose} busy={props.busy}>
       <div className="mb-5 flex items-center gap-3 rounded-[16px] bg-[#EEF2F8] px-4 py-3.5">
@@ -109,40 +101,6 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
           <span className={text}>{t('Export recovery phrase')}</span>
           <Chevron />
         </button>
-        <button className={row} disabled={props.busy} onClick={props.onVerify}>
-          <Icon path={icons.verify} />
-          <span className={text}>
-            {t('Check addresses')}
-            <small className={`${sub} ${props.checks ? `font-semibold ${checksColor}` : ''}`}>
-              {props.checks
-                ? `${props.checks.filter((item) => item.matches).length} / ${props.checks.length} ${t('addresses match')}`
-                : t('Checks that DFX shows your own addresses')}
-            </small>
-          </span>
-          <Chevron />
-        </button>
-        {props.checks && (
-          <ul className="px-4 pb-3 text-sm">
-            {props.checks.map((item, index) => (
-              <li
-                key={`${item.family}:${item.address}:${index}`}
-                className={item.matches ? 'text-dfxGreen-300' : 'text-dfxRed-150'}
-              >
-                {t(
-                  item.family === 'Spark'
-                    ? 'Lightning (Spark)'
-                    : item.family === 'Evm'
-                      ? 'Ethereum & EVM'
-                      : item.family,
-                )}{' '}
-                <span className="font-mono">
-                  {item.address.slice(0, 10)}…{item.address.slice(-8)}
-                </span>
-                : {t(item.matches ? 'Matches' : 'Differs')}
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
       <h3 className={group}>{t('Help')}</h3>
       <div className={card}>

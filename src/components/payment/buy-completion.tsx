@@ -16,6 +16,7 @@ import { CloseType, useAppHandlingContext } from '../../contexts/app-handling.co
 import { useSettingsContext } from '../../contexts/settings.context';
 import { useNavigation } from '../../hooks/navigation.hook';
 import { MailEdit } from '../edit/mail.edit';
+import { SimulatePayment } from './test-simulation';
 
 interface BuyCompletionProps {
   user?: User;
@@ -64,6 +65,8 @@ export function BuyCompletion({ user, paymentInfo, navigateOnClose }: BuyComplet
         <DfxIcon size={IconSize.XXL} icon={IconVariant.PROCESS_DONE} color={IconColor.BLUE} />
       </div>
       <p className="text-base font-bold text-center text-dfxBlue-800">{getHeader()}</p>
+
+      {paymentInfo && <SimulatePayment buy={paymentInfo} />}
 
       {hasMail ? (
         <>

@@ -243,7 +243,7 @@ describe('/wallet passkey entry', () => {
 
   it('keeps an open passkey visible with a DFX session', () => {
     mockSessionState.isLoggedIn = true;
-    setOpenPasskey({ state: 'unlocked' } as OpenPasskey);
+    setOpenPasskey({ token: 'token', credentialId: 'credential', bitcoinNetwork: 'regtest' });
     const view = renderAt('/wallet');
     expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
     expect(mockLayoutOptions).toMatchObject({ noHeader: true });
@@ -253,23 +253,15 @@ describe('/wallet passkey entry', () => {
 
   it('reopens a closed wallet for a different passkey identity or a new session', () => {
     mockSessionState.isLoggedIn = true;
-    const session = {
-      state: 'unlocked',
-      accessToken: 'first-token',
-      wallet: { id: 1, credentialId: 'first-credential' },
-    } as unknown as OpenPasskey;
-    const other = {
-      state: 'unlocked',
-      accessToken: 'second-token',
-      wallet: { id: 2, credentialId: 'second-credential' },
-    } as unknown as OpenPasskey;
+    const session: OpenPasskey = { token: 'first-token', credentialId: 'first-credential', bitcoinNetwork: 'regtest' };
+    const other: OpenPasskey = { token: 'second-token', credentialId: 'second-credential', bitcoinNetwork: 'regtest' };
     setOpenPasskey(session);
     const view = renderAt('/wallet');
     fireEvent.click(screen.getByText('cancel-connect'));
     mockUserState.hasAddress = true;
     view.rerender(<Harness path="/wallet" />);
     expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
-    act(() => setOpenPasskey({ ...session, wallet: { ...session.wallet } }));
+    act(() => setOpenPasskey({ ...session, receiveIndex: 1 }));
     expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
     act(() => setOpenPasskey(other));
     expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
@@ -281,7 +273,7 @@ describe('/wallet passkey entry', () => {
 
   it('keeps the passkey form open when an already signed-in user chooses another passkey', () => {
     mockSessionState.isLoggedIn = true;
-    setOpenPasskey({ state: 'unlocked' } as OpenPasskey);
+    setOpenPasskey({ token: 'token', credentialId: 'credential', bitcoinNetwork: 'regtest' });
     renderAt('/wallet');
     expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
     fireEvent.click(screen.getByRole('button', { name: 'Use another passkey' }));
