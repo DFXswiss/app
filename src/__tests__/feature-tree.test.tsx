@@ -132,7 +132,7 @@ describe('FeatureTree', () => {
     expect(home?.tiles.map((tile) => tile.id)).toEqual(['buy', 'sell', 'swap', 'wallet']);
     expect(home?.tiles[3]).toEqual({
       id: 'wallet',
-      img: '/images/login-passkey.jpg',
+      img: '/images/wallet.jpg',
       title: 'Wallet',
       feature: 'passkey',
       link: '/wallet',

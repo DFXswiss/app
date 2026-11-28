@@ -185,7 +185,7 @@
   },
   "home-wallet-tile": {
     "title": "Startseite: Wallet-Kachel",
-    "description": "Die Toolbox der Startseite zeigt ohne ?feature=Passkey nur Kaufen, Verkaufen und Swap. Mit ?feature=Passkey steht nach Swap eine vierte Kachel «Wallet»; sie nutzt vorerst das Bild der Passkey-Login-Kachel (Aufschrift «PASSKEY») und öffnet /wallet mit der Geräte-Anmeldung. Auf /wallet selbst erscheint die Kachel nicht."
+    "description": "Die Toolbox der Startseite zeigt ohne ?feature=Passkey nur Kaufen, Verkaufen und Swap. Mit ?feature=Passkey steht nach Swap eine vierte Kachel «Wallet»; sie zeigt das eigene Bild mit der Aufschrift «WALLET» und öffnet /wallet mit der Geräte-Anmeldung. Auf /wallet selbst erscheint die Kachel nicht."
   },
   "sitemap": {
     "title": "Sitemap",
