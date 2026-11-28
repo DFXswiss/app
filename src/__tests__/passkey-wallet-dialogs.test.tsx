@@ -109,7 +109,6 @@ describe('Passkey wallet dialogs', () => {
     const onCancel = jest.fn(),
       onClose = jest.fn();
     const props = {
-      credentialId: 'credential',
       busy: false,
       onWords,
       onRefresh,
@@ -143,11 +142,12 @@ describe('Passkey wallet dialogs', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
 
-    view.rerender(<PasskeySettingsSheet {...props} credentialId="" note="failure" />);
+    view.rerender(<PasskeySettingsSheet {...props} note="failure" />);
     expect(screen.getByText('Unlocked')).toBeInTheDocument();
     expect(screen.queryByText('Unlock to view')).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('failure');
-    expect(screen.getByRole('button', { name: 'Check passkey status' })).toBeDisabled();
+    // The status check lists the account's passkeys with the session token alone; no credential id needed.
+    expect(screen.getByRole('button', { name: 'Check passkey status' })).toBeEnabled();
     expect(screen.getByRole('button', { name: /Export recovery phrase/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: /Export recovery phrase/ }));
     expect(onWords).toHaveBeenCalledTimes(2);

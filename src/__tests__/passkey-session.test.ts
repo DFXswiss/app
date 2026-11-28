@@ -18,6 +18,13 @@ it('compares sessions by wallet token and credential', () => {
   expect(sameSession({ ...session, credentialId: 'other' }, session)).toBe(false);
 });
 
+it('compares sessions without a credential id by wallet token alone', () => {
+  const withoutId: OpenPasskey = { token: 'token', bitcoinNetwork: 'regtest' };
+  expect(sameSession({ ...withoutId }, withoutId)).toBe(true);
+  expect(sameSession({ ...withoutId, token: 'other' }, withoutId)).toBe(false);
+  expect(sameSession(session, withoutId)).toBe(false);
+});
+
 describe('installHandbookSessionHook', () => {
   it('skips production and a missing window', () => {
     const target = {} as Window;

@@ -6,7 +6,9 @@ import type { PasskeyBitcoinNetwork } from './passkey-bitcoin';
 export interface OpenPasskey {
   // wallet-api session token. It is never the DFX customer session; that one lives in the SDK session.
   token: string;
-  credentialId: string;
+  // Base64url id of the passkey that opened the session, when wallet-api names it. wallet-api's
+  // register/finish and authenticate/finish do not, so it is usually undefined.
+  credentialId?: string;
   keys?: KeyRing;
   bitcoinNetwork: PasskeyBitcoinNetwork;
   // BIP-84 receive index the device found by gap-limit discovery against the wallet-api account.

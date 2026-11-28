@@ -510,6 +510,42 @@ describe('PasskeyDesk', () => {
     expect(onRevoked).toHaveBeenCalledTimes(1);
   });
 
+  it('checks the status, exports the words and revokes a session wallet-api opened without a credential id', async () => {
+    const keys = ring();
+    // wallet-api's register/finish and authenticate/finish name no credential; the SDK pins it instead.
+    const session = { ...open(keys, { credentialId: undefined }), receiveIndex: 2 };
+    mockClient.credentials.mockResolvedValue([{}]);
+    mockClient.exportMnemonic.mockResolvedValue(['alpha']);
+    mockClient.revoke.mockResolvedValue(undefined);
+    await renderDesk();
+    await click('Settings');
+    const dialog = screen.getByRole('dialog', { name: 'Settings' });
+
+    expect(within(dialog).getByRole('button', { name: 'Check passkey status' })).toBeEnabled();
+    await click('Check passkey status', dialog);
+    expect(mockClient.credentials).toHaveBeenCalledWith(session);
+    expect(within(dialog).getByText('Passkeys on this account: 1.')).toBeInTheDocument();
+
+    await click(/Export recovery phrase/, dialog);
+    expect(mockClient.exportMnemonic).toHaveBeenCalledWith(session);
+    expect(screen.getByTestId('passkey-recovery-words')).toHaveTextContent('alpha');
+  });
+
+  it('revokes a session without a credential id and closes the wallet', async () => {
+    const keys = ring();
+    const session = { ...open(keys, { credentialId: undefined }), receiveIndex: 2 };
+    mockClient.revoke.mockResolvedValue(undefined);
+    await renderDesk();
+    await click('Settings');
+    await click('Block passkey');
+    fireEvent.click(screen.getByLabelText('I understand that this cannot be undone.'));
+    await click('Block');
+    expect(mockClient.revoke).toHaveBeenCalledWith(session);
+    expect(keys.wipe).toHaveBeenCalledTimes(1);
+    expect(getOpenPasskey()).toBeUndefined();
+    expect(onRevoked).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the revoke dialog with the error and does not end a replaced session', async () => {
     open();
     mockClient.revoke.mockRejectedValueOnce(new Error('PasskeyInvalid'));

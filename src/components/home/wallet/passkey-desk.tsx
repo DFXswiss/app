@@ -508,7 +508,6 @@ export default function PasskeyDesk({
       )}
       {sheet === 'settings' && (
         <PasskeySettingsSheet
-          credentialId={open.credentialId}
           busy={busy}
           note={note}
           noteKind={

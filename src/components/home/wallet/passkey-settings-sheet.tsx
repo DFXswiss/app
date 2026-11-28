@@ -2,7 +2,6 @@ import { useSettingsContext } from '../../../contexts/settings.context';
 import PasskeySheet from './passkey-sheet';
 
 interface PasskeySettingsSheetProps {
-  credentialId: string;
   busy: boolean;
   note?: string;
   noteKind?: 'message' | 'refresh' | 'status' | 'diagnostics';
@@ -119,7 +118,7 @@ export default function PasskeySettingsSheet(props: PasskeySettingsSheetProps): 
         <button
           className={row}
           aria-label={t('Check passkey status')}
-          disabled={props.busy || !props.credentialId}
+          disabled={props.busy}
           onClick={props.onStatus}
         >
           <Icon path={icons.status} />
