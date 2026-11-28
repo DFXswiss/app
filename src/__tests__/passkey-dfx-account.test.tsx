@@ -12,7 +12,7 @@ jest.mock('@dfx.swiss/react', () => ({
 }));
 
 jest.mock('@dfx.swiss/wallet', () => ({
-  signBitcoinMessage: (...args: unknown[]) => mockSign(...args),
+  signBitcoinMessageBip322: (...args: unknown[]) => mockSign(...args),
 }));
 
 jest.mock('../contexts/wallet.context', () => ({
@@ -36,7 +36,7 @@ describe('usePasskeyDfxAccount', () => {
   });
 
   it('signs in to DFX with receive address 0 and signs the message on the device', async () => {
-    mockSign.mockResolvedValue('bip322-signature');
+    mockSign.mockReturnValue('bip322-signature');
     mockLogin.mockImplementation(
       async (_wallet: string, address: string, _chain: string, sign: (a: string, m: string) => Promise<string>) => {
         expect(await sign(address, 'message to sign')).toBe('bip322-signature');
@@ -47,7 +47,8 @@ describe('usePasskeyDfxAccount', () => {
     await result.current.connect(keys);
 
     expect(mockLogin).toHaveBeenCalledWith('Passkey', 'bcrt1qlogin0', 'Bitcoin', expect.any(Function));
-    expect(mockSign).toHaveBeenCalledWith(keys, DFX_LOGIN_INDEX, 'message to sign');
+    expect(DFX_LOGIN_INDEX).toBe(0);
+    expect(mockSign).toHaveBeenCalledWith(keys, 'bcrt1qlogin0', 'message to sign');
   });
 
   it('keeps an open DFX session of the same passkey address', async () => {

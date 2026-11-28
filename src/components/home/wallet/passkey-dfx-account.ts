@@ -1,5 +1,5 @@
 import { Blockchain, useAuthContext, useSessionContext } from '@dfx.swiss/react';
-import { signBitcoinMessage, type KeyRing } from '@dfx.swiss/wallet';
+import { signBitcoinMessageBip322, type KeyRing } from '@dfx.swiss/wallet';
 import { WalletType, useWalletContext } from '../../../contexts/wallet.context';
 import { receiveAddress } from './passkey-bitcoin';
 
@@ -24,9 +24,9 @@ export function usePasskeyDfxAccount(): PasskeyDfxAccount {
   async function connect(keys: KeyRing): Promise<void> {
     const address = receiveAddress(keys, DFX_LOGIN_INDEX);
     if (isLoggedIn && activeWallet === WalletType.PASSKEY && session?.address === address) return;
-    // The signature is made on this device (BIP-322 for the P2WPKH address); the key stays in the ring.
+    // The signature is made on this device (BIP-322 simple for the P2WPKH address); the key stays in the ring.
     await login(WalletType.PASSKEY, address, Blockchain.BITCOIN, async (_address, message) =>
-      signBitcoinMessage(keys, DFX_LOGIN_INDEX, message),
+      signBitcoinMessageBip322(keys, address, message),
     );
   }
 

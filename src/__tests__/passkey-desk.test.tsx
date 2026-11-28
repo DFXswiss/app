@@ -335,7 +335,8 @@ describe('PasskeyDesk', () => {
   });
 
   it('reloads data, counts the passkeys, records a diagnostic and shows the words', async () => {
-    const session = open();
+    // The desk works on the live session, which carries the discovered receive index after loading.
+    const session = { ...open(), receiveIndex: 2 };
     mockClient.credentials.mockResolvedValue([{}, {}]);
     mockClient.diagnostics.mockResolvedValue(undefined);
     mockClient.exportMnemonic.mockResolvedValue(['alpha', 'beta']);
@@ -412,7 +413,8 @@ describe('PasskeyDesk', () => {
 
   it('revokes with the wallet token, closes the wallet and reports it', async () => {
     const keys = ring();
-    const session = open(keys);
+    // The desk works on the live session, which carries the discovered receive index after loading.
+    const session = { ...open(keys), receiveIndex: 2 };
     mockClient.revoke.mockResolvedValue(undefined);
     await renderDesk();
     await click('Settings');

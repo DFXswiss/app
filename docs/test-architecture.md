@@ -629,7 +629,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **`src/__tests__/passkey-payment.test.ts` and `src/__tests__/tx-helper-passkey.test.ts`: BitcoinSend substitute.**
   `createWalletClient().bitcoinSend` returns a stub whose `send` resolves a fixed txid, and `tx-helper` gets every wallet hook as a stub. A green run proves the request the app builds (blockchain, own addresses, change address, destination, sats, fee choice); it does not prove the SDK checks, the signature or the broadcast.
 - **`src/__tests__/passkey-dfx-account.test.tsx`: sign-in substitutes.**
-  `signBitcoinMessage`, `useWalletContext().login`, `useAuthContext` and `useSessionContext` are stubs. A green run does not prove a valid BIP-322 signature or that the DFX API accepts it.
+  `signBitcoinMessageBip322`, `useWalletContext().login`, `useAuthContext` and `useSessionContext` are stubs. A green run does not prove a valid BIP-322 signature or that the DFX API accepts it.
 - **`src/__tests__/test-simulation.test.tsx` and `src/__tests__/sell-completion.test.tsx`: SDK and gate substitutes.**
   `useBuy`, `useSell` and `isTestNetwork` are stubs, and the completion tests replace the simulation component. A green run does not prove the SDK request or the real host gate inside the completion screens.
 - **`e2e/passkey-login.spec.ts`: failed login.**
