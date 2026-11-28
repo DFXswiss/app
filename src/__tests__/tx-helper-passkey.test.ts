@@ -1,10 +1,16 @@
 const mockSendPasskeyPayment = jest.fn();
+const mockGetBitcoinFees = jest.fn();
+const mockUseWalletApi = jest.fn();
 let mockActiveWallet: string | undefined = 'Passkey';
 
 jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => ({ session: { address: 'bcrt1qlogin0' } }),
   useSell: () => ({ confirmSell: jest.fn() }),
   useSwap: () => ({ confirmSwap: jest.fn() }),
+  useWalletApi: (token?: string) => {
+    mockUseWalletApi(token);
+    return { getBitcoinFees: mockGetBitcoinFees };
+  },
 }));
 jest.mock('../components/home/wallet/passkey-payment', () => ({
   sendPasskeyPayment: (...args: unknown[]) => mockSendPasskeyPayment(...args),
@@ -49,16 +55,21 @@ jest.mock('../hooks/wallets/wallet-connect.hook', () => ({
 }));
 
 import { renderHook } from '@testing-library/react';
+import { setOpenPasskey, type OpenPasskey } from '../components/home/wallet/passkey-session';
 import { useTxHelper } from '../hooks/tx-helper.hook';
 
 describe('useTxHelper with the passkey wallet', () => {
   beforeEach(() => {
     mockActiveWallet = 'Passkey';
+    setOpenPasskey(undefined);
   });
 
-  it('can send and pays the sell deposit address from the passkey wallet', async () => {
+  it('can send and pays the sell deposit address from the passkey wallet with wallet-api fees', async () => {
+    setOpenPasskey({ token: 'wallet-token', credentialId: 'cred', bitcoinNetwork: 'regtest' } as OpenPasskey);
     mockSendPasskeyPayment.mockResolvedValue('txid-1');
+    mockGetBitcoinFees.mockResolvedValue({ rates: { fast: 3, normal: 2, slow: 1 } });
     const { result } = renderHook(() => useTxHelper());
+    expect(mockUseWalletApi).toHaveBeenLastCalledWith('wallet-token');
 
     expect(result.current.canSendTransaction()).toBe(true);
     await expect(
@@ -70,11 +81,15 @@ describe('useTxHelper with the passkey wallet', () => {
         asset: { blockchain: 'BitcoinRegtest' },
       } as never),
     ).resolves.toBe('txid-1');
-    expect(mockSendPasskeyPayment).toHaveBeenCalledWith('bcrt1qdeposit', 0.001);
+    expect(mockSendPasskeyPayment).toHaveBeenCalledWith('bcrt1qdeposit', 0.001, expect.any(Function));
+    const loadFees = mockSendPasskeyPayment.mock.calls[0][2] as (blockchain: string) => Promise<unknown>;
+    await expect(loadFees('BitcoinRegtest')).resolves.toEqual({ rates: { fast: 3, normal: 2, slow: 1 } });
+    expect(mockGetBitcoinFees).toHaveBeenCalledWith('BitcoinRegtest');
   });
 
   it('has no balance source for the passkey wallet', async () => {
     const { result } = renderHook(() => useTxHelper());
+    expect(mockUseWalletApi).toHaveBeenLastCalledWith(undefined);
     await expect(result.current.getBalances([], 'bcrt1qlogin0', 'BitcoinRegtest' as never)).resolves.toBeUndefined();
   });
 });

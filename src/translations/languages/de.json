@@ -606,6 +606,8 @@
     "History": "Verlauf",
     "Show more": "Mehr anzeigen",
     "That is all your transactions.": "Das sind alle Transaktionen.",
+    "Only your most recent transactions are shown.": "Es werden nur deine neuesten Transaktionen angezeigt.",
+    "All Bitcoin addresses of this wallet are used. This address is shown again; payments to a reused address are easier to link to you.": "Alle Bitcoin-Adressen dieser Wallet sind verwendet. Diese Adresse wird erneut angezeigt; Zahlungen an eine wiederverwendete Adresse lassen sich leichter dir zuordnen.",
     "Loading more transactions": "Weitere Transaktionen werden geladen",
     "No transactions yet.": "Noch keine Transaktionen.",
     "This passkey did not unlock the wallet. Please try again with the passkey of this wallet.": "Dieser Passkey hat die Wallet nicht entsperrt. Versuche es erneut mit dem Passkey dieser Wallet.",

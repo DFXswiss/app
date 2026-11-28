@@ -66,6 +66,8 @@ describe('receiveAddress', () => {
     expect(receiveAddress(keys, 'spark')).toBe('spark1x');
     expect(receiveAddress(keys, 'bitcoin')).toBe('bcrt1q0');
     expect(receiveAddress(keys, 'bitcoin', 4)).toBe('bcrt1q4');
+    // Never beyond the last address the account query and /prepare cover (index 49).
+    expect(receiveAddress(keys, 'bitcoin', 50)).toBe('bcrt1q49');
   });
 });
 

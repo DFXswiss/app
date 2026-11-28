@@ -1,7 +1,8 @@
-import { Asset, Blockchain, Sell, Swap, useAuthContext, useSell, useSwap } from '@dfx.swiss/react';
+import { Asset, Blockchain, Sell, Swap, useAuthContext, useSell, useSwap, useWalletApi } from '@dfx.swiss/react';
 import BigNumber from 'bignumber.js';
-import { useMemo } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { sendPasskeyPayment } from '../components/home/wallet/passkey-payment';
+import { getOpenPasskey, subscribeOpenPasskey } from '../components/home/wallet/passkey-session';
 import { useAppHandlingContext } from '../contexts/app-handling.context';
 import { AssetBalance, useBalanceContext } from '../contexts/balance.context';
 import { WalletType, useWalletContext } from '../contexts/wallet.context';
@@ -53,6 +54,8 @@ export function useTxHelper(): TxHelperInterface {
   const { getAddressBalances } = useBlockchainBalance();
   const { confirmSell } = useSell();
   const { confirmSwap } = useSwap();
+  const passkey = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
+  const walletApi = useWalletApi(passkey?.token);
 
   async function getBalances(
     assets: Asset[],
@@ -169,8 +172,9 @@ export function useTxHelper(): TxHelperInterface {
         return createTransactionTronLinkTrx(new BigNumber(tx.amount), asset, session.address, tx.depositAddress);
 
       case WalletType.PASSKEY:
-        // wallet-api prepares and submits; the device only signs (see passkey-payment.ts).
-        return sendPasskeyPayment(tx.depositAddress, tx.amount);
+        // wallet-api prepares and submits; the device signs only after the fee check against
+        // wallet-api's current rates (see passkey-payment.ts).
+        return sendPasskeyPayment(tx.depositAddress, tx.amount, (blockchain) => walletApi.getBitcoinFees(blockchain));
 
       default:
         throw new Error('Not supported yet');
@@ -210,6 +214,7 @@ export function useTxHelper(): TxHelperInterface {
       signEip7702Authorization,
       confirmSell,
       confirmSwap,
+      walletApi,
     ],
   );
 }

@@ -1,5 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import PasskeyWalletHistory, { PasskeyHistory, PasskeyTx } from '../components/home/wallet/passkey-wallet-history';
+import PasskeyWalletHistory, {
+  HISTORY_TRUNCATED,
+  PasskeyHistory,
+  PasskeyTx,
+} from '../components/home/wallet/passkey-wallet-history';
 
 jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_: string, text: string) => text }),
@@ -191,5 +195,12 @@ describe('Passkey wallet history', () => {
     } finally {
       global.IntersectionObserver = original;
     }
+  });
+
+  it('says the list is cut instead of complete when the source truncated it', () => {
+    render(<PasskeyWalletHistory history={{ items, hasMore: false, truncated: true }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(screen.getByText(HISTORY_TRUNCATED)).toBeInTheDocument();
+    expect(screen.queryByText('That is all your transactions.')).not.toBeInTheDocument();
   });
 });

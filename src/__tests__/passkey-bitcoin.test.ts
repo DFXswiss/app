@@ -4,6 +4,7 @@ import {
   MAX_ADDRESSES,
   bitcoinBlockchain,
   bitcoinLabel,
+  coveredIndex,
   discoverAccount,
   discoveryCount,
   formatBtc,
@@ -73,6 +74,7 @@ describe('passkey bitcoin helpers', () => {
     const found = await discoverAccount(keys, 0, load);
     expect(load.mock.calls.map(([addresses]) => addresses.length)).toEqual([5, 8]);
     expect(found.receiveIndex).toBe(3);
+    expect(found.addressLimitReached).toBe(false);
     expect(found.addresses).toHaveLength(8);
     expect(found.account.id).toBe(8);
 
@@ -80,14 +82,37 @@ describe('passkey bitcoin helpers', () => {
     const kept = await discoverAccount(keys, 2, none);
     expect(none).toHaveBeenCalledTimes(1);
     expect(kept.receiveIndex).toBe(2);
+    expect(kept.addressLimitReached).toBe(false);
   });
 
-  it('stops at the 50-address limit when every address is used', async () => {
+  it('stops at the 50-address limit and keeps the receive index on the last queried address', async () => {
     const keys = ring();
     const load = jest.fn(async (addresses: string[]) => ({ addresses: addresses.map((a) => ({ address: a, used: true })) }));
     const found = await discoverAccount(keys, 0, load);
-    expect(found.receiveIndex).toBe(MAX_ADDRESSES);
+    // Index 50 is neither queried nor offered to /prepare, so the app never shows it.
+    expect(found.receiveIndex).toBe(MAX_ADDRESSES - 1);
+    expect(found.addressLimitReached).toBe(true);
     expect(found.addresses).toHaveLength(MAX_ADDRESSES);
+    expect(found.addresses).toContain(receiveAddress(keys, found.receiveIndex));
+    expect(sendAddresses(keys, found.receiveIndex)).toEqual({
+      addresses: found.addresses,
+      changeAddress: `bcrt1qaddr${MAX_ADDRESSES - 1}`,
+    });
+
+    // A later discovery from the clamped index finds the same limit; an unused last address is no reuse.
+    const again = await discoverAccount(keys, found.receiveIndex, load);
+    expect(again).toMatchObject({ receiveIndex: MAX_ADDRESSES - 1, addressLimitReached: true });
+    const lastUnused = jest.fn(async (addresses: string[]) => ({
+      addresses: addresses.map((a, index) => ({ address: a, used: index < MAX_ADDRESSES - 1 })),
+    }));
+    const free = await discoverAccount(keys, 0, lastUnused);
+    expect(free).toMatchObject({ receiveIndex: MAX_ADDRESSES - 1, addressLimitReached: false });
+  });
+
+  it('clamps an index to the last covered address', () => {
+    expect(coveredIndex(0)).toBe(0);
+    expect(coveredIndex(MAX_ADDRESSES - 1)).toBe(MAX_ADDRESSES - 1);
+    expect(coveredIndex(MAX_ADDRESSES)).toBe(MAX_ADDRESSES - 1);
   });
 
   it('offers the discovered addresses and the unused receive address as change', () => {

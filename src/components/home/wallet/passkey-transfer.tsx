@@ -3,17 +3,18 @@ import { useEffect, useRef, useState } from 'react';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { useClipboard } from '../../../hooks/clipboard.hook';
 import { QrBasic } from '../../payment/qr-code';
-import { formatBtc, parseSats, receiveAddress as bitcoinReceiveAddress } from './passkey-bitcoin';
+import { coveredIndex, formatBtc, parseSats, receiveAddress as bitcoinReceiveAddress } from './passkey-bitcoin';
 import { passkeyMessage } from './passkey-host';
 
 export type ReceiveFamily = 'evm' | 'bitcoin' | 'spark';
 export const RECEIVE_FAMILIES: ReceiveFamily[] = ['evm', 'bitcoin', 'spark'];
 
-// Bitcoin uses the device's BIP-84 receive index from discovery; EVM and Spark have one address each.
+// Bitcoin uses the device's BIP-84 receive index from discovery, never beyond the last address the
+// account query covers; EVM and Spark have one address each.
 export function receiveAddress(keys: KeyRing, family: ReceiveFamily, bitcoinIndex = 0): string {
   if (family === 'evm') return keys.evm(0).address;
   if (family === 'spark') return keys.sparkIdentity().address;
-  return bitcoinReceiveAddress(keys, bitcoinIndex);
+  return bitcoinReceiveAddress(keys, coveredIndex(bitcoinIndex));
 }
 
 export type FeeChoice = 'fast' | 'normal' | 'slow';

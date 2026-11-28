@@ -35,6 +35,8 @@ import PasskeyWordsSheet from './passkey-words-sheet';
 import { createWalletClient, type WalletClient } from './wallet-client';
 
 const TOAST_DURATION_MS = 4000;
+export const ADDRESS_REUSE_HINT =
+  'All Bitcoin addresses of this wallet are used. This address is shown again; payments to a reused address are easier to link to you.';
 
 // One address registration per key ring, shared by every desk in this tab. A new sign-in replaces the ring.
 const addressSyncStarted = new WeakSet<object>();
@@ -265,7 +267,10 @@ export default function PasskeyDesk({
     );
     if (!isLive(session)) return;
     setAccount(found.account);
-    updateOpenPasskey(session, { receiveIndex: found.receiveIndex });
+    updateOpenPasskey(session, {
+      receiveIndex: found.receiveIndex,
+      addressLimitReached: found.addressLimitReached || undefined,
+    });
   }
 
   const token = open?.token;
@@ -395,8 +400,22 @@ export default function PasskeyDesk({
   ];
   const shownAssets = assets ?? accountAssets;
   const shownHistory: PasskeyHistory | undefined =
-    history ?? (account && { items: historyItems(account.history, t, locale), hasMore: false });
+    history ??
+    (account && {
+      items: historyItems(account.history, t, locale),
+      hasMore: false,
+      // wallet-api caps the history and says so with historyComplete: false.
+      truncated: 'historyComplete' in account && account.historyComplete === false,
+    });
   const bitcoinEnabled = shownFamilies.includes('bitcoin');
+  // Every address discovery may query is used: the last one is shown again instead of an address
+  // the app could neither see in the balance nor spend.
+  const reuseHint = (testId: string) =>
+    open.addressLimitReached === true && bitcoinEnabled ? (
+      <p data-testid={testId} className="px-4 pb-3 text-sm text-dfxGray-800">
+        {t(ADDRESS_REUSE_HINT)}
+      </p>
+    ) : null;
 
   return (
     <main className="mx-auto w-full max-w-[560px] pb-10 text-left text-dfxBlue-800">
@@ -473,6 +492,7 @@ export default function PasskeyDesk({
                 </li>
               ))}
             </ul>
+            {reuseHint('passkey-address-reuse')}
           </div>
         </section>
       )}
@@ -571,6 +591,7 @@ export default function PasskeyDesk({
               else if (noteKindRef.current === 'receive') setNote(undefined);
             }}
           />
+          {reuseHint('passkey-receive-reuse')}
         </PasskeySheet>
       )}
       {sheet === 'send' && (

@@ -5,19 +5,20 @@ import { useState } from 'react';
 import { useSettingsContext } from '../../contexts/settings.context';
 import { isTestNetwork } from '../../util/test-network';
 
-// One idempotency key per buy route for the life of this tab. A double click, a retry after a
-// timeout or a second visit of the completion screen sends the same key, so the API books the
-// simulated bank payment once per route.
-const paymentKeys = new Map<number, string>();
-const TAB_NONCE = Date.now().toString(36);
+// One idempotency key per payment intent: the buy's transaction request, its amount and a nonce
+// drawn once per completion screen. A double click or a retry after a timeout on that screen sends
+// the same key, so the API books that payment once. A route is reused for every buy of the same
+// asset, so a second buy on the route (a new transaction request and a new completion screen)
+// gets a new key and is booked as well.
+let nonceCount = 0;
 
-export function simulationKey(routeId: number): string {
-  let key = paymentKeys.get(routeId);
-  if (key === undefined) {
-    key = `simulate-buy-${routeId}-${TAB_NONCE}`;
-    paymentKeys.set(routeId, key);
-  }
-  return key;
+export function simulationNonce(): string {
+  nonceCount += 1;
+  return `${Date.now().toString(36)}${nonceCount.toString(36)}`;
+}
+
+export function simulationKey(buy: Pick<Buy, 'id' | 'amount'>, nonce: string): string {
+  return `simulate-buy-${buy.id}-${buy.amount}-${nonce}`;
 }
 
 type SimulationState = 'idle' | 'busy' | 'done' | 'failed';
@@ -82,11 +83,12 @@ function SimulationButton({
 // DEV/STG only: books a simulated bank payment for the pending buy, as if the transfer had arrived.
 export function SimulatePayment({ buy }: { buy: Buy }): JSX.Element | null {
   const { simulatePaymentFor } = useBuy();
+  const [nonce] = useState(simulationNonce);
   if (!isTestNetwork()) return null;
   const payment: SimulateBankPayment = {
     amount: buy.amount,
     currency: buy.currency.name,
-    idempotencyKey: simulationKey(buy.routeId),
+    idempotencyKey: simulationKey(buy, nonce),
   };
   return (
     <SimulationButton

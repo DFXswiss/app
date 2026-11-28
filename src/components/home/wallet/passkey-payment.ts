@@ -1,18 +1,32 @@
-import { satsFromBtc, sendAddresses } from './passkey-bitcoin';
+import { bitcoinBlockchain, satsFromBtc, sendAddresses, type PasskeyBitcoinBlockchain } from './passkey-bitcoin';
+import { checkPaymentFee, sendReview } from './passkey-send-review';
 import { getOpenPasskey } from './passkey-session';
+import type { SendFees, SendInput } from './passkey-transfer';
 import { createWalletClient, type BitcoinSendConfirm, type BitcoinSendParams } from './wallet-client';
 
 export const PASSKEY_LOCKED = 'Open your passkey wallet first.';
 
+export type LoadBitcoinFees = (blockchain: PasskeyBitcoinBlockchain) => Promise<SendFees>;
+
 // Sell and swap send the quoted amount to the DFX deposit address from the passkey wallet.
-// wallet-api prepares the payment; the SDK checks inputs, outputs, amount and fee against this
-// request before the device signs, so a payment to any other address or amount is rejected.
-// The user already confirmed amount and deposit address on the sell screen, so confirm() accepts.
-export async function sendPasskeyPayment(depositAddress: string, amountBtc: number | string): Promise<string> {
-  const result = await passkeySend(
-    { destination: depositAddress, amount: satsFromBtc(amountBtc), feeRate: 'normal' },
-    async () => true,
-  );
+// wallet-api prepares the payment; before confirm() runs, the SDK checks that the PSBT pays exactly
+// the requested amount to the deposit address and the rest to the own change address. That check
+// does not bound the fee (inputs minus outputs), and the sell screen shows none. So confirm()
+// computes the same review as the desk send and refuses it unless the fee rate is not above
+// wallet-api's current `fast` rate and the fee stays within MAX_FEE_SHARE of the amount.
+export async function sendPasskeyPayment(
+  depositAddress: string,
+  amountBtc: number | string,
+  loadFees: LoadBitcoinFees,
+): Promise<string> {
+  const session = getOpenPasskey();
+  if (!session?.keys) throw new Error(PASSKEY_LOCKED);
+  const fees = await loadFees(bitcoinBlockchain(session.bitcoinNetwork));
+  const input: SendInput = { destination: depositAddress, amount: satsFromBtc(amountBtc), feeRate: 'normal' };
+  const result = await passkeySend(input, async (prepared) => {
+    checkPaymentFee(sendReview(prepared, input), fees);
+    return true;
+  });
   return result.txid;
 }
 

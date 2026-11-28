@@ -17,7 +17,11 @@ export interface PasskeyHistory {
   hasMore: boolean;
   // Absent when the source has no further pages (wallet-api returns a capped history).
   loadMore?: () => Promise<void>;
+  // True when the source cut the list (wallet-api historyComplete: false); older rows exist but are not shown.
+  truncated?: boolean;
 }
+
+export const HISTORY_TRUNCATED = 'Only your most recent transactions are shown.';
 
 const icons: Record<PasskeyTx['type'] | 'clock', string> = {
   buy: 'M12 5v14M5 12h14',
@@ -146,7 +150,7 @@ export default function PasskeyWalletHistory({ history }: { history?: PasskeyHis
           {expanded && history.hasMore && <div ref={marker} className="h-px" />}
           {expanded && !history.hasMore && history.items.length > 0 && (
             <p className="pb-1 pt-5 text-center text-sm text-dfxGray-800">
-              {translate('screens/home', 'That is all your transactions.')}
+              {translate('screens/home', history.truncated ? HISTORY_TRUNCATED : 'That is all your transactions.')}
             </p>
           )}
         </>

@@ -58,9 +58,11 @@ jest.mock('../components/home/wallet/passkey-transfer', () => {
   };
 });
 
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import PasskeyDesk, { enabledFamilies } from '../components/home/wallet/passkey-desk';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MAX_ADDRESSES } from '../components/home/wallet/passkey-bitcoin';
+import PasskeyDesk, { ADDRESS_REUSE_HINT, enabledFamilies } from '../components/home/wallet/passkey-desk';
 import { getOpenPasskey, setOpenPasskey, type OpenPasskey } from '../components/home/wallet/passkey-session';
+import { HISTORY_TRUNCATED } from '../components/home/wallet/passkey-wallet-history';
 
 const onCancel = jest.fn();
 const onRevoked = jest.fn();
@@ -158,6 +160,70 @@ describe('PasskeyDesk', () => {
     expect(screen.getByTitle('bcrt1qreceiveaddress2')).toBeInTheDocument();
     expect(screen.queryByText('Ethereum & EVM')).not.toBeInTheDocument();
     expect(screen.queryByText('Lightning (Spark)')).not.toBeInTheDocument();
+  });
+
+  it('keeps the receive address on the last covered index at the 50-address limit and hints at reuse', async () => {
+    mockGetAccount.mockImplementation(async (_blockchain: string, body: { addresses: string[] }) => ({
+      ...(await account(MAX_ADDRESSES)(body)),
+      historyComplete: false,
+    }));
+    open();
+    await renderDesk();
+    // Discovery grows the request in gap steps up to the 50-address limit.
+    await waitFor(() =>
+      expect(getOpenPasskey()).toMatchObject({ receiveIndex: MAX_ADDRESSES - 1, addressLimitReached: true }),
+    );
+    expect(mockGetAccount.mock.calls.at(-1)?.[1].addresses).toHaveLength(MAX_ADDRESSES);
+
+    await click('Show wallet');
+    expect(screen.getByTitle(`bcrt1qreceiveaddress${MAX_ADDRESSES - 1}`)).toBeInTheDocument();
+    expect(screen.getByTestId('passkey-address-reuse')).toHaveTextContent(ADDRESS_REUSE_HINT);
+
+    await click('Receive');
+    const props = mockReceivePanel.mock.calls.at(-1)?.[0] as { readReceive: (family: string) => string };
+    expect(props.readReceive('bitcoin')).toBe(`bcrt1qreceiveaddress${MAX_ADDRESSES - 1}`);
+    expect(screen.getByTestId('passkey-receive-reuse')).toHaveTextContent(ADDRESS_REUSE_HINT);
+  });
+
+  it('shows no reuse hint without Bitcoin and passes a capped history on as truncated', async () => {
+    mockGetConfig.mockResolvedValue({ families: { bitcoin: false, evm: true, spark: false } });
+    open(ring(), { addressLimitReached: true });
+    const first = await renderDesk();
+    await click('Show wallet');
+    expect(screen.queryByTestId('passkey-address-reuse')).not.toBeInTheDocument();
+    first.unmount();
+
+    // Six capped rows, so the list can expand to its end sentence.
+    const rows = Array.from({ length: 6 }, (_, index) => ({
+      txid: `t${index}`,
+      confirmed: true,
+      time: 1764288000,
+      netAmount: 1000,
+      direction: 'incoming',
+    }));
+    mockGetConfig.mockResolvedValue({ families: { bitcoin: true } });
+    mockGetAccount.mockImplementation(async (_blockchain: string, body: { addresses: string[] }) => ({
+      ...(await account(2)(body)),
+      history: rows,
+      historyComplete: false,
+    }));
+    open();
+    const second = await renderDesk();
+    expect(getOpenPasskey()?.addressLimitReached).toBeUndefined();
+    await click('Show more');
+    expect(screen.getByText(HISTORY_TRUNCATED)).toBeInTheDocument();
+    second.unmount();
+
+    // An answer without historyComplete is not called truncated.
+    mockGetAccount.mockImplementation(async (_blockchain: string, body: { addresses: string[] }) => {
+      const answer: { historyComplete?: boolean } = await account(2)(body);
+      delete answer.historyComplete;
+      return { ...answer, history: rows };
+    });
+    open();
+    await renderDesk();
+    await click('Show more');
+    expect(screen.getByText('That is all your transactions.')).toBeInTheDocument();
   });
 
   it('registers the addresses of one key ring once', async () => {

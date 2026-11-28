@@ -1,4 +1,10 @@
-import { sendReview } from '../components/home/wallet/passkey-send-review';
+import {
+  FEE_RATE_TOO_HIGH,
+  FEE_TOO_HIGH,
+  MAX_FEE_SHARE,
+  checkPaymentFee,
+  sendReview,
+} from '../components/home/wallet/passkey-send-review';
 import type { PreparedBitcoinSend } from '../components/home/wallet/wallet-client';
 
 function prepared(inputs: number[], fee: number, feeRate = 3): PreparedBitcoinSend {
@@ -44,5 +50,25 @@ describe('sendReview', () => {
     expect(() => sendReview(prepared([1000], 141), { destination: 'd', amount: '1.5' })).toThrow(
       'Invalid amount in sats',
     );
+  });
+});
+
+describe('checkPaymentFee', () => {
+  const fees = { rates: { fast: 5, normal: 3, slow: 1 } };
+  const review = { destination: 'd', amount: '10000', fee: '141', feeRate: '3', change: '0' };
+
+  it('accepts a fee rate up to the fast rate and a fee up to the share of the amount', () => {
+    expect(() => checkPaymentFee(review, fees)).not.toThrow();
+    expect(() => checkPaymentFee({ ...review, feeRate: '5', fee: String(10000 * MAX_FEE_SHARE) }, fees)).not.toThrow();
+  });
+
+  it('refuses a fee rate above the fast rate or without a usable rate', () => {
+    expect(() => checkPaymentFee({ ...review, feeRate: '5.1' }, fees)).toThrow(FEE_RATE_TOO_HIGH);
+    expect(() => checkPaymentFee({ ...review, feeRate: 'n/a' }, fees)).toThrow(FEE_RATE_TOO_HIGH);
+    expect(() => checkPaymentFee(review, { rates: { ...fees.rates, fast: Number.NaN } })).toThrow(FEE_RATE_TOO_HIGH);
+  });
+
+  it('refuses a fee above the share of the amount', () => {
+    expect(() => checkPaymentFee({ ...review, fee: '1001' }, fees)).toThrow(FEE_TOO_HIGH);
   });
 });

@@ -11,6 +11,8 @@ export interface OpenPasskey {
   bitcoinNetwork: PasskeyBitcoinNetwork;
   // BIP-84 receive index the device found by gap-limit discovery against the wallet-api account.
   receiveIndex?: number;
+  // True when every address discovery may query is used, so the shown receive address is reused.
+  addressLimitReached?: boolean;
 }
 
 export function sameSession(a: OpenPasskey | undefined, b: OpenPasskey): boolean {
@@ -36,7 +38,10 @@ export function setOpenPasskey(next: OpenPasskey | undefined): void {
 }
 
 // Applies a change only while the same session is still open, so a late answer never lands on a newer login.
-export function updateOpenPasskey(session: OpenPasskey, patch: Partial<Pick<OpenPasskey, 'receiveIndex'>>): void {
+export function updateOpenPasskey(
+  session: OpenPasskey,
+  patch: Partial<Pick<OpenPasskey, 'receiveIndex' | 'addressLimitReached'>>,
+): void {
   if (!current || !sameSession(current, session)) return;
   setOpenPasskey({ ...current, ...patch });
 }

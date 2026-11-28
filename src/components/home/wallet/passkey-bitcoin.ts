@@ -64,29 +64,41 @@ export function discoveryCount(receiveIndex: number): number {
   return Math.min(receiveIndex + ADDRESS_GAP, MAX_ADDRESSES);
 }
 
+// The highest index the account query and POST /prepare cover is MAX_ADDRESSES - 1. The app never
+// shows, nor uses as change, an address beyond it: funds there would be missing from the balance
+// and could not be spent from the app.
+export function coveredIndex(index: number): number {
+  return Math.min(index, MAX_ADDRESSES - 1);
+}
+
 // Asks wallet-api about the receive addresses until the unused tail reaches the gap limit (or the
-// 50-address request limit). Returns the last account answer and the next unused receive index.
+// 50-address request limit). Returns the last account answer and the receive index, clamped to the
+// last covered address. `addressLimitReached` is true when that last address is used already, so
+// the shown receive address is a reused one.
 export async function discoverAccount<T extends { addresses: { address: string; used: boolean }[] }>(
   keys: KeyRing,
   startIndex: number,
   load: (addresses: string[]) => Promise<T>,
-): Promise<{ account: T; addresses: string[]; receiveIndex: number }> {
+): Promise<{ account: T; addresses: string[]; receiveIndex: number; addressLimitReached: boolean }> {
   let count = discoveryCount(startIndex);
   for (;;) {
     const addresses = receiveAddresses(keys, count);
     const account = await load(addresses);
-    const receiveIndex = Math.max(nextReceiveIndex(addresses, account.addresses), startIndex);
-    if (!needsMoreAddresses(addresses.length, receiveIndex)) return { account, addresses, receiveIndex };
-    count = discoveryCount(receiveIndex);
+    const next = Math.max(nextReceiveIndex(addresses, account.addresses), startIndex);
+    if (!needsMoreAddresses(addresses.length, next)) {
+      return { account, addresses, receiveIndex: coveredIndex(next), addressLimitReached: next >= MAX_ADDRESSES };
+    }
+    count = discoveryCount(next);
   }
 }
 
 // Own addresses offered to POST /prepare and the change address. The change goes to the unused
-// receive address, which discovery then reports as used and moves past.
+// receive address, which discovery then reports as used and moves past; at the limit it is the
+// same last covered address the receive screen shows.
 export function sendAddresses(keys: KeyRing, receiveIndex: number): { addresses: string[]; changeAddress: string } {
   return {
     addresses: receiveAddresses(keys, discoveryCount(receiveIndex)),
-    changeAddress: receiveAddress(keys, Math.min(receiveIndex, MAX_ADDRESSES - 1)),
+    changeAddress: receiveAddress(keys, coveredIndex(receiveIndex)),
   };
 }
 

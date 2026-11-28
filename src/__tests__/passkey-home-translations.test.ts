@@ -143,6 +143,8 @@ const addedHomeKeys = [
   'Sending is not available for this wallet yet.',
   'Data reloaded.',
   'Passkeys on this account: {{count}}.',
+  'Only your most recent transactions are shown.',
+  'All Bitcoin addresses of this wallet are used. This address is shown again; payments to a reused address are easier to link to you.',
 ];
 
 // Network names and the fee unit read the same in every language.

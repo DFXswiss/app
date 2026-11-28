@@ -24,7 +24,7 @@ jest.mock('../contexts/settings.context', () => ({
 jest.mock('../util/test-network', () => ({ isTestNetwork: () => mockTestNetwork }));
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { SimulatePayment, SimulatePayout, simulationKey } from '../components/payment/test-simulation';
+import { SimulatePayment, SimulatePayout, simulationKey, simulationNonce } from '../components/payment/test-simulation';
 
 const buy = { id: 1, routeId: 77, amount: 100, currency: { name: 'CHF' } } as never;
 const sell = { id: 2, routeId: 88 } as never;
@@ -47,13 +47,52 @@ describe('STG/DEV simulations', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('keeps one idempotency key per buy route', () => {
-    expect(simulationKey(5)).toBe(simulationKey(5));
-    expect(simulationKey(5)).not.toBe(simulationKey(6));
-    expect(simulationKey(5)).toMatch(/^simulate-buy-5-/);
+  it('keys each payment intent by transaction request, amount and completion nonce', () => {
+    const nonce = simulationNonce();
+    expect(simulationNonce()).not.toBe(nonce);
+    expect(simulationKey({ id: 5, amount: 100 }, nonce)).toBe(`simulate-buy-5-100-${nonce}`);
+    expect(simulationKey({ id: 5, amount: 100 }, nonce)).toBe(simulationKey({ id: 5, amount: 100 }, nonce));
+    expect(simulationKey({ id: 6, amount: 100 }, nonce)).not.toBe(simulationKey({ id: 5, amount: 100 }, nonce));
+    expect(simulationKey({ id: 5, amount: 200 }, nonce)).not.toBe(simulationKey({ id: 5, amount: 100 }, nonce));
   });
 
-  it('simulates the bank payment for the buy route with the same key on every click', async () => {
+  it('books a second buy on the same route in the same tab under a new key', async () => {
+    mockSimulatePayment.mockResolvedValue({});
+    const first = render(<SimulatePayment buy={buy} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Simulate payment' }));
+    });
+    first.unmount();
+
+    const again = { id: 3, routeId: 77, amount: 100, currency: { name: 'CHF' } } as never;
+    render(<SimulatePayment buy={again} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Simulate payment' }));
+    });
+
+    const [one, two] = mockSimulatePayment.mock.calls;
+    expect(one[0]).toBe(77);
+    expect(two[0]).toBe(77);
+    expect(one[1].idempotencyKey).toMatch(/^simulate-buy-1-100-/);
+    expect(two[1].idempotencyKey).toMatch(/^simulate-buy-3-100-/);
+  });
+
+  it('gives a new completion of the same buy a new nonce', async () => {
+    mockSimulatePayment.mockResolvedValue({});
+    const first = render(<SimulatePayment buy={buy} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Simulate payment' }));
+    });
+    first.unmount();
+    render(<SimulatePayment buy={buy} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Simulate payment' }));
+    });
+    const [one, two] = mockSimulatePayment.mock.calls;
+    expect(two[1].idempotencyKey).not.toBe(one[1].idempotencyKey);
+  });
+
+  it('simulates the bank payment for the buy route with the same key on every retry', async () => {
     mockSimulatePayment.mockRejectedValueOnce(new Error('Route is not pending')).mockResolvedValueOnce({});
     render(<SimulatePayment buy={buy} />);
     expect(screen.getByText('Test environment only')).toBeInTheDocument();
@@ -73,7 +112,11 @@ describe('STG/DEV simulations', () => {
 
     const [first, second] = mockSimulatePayment.mock.calls;
     expect(first[0]).toBe(77);
-    expect(first[1]).toEqual({ amount: 100, currency: 'CHF', idempotencyKey: simulationKey(77) });
+    expect(first[1]).toEqual({
+      amount: 100,
+      currency: 'CHF',
+      idempotencyKey: expect.stringMatching(/^simulate-buy-1-100-/),
+    });
     expect(second[1].idempotencyKey).toBe(first[1].idempotencyKey);
   });
 
