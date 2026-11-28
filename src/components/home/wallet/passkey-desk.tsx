@@ -8,6 +8,7 @@ import { bitcoinBlockchain, bitcoinLabel, discoverAccount, formatBtc, historyIte
 import { usePasskeyDfxAccount } from './passkey-dfx-account';
 import { passkeyMessage, walletEnvForHost } from './passkey-host';
 import { passkeySend } from './passkey-payment';
+import { sendReview } from './passkey-send-review';
 import PasskeyRevokeSheet from './passkey-revoke-sheet';
 import {
   getOpenPasskey,
@@ -333,7 +334,7 @@ export default function PasskeyDesk({
     return receiveAddress(session.keys, family, session.receiveIndex ?? 0);
   };
   const sendPayment: SendPayment = async (input, confirm) => {
-    const sent = await passkeySend(input, (prepared) => confirm(prepared));
+    const sent = await passkeySend(input, (prepared) => confirm(sendReview(prepared)));
     const session = getOpenPasskey();
     if (session) loadWallet(session).catch(() => undefined);
     return sent;

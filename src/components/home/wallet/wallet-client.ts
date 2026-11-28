@@ -25,6 +25,8 @@ interface WalletApiLogin {
 type DiagnosticPayload = Parameters<WalletApi['diagnostics']>[0];
 export type BitcoinSendParams = Parameters<BitcoinSend['send']>[0];
 export type BitcoinSendConfirm = NonNullable<Parameters<BitcoinSend['send']>[1]>;
+// What BitcoinSend hands to confirm(): the wallet-api prepare response plus the verified summary.
+export type PreparedBitcoinSend = Parameters<BitcoinSendConfirm>[0];
 
 // wallet-api sits behind front-api at <api>/v1/wallet/*. The client carries no DFX customer token:
 // WalletApi keeps the wallet session token itself and sends nothing on the public routes.

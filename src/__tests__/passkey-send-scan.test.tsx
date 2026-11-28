@@ -5,6 +5,15 @@ jest.mock('../contexts/settings.context', () => ({
 }));
 jest.mock('../hooks/clipboard.hook', () => ({ useClipboard: () => ({ copy: jest.fn(), isCopying: false }) }));
 jest.mock('../components/payment/qr-code', () => ({ QrBasic: () => null }));
+// passkey-transfer imports passkey-host, which reads RP_IDS at runtime; mock the package like the
+// other passkey specs so this panel spec does not load the ESM wallet bundle.
+jest.mock(
+  '@dfx.swiss/wallet',
+  () => ({
+    RP_IDS: { prd: 'app.dfx.swiss', dev: 'dev.app.dfx.swiss', stg: 'stg.app.dfx.swiss', loc: 'localhost' },
+  }),
+  { virtual: true },
+);
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';

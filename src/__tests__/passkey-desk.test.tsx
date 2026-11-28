@@ -286,7 +286,10 @@ describe('PasskeyDesk', () => {
 
     const confirm = jest.fn(async () => true);
     mockPasskeySend.mockImplementation(async (_input: unknown, check: (prepared: unknown) => Promise<boolean>) => {
-      await check({ fee: 1 });
+      await check({
+        prepare: { destination: 'server-d', amount: 9, fee: 9, feeRate: 2, change: 9 },
+        summary: { destination: 'd', amount: 1, fee: 141, change: 500 },
+      });
       return { txid: 'tx' };
     });
     mockGetAccount.mockClear();
@@ -295,7 +298,8 @@ describe('PasskeyDesk', () => {
       sent = await props.send({ destination: 'd', amount: '1', feeRate: 'normal' }, confirm);
     });
     expect(sent).toEqual({ txid: 'tx' });
-    expect(confirm).toHaveBeenCalledWith({ fee: 1 });
+    // The confirm screen gets the verified summary; only the fee rate comes from the prepare response.
+    expect(confirm).toHaveBeenCalledWith({ destination: 'd', amount: '1', fee: '141', feeRate: '2', change: '500' });
     expect(mockGetAccount).toHaveBeenCalled();
 
     mockGetAccount.mockClear();
