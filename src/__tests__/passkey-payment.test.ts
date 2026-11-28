@@ -5,7 +5,7 @@ jest.mock('../components/home/wallet/wallet-client', () => ({
   createWalletClient: () => ({ bitcoinSend: mockBitcoinSend }),
 }));
 
-import { PASSKEY_LOCKED, passkeySend, sendPasskeyPayment } from '../components/home/wallet/passkey-payment';
+import { PASSKEY_LOCKED, passkeySend, sendAmount, sendPasskeyPayment } from '../components/home/wallet/passkey-payment';
 import { setOpenPasskey, type OpenPasskey } from '../components/home/wallet/passkey-session';
 
 const keys = {
@@ -46,7 +46,7 @@ describe('passkey payment', () => {
       addresses: ['bcrt1qown0', 'bcrt1qown1', 'bcrt1qown2', 'bcrt1qown3', 'bcrt1qown4'],
       changeAddress: 'bcrt1qown0',
       destination: 'bcrt1qdeposit',
-      amount: '12345',
+      amount: BigInt(12345),
       feeRate: 'normal',
     });
   });
@@ -68,5 +68,21 @@ describe('passkey payment', () => {
     });
     expect(mockSend.mock.calls[0][0].addresses).toHaveLength(7);
     expect(mockSend.mock.calls[0][1]).toBe(confirm);
+  });
+
+  it('converts the sats string to bigint, keeps max and rejects anything else', async () => {
+    expect(sendAmount('max')).toBe('max');
+    expect(sendAmount('0')).toBe(BigInt(0));
+    expect(sendAmount('12345')).toBe(BigInt(12345));
+    expect(sendAmount('2100000000000000000')).toBe(BigInt('2100000000000000000'));
+    for (const bad of ['', ' 1', '1.5', '-1', '0x10', '1e3', 'MAX']) {
+      expect(() => sendAmount(bad)).toThrow('Invalid amount in sats');
+    }
+
+    setOpenPasskey(session);
+    await expect(passkeySend({ destination: 'x', amount: '1.5', feeRate: 'fast' }, async () => true)).rejects.toThrow(
+      'Invalid amount in sats',
+    );
+    expect(mockSend).not.toHaveBeenCalled();
   });
 });

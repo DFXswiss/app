@@ -16,6 +16,15 @@ export async function sendPasskeyPayment(depositAddress: string, amountBtc: numb
   return result.txid;
 }
 
+// The app carries amounts as a decimal string of sats (or 'max'); BitcoinSend takes sats as
+// bigint so no precision is lost. Anything other than plain digits is rejected, because BigInt()
+// would also accept '', whitespace or hex literals.
+export function sendAmount(amount: string): bigint | 'max' {
+  if (amount === 'max') return 'max';
+  if (!/^\d+$/.test(amount)) throw new Error(`Invalid amount in sats: ${amount}`);
+  return BigInt(amount);
+}
+
 // One send path for the desk and for sell/swap. The request names the own addresses wallet-api may
 // spend and the change address; prepare, verification, signing and submit run in BitcoinSend.
 export async function passkeySend(
@@ -29,7 +38,7 @@ export async function passkeySend(
     blockchain: bitcoinBlockchain(session.bitcoinNetwork),
     ...sendAddresses(keys, session.receiveIndex ?? 0),
     destination: input.destination,
-    amount: input.amount,
+    amount: sendAmount(input.amount),
     feeRate: input.feeRate,
   };
   return createWalletClient().bitcoinSend(session, keys).send(params, confirm);
