@@ -56,7 +56,7 @@ jest.mock('../components/home/wallet/passkey-host', () => ({
 
 import { credentialBytes } from '../components/home/wallet/passkey-bytes';
 import type { OpenPasskey } from '../components/home/wallet/passkey-session';
-import { MISSING_CREDENTIAL_ID, createWalletApi, createWalletClient } from '../components/home/wallet/wallet-client';
+import { createWalletApi, createWalletClient } from '../components/home/wallet/wallet-client';
 import { Api } from '../config/api';
 
 const apiConfig = Api as { url: string };
@@ -120,13 +120,49 @@ describe('createWalletClient', () => {
     expect(mockAuth.register).toHaveBeenCalledWith();
   });
 
-  it('refuses a session answer without a passkey credential id', async () => {
-    mockAuth.login.mockResolvedValue({ token: 'login-token', keys });
+  it('opens a session from the real wallet-api answer, which names no passkey credential id', async () => {
+    // register/finish and authenticate/finish answer { token, accountId } only.
+    mockAuth.login.mockResolvedValue({ token: 'login-token', accountId: 'account-1', keys });
+    mockAuth.register.mockResolvedValue({ token: 'register-token', accountId: 'account-2', keys });
+    const client = createWalletClient();
+
+    const login = await client.login();
+    expect(login).toEqual({ token: 'login-token', credentialId: undefined, keys, bitcoinNetwork: 'regtest' });
+    expect(login.credentialId).toBeUndefined();
+    const register = await client.register();
+    expect(register).toEqual({ token: 'register-token', credentialId: undefined, keys, bitcoinNetwork: 'regtest' });
+    expect(register.credentialId).toBeUndefined();
+  });
+
+  it('leaves the credential id unset when the answer carries an empty or non-string id', async () => {
+    mockAuth.login.mockResolvedValue({ token: 'login-token', credentialId: 42, keys });
     mockAuth.register.mockResolvedValue({ token: 'register-token', credentialId: '' });
     const client = createWalletClient();
 
-    await expect(client.login()).rejects.toThrow(MISSING_CREDENTIAL_ID);
-    await expect(client.register()).rejects.toThrow(MISSING_CREDENTIAL_ID);
+    await expect(client.login()).resolves.toEqual({
+      token: 'login-token',
+      credentialId: undefined,
+      keys,
+      bitcoinNetwork: 'regtest',
+    });
+    await expect(client.register()).resolves.toEqual({
+      token: 'register-token',
+      credentialId: undefined,
+      keys: undefined,
+      bitcoinNetwork: 'regtest',
+    });
+  });
+
+  it('lets the SDK pin the credential when the session has no credential id', async () => {
+    mockAuth.revoke.mockResolvedValue('revoked');
+    mockAuth.exportMnemonic.mockResolvedValue(['word']);
+    const client = createWalletClient();
+    const withoutId: OpenPasskey = { token: 'wallet-token', keys, bitcoinNetwork: 'regtest' };
+
+    await expect(client.revoke(withoutId)).resolves.toBe('revoked');
+    expect(mockAuth.revoke).toHaveBeenCalledWith('wallet-token', undefined);
+    await expect(client.exportMnemonic(withoutId)).resolves.toEqual(['word']);
+    expect(mockAuth.exportMnemonic).toHaveBeenCalledWith(undefined);
   });
 
   it('passes the wallet token and the credential bytes to the session routes', async () => {

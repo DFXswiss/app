@@ -57,14 +57,29 @@ export function passkeyDismissed(error: unknown): boolean {
   return record.name === 'NotAllowedError' || record.name === 'AbortError' || record.code === 'ceremony-cancelled';
 }
 
+// Lower-cased codes that mean "this passkey has no account here". wallet-api answers authenticate/finish
+// for a passkey it never registered with HTTP 404 {"code":"PasskeyCredentialNotFound"}.
+const UNKNOWN_CREDENTIAL_CODES = ['unknown credential', 'unknowncredential', 'passkeycredentialnotfound'];
+// Where an SDK error may carry the wallet-api body or the error it wraps.
+const WRAPPED_ERROR_KEYS = ['cause', 'body', 'data', 'error', 'response'];
+// Bounds the walk through wrapped errors so a self-referencing error cannot loop.
+const MAX_WRAP_DEPTH = 3;
+
+function unknownCredentialRecord(record: Record<string, unknown>, depth: number): boolean {
+  const message = typeof record.message === 'string' ? record.message.toLowerCase() : '';
+  const code = typeof record.code === 'string' ? record.code.toLowerCase() : '';
+  if (UNKNOWN_CREDENTIAL_CODES.some((known) => code.includes(known) || message.includes(known))) return true;
+  if (depth >= MAX_WRAP_DEPTH) return false;
+  return WRAPPED_ERROR_KEYS.some((key) => {
+    const inner = errorRecord(record[key]);
+    return inner !== undefined && unknownCredentialRecord(inner, depth + 1);
+  });
+}
+
 export function passkeyUnknownCredential(error: unknown): boolean {
   const record = errorRecord(error);
   if (!record) return false;
-  const message = typeof record.message === 'string' ? record.message.toLowerCase() : '';
-  const code = typeof record.code === 'string' ? record.code.toLowerCase() : '';
-  return (
-    message.includes('unknown credential') || code.includes('unknown credential') || record.code === 'UnknownCredential'
-  );
+  return unknownCredentialRecord(record, 0);
 }
 
 export function passkeyPrfUnsupported(error: unknown): boolean {

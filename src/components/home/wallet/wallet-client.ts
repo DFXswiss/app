@@ -22,15 +22,17 @@ type WalletApiAuthResult =
   | Awaited<ReturnType<WalletApiAuth['register']>>;
 type WalletApiLogin = Pick<WalletApiAuthResult, 'token' | 'keys'>;
 
-export const MISSING_CREDENTIAL_ID = 'The wallet session has no passkey credential id.';
-
-// wallet-api answers register/finish and authenticate/finish with the session token and the id of the
-// passkey that opened it; WalletApiAuthResult carries that answer but does not declare the id. Revoke and
-// the recovery-word export need it, so a session without one is refused instead of opened half-usable.
-function credentialIdOf(result: WalletApiAuthResult): string {
+// wallet-api answers register/finish and authenticate/finish with only the session token and the account
+// id; it does not name the passkey that opened the session. A result that does carry a non-empty
+// credentialId keeps it, any other result opens the session without one. Revoke and the recovery-word
+// export then pass no id and the SDK pins the only allowed (revoke) or only active (export) credential.
+function credentialIdOf(result: WalletApiAuthResult): string | undefined {
   const id: unknown = 'credentialId' in result ? result.credentialId : undefined;
-  if (typeof id !== 'string' || !id) throw new Error(MISSING_CREDENTIAL_ID);
-  return id;
+  return typeof id === 'string' && id ? id : undefined;
+}
+
+function credentialBytesOf(session: OpenPasskey): Uint8Array | undefined {
+  return session.credentialId ? credentialBytes(session.credentialId) : undefined;
 }
 
 type DiagnosticPayload = Parameters<WalletApi['diagnostics']>[0];
@@ -66,9 +68,9 @@ export function createWalletClient() {
     register: async (): Promise<OpenPasskey> => open(await auth.register()),
     // Registers the addresses of the families GET /v1/wallet/config enables; nothing else is derived.
     syncAddresses: (session: OpenPasskey, keys: KeyRing) => auth.syncAddresses(session.token, keys),
-    revoke: (session: OpenPasskey) => auth.revoke(session.token, credentialBytes(session.credentialId)),
+    revoke: (session: OpenPasskey) => auth.revoke(session.token, credentialBytesOf(session)),
     credentials: (session: OpenPasskey) => auth.credentials(session.token),
-    exportMnemonic: (session: OpenPasskey) => auth.exportMnemonic(credentialBytes(session.credentialId)),
+    exportMnemonic: (session: OpenPasskey) => auth.exportMnemonic(credentialBytesOf(session)),
     diagnostics: (session: OpenPasskey, payload: DiagnosticPayload) => api.diagnostics(payload, session.token),
     // Prepare, verify, confirm, sign and submit run inside the SDK; the seed never leaves this ring.
     bitcoinSend: (session: OpenPasskey, keys: KeyRing) => new BitcoinSend({ api, keys, token: session.token }),

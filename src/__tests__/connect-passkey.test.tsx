@@ -383,6 +383,20 @@ describe('ConnectPasskey', () => {
     expect(screen.getByTestId('desk')).toBeInTheDocument();
   });
 
+  it('shows the unknown card for a PasskeyCredentialNotFound answer and lets the user register', async () => {
+    const body = { statusCode: 404, code: 'PasskeyCredentialNotFound', message: 'PasskeyCredentialNotFound' };
+    mockLogin.mockRejectedValueOnce(Object.assign(new Error('Request failed'), { cause: body }));
+    await renderReady();
+    await click('Log in');
+    expect(screen.getByText('This passkey is not an account')).toBeInTheDocument();
+    expect(screen.queryByText(GENERIC)).not.toBeInTheDocument();
+    const opened = session();
+    mockRegister.mockResolvedValueOnce(opened);
+    await click('Open a new account');
+    expect(mockRegister).toHaveBeenCalledTimes(1);
+    expect(getOpenPasskey()).toBe(opened);
+  });
+
   it('opens the unknown card from the existing-account login', async () => {
     mockLogin.mockRejectedValueOnce(namedError('NotAllowedError')).mockRejectedValueOnce({ message: 'Unknown credential' });
     await renderReady();
@@ -498,6 +512,34 @@ describe('passkey ceremony helpers', () => {
     expect(passkeyPlatformView({ available: false, reason: 'os-too-old', prf: 'unknown', os: '16.0' })).toBe('os-old');
     expect(passkeyPlatformView({ available: false, prf: 'unknown' })).toBe('blocked');
     expect(passkeyPlatformView({ available: true, prf: 'yes' })).toBe('ready');
+  });
+
+  it("treats wallet-api's PasskeyCredentialNotFound as an unknown credential", () => {
+    const body = { statusCode: 404, code: 'PasskeyCredentialNotFound', message: 'PasskeyCredentialNotFound' };
+    expect(passkeyUnknownCredential(body)).toBe(true);
+    expect(passkeyUnknownCredential({ code: 'passkeycredentialnotfound' })).toBe(true);
+    expect(passkeyUnknownCredential({ code: 404, message: 'PASSKEYCREDENTIALNOTFOUND' })).toBe(true);
+    expect(passkeyUnknownCredential(new Error('HTTP 404: {"code":"PasskeyCredentialNotFound"}'))).toBe(true);
+    expect(passkeyUnknownCredential({ statusCode: 404, code: 'NotFound', message: 'Not found' })).toBe(false);
+  });
+
+  it('finds PasskeyCredentialNotFound in an error the SDK wraps', () => {
+    const body = { statusCode: 404, code: 'PasskeyCredentialNotFound', message: 'PasskeyCredentialNotFound' };
+    const wrapped = Object.assign(new Error('Request failed'), { cause: body });
+    expect(passkeyUnknownCredential(wrapped)).toBe(true);
+    expect(passkeyUnknownCredential({ message: 'Request failed', body })).toBe(true);
+    expect(passkeyUnknownCredential({ message: 'Request failed', data: body })).toBe(true);
+    expect(passkeyUnknownCredential({ message: 'Request failed', error: body })).toBe(true);
+    expect(passkeyUnknownCredential({ message: 'Request failed', response: { status: 404, data: body } })).toBe(true);
+    expect(passkeyUnknownCredential({ cause: { cause: { cause: { code: 'UnknownCredential' } } } })).toBe(true);
+
+    expect(passkeyUnknownCredential({ message: 'Request failed', cause: 'PasskeyCredentialNotFound' })).toBe(false);
+    expect(passkeyUnknownCredential({ message: 'Request failed', cause: { code: 'NotFound' } })).toBe(false);
+    expect(passkeyUnknownCredential({ cause: { cause: { cause: { cause: body } } } })).toBe(false);
+
+    const cyclic: Record<string, unknown> = { message: 'Request failed' };
+    cyclic.cause = cyclic;
+    expect(passkeyUnknownCredential(cyclic)).toBe(false);
   });
 
   it('returns the message of an error and the generic sentence otherwise', () => {
