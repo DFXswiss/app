@@ -33,6 +33,13 @@ export const FeatureTree: Page[] = [
           },
         },
       },
+      {
+        id: 'wallet',
+        img: '/images/wallet.jpg',
+        title: 'Wallet',
+        feature: 'passkey',
+        link: '/wallet',
+      },
     ],
   },
   {

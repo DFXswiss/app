@@ -162,6 +162,8 @@ function HomeScreenContent(): JSX.Element {
       const wallet = getWallet(tile, appParams);
       connectToRef.current = wallet;
       setConnectTo(wallet);
+    } else if (tile.link) {
+      navigate(tile.link);
     } else if (tile.next) {
       if (tile.next.options) setOptions(tile.next.options);
       const page = { page: tile.next.page, allowedTiles: tile.next.tiles };
@@ -269,6 +271,8 @@ function HomeScreenContent(): JSX.Element {
               </div>
               <div className="grid grid-cols-2 gap-2.5 w-full mb-3">
                 {currentPage.tiles
+                  // A tile that links to the open route would only reload it (e.g. Wallet on /wallet).
+                  .filter((t) => t.link !== pathname)
                   .filter(
                     (t) =>
                       !isWallet(t) ||
@@ -308,7 +312,12 @@ function TileComponent({ tile, onClick }: { tile: Tile; onClick: (t: Tile) => vo
       className="relative aspect-square overflow-hidden"
       style={{ borderRadius: '4%', boxShadow: '0px 0px 5px 3px rgba(0, 0, 0, 0.25)' }}
     >
-      <img src={tile.img} className={tile.disabled ? 'opacity-60' : 'cursor-pointer'} onClick={() => onClick(tile)} />
+      <img
+        src={tile.img}
+        alt={tile.title && translate('screens/home', tile.title)}
+        className={tile.disabled ? 'opacity-60' : 'cursor-pointer'}
+        onClick={() => onClick(tile)}
+      />
       {tile.disabled && (
         <div
           className="absolute right-2 bottom-3 text-dfxBlue-800 font-extrabold rotate-180 uppercase"

@@ -530,6 +530,33 @@ describe('/wallet passkey entry', () => {
     expect(screen.getByText('Leaf')).toBeInTheDocument();
   });
 
+  it('navigates a link tile to its route, labels it, and hides it on that route', () => {
+    mockHomePage = {
+      id: 'home',
+      description: 'Home',
+      tiles: [
+        { id: 'buy', img: '/buy.jpg', next: { page: 'buy' } },
+        { id: 'wallet', img: '/images/wallet.jpg', title: 'Wallet', feature: 'passkey', link: '/wallet' },
+      ],
+    };
+
+    const home = renderAt('/');
+    const tile = screen.getByAltText('Wallet');
+    expect(tile).toHaveAttribute('src', '/images/wallet.jpg');
+    expect(document.querySelector('img[src="/buy.jpg"]')).not.toHaveAttribute('alt');
+    fireEvent.click(tile);
+    expect(mockNavigate).toHaveBeenCalledWith('/wallet');
+    expect(mockSetOptions).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
+    home.unmount();
+
+    mockSessionState.isLoggedIn = true;
+    renderAt('/wallet');
+    expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="/buy.jpg"]')).not.toBeNull();
+    expect(screen.queryByAltText('Wallet')).not.toBeInTheDocument();
+  });
+
   it('walks back from a form, from connect, and through a one-tile page', () => {
     const wallet = renderAt('/wallet');
     act(() => {

@@ -127,6 +127,18 @@ describe('FeatureTree', () => {
     );
   });
 
+  it('ends the home toolbox with a passkey-gated Wallet tile that links to /wallet', () => {
+    const home = FeatureTree.find((page) => page.id === 'home');
+    expect(home?.tiles.map((tile) => tile.id)).toEqual(['buy', 'sell', 'swap', 'wallet']);
+    expect(home?.tiles[3]).toEqual({
+      id: 'wallet',
+      img: '/images/login-passkey.jpg',
+      title: 'Wallet',
+      feature: 'passkey',
+      link: '/wallet',
+    });
+  });
+
   it('resolves every functional wallet selector for each blockchain and for undefined', () => {
     for (const page of FeatureTree) {
       for (const tile of page.tiles) {
@@ -204,6 +216,21 @@ describe('useFeatureTree', () => {
     expect(withFlagPage.tiles.find((tile) => tile.id === 'login-with-passkey')?.img).toBe('/images/login-passkey.jpg');
     expect(withFlag).toContain('login-with-crypto-wallet');
     expect(withFlag).toContain('login-with-mail');
+  });
+
+  it('hides the home Wallet tile until the passkey flag is enabled', () => {
+    const { result } = renderHook(() => useFeatureTree());
+
+    const withoutFlag = definedPage(result.current.getPage('home')).tiles.map((tile) => tile.id);
+    expect(withoutFlag).toEqual(['buy', 'sell', 'swap']);
+
+    mockState.enabled.add('passkey');
+    const withFlagPage = definedPage(result.current.getPage('home'));
+    expect(withFlagPage.tiles.map((tile) => tile.id)).toEqual(['buy', 'sell', 'swap', 'wallet']);
+    expect(withFlagPage.tiles[3]).toEqual(
+      expect.objectContaining({ img: '/images/wallet.jpg', title: 'Wallet', link: '/wallet' }),
+    );
+    expect(withFlagPage.tiles[0].img).toBe('https://dfx.swiss/images/app/kaufen_de.jpg');
   });
 
   it('keeps every visible tile without allowedTiles and filters when the list is set', () => {
