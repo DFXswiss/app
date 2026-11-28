@@ -933,6 +933,18 @@ describe('KycScreen results of a code that is no longer shown', () => {
     expect(mockSettings.changeLanguage).not.toHaveBeenCalledWith({ symbol: 'DE' });
   });
 
+  it('does not open the previous step with the next code', async () => {
+    renderPath('/kyc?code=ONE&step=FinancialData');
+    await waitFor(() => expect(mockKyc.getFinancialData).toHaveBeenCalledWith('ONE', 'step-url', expect.anything()), {
+      timeout: 10000,
+    });
+
+    moveTo('?code=TWO');
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('TWO'), { timeout: 10000 });
+    await settle();
+    expect(mockKyc.getFinancialData.mock.calls.filter(([code]) => code === 'TWO')).toEqual([]);
+  });
+
   it('keeps the spinner when a dropped request of the previous code ends', async () => {
     const previous = deferred();
     const current = deferred();
@@ -1132,6 +1144,21 @@ describe('KycScreen startup and route modes', () => {
     mockApp.isInitialized = true;
     rendered.rerender(tree('/kyc?code=CODE'));
     await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
+  });
+
+  it('ignores a later re-initialization of the wallet context', async () => {
+    const rendered = await overview(info(), '/kyc?code=CODE');
+    expect(mockGetKycInfo).toHaveBeenCalledTimes(1);
+
+    // changed app parameters make the wallet context initialize again
+    mockWallet.isInitialized = false;
+    rendered.rerender(tree('/kyc?code=CODE'));
+    expect(screen.getByTestId('kyc-status')).toBeInTheDocument();
+    mockWallet.isInitialized = true;
+    rendered.rerender(tree('/kyc?code=CODE'));
+    await settle();
+    expect(mockGetKycInfo).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('kyc-status')).toBeInTheDocument();
   });
 
   it('waits until a session from the link is applied', async () => {
