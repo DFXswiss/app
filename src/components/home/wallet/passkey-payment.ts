@@ -1,5 +1,5 @@
 import { bitcoinBlockchain, satsFromBtc, sendAddresses, type PasskeyBitcoinBlockchain } from './passkey-bitcoin';
-import { checkPaymentFee, sendReview } from './passkey-send-review';
+import { checkPaymentFee } from './passkey-send-review';
 import { getOpenPasskey } from './passkey-session';
 import type { SendFees, SendInput } from './passkey-transfer';
 import { createWalletClient, type BitcoinSendConfirm, type BitcoinSendParams } from './wallet-client';
@@ -12,8 +12,10 @@ export type LoadBitcoinFees = (blockchain: PasskeyBitcoinBlockchain) => Promise<
 // wallet-api prepares the payment; before confirm() runs, the SDK checks that the PSBT pays exactly
 // the requested amount to the deposit address and the rest to the own change address. That check
 // does not bound the fee (inputs minus outputs), and the sell screen shows none. So confirm()
-// computes the same review as the desk send and refuses it unless the fee rate is not above
-// wallet-api's current `fast` rate and the fee stays within MAX_FEE_SHARE of the amount.
+// computes the same review as the desk send and refuses it unless the PSBT's own fee, divided by the
+// vsize the device estimates from its input and output counts, is not above wallet-api's current
+// `fast` rate, and the fee stays within MAX_FEE_SHARE of the amount. The rate wallet-api reports in
+// its prepare response is not trusted for this.
 export async function sendPasskeyPayment(
   depositAddress: string,
   amountBtc: number | string,
@@ -24,7 +26,7 @@ export async function sendPasskeyPayment(
   const fees = await loadFees(bitcoinBlockchain(session.bitcoinNetwork));
   const input: SendInput = { destination: depositAddress, amount: satsFromBtc(amountBtc), feeRate: 'normal' };
   const result = await passkeySend(input, async (prepared) => {
-    checkPaymentFee(sendReview(prepared, input), fees);
+    checkPaymentFee(prepared, input, fees);
     return true;
   });
   return result.txid;

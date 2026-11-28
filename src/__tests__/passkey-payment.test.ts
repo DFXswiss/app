@@ -9,11 +9,16 @@ import { PASSKEY_LOCKED, passkeySend, sendAmount, sendPasskeyPayment } from '../
 import { FEE_RATE_TOO_HIGH, FEE_TOO_HIGH } from '../components/home/wallet/passkey-send-review';
 import { setOpenPasskey, type OpenPasskey } from '../components/home/wallet/passkey-session';
 
-// What BitcoinSend hands to confirm(): the prepare response (fee rate) and the verified PSBT summary.
+// What BitcoinSend hands to confirm(): the prepare response (with the fee rate wallet-api reports) and
+// the verified PSBT summary, here with a destination and a change output.
 function prepared(inputs: number[], fee: number, feeRate: number): unknown {
   return {
     prepare: { feeRate },
-    summary: { inputs: inputs.map((amount) => ({ amount: BigInt(amount) })), outputs: [], fee: BigInt(fee) },
+    summary: {
+      inputs: inputs.map((amount) => ({ amount: BigInt(amount) })),
+      outputs: [{ amount: BigInt(1) }, { amount: BigInt(1) }],
+      fee: BigInt(fee),
+    },
   };
 }
 
@@ -64,10 +69,12 @@ describe('passkey payment', () => {
     });
   });
 
-  it('refuses a sell payment whose fee rate is above the fast rate or whose fee is out of proportion', async () => {
+  it('refuses a sell payment whose PSBT pays above the fast rate or whose fee is out of proportion', async () => {
     setOpenPasskey(session);
     const loadFees = jest.fn(async () => ({ rates: { fast: 5, normal: 3, slow: 1 } }));
-    let sample = prepared([20000], 141, 50);
+    // wallet-api reports 3 sat/vB, but the PSBT pays 1000 sats over at most 11 + 68 + 2·43 = 165 vB,
+    // above fast × 165 = 825 sats. The fee is still inside MAX_FEE_SHARE of 12345 sats.
+    let sample = prepared([20000], 1000, 3);
     mockSend.mockImplementation(async (_params: unknown, confirm: (p: unknown) => Promise<boolean>) => {
       await confirm(sample);
       return { txid: 'never' };
@@ -75,9 +82,9 @@ describe('passkey payment', () => {
 
     await expect(sendPasskeyPayment('bcrt1qdeposit', 0.00012345, loadFees)).rejects.toThrow(FEE_RATE_TOO_HIGH);
 
-    // 2000 sats fee on 12345 sats is above MAX_FEE_SHARE even at a normal rate.
-    sample = prepared([20000], 2000, 3);
-    await expect(sendPasskeyPayment('bcrt1qdeposit', 0.00012345, loadFees)).rejects.toThrow(FEE_TOO_HIGH);
+    // 141 sats is inside the fast rate, but above MAX_FEE_SHARE of a 1000-sat payment.
+    sample = prepared([20000], 141, 3);
+    await expect(sendPasskeyPayment('bcrt1qdeposit', '0.00001', loadFees)).rejects.toThrow(FEE_TOO_HIGH);
   });
 
   it('uses the discovered receive index and passes the confirm callback through', async () => {

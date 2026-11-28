@@ -361,7 +361,10 @@ describe('PasskeyDesk', () => {
             { txid: 'a', vout: 0, amount: BigInt(400), path: "m/84'/1'/0'/0/0" },
             { txid: 'b', vout: 1, amount: BigInt(242), path: "m/84'/1'/0'/0/1" },
           ],
-          outputs: [],
+          outputs: [
+            { address: 'd', amount: BigInt(1) },
+            { address: 'bcrt1qown0', amount: BigInt(500) },
+          ],
           fee: BigInt(141),
         },
       });
@@ -373,8 +376,9 @@ describe('PasskeyDesk', () => {
       sent = await props.send({ destination: 'd', amount: '1', feeRate: 'normal' }, confirm);
     });
     expect(sent).toEqual({ txid: 'tx' });
-    // The confirm screen gets the verified request and PSBT; only the fee rate comes from the prepare response.
-    expect(confirm).toHaveBeenCalledWith({ destination: 'd', amount: '1', fee: '141', feeRate: '2', change: '500' });
+    // The confirm screen gets the verified request and PSBT. The fee rate is the PSBT's own, not the
+    // prepare response's 2 sat/vB: 141 sats over 11 + 2·68 + 2·43 = 233 vB.
+    expect(confirm).toHaveBeenCalledWith({ destination: 'd', amount: '1', fee: '141', feeRate: '0.6', change: '500' });
     expect(mockGetAccount).toHaveBeenCalled();
 
     mockGetAccount.mockClear();
