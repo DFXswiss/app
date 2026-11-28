@@ -1070,7 +1070,7 @@ describe('KycScreen results of a code that is no longer shown', () => {
   it('does not clear the automatic continuation when that of the previous code ends', async () => {
     mockApp.params = { autoStart: 'true' };
     const previous = deferred();
-    mockContinueKyc.mockImplementation((code: string) => (code === 'ONE' ? previous.promise : new Promise(() => {})));
+    mockContinueKyc.mockImplementation((code: string) => (code === 'ONE' ? previous.promise : deferred().promise));
     renderPath('/kyc?code=ONE');
     await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('ONE'), { timeout: 10000 });
     moveTo('?code=TWO');
@@ -1094,7 +1094,7 @@ describe('KycScreen results of a code that is no longer shown', () => {
       mockGetKycInfo.mockResolvedValue(info({ kycLevel: 0 }));
       mockStartStep.mockResolvedValue(session(undefined, { kycLevel: 30 }));
       mockContinueKyc.mockImplementation((code: string) =>
-        code === 'ONE' ? Promise.resolve(session(undefined, { kycLevel: 30 })) : new Promise(() => {}),
+        code === 'ONE' ? Promise.resolve(session(undefined, { kycLevel: 30 })) : deferred().promise,
       );
       renderPath(`/profile/kyc${search}`);
       await waitFor(() => expect(mockReloadUser).toHaveBeenCalledTimes(1), { timeout: 10000 });
