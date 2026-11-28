@@ -681,6 +681,61 @@ describe('KycScreen links with the code of another account', () => {
     expect(mockLogout).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['result', (pending: ReturnType<typeof deferred>) => pending.resolve(session(step('PersonalData')))],
+    [
+      'code handoff',
+      (pending: ReturnType<typeof deferred>) =>
+        pending.reject({ statusCode: 401, switchToCode: 'HANDOFF', message: 'switch' }),
+    ],
+  ])('drops the %s of a continuation that ends while the session user loads', async (_label, settlePrevious) => {
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'FIRST' } };
+    const rendered = await overview(info({ kycSteps: [step('ContactData')] }), '/kyc');
+
+    const previous = deferred();
+    mockContinueKyc.mockImplementationOnce(() => previous.promise);
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('FIRST'), { timeout: 10000 });
+
+    // the session belongs to another account, the user of that account is not loaded yet
+    mockAuth.session = { account: 2 };
+    rendered.rerender(tree('/kyc'));
+    await settle();
+
+    await act(async () => {
+      settlePrevious(previous);
+    });
+    await settle();
+    expect(layout()).toMatchObject({ title: 'DFX KYC' });
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('does not continue a deferred action for the previous code after the account changed', async () => {
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'FIRST' } };
+    mockGetKycInfo.mockImplementation(() =>
+      Promise.resolve(info({ kycSteps: [step('ContactData', { status: 'Completed' })] })),
+    );
+    const consent = deferred();
+    mockAddTransferClient.mockImplementationOnce(() => consent.promise);
+    const rendered = renderPath('/kyc?client=CLIENT');
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockAddTransferClient).toHaveBeenCalledWith('FIRST', 'CLIENT'), { timeout: 10000 });
+
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 2, kyc: { hash: 'SECOND' } };
+    rendered.rerender(tree('/kyc?client=CLIENT'));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('SECOND'), { timeout: 10000 });
+
+    await act(async () => {
+      consent.resolve(undefined as never);
+    });
+    await settle();
+    expect(mockContinueKyc).not.toHaveBeenCalledWith('FIRST');
+  });
+
   it('does not show the wallet hint of the previous account while the session user loads', async () => {
     mockApp.params = { address: '0xdef' };
     mockAuth.session = { account: 2 };
