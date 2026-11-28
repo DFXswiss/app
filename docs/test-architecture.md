@@ -785,6 +785,23 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   stays `/wallet`. It does not
   prove a real browser report, a real session, a real passkey ceremony, a real API, or that
   the image host keeps serving the same bytes.
+- **The home Wallet tile visual spec answers the bootstrap itself.**
+  `e2e/home-wallet-tile.spec.ts` fulfils geolocation-db with `CH`, the bootstrap GETs with
+  fixtures and every `/v2/**` call with 401, so the home toolbox stays signed out. The
+  navigation test replaces `window.PublicKeyCredential` with a class that reports passkeys as
+  available. The BUY, SELL and SWAP images and the bottom picture load from the public image
+  host and are pinned in the baselines. A green run proves that the toolbox shows three tiles
+  without `?feature=Passkey`, a fourth tile with alt text `Wallet` and the bundled
+  `/images/wallet.jpg` after SWAP with it, and that clicking that tile opens `/wallet`
+  with the `feature` parameter kept and the idle passkey card. It does not prove a real API,
+  a real session, a real browser passkey report, a passkey ceremony, or that the image host
+  keeps serving the same bytes.
+- **`src/__tests__/wallet-entry.test.tsx`: link tile.**
+  The Wallet link tile is a literal in the mocked page tree and `navigate` is a `jest.fn`; a
+  green run proves only that a tile with `link` calls `navigate` with that route, carries its
+  title as alt text, and is hidden on its own route. It does not prove the real router or the
+  real feature tree (`src/__tests__/feature-tree.test.tsx` checks the real tree entry and its
+  flag gate).
 - **The sitemap visual spec answers the bootstrap itself and plants an admin token.**
   `e2e/sitemap.spec.ts` fulfils geolocation-db, the bootstrap GETs and `/v2/**`, and stores
   a synthetic Admin JWT. The shell may load pictures from the public image host. A green

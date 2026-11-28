@@ -17,16 +17,20 @@ export interface Page {
   tiles: Tile[];
 }
 
-export type Tile = DefaultTile | DisabledTile | WalletTile;
+export type Tile = DefaultTile | DisabledTile | WalletTile | LinkTile;
 
 export interface BaseTile {
   id: string;
   img: string;
+  /** Translation key (namespace screens/home) for the image's alt text */
+  title?: string;
   disabled?: boolean;
   /** URL feature flag that unlocks this tile (e.g. 'passkey' for ?feature=Passkey) */
   feature?: string;
   next?: Next;
   wallet?: Wallet | WalletSelector;
+  /** App route the tile navigates to (e.g. '/wallet'); the current query string is kept */
+  link?: string;
 }
 
 export interface DefaultTile extends BaseTile {
@@ -39,6 +43,10 @@ export interface DisabledTile extends BaseTile {
 
 export interface WalletTile extends BaseTile {
   wallet: Wallet | WalletSelector;
+}
+
+export interface LinkTile extends BaseTile {
+  link: string;
 }
 
 export interface Next {
