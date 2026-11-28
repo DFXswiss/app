@@ -4200,6 +4200,7 @@ describe('ConnectPasskey opt-in', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(PASSKEY_GENERIC_ERROR);
     expect(mockWalletLogin).toHaveBeenCalledTimes(1);
     expect(loggedOutAfter(0)).toBe(true);
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -4210,6 +4211,65 @@ describe('ConnectPasskey opt-in', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(PASSKEY_GENERIC_ERROR);
     expect(mockWalletLogin).toHaveBeenCalledTimes(1);
     expect(loggedOutAfter(0)).toBe(true);
+    expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('alerts the generic error and logs out without a further login when the Bitcoin login returns no token', async () => {
+    mockGetAuthToken.mockReturnValueOnce(accountToken(7)).mockReturnValueOnce(undefined);
+    await openDesk();
+    fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(PASSKEY_GENERIC_ERROR);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(OTHER_ACCOUNT);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(EVM_OTHER_ACCOUNT);
+    expect(mockWalletLogin).toHaveBeenCalledTimes(2);
+    expect(loggedOutAfter(1)).toBe(true);
+    expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('alerts the generic error and logs out without a further login when the Bitcoin login returns a non-numeric account claim', async () => {
+    mockGetAuthToken.mockReturnValueOnce(accountToken(7)).mockReturnValueOnce(claimToken({ account: '7' }));
+    await openDesk();
+    fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(PASSKEY_GENERIC_ERROR);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(OTHER_ACCOUNT);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(EVM_OTHER_ACCOUNT);
+    expect(mockWalletLogin).toHaveBeenCalledTimes(2);
+    expect(loggedOutAfter(1)).toBe(true);
+    expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('alerts the generic error and logs out without a further login when the last Ethereum login returns no token', async () => {
+    mockGetAuthToken
+      .mockReturnValueOnce(accountToken(7))
+      .mockReturnValueOnce(accountToken(7))
+      .mockReturnValueOnce(undefined);
+    await openDesk();
+    fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(PASSKEY_GENERIC_ERROR);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(OTHER_ACCOUNT);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(EVM_OTHER_ACCOUNT);
+    expect(mockWalletLogin).toHaveBeenCalledTimes(3);
+    expect(loggedOutAfter(2)).toBe(true);
+    expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('alerts the generic error and logs out without a further login when the last Ethereum login returns a non-numeric account claim', async () => {
+    mockGetAuthToken
+      .mockReturnValueOnce(accountToken(7))
+      .mockReturnValueOnce(accountToken(7))
+      .mockReturnValueOnce(claimToken({ account: '7' }));
+    await openDesk();
+    fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(PASSKEY_GENERIC_ERROR);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(OTHER_ACCOUNT);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(EVM_OTHER_ACCOUNT);
+    expect(mockWalletLogin).toHaveBeenCalledTimes(3);
+    expect(loggedOutAfter(2)).toBe(true);
+    expect(mockReloadUser).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 

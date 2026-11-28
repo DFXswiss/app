@@ -23,8 +23,9 @@ describe('Passkey payment camera', () => {
   });
 
   it('requests the rear camera, calls the paste handler, and stops every track on close', async () => {
-    const stop = jest.fn();
-    const getUserMedia = jest.fn(async () => ({ getTracks: () => [{ stop }] }));
+    const stopFirst = jest.fn();
+    const stopSecond = jest.fn();
+    const getUserMedia = jest.fn(async () => ({ getTracks: () => [{ stop: stopFirst }, { stop: stopSecond }] }));
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
     const close = jest.fn();
     const paste = jest.fn();
@@ -41,7 +42,8 @@ describe('Passkey payment camera', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(close).toHaveBeenCalledTimes(1);
     rerender(<PasskeyPaySheet open={false} onClose={close} onPastePaymentLink={paste} onToast={toast} />);
-    expect(stop).toHaveBeenCalledTimes(1);
+    expect(stopFirst).toHaveBeenCalledTimes(1);
+    expect(stopSecond).toHaveBeenCalledTimes(1);
     unmount();
   });
 
@@ -69,7 +71,8 @@ describe('Passkey payment camera', () => {
   });
 
   it('stops a stream that arrives after the dialog closes', async () => {
-    const stop = jest.fn();
+    const stopFirst = jest.fn();
+    const stopSecond = jest.fn();
     let resolve: ((stream: { getTracks: () => { stop: () => void }[] }) => void) | undefined;
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
@@ -83,8 +86,9 @@ describe('Passkey payment camera', () => {
     const view = render(<PasskeyPaySheet open onClose={() => undefined} onToast={() => undefined} />);
     await waitFor(() => expect(resolve).toEqual(expect.any(Function)));
     view.unmount();
-    await act(async () => resolve?.({ getTracks: () => [{ stop }] }));
-    expect(stop).toHaveBeenCalledTimes(1);
+    await act(async () => resolve?.({ getTracks: () => [{ stop: stopFirst }, { stop: stopSecond }] }));
+    expect(stopFirst).toHaveBeenCalledTimes(1);
+    expect(stopSecond).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
