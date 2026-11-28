@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { Location, MemoryRouter, MemoryRouterProps, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import KycScreen from '../screens/kyc.screen';
+
+type Entry = NonNullable<MemoryRouterProps['initialEntries']>[number];
 
 jest.setTimeout(30000);
 
@@ -44,10 +46,18 @@ const mockKyc = {
   setRecallData: jest.fn(),
 };
 
-const mockUser: { user?: { kyc: { hash: string }; activeAddress?: { address: string } }; reloadUser: jest.Mock } = {
+const mockSession: { logout: jest.Mock; isLoggedIn: boolean } = { logout: mockLogout, isLoggedIn: false };
+const mockUser: {
+  user?: { accountId?: number; kyc: { hash: string }; activeAddress?: { address: string } };
+  isUserLoading: boolean;
+  reloadUser: jest.Mock;
+} = {
   user: undefined,
+  isUserLoading: false,
   reloadUser: mockReloadUser,
 };
+const mockAuth: { session?: { account: number } } = {};
+const mockWallet = { isInitialized: true };
 const mockApp: {
   isInitialized: boolean;
   isWidget: boolean;
@@ -128,7 +138,8 @@ jest.mock('@dfx.swiss/react', () => ({
   Validations: { Required: {}, Phone: {}, Mail: {}, Custom: (validator: unknown) => ({ validate: validator }) },
   isStepDone: (...args: unknown[]) => mockIsStepDone(...args),
   useKyc: () => mockKyc,
-  useSessionContext: () => ({ logout: mockLogout }),
+  useSessionContext: () => mockSession,
+  useAuthContext: () => mockAuth,
   useUserContext: () => mockUser,
 }));
 
@@ -186,6 +197,7 @@ jest.mock('react-i18next', () => ({ Trans: ({ children }: any) => children }));
 jest.mock('react-icons/fa', () => ({ FaHandshake: () => <span /> }));
 jest.mock('src/contexts/app-handling.context', () => ({ useAppHandlingContext: () => mockApp }));
 jest.mock('src/contexts/layout.context', () => ({ useLayoutContext: () => ({ rootRef: { current: null } }) }));
+jest.mock('../contexts/wallet.context', () => ({ useWalletContext: () => mockWallet }));
 jest.mock('src/hooks/app-params.hook', () => ({ useAppParams: () => mockParams }));
 jest.mock('../components/error-hint', () => ({
   ErrorHint: ({ message, onBack }: any) => (
@@ -263,17 +275,58 @@ function session(currentStep?: Record<string, any>, overrides: Record<string, an
   return { ...info(), currentStep, ...overrides };
 }
 
-function tree(path: string) {
+let routerNavigate: ReturnType<typeof useNavigate> | undefined;
+let routerLocation: Location | undefined;
+
+function RouterProbe(): null {
+  routerNavigate = useNavigate();
+  routerLocation = useLocation();
+  return null;
+}
+
+function tree(path: Entry) {
   return (
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="*" element={<KycScreen />} />
+        <Route
+          path="*"
+          element={
+            <>
+              <RouterProbe />
+              <KycScreen />
+            </>
+          }
+        />
       </Routes>
     </MemoryRouter>
   );
 }
 
-function renderPath(path: string) {
+// Lets clearParams and navigate move the real router, like the app's navigation hook does (replace, no state).
+function routeNavigation() {
+  mockClearParams.mockImplementation((keys: string[]) => {
+    const location = routerLocation as Location;
+    const params = new URLSearchParams(location.search);
+    keys.forEach((key) => params.delete(key));
+    (routerNavigate as ReturnType<typeof useNavigate>)(
+      { pathname: location.pathname, search: `?${params}` },
+      { replace: true },
+    );
+  });
+  mockNavigate.mockImplementation((to: { search: string }) => {
+    const location = routerLocation as Location;
+    (routerNavigate as ReturnType<typeof useNavigate>)({ pathname: location.pathname, search: to.search });
+  });
+}
+
+const CODE_PROMPT =
+  'This link belongs to a different account than the one you are signed in with. If you open the link, the data you enter is saved to that account.';
+
+function stepPrompt(label: string): string {
+  return `Do you want to start the step "${label}"?`;
+}
+
+function renderPath(path: Entry) {
   return render(tree(path));
 }
 
@@ -336,6 +389,12 @@ beforeEach(() => {
   sessionStorage.removeItem('dfx.kyc.redirect');
   sessionStorage.removeItem('dfx.kyc.address');
   mockUser.user = undefined;
+  mockSession.isLoggedIn = false;
+  mockUser.isUserLoading = false;
+  mockAuth.session = undefined;
+  mockWallet.isInitialized = true;
+  routerNavigate = undefined;
+  routerLocation = undefined;
   mockApp.isInitialized = true;
   mockApp.isWidget = false;
   mockApp.params = {};
@@ -367,10 +426,27 @@ afterEach(() => {
 });
 
 describe('KycScreen overview and parameter loading', () => {
-  it('uses the URL code, renders Start, and exposes the normal layout', async () => {
+  it('asks a signed-in user before using a code of another account', async () => {
+    mockSession.isLoggedIn = true;
+    mockUser.user = { kyc: { hash: 'USER' } };
+    renderPath('/kyc?code=CODE');
+    expect(await screen.findByText(CODE_PROMPT, undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+    expect(mockStartStep).not.toHaveBeenCalled();
+    expect(mockGuard).toHaveBeenCalledWith('/login', false);
+    expect(screen.getByRole('button', { name: 'Continue with my account' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument();
+    expect(layout()).toMatchObject({ title: 'DFX KYC', backButton: false, noPadding: false });
+  });
+
+  it('uses the URL code when signed out, renders Start, and exposes the normal layout', async () => {
     mockUser.user = { kyc: { hash: 'USER' } };
     await overview(info({ kycSteps: [step('ContactData', { status: 'NotStarted' })] }));
     expect(mockGetKycInfo).toHaveBeenCalledWith('CODE');
+    expect(mockGetKycInfo).not.toHaveBeenCalledWith('USER');
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
     expect(mockGuard).toHaveBeenCalledWith('/login', false);
     expect(await screen.findByRole('button', { name: 'Start' }, { timeout: 10000 })).toBeInTheDocument();
     expect(layout()).toMatchObject({ title: 'DFX KYC', backButton: false, noPadding: false });
@@ -416,6 +492,625 @@ describe('KycScreen overview and parameter loading', () => {
     renderPath(`/kyc?code=CODE${kind === 'step' ? '&step=PersonalData' : ''}`);
     expect(await screen.findByTestId('error-hint', undefined, { timeout: 10000 })).toHaveTextContent(expected);
   });
+});
+
+describe('KycScreen links with the code of another account', () => {
+  beforeEach(() => {
+    mockSession.isLoggedIn = true;
+    mockUser.user = { kyc: { hash: 'USER' } };
+  });
+
+  it('continues with the own account and drops the URL code', async () => {
+    routeNavigation();
+    renderPath('/kyc?code=CODE');
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue with my account' }, { timeout: 10000 }));
+    expect(mockClearParams).toHaveBeenCalledWith(['code']);
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('USER'), { timeout: 10000 });
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+    expect(routerLocation?.search).not.toContain('code=');
+    expect(mockGetKycInfo).not.toHaveBeenCalledWith('CODE');
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
+  });
+
+  it('opens the link with the URL code after a click and asks again on the next visit', async () => {
+    const first = renderPath('/kyc?code=CODE');
+    fireEvent.click(await screen.findByRole('button', { name: 'Open link' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+    expect(mockGetKycInfo).not.toHaveBeenCalledWith('USER');
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
+    first.unmount();
+
+    mockGetKycInfo.mockClear();
+    renderPath('/kyc?code=CODE');
+    expect(await screen.findByText(CODE_PROMPT, undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+
+  it('does not ask when the URL code is the own code', async () => {
+    await overview(info(), '/kyc?code=USER');
+    expect(mockGetKycInfo).toHaveBeenCalledWith('USER');
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
+  });
+
+  it('waits for the signed-in user before using any code', async () => {
+    mockUser.user = undefined;
+    const rendered = renderPath('/kyc?code=CODE');
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+    expect(mockGuard).toHaveBeenCalledWith('/login', false);
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    mockUser.user = { kyc: { hash: 'USER' } };
+    rendered.rerender(tree('/kyc?code=CODE'));
+    expect(await screen.findByText(CODE_PROMPT, undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+
+  it('asks for the code first and then for the step', async () => {
+    renderPath('/kyc?code=CODE&step=PersonalData');
+    fireEvent.click(await screen.findByRole('button', { name: 'Open link' }, { timeout: 10000 }));
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('CODE', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+  });
+
+  it('does not carry an opened link over to another account', async () => {
+    const rendered = renderPath('/kyc?code=CODE');
+    fireEvent.click(await screen.findByRole('button', { name: 'Open link' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
+    await settle();
+
+    mockGetKycInfo.mockClear();
+    mockUser.user = { kyc: { hash: 'OTHER' } };
+    rendered.rerender(tree('/kyc?code=CODE'));
+    expect(await screen.findByText(CODE_PROMPT, undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+
+  it('waits for the user of the session account and loads it once', async () => {
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'PREVIOUS' } };
+    const rendered = renderPath('/kyc');
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+
+    mockUser.isUserLoading = true;
+    rendered.rerender(tree('/kyc'));
+    mockUser.isUserLoading = false;
+    rendered.rerender(tree('/kyc'));
+    await settle();
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+
+    mockUser.user = { accountId: 2, kyc: { hash: 'CURRENT' } };
+    rendered.rerender(tree('/kyc'));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CURRENT'), { timeout: 10000 });
+    expect(mockGetKycInfo).not.toHaveBeenCalledWith('PREVIOUS');
+  });
+
+  it('does not offer the account choice for the previous account while the session user loads', async () => {
+    routeNavigation();
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'PREVIOUS' } };
+    const rendered = renderPath('/kyc?code=CODE');
+    await settle();
+    expect(screen.queryByRole('button', { name: 'Continue with my account' })).not.toBeInTheDocument();
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(mockClearParams).not.toHaveBeenCalledWith(['code']);
+
+    mockUser.user = { accountId: 2, kyc: { hash: 'CURRENT' } };
+    rendered.rerender(tree('/kyc?code=CODE'));
+    expect(await screen.findByText(CODE_PROMPT, undefined, { timeout: 10000 })).toBeInTheDocument();
+    expect(routerLocation?.search).toContain('code=CODE');
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+
+  it('hides the previous account overview while the session user loads', async () => {
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'USER' } };
+    const rendered = await overview(info(), '/kyc');
+
+    mockAuth.session = { account: 2 };
+    rendered.rerender(tree('/kyc'));
+    await settle();
+    expect(screen.queryByTestId('kyc-status')).not.toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+  });
+
+  it('clears the previous account overview when the session user changes', async () => {
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'FIRST' } };
+    const rendered = await overview(info({ kycSteps: [step('ContactData')] }), '/kyc');
+
+    const next = deferred();
+    mockGetKycInfo.mockImplementation((code: string) => (code === 'SECOND' ? next.promise : Promise.resolve(info())));
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 2, kyc: { hash: 'SECOND' } };
+    rendered.rerender(tree('/kyc'));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('SECOND'), { timeout: 10000 });
+    expect(screen.queryByTestId('kyc-status')).not.toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    await act(async () => {
+      next.resolve(info());
+    });
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['result', (pending: ReturnType<typeof deferred>) => pending.resolve(session(step('PersonalData')))],
+    [
+      'code handoff',
+      (pending: ReturnType<typeof deferred>) =>
+        pending.reject({ statusCode: 401, switchToCode: 'HANDOFF', message: 'switch' }),
+    ],
+  ])('drops the %s of a continuation started for the previous account', async (_label, settlePrevious) => {
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'FIRST' } };
+    const rendered = await overview(info({ kycSteps: [step('ContactData')] }), '/kyc');
+
+    const previous = deferred();
+    mockContinueKyc.mockImplementationOnce(() => previous.promise);
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('FIRST'), { timeout: 10000 });
+
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 2, kyc: { hash: 'SECOND' } };
+    rendered.rerender(tree('/kyc'));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('SECOND'), { timeout: 10000 });
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+
+    await act(async () => {
+      settlePrevious(previous);
+    });
+    await settle();
+    expect(layout()).toMatchObject({ title: 'DFX KYC' });
+    expect(screen.getByTestId('kyc-status')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['result', (pending: ReturnType<typeof deferred>) => pending.resolve(session(step('PersonalData')))],
+    [
+      'code handoff',
+      (pending: ReturnType<typeof deferred>) =>
+        pending.reject({ statusCode: 401, switchToCode: 'HANDOFF', message: 'switch' }),
+    ],
+  ])('drops the %s of a continuation that ends while the session user loads', async (_label, settlePrevious) => {
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'FIRST' } };
+    const rendered = await overview(info({ kycSteps: [step('ContactData')] }), '/kyc');
+
+    const previous = deferred();
+    mockContinueKyc.mockImplementationOnce(() => previous.promise);
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('FIRST'), { timeout: 10000 });
+
+    // the session belongs to another account, the user of that account is not loaded yet
+    mockAuth.session = { account: 2 };
+    rendered.rerender(tree('/kyc'));
+    await settle();
+
+    await act(async () => {
+      settlePrevious(previous);
+    });
+    await settle();
+    expect(layout()).toMatchObject({ title: 'DFX KYC' });
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('does not continue a deferred action for the previous code after the account changed', async () => {
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'FIRST' } };
+    mockGetKycInfo.mockImplementation(() =>
+      Promise.resolve(info({ kycSteps: [step('ContactData', { status: 'Completed' })] })),
+    );
+    const consent = deferred();
+    mockAddTransferClient.mockImplementationOnce(() => consent.promise);
+    const rendered = renderPath('/kyc?client=CLIENT');
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockAddTransferClient).toHaveBeenCalledWith('FIRST', 'CLIENT'), { timeout: 10000 });
+
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 2, kyc: { hash: 'SECOND' } };
+    rendered.rerender(tree('/kyc?client=CLIENT'));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('SECOND'), { timeout: 10000 });
+
+    await act(async () => {
+      consent.resolve(undefined as never);
+    });
+    await settle();
+    expect(mockContinueKyc).not.toHaveBeenCalledWith('FIRST');
+  });
+
+  it('does not show the wallet hint of the previous account while the session user loads', async () => {
+    mockApp.params = { address: '0xdef' };
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'PREVIOUS' }, activeAddress: { address: '0xabc' } };
+    renderPath('/kyc?code=CODE');
+    await settle();
+    expect(screen.queryByText(/This page was opened for wallet/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Logout' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+  });
+
+  it('does not load the user again while it is already loading', async () => {
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'PREVIOUS' } };
+    mockUser.isUserLoading = true;
+    renderPath('/kyc');
+    await settle();
+    expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+
+  it('loads the own code when the user belongs to the session account', async () => {
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'USER' } };
+    await overview(info(), '/kyc');
+    expect(mockGetKycInfo).toHaveBeenCalledWith('USER');
+    expect(mockReloadUser).not.toHaveBeenCalled();
+  });
+
+  it('keeps the code handoff that signs out', async () => {
+    routeNavigation();
+    mockLogout.mockImplementation(() => {
+      mockSession.isLoggedIn = false;
+    });
+    mockGetKycInfo.mockRejectedValueOnce({ statusCode: 401, switchToCode: 'OTHER', message: 'switch' });
+    renderPath('/kyc');
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ search: '?code=OTHER' }), { timeout: 10000 });
+    expect(mockLogout).toHaveBeenCalled();
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('OTHER'), { timeout: 10000 });
+    expect(screen.queryByText(CODE_PROMPT)).not.toBeInTheDocument();
+  });
+});
+
+describe('KycScreen step links for a signed-in user', () => {
+  beforeEach(() => {
+    mockSession.isLoggedIn = true;
+    mockUser.user = { kyc: { hash: 'USER' } };
+  });
+
+  it('asks before starting a step from the URL and starts it on Start', async () => {
+    renderPath('/kyc?step=PersonalData');
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalled();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('USER', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    await waitFor(() => expect(mockClearParams).toHaveBeenCalledWith(['step']), { timeout: 10000 });
+  });
+
+  it('drops the step on Cancel and shows the overview', async () => {
+    routeNavigation();
+    renderPath('/kyc?step=PersonalData');
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }, { timeout: 10000 }));
+    expect(mockClearParams).toHaveBeenCalledWith(['step']);
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('USER'), { timeout: 10000 });
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+    expect(mockStartStep).not.toHaveBeenCalled();
+  });
+
+  it('starts a step opened inside the app without asking', async () => {
+    renderPath({
+      pathname: '/kyc',
+      search: '?step=PersonalData',
+      state: { kycStep: 'PersonalData', kycOwner: 'USER' },
+    });
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('USER', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    expect(screen.queryByText(stepPrompt('step:PersonalData'))).not.toBeInTheDocument();
+  });
+
+  it('asks before starting an in-app step on the code of another account', async () => {
+    renderPath({
+      pathname: '/kyc',
+      search: '?code=CODE&step=PersonalData',
+      state: { kycStep: 'PersonalData', kycOwner: 'USER' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open link' }, { timeout: 10000 }));
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalled();
+  });
+
+  it('asks again for a step confirmed on another code', async () => {
+    renderPath('/kyc?step=PersonalData');
+    fireEvent.click(await screen.findByRole('button', { name: 'Start' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('USER', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    await settle();
+
+    act(() => {
+      (routerNavigate as ReturnType<typeof useNavigate>)({ pathname: '/kyc', search: '?code=CODE&step=PersonalData' });
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open link' }, { timeout: 10000 }));
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalledWith('CODE', 'PersonalData', undefined, undefined);
+  });
+
+  it('asks when the in-app state was set for another account', async () => {
+    renderPath({
+      pathname: '/kyc',
+      search: '?step=PersonalData',
+      state: { kycStep: 'PersonalData', kycOwner: 'OTHER' },
+    });
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalled();
+  });
+
+  it('does not carry a confirmed step over to another account', async () => {
+    const rendered = renderPath('/kyc?step=PersonalData');
+    fireEvent.click(await screen.findByRole('button', { name: 'Start' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('USER', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    await settle();
+
+    mockUser.user = { kyc: { hash: 'OTHER' } };
+    rendered.rerender(tree('/kyc?step=PersonalData'));
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalledWith('OTHER', 'PersonalData', undefined, undefined);
+  });
+
+  it('asks when the in-app state names another step', async () => {
+    renderPath({ pathname: '/kyc', search: '?step=PersonalData', state: { kycStep: 'Ident' } });
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalled();
+  });
+
+  it('does not continue automatically while the step confirmation is pending', async () => {
+    mockApp.params = { autoStart: 'true' };
+    mockApp.setParams.mockImplementation((update: Record<string, string | undefined>) =>
+      Object.assign(mockApp.params, update),
+    );
+    renderPath('/kyc?step=PersonalData');
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+    expect(mockStartStep).not.toHaveBeenCalled();
+    expect(mockApp.setParams).toHaveBeenCalledWith({ autoStart: undefined });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('USER', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    await settle();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+  });
+
+  it('shows the raw name of an unknown step', async () => {
+    renderPath('/kyc?step=Unknown');
+    expect(await screen.findByText(stepPrompt('Unknown'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    expect(mockStartStep).not.toHaveBeenCalled();
+  });
+});
+
+describe('KycScreen results of a code that is no longer shown', () => {
+  function moveTo(search: string) {
+    act(() => {
+      (routerNavigate as ReturnType<typeof useNavigate>)({ pathname: '/kyc', search });
+    });
+  }
+
+  it.each([
+    ['an error', { message: 'stale' }],
+    ['a code handoff', { statusCode: 401, switchToCode: 'HANDOFF', message: 'switch' }],
+    ['a second factor request', { code: 'TFA_REQUIRED', message: 'tfa' }],
+  ])('drops %s of the previous code', async (_label, failure) => {
+    const previous = deferred();
+    mockGetKycInfo.mockImplementation((code: string) =>
+      code === 'ONE' ? previous.promise : Promise.resolve(info({ kycSteps: [step('ContactData')] })),
+    );
+    renderPath('/kyc?code=ONE');
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('ONE'), { timeout: 10000 });
+    moveTo('?code=TWO');
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+
+    await act(async () => {
+      previous.reject(failure);
+    });
+    await settle();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(mockApp.setParams).not.toHaveBeenCalledWith({ autoStart: 'true' });
+  });
+
+  it('drops the information of the previous code', async () => {
+    mockParams.lang = undefined;
+    const previous = deferred();
+    mockGetKycInfo.mockImplementation((code: string) =>
+      code === 'ONE' ? previous.promise : Promise.resolve(info({ language: { symbol: 'EN' } })),
+    );
+    renderPath('/kyc?code=ONE');
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('ONE'), { timeout: 10000 });
+    moveTo('?code=TWO');
+    await waitFor(() => expect(mockSettings.changeLanguage).toHaveBeenCalledWith({ symbol: 'EN' }), {
+      timeout: 10000,
+    });
+
+    await act(async () => {
+      previous.resolve(info({ language: { symbol: 'DE' } }));
+    });
+    await settle();
+    expect(mockSettings.changeLanguage).not.toHaveBeenCalledWith({ symbol: 'DE' });
+  });
+
+  it('does not open the previous step with the next code', async () => {
+    renderPath('/kyc?code=ONE&step=FinancialData');
+    await waitFor(() => expect(mockKyc.getFinancialData).toHaveBeenCalledWith('ONE', 'step-url', expect.anything()), {
+      timeout: 10000,
+    });
+
+    moveTo('?code=TWO');
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('TWO'), { timeout: 10000 });
+    await settle();
+    expect(mockKyc.getFinancialData.mock.calls.filter(([code]) => code === 'TWO')).toEqual([]);
+  });
+
+  it('keeps the spinner when a dropped request of the previous code ends', async () => {
+    const previous = deferred();
+    const current = deferred();
+    mockGetKycInfo.mockImplementation((code: string) => (code === 'ONE' ? previous.promise : current.promise));
+    renderPath('/kyc?code=ONE');
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('ONE'), { timeout: 10000 });
+    moveTo('?code=TWO');
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('TWO'), { timeout: 10000 });
+
+    await act(async () => {
+      previous.resolve(info());
+    });
+    await settle();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    await act(async () => {
+      current.resolve(info());
+    });
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
+  });
+
+  it('does not keep a consent of the previous account after the account changes', async () => {
+    mockSession.isLoggedIn = true;
+    mockAuth.session = { account: 1 };
+    mockUser.user = { accountId: 1, kyc: { hash: 'FIRST' } };
+    mockGetKycInfo.mockImplementation((code: string) =>
+      Promise.resolve(
+        info({
+          kycClients: code === 'SECOND' ? ['CLIENT'] : [],
+          kycSteps: [step('ContactData', { status: 'Completed' })],
+        }),
+      ),
+    );
+    const rendered = renderPath('/kyc?client=CLIENT');
+    expect(await screen.findByText(/I hereby authorize/, undefined, { timeout: 10000 })).toBeInTheDocument();
+
+    mockAuth.session = { account: 2 };
+    mockUser.user = { accountId: 2, kyc: { hash: 'SECOND' } };
+    rendered.rerender(tree('/kyc?client=CLIENT'));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('SECOND'), { timeout: 10000 });
+    await settle();
+
+    const next = screen.queryByRole('button', { name: 'Next' });
+    if (next) fireEvent.click(next);
+    await settle();
+    expect(mockAddTransferClient).not.toHaveBeenCalled();
+    expect(screen.queryByText(/I hereby authorize/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('kyc-status')).toBeInTheDocument();
+  });
+
+  it('drops a started step of the previous code', async () => {
+    routeNavigation();
+    const previous = deferred();
+    mockStartStep.mockImplementation((code: string, name: string, type: string) =>
+      code === 'ONE' ? previous.promise : Promise.resolve(session(step(name, { type }))),
+    );
+    renderPath('/kyc?code=ONE&step=PersonalData');
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('ONE', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    moveTo('?code=TWO&step=PersonalData');
+    await waitFor(() => expect(mockClearParams).toHaveBeenCalledWith(['step']), { timeout: 10000 });
+    await settle();
+    expect(mockClearParams).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      previous.resolve(session(step('PersonalData')));
+    });
+    await settle();
+    expect(mockClearParams).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reload the user or go back for a continuation of the previous code', async () => {
+    const previous = deferred();
+    mockGetKycInfo.mockResolvedValue(info({ kycLevel: 0 }));
+    mockContinueKyc.mockImplementation((code: string) =>
+      code === 'ONE' ? previous.promise : Promise.resolve(session(step('PersonalData'), { kycLevel: 0 })),
+    );
+    renderPath('/profile/kyc?code=ONE');
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('ONE'), { timeout: 10000 });
+    act(() => {
+      (routerNavigate as ReturnType<typeof useNavigate>)({ pathname: '/profile/kyc', search: '?code=TWO' });
+    });
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('TWO'), { timeout: 10000 });
+
+    await act(async () => {
+      previous.resolve(session(undefined, { kycLevel: 30 }));
+    });
+    await settle();
+    expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(mockGoBack).not.toHaveBeenCalled();
+  });
+
+  it('does not clear the automatic continuation when that of the previous code ends', async () => {
+    mockApp.params = { autoStart: 'true' };
+    const previous = deferred();
+    mockContinueKyc.mockImplementation((code: string) => (code === 'ONE' ? previous.promise : deferred().promise));
+    renderPath('/kyc?code=ONE');
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('ONE'), { timeout: 10000 });
+    moveTo('?code=TWO');
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('TWO'), { timeout: 10000 });
+
+    await act(async () => {
+      previous.resolve(session(step('PersonalData')));
+    });
+    await settle();
+    expect(mockApp.setParams).not.toHaveBeenCalledWith({ autoStart: undefined });
+  });
+
+  it.each([
+    ['a continuation', '?code=ONE'],
+    ['a started step', '?code=ONE&step=PersonalData'],
+  ])(
+    'does not go back or change the URL when the user reload of %s of the previous code ends',
+    async (_label, search) => {
+      const reload = deferred();
+      mockReloadUser.mockReturnValueOnce(reload.promise);
+      mockGetKycInfo.mockResolvedValue(info({ kycLevel: 0 }));
+      mockStartStep.mockResolvedValue(session(undefined, { kycLevel: 30 }));
+      mockContinueKyc.mockImplementation((code: string) =>
+        code === 'ONE' ? Promise.resolve(session(undefined, { kycLevel: 30 })) : deferred().promise,
+      );
+      renderPath(`/profile/kyc${search}`);
+      await waitFor(() => expect(mockReloadUser).toHaveBeenCalledTimes(1), { timeout: 10000 });
+      act(() => {
+        (routerNavigate as ReturnType<typeof useNavigate>)({ pathname: '/profile/kyc', search: '?code=TWO' });
+      });
+      await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('TWO'), { timeout: 10000 });
+
+      await act(async () => {
+        reload.resolve({});
+      });
+      await settle();
+      expect(mockGoBack).not.toHaveBeenCalled();
+      expect(mockClearParams).not.toHaveBeenCalledWith(['step']);
+    },
+  );
 });
 
 describe('KycScreen overview actions and load protection', () => {
@@ -536,9 +1231,44 @@ describe('KycScreen API error routing', () => {
 describe('KycScreen startup and route modes', () => {
   it('waits for initialization', async () => {
     mockApp.isInitialized = false;
-    renderPath('/kyc?code=CODE');
-    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalled(), { timeout: 10000 });
+    const rendered = renderPath('/kyc?code=CODE');
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    mockApp.isInitialized = true;
+    rendered.rerender(tree('/kyc?code=CODE'));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
+  });
+
+  it('ignores a later re-initialization of the wallet context', async () => {
+    const rendered = await overview(info(), '/kyc?code=CODE');
+    expect(mockGetKycInfo).toHaveBeenCalledTimes(1);
+
+    // changed app parameters make the wallet context initialize again
+    mockWallet.isInitialized = false;
+    rendered.rerender(tree('/kyc?code=CODE'));
+    expect(screen.getByTestId('kyc-status')).toBeInTheDocument();
+    mockWallet.isInitialized = true;
+    rendered.rerender(tree('/kyc?code=CODE'));
+    await settle();
+    expect(mockGetKycInfo).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('kyc-status')).toBeInTheDocument();
+  });
+
+  it('waits until a session from the link is applied', async () => {
+    mockWallet.isInitialized = false;
+    const rendered = renderPath('/kyc?code=CODE&step=PersonalData');
+    await settle();
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+    expect(mockStartStep).not.toHaveBeenCalled();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    mockWallet.isInitialized = true;
+    rendered.rerender(tree('/kyc?code=CODE&step=PersonalData'));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('CODE', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
   });
 
   it('auto-starts and clears its parameter', async () => {
@@ -929,7 +1659,8 @@ describe('KycScreen redirect and consent effects', () => {
     await settle();
     mockUser.user = undefined;
     consentRender.rerender(tree('/kyc?client=CLIENT'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Next' }, { timeout: 10000 }));
+    // the retained view is unmounted with its code, so nothing of it can be clicked
+    expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
     expect(mockAddTransferClient).not.toHaveBeenCalled();
     consentRender.unmount();
 
@@ -942,7 +1673,7 @@ describe('KycScreen redirect and consent effects', () => {
     await settle();
     mockUser.user = undefined;
     loadRender.rerender(tree('/kyc?step=PersonalData'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Increase limit' }, { timeout: 10000 }));
+    expect(screen.queryByRole('button', { name: 'Increase limit' })).not.toBeInTheDocument();
     expect(mockContinueKyc).not.toHaveBeenCalled();
   });
 });

@@ -54,6 +54,7 @@ jest.mock('@dfx.swiss/react', () => ({
   }),
   useUserContext: () => ({ user: undefined, reloadUser: jest.fn() }),
   useSessionContext: () => ({ logout: jest.fn() }),
+  useAuthContext: () => ({}),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => {
@@ -212,6 +213,7 @@ jest.mock('react-i18next', () => ({ Trans: ({ children }: any) => children }));
 const mockAppHandling = { isInitialized: true, isWidget: false, params: {}, setParams: jest.fn() };
 jest.mock('src/contexts/app-handling.context', () => ({ useAppHandlingContext: () => mockAppHandling }));
 
+jest.mock('../contexts/wallet.context', () => ({ useWalletContext: () => ({ isInitialized: true }) }));
 jest.mock('src/contexts/layout.context', () => ({
   useLayoutContext: () => ({ rootRef: { current: null } }),
 }));

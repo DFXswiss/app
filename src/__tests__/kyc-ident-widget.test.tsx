@@ -27,6 +27,7 @@ jest.mock('@dfx.swiss/react', () => ({
   }),
   useUserContext: () => ({ user: undefined, reloadUser: jest.fn() }),
   useSessionContext: () => ({ logout: jest.fn() }),
+  useAuthContext: () => ({}),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => {
@@ -59,6 +60,7 @@ const mockAppHandling = {
 };
 jest.mock('src/contexts/app-handling.context', () => ({ useAppHandlingContext: () => mockAppHandling }));
 
+jest.mock('../contexts/wallet.context', () => ({ useWalletContext: () => ({ isInitialized: true }) }));
 jest.mock('src/contexts/layout.context', () => ({
   useLayoutContext: () => ({ rootRef: { current: null } }),
 }));

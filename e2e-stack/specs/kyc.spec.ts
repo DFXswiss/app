@@ -256,6 +256,274 @@ test.describe('KYC area e2e', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // /kyc links with a code or a step
+  // ---------------------------------------------------------------------------
+
+  const CODE_PROMPT =
+    'This link belongs to a different account than the one you are signed in with. If you open the link, the data you enter is saved to that account.';
+  const STEP_PROMPT = 'Do you want to start the step "Personal data"?';
+
+  /** Collects the KYC code every API request of the page is sent with. */
+  function recordKycCodes(page: Page): string[] {
+    const codes: string[] = [];
+    page.on('request', (request) => {
+      const code = request.headers()['x-kyc-code'];
+      if (code) codes.push(code);
+    });
+    return codes;
+  }
+
+  async function lastKycStepId(userDataId: number, name: string): Promise<number> {
+    const row = await queryOne<{ id: number }>(
+      `SELECT COALESCE(MAX(id), 0) AS id FROM kyc_step WHERE "userDataId" = $1 AND name = $2`,
+      [userDataId, name],
+    );
+    return Number(row?.id ?? 0);
+  }
+
+  test('/kyc?code of another account asks first and continues with the own account', async ({ page }) => {
+    const own = await createUser({ tag: 'kyc-link-own', kycLevel: 0, language: 'EN' });
+    const other = await createUser({ tag: 'kyc-link-other', kycLevel: -10, language: 'EN' });
+    const ownHash = await kycHashOf(own.userDataId);
+    const otherHash = await kycHashOf(other.userDataId);
+    const codes = recordKycCodes(page);
+
+    await gotoWithSession(page, `/kyc?code=${otherHash}`, own.jwt);
+
+    await expect(page.getByText(CODE_PROMPT)).toBeVisible({ timeout: 15000 });
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Terminated', { exact: true })).toHaveCount(0);
+    // no KYC request at all before the choice
+    expect(codes).toEqual([]);
+
+    await page.getByRole('button', { name: 'Continue with my account' }).click();
+
+    await expect(page.getByText('Level 0', { exact: true })).toBeVisible({ timeout: 15000 });
+    expect(new URL(page.url()).searchParams.get('code')).toBeNull();
+    expect(codes).toContain(ownHash);
+    expect(codes).not.toContain(otherHash);
+  });
+
+  test('/kyc?code of another account opens the link after a click and keeps the session', async ({ page }) => {
+    const own = await createUser({ tag: 'kyc-link-open', kycLevel: 0, language: 'EN' });
+    const other = await createUser({ tag: 'kyc-link-opened', kycLevel: -10, language: 'EN' });
+    const otherHash = await kycHashOf(other.userDataId);
+
+    await gotoWithSession(page, `/kyc?code=${otherHash}`, own.jwt);
+    await page.getByRole('button', { name: 'Open link' }).click({ timeout: 15000 });
+
+    await expect(page.getByText('Terminated', { exact: true })).toBeVisible({ timeout: 15000 });
+    expect(await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'))).toBe(own.jwt);
+
+    // the choice is not kept: a reload asks again
+    await page.reload();
+    await expect(page.getByText(CODE_PROMPT)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Terminated', { exact: true })).toHaveCount(0);
+  });
+
+  test('/kyc?code with the own code loads the own account without asking', async ({ page }) => {
+    const own = await createUser({ tag: 'kyc-link-same', kycLevel: 0, language: 'EN' });
+    const ownHash = await kycHashOf(own.userDataId);
+
+    await gotoWithSession(page, `/kyc?code=${ownHash}`, own.jwt);
+
+    await expect(page.getByText('Level 0', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(CODE_PROMPT)).toHaveCount(0);
+  });
+
+  test('/kyc?code&step of another account asks for the account, then for the step', async ({ page }) => {
+    const own = await createUser({ tag: 'kyc-link-step-own', kycLevel: 0, language: 'EN' });
+    const other = await createUser({ tag: 'kyc-link-step-other', kycLevel: 0, language: 'EN' });
+    const otherHash = await kycHashOf(other.userDataId);
+    const before = await lastKycStepId(other.userDataId, 'PersonalData');
+
+    await gotoWithSession(page, `/kyc?code=${otherHash}&step=PersonalData`, own.jwt);
+    await page.getByRole('button', { name: 'Open link' }).click({ timeout: 15000 });
+
+    await expect(page.getByText(STEP_PROMPT)).toBeVisible({ timeout: 15000 });
+    await page.waitForLoadState('networkidle');
+    expect(await lastKycStepId(other.userDataId, 'PersonalData')).toBe(before);
+
+    await page.getByRole('button', { name: 'Start' }).click();
+
+    await expect(page.getByText('Account Type', { exact: true })).toBeVisible({ timeout: 25000 });
+    await waitForRow(
+      `SELECT id FROM kyc_step WHERE "userDataId" = $1 AND name = 'PersonalData' AND id > $2`,
+      [other.userDataId, before],
+      20000,
+    );
+  });
+
+  test('/kyc?code of a merged account hands over to the account it was merged into', async ({ page }) => {
+    const own = await createUser({ tag: 'kyc-link-merge-own', kycLevel: 0, language: 'EN' });
+    const master = await createUser({ tag: 'kyc-link-merge-master', kycLevel: -10, language: 'EN' });
+    const merged = await createUser({ tag: 'kyc-link-merge-slave', kycLevel: 0, language: 'EN' });
+    await withDb(async (client) => {
+      await client.query(`UPDATE user_data SET status = 'Merged', firstname = $2 WHERE id = $1`, [
+        merged.userDataId,
+        `Merged into ${master.userDataId}`,
+      ]);
+    });
+    const mergedHash = await kycHashOf(merged.userDataId);
+    const masterHash = await kycHashOf(master.userDataId);
+
+    await gotoWithSession(page, `/kyc?code=${mergedHash}`, own.jwt);
+    await page.getByRole('button', { name: 'Open link' }).click({ timeout: 15000 });
+
+    await expect(page.getByText('Terminated', { exact: true })).toBeVisible({ timeout: 15000 });
+    expect(new URL(page.url()).searchParams.get('code')).toBe(masterHash);
+    expect(await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'))).toBeNull();
+  });
+
+  test('/kyc after a session switch shows only the new account', async ({ page }) => {
+    const first = await createUser({ tag: 'kyc-switch-first', kycLevel: 0, language: 'EN' });
+    const second = await createUser({ tag: 'kyc-switch-second', kycLevel: -10, language: 'EN' });
+    const firstHash = await kycHashOf(first.userDataId);
+    const secondHash = await kycHashOf(second.userDataId);
+
+    await gotoWithSession(page, '/kyc', first.jwt);
+    await expect(page.getByText('Level 0', { exact: true })).toBeVisible({ timeout: 15000 });
+
+    // the first account's token stays stored while the link applies the second account's session
+    const codes = recordKycCodes(page);
+    await gotoWithSession(page, '/kyc', second.jwt);
+
+    await expect(page.getByText('Terminated', { exact: true })).toBeVisible({ timeout: 15000 });
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Level 0', { exact: true })).toHaveCount(0);
+    expect(codes).toContain(secondHash);
+    expect(codes).not.toContain(firstHash);
+  });
+
+  test('/kyc?code without a session opens the link directly', async ({ page }) => {
+    const other = await createUser({ tag: 'kyc-link-mail', kycLevel: -10, language: 'EN' });
+    const otherHash = await kycHashOf(other.userDataId);
+
+    await page.goto(`/kyc?code=${otherHash}`);
+
+    await expect(page.getByText('Terminated', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(CODE_PROMPT)).toHaveCount(0);
+  });
+
+  test('/kyc?step asks a signed-in user before starting the step', async ({ page }) => {
+    const user = await createUser({ tag: 'kyc-step-link', kycLevel: 0, language: 'EN' });
+    const before = await lastKycStepId(user.userDataId, 'PersonalData');
+
+    await gotoWithSession(page, '/kyc?step=PersonalData', user.jwt);
+
+    await expect(page.getByText(STEP_PROMPT)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('input[name="firstname"]')).toHaveCount(0);
+    expect(await lastKycStepId(user.userDataId, 'PersonalData')).toBe(before);
+
+    await page.getByRole('button', { name: 'Start' }).click();
+
+    await expect(page.getByText('Account Type', { exact: true })).toBeVisible({ timeout: 25000 });
+    await waitForRow(
+      `SELECT id FROM kyc_step WHERE "userDataId" = $1 AND name = 'PersonalData' AND id > $2`,
+      [user.userDataId, before],
+      20000,
+    );
+  });
+
+  test('/kyc?step Cancel drops the step and shows the overview', async ({ page }) => {
+    const user = await createUser({ tag: 'kyc-step-cancel', kycLevel: 0, language: 'EN' });
+    const before = await lastKycStepId(user.userDataId, 'PersonalData');
+
+    await gotoWithSession(page, '/kyc?step=PersonalData', user.jwt);
+    await page.getByRole('button', { name: 'Cancel' }).click({ timeout: 15000 });
+
+    await expect(page.getByText('Level 0', { exact: true })).toBeVisible({ timeout: 15000 });
+    expect(new URL(page.url()).searchParams.get('step')).toBeNull();
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('input[name="firstname"]')).toHaveCount(0);
+    expect(await lastKycStepId(user.userDataId, 'PersonalData')).toBe(before);
+  });
+
+  test('/kyc?step with auto-start still waits for the step confirmation', async ({ page }) => {
+    const user = await createUser({ tag: 'kyc-step-auto', kycLevel: 0, language: 'EN' });
+    const steps = async () =>
+      Number(
+        (
+          await queryOne<{ n: number }>(`SELECT COUNT(*)::int AS n FROM kyc_step WHERE "userDataId" = $1`, [
+            user.userDataId,
+          ])
+        )?.n ?? 0,
+      );
+    const before = await steps();
+
+    await gotoWithSession(page, '/kyc?step=PersonalData&auto-start=true', user.jwt);
+
+    await expect(page.getByText(STEP_PROMPT)).toBeVisible({ timeout: 15000 });
+    await page.waitForLoadState('networkidle');
+    expect(await steps()).toBe(before);
+
+    await page.getByRole('button', { name: 'Start' }).click();
+
+    await expect(page.getByText('Account Type', { exact: true })).toBeVisible({ timeout: 25000 });
+  });
+
+  test('/kyc?code&step without a session starts the step directly', async ({ page }) => {
+    const user = await createUser({ tag: 'kyc-step-mail', kycLevel: 0, language: 'EN' });
+    const hash = await kycHashOf(user.userDataId);
+
+    await page.goto(`/kyc?code=${hash}&step=PersonalData`);
+
+    await expect(page.getByText('Account Type', { exact: true })).toBeVisible({ timeout: 25000 });
+    await expect(page.getByText(STEP_PROMPT)).toHaveCount(0);
+  });
+
+  test('/account phone change starts its KYC step without the step confirmation', async ({ page }) => {
+    const user = await createUser({ tag: 'kyc-step-app', kycLevel: 0, language: 'EN', completePersonalData: true });
+    const before = await lastKycStepId(user.userDataId, 'PhoneChange');
+
+    await openScreen(page, '/account', user.jwt);
+    await page
+      .getByText('+41791234567', { exact: true })
+      .getByRole('button')
+      .click({ timeout: 15000 });
+    await expect(page.getByText('Do you really want to change your phone number?')).toBeVisible();
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    await page.waitForURL((url) => url.pathname === '/kyc', { timeout: 15000 });
+    await waitForRow(
+      `SELECT id FROM kyc_step WHERE "userDataId" = $1 AND name = 'PhoneChange' AND id > $2`,
+      [user.userDataId, before],
+      20000,
+    );
+    await expect(page.getByText(/Do you want to start the step/)).toHaveCount(0);
+  });
+
+  test('/account?code of another account: a phone change starts only on the own account', async ({ page }) => {
+    const own = await createUser({ tag: 'kyc-app-code-own', kycLevel: 0, language: 'EN', completePersonalData: true });
+    const other = await createUser({ tag: 'kyc-app-code-other', kycLevel: 0, language: 'EN' });
+    const otherHash = await kycHashOf(other.userDataId);
+    const ownBefore = await lastKycStepId(own.userDataId, 'PhoneChange');
+    const otherBefore = await lastKycStepId(other.userDataId, 'PhoneChange');
+    const codes = recordKycCodes(page);
+
+    await gotoWithSession(page, `/account?code=${otherHash}`, own.jwt);
+    await page
+      .getByText('+41791234567', { exact: true })
+      .getByRole('button')
+      .click({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    // the code of the other account does not reach the KYC screen: the own step starts, the other account gets none
+    await page.waitForURL((url) => url.pathname === '/kyc', { timeout: 15000 });
+    await waitForRow(
+      `SELECT id FROM kyc_step WHERE "userDataId" = $1 AND name = 'PhoneChange' AND id > $2`,
+      [own.userDataId, ownBefore],
+      20000,
+    );
+    await page.waitForLoadState('networkidle');
+    expect(new URL(page.url()).searchParams.get('code')).toBeNull();
+    expect(codes).not.toContain(otherHash);
+    expect(await lastKycStepId(other.userDataId, 'PhoneChange')).toBe(otherBefore);
+  });
+
+  // ---------------------------------------------------------------------------
   // /kyc/redirect - do NOT use openScreen (immediate navigate to /kyc)
   // ---------------------------------------------------------------------------
 

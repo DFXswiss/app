@@ -556,6 +556,11 @@ screen shows the paused message and no payment information`) adds `Sell` to the 
   `e2e-stack/specs/kyc-continue-race.spec.ts` upserts ContactData, PersonalData, NationalityData
   and Ident (`SumsubAuto`) to `Completed`. A green run does **not** prove those steps complete
   through the product path, including live ident.
+- **The full-stack KYC link spec SQL-marks an account as merged.**
+  `e2e-stack/specs/kyc.spec.ts` (`/kyc?code of a merged account hands over …`) sets
+  `user_data.status = 'Merged'` and `firstname = 'Merged into <id>'` on a fresh account so that the API
+  answers its KYC code with the `switchToCode` of the target account. A green run does **not** prove
+  that a real account merge writes that status and target.
 - **Full-stack compliance specs SQL-insert a pending Recommendation step.**
   `e2e-stack/specs/compliance.spec.ts` inserts a `kyc_step` named `Recommendation` in status
   `InternalReview`, on a synthetic account at KYC level 30 with completed personal data. A green run
@@ -856,6 +861,23 @@ the risk status`) adds a `CHECK` constraint on `user_data` by SQL that refuses o
   address `0x1111111111111111111111111111111111111111`, and does not call a live API. A green run
   proves the mismatch hint renders for that fixture. It does not prove that the hint comes from a
   real session or a real API response.
+- **The KYC link prompts visual spec answers the user endpoint itself.**
+  `e2e/kyc-link-prompts.spec.ts` fulfils the user routes with a built user whose KYC code is
+  `handbook`, opens `/kyc` with a placeholder code of another account and with a step parameter, and
+  does not call a live API. A green run proves the account prompt and the step confirmation render
+  for that fixture. It does not prove a real session, a real KYC response, or what the buttons do.
+- **The KYC screen flow unit test replaces the SDK, the app contexts, navigation and the components.**
+  `src/__tests__/kyc-screen-flow.test.tsx` renders the real `KycScreen` in a memory router with in-memory
+  session, auth, user and KYC hooks, a stubbed navigation hook (routed to the memory router in some
+  cases), stubbed settings and app-handling contexts and passthrough components. A green run proves the
+  screen's branches against those stubs: which KYC code it uses, when it asks before using a link's code
+  or starting a step, and which results it drops. It does not prove a real session or account change, a
+  real KYC response, the real navigation hook, or the real timing of the SDK's user and session updates.
+- **The KYC helper hook unit test replaces the SDK, the settings context and navigation.**
+  `src/__tests__/kyc-helper.hook.test.tsx` runs the real `useKycHelper` with mirrored SDK enums, an
+  in-memory user, an identity translation and a recorded `navigate`. A green run proves the formatting
+  functions and the location and router state `startStep` asks for. It does not prove the real
+  translations, that the router delivers that state to the KYC screen, or a real step start.
 - **The account screen coverage test replaces the SDK and the component library.**
   `src/__tests__/account-screen-coverage.test.tsx` replaces the user, auth, session, API and
   transaction hooks with in-memory stubs, and replaces the styled components with passthrough
