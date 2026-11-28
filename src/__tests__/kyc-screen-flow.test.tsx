@@ -1066,6 +1066,51 @@ describe('KycScreen results of a code that is no longer shown', () => {
     expect(mockReloadUser).not.toHaveBeenCalled();
     expect(mockGoBack).not.toHaveBeenCalled();
   });
+
+  it('does not clear the automatic continuation when that of the previous code ends', async () => {
+    mockApp.params = { autoStart: 'true' };
+    const previous = deferred();
+    mockContinueKyc.mockImplementation((code: string) => (code === 'ONE' ? previous.promise : new Promise(() => {})));
+    renderPath('/kyc?code=ONE');
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('ONE'), { timeout: 10000 });
+    moveTo('?code=TWO');
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('TWO'), { timeout: 10000 });
+
+    await act(async () => {
+      previous.resolve(session(step('PersonalData')));
+    });
+    await settle();
+    expect(mockApp.setParams).not.toHaveBeenCalledWith({ autoStart: undefined });
+  });
+
+  it.each([
+    ['a continuation', '?code=ONE'],
+    ['a started step', '?code=ONE&step=PersonalData'],
+  ])(
+    'does not go back or change the URL when the user reload of %s of the previous code ends',
+    async (_label, search) => {
+      const reload = deferred();
+      mockReloadUser.mockReturnValueOnce(reload.promise);
+      mockGetKycInfo.mockResolvedValue(info({ kycLevel: 0 }));
+      mockStartStep.mockResolvedValue(session(undefined, { kycLevel: 30 }));
+      mockContinueKyc.mockImplementation((code: string) =>
+        code === 'ONE' ? Promise.resolve(session(undefined, { kycLevel: 30 })) : new Promise(() => {}),
+      );
+      renderPath(`/profile/kyc${search}`);
+      await waitFor(() => expect(mockReloadUser).toHaveBeenCalledTimes(1), { timeout: 10000 });
+      act(() => {
+        (routerNavigate as ReturnType<typeof useNavigate>)({ pathname: '/profile/kyc', search: '?code=TWO' });
+      });
+      await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('TWO'), { timeout: 10000 });
+
+      await act(async () => {
+        reload.resolve({});
+      });
+      await settle();
+      expect(mockGoBack).not.toHaveBeenCalled();
+      expect(mockClearParams).not.toHaveBeenCalledWith(['step']);
+    },
+  );
 });
 
 describe('KycScreen overview actions and load protection', () => {
