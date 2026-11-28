@@ -171,6 +171,7 @@ export default function KycScreen(): JSX.Element {
   const loadGen = useRef(0);
   const reloadedForAccount = useRef<number>();
   const shownKycCode = useRef<string>();
+  const activeKycCode = useRef<string>();
 
   const mode = pathname.includes('/profile') ? Mode.PROFILE : pathname.includes('/contact') ? Mode.CONTACT : Mode.KYC;
   const urlParams = new URLSearchParams(search);
@@ -211,6 +212,8 @@ export default function KycScreen(): JSX.Element {
       (appStep?.kycOwner === ownKycCode && appStep?.kycStep === stepParam) ||
       isChosen(confirmedStep, stepParam));
   const needsStepConfirm = !!stepName && !!kycCode && !canStartStep;
+  // the code of this render; loads and actions of another code are dropped
+  activeKycCode.current = kycCode;
   const redirectUri = urlParams.get('kyc-redirect');
   const client = urlParams.get('client') ?? undefined;
   const [requestedAddress] = useState(() => readRequestedKycAddress(search, params.address));
@@ -365,7 +368,9 @@ export default function KycScreen(): JSX.Element {
   }, [kycCode, stepName, stepType, mismatchAddress, canStartStep]);
 
   async function onLoad(next: boolean): Promise<void> {
-    if (!kycCode) return;
+    // a call for a code that is no longer shown (from an earlier render) does nothing
+    if (!kycCode || kycCode !== activeKycCode.current) return;
+    const code = kycCode;
 
     return loadSerial.current(next ? 'continue' : 'info', () => {
       const gen = ++loadGen.current;
@@ -373,14 +378,14 @@ export default function KycScreen(): JSX.Element {
       setError(undefined);
       setShowLinkHint(false);
       setConsentClient(undefined);
-      const isCurrent = () => gen === loadGen.current;
-      return (next ? callKyc(() => continueKyc(kycCode), isCurrent) : callKyc(() => getKycInfo(kycCode), isCurrent))
+      const isCurrent = () => gen === loadGen.current && code === activeKycCode.current;
+      return (next ? callKyc(() => continueKyc(code), isCurrent) : callKyc(() => getKycInfo(code), isCurrent))
         .then((info) => {
-          if (gen !== loadGen.current) return;
+          if (!isCurrent()) return;
           return handleReload(info);
         })
         .catch((error: ApiError) => {
-          if (gen !== loadGen.current) return;
+          if (!isCurrent()) return;
           setError(error.message ?? 'Unknown error');
         })
         .finally(() => {
