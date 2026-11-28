@@ -294,7 +294,7 @@ function KycAccount({ paramKycCode, ownKycCode, isSignedIn }: KycAccountProps): 
   return <KycCodeScreen key={kycCode} kycCode={kycCode} ownKycCode={ownKycCode} isSignedIn={isSignedIn} />;
 }
 
-interface KycCodeProps {
+interface KycCodeScreenProps {
   kycCode: string;
   ownKycCode?: string;
   isSignedIn: boolean;
@@ -302,7 +302,7 @@ interface KycCodeProps {
 
 // one per KYC code: a step from a link starts for a signed-in user only when opened inside the app for the own code,
 // or after a click on Start
-function KycCodeScreen({ kycCode, ownKycCode, isSignedIn }: KycCodeProps): JSX.Element {
+function KycCodeScreen({ kycCode, ownKycCode, isSignedIn }: KycCodeScreenProps): JSX.Element {
   const { translate } = useSettingsContext();
   const { nameToString } = useKycHelper();
   const { search, state } = useLocation();
@@ -420,6 +420,7 @@ function KycContent({ kycCode, canStartStep }: KycContentProps): JSX.Element {
       setIsAutoStarting(false);
     } else if (!processingKycData) {
       onLoad(true).finally(() => {
+        if (!isMounted.current) return;
         setIsAutoStarting(false);
         setParams({ autoStart: undefined });
       });
@@ -479,7 +480,9 @@ function KycContent({ kycCode, canStartStep }: KycContentProps): JSX.Element {
           ).then((session) => {
             if (!isCurrent) return;
             setError(undefined);
-            return handleReload(session).then(() => clearParams(['step']));
+            return handleReload(session).then(() => {
+              if (isCurrent) clearParams(['step']);
+            });
           })
         : callKyc(() => getKycInfo(kycCode)).then(async (info) => {
             if (!isCurrent) return;
@@ -542,7 +545,9 @@ function KycContent({ kycCode, canStartStep }: KycContentProps): JSX.Element {
       if (!isMounted.current) return;
       return reloadUser()
         .then(() => delay(0.01))
-        .then(() => goBack());
+        .then(() => {
+          if (isMounted.current) goBack();
+        });
     } else {
       setInfo(info);
 
