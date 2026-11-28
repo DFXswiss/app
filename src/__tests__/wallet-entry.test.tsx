@@ -12,6 +12,7 @@ const mockSetOptions = jest.fn();
 
 let mockResizeCallback: ((element: { offsetHeight: number }) => void) | undefined;
 let mockLayoutOptions: { title?: string; backButton?: boolean; onBack?: () => void } | undefined;
+let mockConnectMounts = 0;
 
 const mockSessionState = { isLoggedIn: false, isInitialized: true };
 const mockAuthState: { session?: { account?: number; address?: string; blockchains: string[] } } = {
@@ -72,44 +73,54 @@ jest.mock('@dfx.swiss/react-components', () => ({
   StyledLoadingSpinner: () => <div>loading</div>,
 }));
 
-jest.mock('../components/home/connect-wrapper', () => ({
-  ConnectWrapper: ({
-    wallet,
-    blockchain,
-    isConnect,
-    onLogin,
-    onCancel,
-    onSwitch,
-  }: {
-    wallet: string;
-    blockchain?: string;
-    isConnect?: boolean;
-    onLogin: () => void;
-    onCancel: () => void;
-    onSwitch: (type: string) => void;
-  }) => (
-    <div data-testid="connect">
-      <span>{wallet}</span>
-      <span>{blockchain ?? ''}</span>
-      <span>{String(isConnect)}</span>
-      <button onClick={onLogin}>finish-login</button>
-      <button onClick={onCancel}>cancel-connect</button>
-      <button onClick={() => onSwitch('Mail')}>switch-wallet</button>
-      <button onClick={() => onSwitch('Address')}>switch-address</button>
-      <button
-        onClick={() =>
-          jest
-            .requireActual<typeof import('../components/home/wallet/passkey-session')>(
-              '../components/home/wallet/passkey-session',
-            )
-            .setOpenPasskey(undefined)
-        }
-      >
-        Use another passkey
-      </button>
-    </div>
-  ),
-}));
+jest.mock('../components/home/connect-wrapper', () => {
+  // babel-plugin-jest-hoist runs this factory before file imports — require React here.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const React = require('react');
+  return {
+    ConnectWrapper: ({
+      wallet,
+      blockchain,
+      isConnect,
+      onLogin,
+      onCancel,
+      onSwitch,
+    }: {
+      wallet: string;
+      blockchain?: string;
+      isConnect?: boolean;
+      onLogin: () => void;
+      onCancel: () => void;
+      onSwitch: (type: string) => void;
+    }) => {
+      React.useEffect(() => {
+        mockConnectMounts += 1;
+      }, []);
+      return (
+        <div data-testid="connect">
+          <span>{wallet}</span>
+          <span>{blockchain ?? ''}</span>
+          <span>{String(isConnect)}</span>
+          <button onClick={onLogin}>finish-login</button>
+          <button onClick={onCancel}>cancel-connect</button>
+          <button onClick={() => onSwitch('Mail')}>switch-wallet</button>
+          <button onClick={() => onSwitch('Address')}>switch-address</button>
+          <button
+            onClick={() =>
+              jest
+                .requireActual<typeof import('../components/home/wallet/passkey-session')>(
+                  '../components/home/wallet/passkey-session',
+                )
+                .setOpenPasskey(undefined)
+            }
+          >
+            Use another passkey
+          </button>
+        </div>
+      );
+    },
+  };
+});
 
 jest.mock('../components/home/wallet/connect-address', () => ({
   CustodyAssets: [],
@@ -204,6 +215,7 @@ function resetWorld(): void {
   mockSetOptions.mockClear();
   mockResizeCallback = undefined;
   mockLayoutOptions = undefined;
+  mockConnectMounts = 0;
 }
 
 function Harness({ path }: { path: string }) {
@@ -728,5 +740,95 @@ describe('/wallet passkey entry', () => {
       mockLayoutOptions?.onBack?.();
     });
     expect(screen.getByText('Home')).toBeInTheDocument();
+  });
+
+  it('keeps the open passkey form mounted while the user reloads', () => {
+    mockSessionState.isLoggedIn = true;
+    setOpenPasskey({ state: 'unlocked' } as OpenPasskey);
+    const view = renderAt('/wallet');
+
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+    const mounts = mockConnectMounts;
+    expect(mounts).toBeGreaterThan(0);
+
+    mockUserState.isUserLoading = true;
+    view.rerender(<Harness path="/wallet" />);
+
+    expect(screen.getByTestId('connect')).toBeInTheDocument();
+    expect(mockConnectMounts).toBe(mounts);
+
+    mockUserState.isUserLoading = false;
+    view.rerender(<Harness path="/wallet" />);
+
+    expect(screen.getByTestId('connect')).toBeInTheDocument();
+    expect(mockConnectMounts).toBe(mounts);
+  });
+
+  it('keeps the open passkey form mounted while the wallet re-initialises', () => {
+    mockSessionState.isLoggedIn = true;
+    setOpenPasskey({ state: 'unlocked' } as OpenPasskey);
+    const view = renderAt('/wallet');
+
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+    const mounts = mockConnectMounts;
+    expect(mounts).toBeGreaterThan(0);
+
+    mockWalletState.isInitialized = false;
+    view.rerender(<Harness path="/wallet" />);
+
+    expect(screen.getByTestId('connect')).toBeInTheDocument();
+    expect(mockConnectMounts).toBe(mounts);
+
+    mockWalletState.isInitialized = true;
+    view.rerender(<Harness path="/wallet" />);
+
+    expect(screen.getByTestId('connect')).toBeInTheDocument();
+    expect(mockConnectMounts).toBe(mounts);
+  });
+
+  it('shows the spinner while the user loads when no passkey desk is open', () => {
+    const wallet = renderAt('/wallet');
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+
+    mockUserState.isUserLoading = true;
+    wallet.rerender(<Harness path="/wallet" />);
+
+    expect(screen.getByText('loading')).toBeInTheDocument();
+    expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
+    wallet.unmount();
+
+    resetWorld();
+    setOpenPasskey({ state: 'unlocked' } as OpenPasskey);
+    const mail = renderAt('/login/mail');
+    expect(screen.getByTestId('connect')).toHaveTextContent('Mail');
+
+    mockUserState.isUserLoading = true;
+    mail.rerender(<Harness path="/login/mail" />);
+
+    expect(screen.getByText('loading')).toBeInTheDocument();
+    expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
+  });
+
+  it('shows the spinner while the wallet initialises when no passkey desk is open', () => {
+    const wallet = renderAt('/wallet');
+    expect(screen.getByTestId('connect')).toHaveTextContent('Passkey');
+
+    mockWalletState.isInitialized = false;
+    wallet.rerender(<Harness path="/wallet" />);
+
+    expect(screen.getByText('loading')).toBeInTheDocument();
+    expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
+    wallet.unmount();
+
+    resetWorld();
+    setOpenPasskey({ state: 'unlocked' } as OpenPasskey);
+    const mail = renderAt('/login/mail');
+    expect(screen.getByTestId('connect')).toHaveTextContent('Mail');
+
+    mockWalletState.isInitialized = false;
+    mail.rerender(<Harness path="/login/mail" />);
+
+    expect(screen.getByText('loading')).toBeInTheDocument();
+    expect(screen.queryByTestId('connect')).not.toBeInTheDocument();
   });
 });

@@ -525,37 +525,23 @@ test.describe('Auth area e2e', () => {
 
       await expect(page.getByRole('button', { name: 'Show wallet' }).first()).toBeVisible({ timeout: 30000 });
       await page.getByRole('button', { name: 'Show wallet' }).first().click();
-      const path = "m/84'/0'/0'/0/0";
       const bitcoinRow = page.locator('li', { has: page.getByText('Bitcoin', { exact: true }) });
       await expect(bitcoinRow).toHaveCount(1, { timeout: 30000 });
       const address = await bitcoinRow.locator('[title]').getAttribute('title');
       if (address === null || !/^tb1q/.test(address)) throw new Error('Missing Bitcoin receive address');
 
-      const bitcoinAddressSql = `SELECT u.address AS address, a.family AS family, a.path AS path
-        FROM passkey_address a
-        JOIN "user" u ON u.id = a."userId"
-        JOIN passkey_credential c ON c.id = a."credentialId"
-        JOIN user_data d ON d.id = c."userDataId"
-        WHERE d.mail = $1 AND a.family = 'Bitcoin' AND a.path = $2`;
-      const row = await waitForRow<{ address: string; family: string; path: string }>(
-        bitcoinAddressSql,
-        [mail, path],
-        30000,
-      );
-      expect(row.family).toBe('Bitcoin');
-      expect(row.path).toBe(path);
-      expect(row.address).toMatch(/^bc1q/);
-      expect(address).not.toBe(row.address);
-      const rows = await queryRows<{ address: string; family: string; path: string }>(bitcoinAddressSql, [mail, path]);
-      expect(rows.length).toBe(1);
-      await expect(page.locator(`[title="${row.address}"]`)).toHaveCount(0);
+      const bitcoinLoginSql = `SELECT u.address AS address, u."userDataId" AS "userDataId"
+        FROM "user" u
+        JOIN user_data d ON d.id = u."userDataId"
+        WHERE d.mail = $1 AND u.address LIKE 'bc1q%'`;
+      const beforeOptIn = await queryRows<{ address: string }>(bitcoinLoginSql, [mail]);
+      expect(beforeOptIn.length).toBe(0);
 
       await page.getByRole('button', { name: 'Receive', exact: true }).click();
       const receive = page.getByRole('dialog', { name: 'Receive' });
       await receive.getByRole('button', { name: 'Bitcoin', exact: true }).click();
       const shownReceive = receive.getByTestId('passkey-receive-address');
       await expect(shownReceive).toHaveText(address);
-      await expect(shownReceive).not.toHaveText(row.address);
       await receive.getByRole('button', { name: 'Close' }).click();
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       const send = page.getByRole('dialog', { name: 'Send' });
@@ -568,7 +554,26 @@ test.describe('Auth area e2e', () => {
       await expect(page.getByText(/: Active/)).toBeVisible({ timeout: 20000 });
       await page.getByRole('button', { name: 'Reload data' }).click();
       await expect(page.getByText('Wallets on this account: 1.', { exact: true })).toBeVisible({ timeout: 20000 });
+      const language = page.locator('#passkey-language');
+      await expect(language.locator('option', { hasText: /^DE$/ })).toHaveCount(1);
+      await language.selectOption({ label: 'DE' });
+      const languageRow = page.locator('label[for="passkey-language"]');
+      await expect(languageRow).toBeVisible();
+      await expect(languageRow).toContainText('Sprache');
+      await language.selectOption({ label: 'EN' });
+      await expect(languageRow).toContainText('Language');
       await page.getByRole('button', { name: 'Close' }).first().click();
+      await page.getByRole('button', { name: 'Pay', exact: true }).click();
+      const pay = page.getByRole('dialog', { name: 'Scan QR code' });
+      await expect(pay).toBeVisible();
+      await expect(
+        pay.getByText('Point the camera at the payment QR code at the till.', { exact: true }),
+      ).toBeVisible();
+      await expect(pay.getByRole('alert')).toHaveText(
+        'No camera access. Allow it in your browser settings or paste the payment link.',
+      );
+      await pay.getByRole('button', { name: 'Close' }).click();
+      await expect(pay).toBeHidden();
       await expect(bitcoinRow.locator('[title]')).toHaveAttribute('title', address);
       await page.getByRole('button', { name: 'Settings' }).click();
       await page.getByRole('button', { name: 'Use another passkey' }).click();
@@ -587,7 +592,6 @@ test.describe('Auth area e2e', () => {
       await expect(page.getByRole('button', { name: 'Show wallet' }).first()).toBeVisible({ timeout: 30000 });
       await page.getByRole('button', { name: 'Show wallet' }).first().click();
       await expect(bitcoinRow.locator('[title]')).toHaveAttribute('title', address);
-      await expect(page.locator(`[title="${row.address}"]`)).toHaveCount(0);
 
       const evmRow = page.locator('li', { has: page.getByText('Ethereum & EVM', { exact: true }) });
       await expect(evmRow).toHaveCount(1, { timeout: 30000 });
@@ -600,6 +604,23 @@ test.describe('Auth area e2e', () => {
       const listEvmAddress = await evmRow.locator('[title]').getAttribute('title');
       expect(listEvmAddress?.toLowerCase()).toBe(evmAddress.toLowerCase());
       await receive.getByRole('button', { name: 'Close' }).click();
+
+      await page.getByRole('button', { name: 'Buy', exact: true }).click();
+      await expect(page).toHaveURL(/\/buy/, { timeout: 60000 });
+      const linked = await waitForRow<{ address: string; userDataId: number }>(bitcoinLoginSql, [mail], 30000);
+      const linkedRows = await queryRows<{ address: string; userDataId: number }>(bitcoinLoginSql, [mail]);
+      expect(linkedRows.length).toBe(1);
+      expect(linked.address).toMatch(/^bc1q/);
+      expect(linked.address).not.toBe(address);
+      const evmRows = await queryRows<{ address: string; userDataId: number }>(
+        `SELECT u.address AS address, u."userDataId" AS "userDataId"
+         FROM "user" u
+         JOIN user_data d ON d.id = u."userDataId"
+         WHERE d.mail = $1 AND lower(u.address) = $2`,
+        [mail, evmAddress.toLowerCase()],
+      );
+      expect(evmRows.length).toBe(1);
+      expect(linked.userDataId).toBe(evmRows[0].userDataId);
     } finally {
       await trackPasskeyUser();
     }

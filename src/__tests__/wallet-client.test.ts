@@ -1,6 +1,5 @@
 const mockLogin = jest.fn();
 const mockRegister = jest.fn();
-const mockLink = jest.fn();
 const mockExport = jest.fn();
 const mockVerify = jest.fn();
 const mockWallets = jest.fn();
@@ -41,7 +40,6 @@ jest.mock('@dfx.swiss/wallet', () => ({
     return {
       login: mockLogin,
       register: mockRegister,
-      link: mockLink,
       exportMnemonic: mockExport,
       verifyServerAddresses: mockVerify,
     };
@@ -108,7 +106,6 @@ describe('createWalletClient', () => {
   beforeEach(() => {
     mockLogin.mockClear();
     mockRegister.mockClear();
-    mockLink.mockClear();
     mockExport.mockClear();
     mockVerify.mockClear();
     mockWallets.mockClear();
@@ -161,15 +158,12 @@ describe('createWalletClient', () => {
   it('does not call setToken on the DfxHttpClient', async () => {
     const client = createWalletClient();
     const http = httpInstance();
-    const keys = {} as KeyRing;
     const diagnostic = { stage: 'Authentication', outcome: 'Success' } as const;
-    mockLink.mockResolvedValueOnce({ tag: 'link' });
     mockWallets.mockResolvedValueOnce({ tag: 'wallets' });
     mockStatus.mockResolvedValueOnce({ tag: 'status' });
     mockDiagnostics.mockResolvedValueOnce({ tag: 'diagnostics' });
 
     expect(http.setToken).not.toHaveBeenCalled();
-    await client.link('evm', 'wallet-token', keys, 2);
     await client.wallets('wallet-token');
     await client.credentialStatus(['credential']);
     await client.diagnostics(diagnostic);
@@ -241,22 +235,6 @@ describe('createWalletClient', () => {
     expect(mockRegister).toHaveBeenCalledTimes(2);
     expect(mockRegister).toHaveBeenCalledWith(first);
     expect(mockRegister).toHaveBeenCalledWith(second);
-  });
-
-  it('returns each PasskeyAuth link result for the two argument lists', async () => {
-    const client = createWalletClient();
-    const firstKeys = { id: 'keys' } as KeyRing;
-    const secondKeys = { id: 'other-keys' } as KeyRing;
-    const firstResult = { tag: 'link-first' };
-    const secondResult = { tag: 'link-second' };
-    mockLink.mockResolvedValueOnce(firstResult);
-    mockLink.mockResolvedValueOnce(secondResult);
-
-    expect(await client.link('bitcoin', 'session-token', firstKeys, 5)).toBe(firstResult);
-    expect(await client.link('evm', 'other-token', secondKeys)).toBe(secondResult);
-    expect(mockLink).toHaveBeenCalledTimes(2);
-    expect(mockLink).toHaveBeenCalledWith('bitcoin', 'session-token', firstKeys, 5);
-    expect(mockLink).toHaveBeenCalledWith('evm', 'other-token', secondKeys);
   });
 
   it('pins the stored credential id when revoking and updates the cache only if the wallet is not Active', async () => {

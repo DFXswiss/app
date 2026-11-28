@@ -96,11 +96,18 @@ const addedHomeKeys = [
   'Currency',
   'Close',
   'Actions',
-  'Not connected yet',
-  'Connect again',
   'Diagnostic recorded.',
   'Wallets on this account: {{count}}.',
-  'Linked {{family}} {{address}}.',
+  'This Bitcoin address belongs to another DFX account. Please contact support.',
+  'This Ethereum address belongs to another DFX account. Please contact support.',
+  'Language',
+  'Applies to the whole DFX app',
+  'App',
+  'Scan QR code',
+  'Point the camera at the payment QR code at the till.',
+  'No camera access. Allow it in your browser settings or paste the payment link.',
+  'Paste payment link',
+  'Coming soon',
   '{{credentialId}}: {{status}}',
   'Active',
   'Lost',
@@ -117,7 +124,16 @@ const addedHomeKeys = [
 ];
 
 const unchangedTranslations: Record<string, string[]> = {
-  de: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'Lightning (Spark)', 'Ethereum & EVM', '{{credentialId}}: {{status}}'],
+  de: [
+    'EVM',
+    'Bitcoin',
+    'Spark',
+    'Wallet',
+    'Lightning (Spark)',
+    'Ethereum & EVM',
+    '{{credentialId}}: {{status}}',
+    'App',
+  ],
   fr: [
     'EVM',
     'Bitcoin',
@@ -128,7 +144,16 @@ const unchangedTranslations: Record<string, string[]> = {
     'Ethereum & EVM',
     '{{credentialId}}: {{status}}',
   ],
-  it: ['EVM', 'Bitcoin', 'Spark', 'Wallet', 'Lightning (Spark)', 'Ethereum & EVM', '{{credentialId}}: {{status}}'],
+  it: [
+    'EVM',
+    'Bitcoin',
+    'Spark',
+    'Wallet',
+    'Lightning (Spark)',
+    'Ethereum & EVM',
+    '{{credentialId}}: {{status}}',
+    'App',
+  ],
 };
 
 function checkAddedTranslations(language: string, messages: Record<string, string>): void {

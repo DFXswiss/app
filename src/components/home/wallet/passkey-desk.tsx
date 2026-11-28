@@ -12,20 +12,21 @@ import PasskeyWalletCard, { formatWalletAmount } from './passkey-wallet-card';
 import PasskeyWalletActions, { WalletAction } from './passkey-wallet-actions';
 import PasskeyWordsSheet from './passkey-words-sheet';
 import PasskeyRevokeSheet from './passkey-revoke-sheet';
+import PasskeyPaySheet from './passkey-pay-sheet';
 import PasskeySettingsSheet from './passkey-settings-sheet';
 import PasskeySheet from './passkey-sheet';
 import PasskeyWalletHistory, { PasskeyHistory } from './passkey-wallet-history';
 
 const TOAST_DURATION_MS = 4000;
 
-// One automatic Bitcoin link per key ring, shared by every desk in this tab.
-// A wallet refresh keeps the ring; a new sign-in replaces it.
-const bitcoinLinksStarted = new WeakSet<object>();
+const APP_PATH = { Buy: '/buy', Sell: '/sell', Swap: '/swap' } as const;
 
 type ShownReceive =
   { family: ReceiveFamily; label: string; address: string } | { family: ReceiveFamily; label: string; error: string };
 
 export interface PasskeyDeskProps {
+  opening?: boolean;
+  onOpenApp?: (path: '/buy' | '/sell' | '/swap') => void;
   balance?: { chf: number; eur: number };
   assets?: { name: string; amount: string; chf: number; eur: number; network?: string }[];
   history?: PasskeyHistory;
@@ -44,7 +45,7 @@ function releaseNothing(): void {
 }
 
 // The API accepts only the mainnet BIP-84 login address. A testnet receive key is a different address.
-function bitcoinLoginRing(keys: KeyRing): { ring: KeyRing; release: () => void } {
+export function bitcoinLoginRing(keys: KeyRing): { ring: KeyRing; release: () => void } {
   if (keys.bitcoinNetwork !== 'testnet4') return { ring: keys, release: releaseNothing };
   const ring = KeyRing.fromMnemonic(keys.mnemonic(), { bitcoinNetwork: 'mainnet' });
   return { ring, release: () => ring.wipe() };
@@ -89,6 +90,8 @@ export default function PasskeyDesk({
   onCancel,
   onHome = onCancel,
   onRevoked,
+  onOpenApp,
+  opening = false,
   balance,
   assets,
   history,
@@ -103,12 +106,13 @@ export default function PasskeyDesk({
     }
   });
   const [expanded, setExpanded] = useState(false);
-  const [sheet, setSheet] = useState<'settings' | 'words' | 'revoke' | 'receive' | 'send'>();
+  const [sheet, setSheet] = useState<'settings' | 'words' | 'revoke' | 'receive' | 'send' | 'pay'>();
   const [toast, setToast] = useState<string>();
   const [revokeAcknowledged, setRevokeAcknowledged] = useState(false);
   const [reason, setReason] = useState<'Lost' | 'Compromised'>('Lost');
   const open = useSyncExternalStore(subscribeOpenPasskey, getOpenPasskey, getOpenPasskey);
-  const [busy, setBusy] = useState(false);
+  const [operationBusy, setBusy] = useState(false);
+  const busy = operationBusy || opening;
   const [note, setNoteValue] = useState<string>();
   const [noteKind, setNoteKind] = useState<'message' | 'refresh' | 'status' | 'diagnostics' | 'receive'>('message');
   const [words, setWords] = useState<string[]>();
@@ -154,17 +158,8 @@ export default function PasskeyDesk({
     setNoteKind(kind);
   }
 
-  function showMessage(message: string, kind: 'message' | 'link' = 'message'): void {
-    if (kind === 'link') {
-      displayToast(message);
-      return;
-    }
-    const current = sheetRef.current;
-    if (current === 'settings' || current === 'words' || current === 'revoke' || current === 'receive') {
-      setNote(message);
-    } else {
-      displayToast(translate('screens/home', message));
-    }
+  function showMessage(message: string): void {
+    setNote(message);
   }
 
   function closeSheet(): void {
@@ -214,7 +209,7 @@ export default function PasskeyDesk({
     action: (client: WalletClient, session: OpenPasskey, isCurrent: () => boolean) => Promise<void>,
   ): Promise<void> {
     const session = getOpenPasskey();
-    if (!session || busyRef.current) return;
+    if (!session || busyRef.current || opening) return;
     busyRef.current = true;
     setBusy(true);
     setNote(undefined);
@@ -265,36 +260,6 @@ export default function PasskeyDesk({
     return match;
   }
 
-  async function onLink(accountIndex: number, reportSuccess: boolean): Promise<void> {
-    const session = getOpenPasskey();
-    if (!session || !session.wallet || !canUseKeys(session)) return;
-    const keys = session.keys;
-    const token = session.accessToken;
-    await run(async (client, original, isCurrent) => {
-      const login = bitcoinLoginRing(keys);
-      let linked: Awaited<ReturnType<WalletClient['link']>>;
-      try {
-        linked = await client.link('bitcoin', token, login.ring, accountIndex);
-      } finally {
-        login.release();
-      }
-      // The link response is an address token. Further account routes still need the ceremony token.
-      const linkedText = translate('screens/home', 'Linked {{family}} {{address}}.', {
-        family: linked.address.family,
-        address: linked.address.address,
-      });
-      try {
-        await refreshWallet(client, original, isCurrent, false);
-      } catch (caught) {
-        if (isCurrent()) {
-          showMessage(`${linkedText} ${translate('screens/home', passkeyMessage(caught))}`);
-        }
-        return;
-      }
-      if (isCurrent() && reportSuccess) showMessage(linkedText, 'link');
-    });
-  }
-
   async function onRevokeWithPasskey(reason: 'Lost' | 'Compromised'): Promise<void> {
     await run(async (client, session, isCurrent) => {
       const revoked = await client.revoke(reason, session.wallet.credentialId);
@@ -317,19 +282,6 @@ export default function PasskeyDesk({
     });
   }
 
-  const addresses = open?.wallet?.addresses ?? [];
-  const sessionWallet = open?.wallet;
-
-  useEffect(() => {
-    if (busy || busyRef.current) return;
-    if (!open || !canUseKeys(open)) return;
-    if (sessionWallet === undefined) return;
-    if (addresses.some((address) => address.family === 'Bitcoin')) return;
-    if (bitcoinLinksStarted.has(open.keys)) return;
-    bitcoinLinksStarted.add(open.keys);
-    void onLink(0, false);
-  }, [busy, open, sessionWallet, addresses, onLink]);
-
   if (!open?.wallet) return <StyledVerticalStack gap={2} center />;
 
   const t = (key: string) => translate('screens/home', key);
@@ -344,7 +296,7 @@ export default function PasskeyDesk({
     setSheet(next);
   };
   const requestCloseSheet = () => {
-    if (!busyRef.current) closeSheet();
+    if (!busyRef.current && !opening) closeSheet();
   };
   const toastMessage = (message: string) => displayToast(t(message));
   const copyAddress = async (address: string) => {
@@ -386,13 +338,16 @@ export default function PasskeyDesk({
     });
   }
   function onAction(action: WalletAction): void {
-    if (action === 'Buy' || action === 'Sell' || action === 'Swap' || action === 'Pay') return;
+    if (action === 'Buy' || action === 'Sell' || action === 'Swap') {
+      onOpenApp?.(APP_PATH[action]);
+      return;
+    }
     const openNow = getOpenPasskey();
     if (!openNow || !canUseKeys(openNow)) return;
     if (action === 'Send') openSheet('send');
+    else if (action === 'Pay') openSheet('pay');
     else openSheet('receive');
   }
-  const bitcoin = addresses.some((address) => address.family === 'Bitcoin');
   const receiveLabel: Record<ReceiveFamily, string> = {
     evm: t('Ethereum & EVM'),
     bitcoin: 'Bitcoin',
@@ -468,18 +423,6 @@ export default function PasskeyDesk({
                       </p>
                     ) : (
                       <p className="text-sm">{row.error}</p>
-                    )}
-                    {row.family === 'bitcoin' && !bitcoin && (
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <p className="text-sm">{t('Not connected yet')}</p>
-                        <button
-                          className={`${button} border border-dfxGray-500`}
-                          disabled={busy}
-                          onClick={() => void onLink(0, true)}
-                        >
-                          {t('Connect again')}
-                        </button>
-                      </div>
                     )}
                   </div>
                   {'address' in row && (
@@ -615,6 +558,7 @@ export default function PasskeyDesk({
           <PasskeySendPanel />
         </PasskeySheet>
       )}
+      {sheet === 'pay' && <PasskeyPaySheet open onClose={requestCloseSheet} onToast={toastMessage} />}
     </main>
   );
 }

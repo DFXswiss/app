@@ -1,7 +1,8 @@
 import { User, UserStatus } from '@dfx.swiss/react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DeletedAddressGate } from 'src/components/deleted-address-notice';
+import { setPasskeySigningIn } from 'src/components/home/wallet/passkey-session';
 import { isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-address';
 
 const mockReactivateAddress = jest.fn();
@@ -51,6 +52,10 @@ describe('deleted session address', () => {
     mockReloadUser.mockResolvedValue(undefined);
   });
 
+  afterEach(() => {
+    setPasskeySigningIn(false);
+  });
+
   it('recognises only the signed-in address when its status is Deleted', () => {
     expect(isDeletedSessionAddress(undefined)).toBe(false);
     expect(isDeletedSessionAddress({} as User)).toBe(false);
@@ -67,6 +72,7 @@ describe('deleted session address', () => {
         hasUser: false,
         isUserLoading: false,
         sawLoad: false,
+        passkeySigningIn: false,
       }),
     ).toBe(true);
     expect(
@@ -76,6 +82,7 @@ describe('deleted session address', () => {
         hasUser: false,
         isUserLoading: false,
         sawLoad: false,
+        passkeySigningIn: false,
       }),
     ).toBe(false);
     expect(
@@ -85,14 +92,72 @@ describe('deleted session address', () => {
         hasUser: false,
         isUserLoading: false,
         sawLoad: false,
+        passkeySigningIn: false,
       }),
     ).toBe(true);
     expect(
-      shouldHoldForUser({ isInitialized: true, isLoggedIn: true, hasUser: true, isUserLoading: false, sawLoad: true }),
+      shouldHoldForUser({
+        isInitialized: true,
+        isLoggedIn: true,
+        hasUser: true,
+        isUserLoading: false,
+        sawLoad: true,
+        passkeySigningIn: false,
+      }),
     ).toBe(false);
     expect(
-      shouldHoldForUser({ isInitialized: true, isLoggedIn: true, hasUser: false, isUserLoading: false, sawLoad: true }),
+      shouldHoldForUser({
+        isInitialized: true,
+        isLoggedIn: true,
+        hasUser: false,
+        isUserLoading: false,
+        sawLoad: true,
+        passkeySigningIn: false,
+      }),
     ).toBe(false);
+  });
+
+  it('does not hold a signed-in user while the passkey opt-in is signing in', () => {
+    expect(
+      shouldHoldForUser({
+        isInitialized: true,
+        isLoggedIn: true,
+        hasUser: false,
+        isUserLoading: true,
+        sawLoad: false,
+        passkeySigningIn: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldHoldForUser({
+        isInitialized: true,
+        isLoggedIn: true,
+        hasUser: false,
+        isUserLoading: true,
+        sawLoad: true,
+        passkeySigningIn: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldHoldForUser({
+        isInitialized: true,
+        isLoggedIn: true,
+        hasUser: false,
+        isUserLoading: false,
+        sawLoad: false,
+        passkeySigningIn: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldHoldForUser({
+        isInitialized: false,
+        isLoggedIn: true,
+        hasUser: false,
+        isUserLoading: true,
+        sawLoad: false,
+        passkeySigningIn: true,
+      }),
+    ).toBe(true);
   });
 
   it('shows the deleted-address notice and activates the address through the user context', async () => {
@@ -144,6 +209,45 @@ describe('deleted session address', () => {
 
     await waitFor(() => expect(screen.getByText('Unknown error')).toBeInTheDocument());
     expect(mockReloadUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the app instead of the notice while the passkey opt-in is signing in on a deleted address', () => {
+    mockLoggedIn = true;
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+    setPasskeySigningIn(true);
+
+    render(
+      <DeletedAddressGate>
+        <div>app</div>
+      </DeletedAddressGate>,
+    );
+
+    expect(screen.getByText('app')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Activate address' })).not.toBeInTheDocument();
+
+    act(() => setPasskeySigningIn(false));
+
+    expect(screen.getByRole('button', { name: 'Activate address' })).toBeInTheDocument();
+    expect(screen.queryByText('app')).not.toBeInTheDocument();
+  });
+
+  it('renders the app while the passkey opt-in is signing in and holds again when the flag clears', () => {
+    mockLoading = true;
+    setPasskeySigningIn(true);
+
+    render(
+      <DeletedAddressGate>
+        <div>app</div>
+      </DeletedAddressGate>,
+    );
+
+    expect(screen.getByText('app')).toBeInTheDocument();
+    expect(screen.queryByText('loading')).not.toBeInTheDocument();
+
+    act(() => setPasskeySigningIn(false));
+
+    expect(screen.getByText('loading')).toBeInTheDocument();
+    expect(screen.queryByText('app')).not.toBeInTheDocument();
   });
 
   it('holds the app with a spinner while the signed-in user is loading', () => {

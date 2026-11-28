@@ -4,12 +4,18 @@ import PasskeySettingsSheet from '../components/home/wallet/passkey-settings-she
 import PasskeyWordsSheet from '../components/home/wallet/passkey-words-sheet';
 
 let mockTranslateAddresses = false;
+const mockChangeAppLanguage = jest.fn();
+let mockLanguage: { symbol: string } | undefined;
+let mockAvailableLanguages: { symbol: string }[] = [];
 jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({
     translate: (_namespace: string, text: string) =>
       mockTranslateAddresses && ['Bitcoin', 'Lightning (Spark)', 'Ethereum & EVM'].includes(text)
         ? `translated ${text}`
         : text,
+    language: mockLanguage,
+    availableLanguages: mockAvailableLanguages,
+    changeAppLanguage: (...args: unknown[]) => mockChangeAppLanguage(...args),
   }),
 }));
 
@@ -217,5 +223,42 @@ describe('Passkey wallet dialogs', () => {
     expect(screen.getByRole('button', { name: /Check addresses/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
     screen.getAllByRole('button', { name: 'Close' }).forEach((button) => expect(button).toBeDisabled());
+  });
+
+  it('changes the app language from the language row', () => {
+    const languages = [{ symbol: 'EN' }, { symbol: 'DE' }];
+    mockLanguage = languages[0];
+    mockAvailableLanguages = languages;
+    mockChangeAppLanguage.mockClear();
+    try {
+      render(
+        <PasskeySettingsSheet
+          credentialId="credential"
+          busy={false}
+          onWords={jest.fn()}
+          onVerify={jest.fn()}
+          onRefresh={jest.fn()}
+          onStatus={jest.fn()}
+          onDiagnostics={jest.fn()}
+          onAnotherPasskey={jest.fn()}
+          onRevoke={jest.fn()}
+          onCancel={jest.fn()}
+          onClose={jest.fn()}
+        />,
+      );
+      expect(screen.getByRole('heading', { name: 'App' })).toBeInTheDocument();
+      expect(screen.getByText('Applies to the whole DFX app')).toBeInTheDocument();
+      const select = screen.getByRole('combobox');
+      expect(select).toHaveAttribute('id', 'passkey-language');
+      expect(select).toHaveValue('EN');
+      fireEvent.change(select, { target: { value: 'DE' } });
+      expect(mockChangeAppLanguage).toHaveBeenCalledTimes(1);
+      expect(mockChangeAppLanguage).toHaveBeenCalledWith(languages[1]);
+      fireEvent.change(select, { target: { value: 'XX' } });
+      expect(mockChangeAppLanguage).toHaveBeenCalledTimes(1);
+    } finally {
+      mockLanguage = undefined;
+      mockAvailableLanguages = [];
+    }
   });
 });

@@ -20,6 +20,8 @@ declare global {
 }
 
 let current: OpenPasskey | undefined;
+// The sign-in flag stays in this tab. It is not written to localStorage, sessionStorage or a cookie.
+let signingIn = false;
 const listeners = new Set<() => void>();
 
 export function getOpenPasskey(): OpenPasskey | undefined {
@@ -28,6 +30,15 @@ export function getOpenPasskey(): OpenPasskey | undefined {
 
 export function setOpenPasskey(next: OpenPasskey | undefined): void {
   current = next;
+  listeners.forEach((listener) => listener());
+}
+
+export function isPasskeySigningIn(): boolean {
+  return signingIn;
+}
+
+export function setPasskeySigningIn(next: boolean): void {
+  signingIn = next;
   listeners.forEach((listener) => listener());
 }
 
