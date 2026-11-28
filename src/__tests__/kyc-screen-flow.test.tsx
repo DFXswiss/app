@@ -1045,6 +1045,27 @@ describe('KycScreen results of a code that is no longer shown', () => {
     await settle();
     expect(mockClearParams).toHaveBeenCalledTimes(1);
   });
+
+  it('does not reload the user or go back for a continuation of the previous code', async () => {
+    const previous = deferred();
+    mockGetKycInfo.mockResolvedValue(info({ kycLevel: 0 }));
+    mockContinueKyc.mockImplementation((code: string) =>
+      code === 'ONE' ? previous.promise : Promise.resolve(session(step('PersonalData'), { kycLevel: 0 })),
+    );
+    renderPath('/profile/kyc?code=ONE');
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('ONE'), { timeout: 10000 });
+    act(() => {
+      (routerNavigate as ReturnType<typeof useNavigate>)({ pathname: '/profile/kyc', search: '?code=TWO' });
+    });
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('TWO'), { timeout: 10000 });
+
+    await act(async () => {
+      previous.resolve(session(undefined, { kycLevel: 30 }));
+    });
+    await settle();
+    expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(mockGoBack).not.toHaveBeenCalled();
+  });
 });
 
 describe('KycScreen overview actions and load protection', () => {
@@ -1593,7 +1614,8 @@ describe('KycScreen redirect and consent effects', () => {
     await settle();
     mockUser.user = undefined;
     consentRender.rerender(tree('/kyc?client=CLIENT'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Next' }, { timeout: 10000 }));
+    // the retained view is unmounted with its code, so nothing of it can be clicked
+    expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
     expect(mockAddTransferClient).not.toHaveBeenCalled();
     consentRender.unmount();
 
@@ -1606,7 +1628,7 @@ describe('KycScreen redirect and consent effects', () => {
     await settle();
     mockUser.user = undefined;
     loadRender.rerender(tree('/kyc?step=PersonalData'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Increase limit' }, { timeout: 10000 }));
+    expect(screen.queryByRole('button', { name: 'Increase limit' })).not.toBeInTheDocument();
     expect(mockContinueKyc).not.toHaveBeenCalled();
   });
 });
