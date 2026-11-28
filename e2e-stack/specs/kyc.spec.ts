@@ -495,6 +495,48 @@ test.describe('KYC area e2e', () => {
     await expect(page.getByText(/Do you want to start the step/)).toHaveCount(0);
   });
 
+  test('/account?code of another account: a phone change waits for Start after either account choice', async ({
+    page,
+  }) => {
+    const own = await createUser({ tag: 'kyc-app-code-own', kycLevel: 0, language: 'EN', completePersonalData: true });
+    const other = await createUser({ tag: 'kyc-app-code-other', kycLevel: 0, language: 'EN' });
+    const otherHash = await kycHashOf(other.userDataId);
+    const ownBefore = await lastKycStepId(own.userDataId, 'PhoneChange');
+    const otherBefore = await lastKycStepId(other.userDataId, 'PhoneChange');
+
+    async function startPhoneChangeFromAccount(): Promise<void> {
+      await gotoWithSession(page, `/account?code=${otherHash}`, own.jwt);
+      await page
+        .getByText('+41791234567', { exact: true })
+        .getByRole('button')
+        .click({ timeout: 15000 });
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.getByText(CODE_PROMPT)).toBeVisible({ timeout: 15000 });
+    }
+
+    // Open link: the step of the other account still waits for Start
+    await startPhoneChangeFromAccount();
+    await page.getByRole('button', { name: 'Open link' }).click();
+    await expect(page.getByText(/Do you want to start the step/)).toBeVisible({ timeout: 15000 });
+    await page.waitForLoadState('networkidle');
+    expect(await lastKycStepId(other.userDataId, 'PhoneChange')).toBe(otherBefore);
+
+    // Continue with my account: the own step waits for Start, then starts on the own account
+    await startPhoneChangeFromAccount();
+    await page.getByRole('button', { name: 'Continue with my account' }).click();
+    await expect(page.getByText(/Do you want to start the step/)).toBeVisible({ timeout: 15000 });
+    await page.waitForLoadState('networkidle');
+    expect(await lastKycStepId(own.userDataId, 'PhoneChange')).toBe(ownBefore);
+
+    await page.getByRole('button', { name: 'Start' }).click();
+    await waitForRow(
+      `SELECT id FROM kyc_step WHERE "userDataId" = $1 AND name = 'PhoneChange' AND id > $2`,
+      [own.userDataId, ownBefore],
+      20000,
+    );
+    expect(await lastKycStepId(other.userDataId, 'PhoneChange')).toBe(otherBefore);
+  });
+
   // ---------------------------------------------------------------------------
   // /kyc/redirect - do NOT use openScreen (immediate navigate to /kyc)
   // ---------------------------------------------------------------------------

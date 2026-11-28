@@ -822,6 +822,35 @@ describe('KycScreen step links for a signed-in user', () => {
     expect(screen.queryByText(stepPrompt('step:PersonalData'))).not.toBeInTheDocument();
   });
 
+  it('asks before starting an in-app step on the code of another account', async () => {
+    renderPath({
+      pathname: '/kyc',
+      search: '?code=CODE&step=PersonalData',
+      state: { kycStep: 'PersonalData', kycOwner: 'USER' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open link' }, { timeout: 10000 }));
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalled();
+  });
+
+  it('asks again for a step confirmed on another code', async () => {
+    renderPath('/kyc?step=PersonalData');
+    fireEvent.click(await screen.findByRole('button', { name: 'Start' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('USER', 'PersonalData', undefined, undefined), {
+      timeout: 10000,
+    });
+    await settle();
+
+    act(() => {
+      (routerNavigate as ReturnType<typeof useNavigate>)({ pathname: '/kyc', search: '?code=CODE&step=PersonalData' });
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open link' }, { timeout: 10000 }));
+    expect(await screen.findByText(stepPrompt('step:PersonalData'), undefined, { timeout: 10000 })).toBeInTheDocument();
+    await settle();
+    expect(mockStartStep).not.toHaveBeenCalledWith('CODE', 'PersonalData', undefined, undefined);
+  });
+
   it('asks when the in-app state was set for another account', async () => {
     renderPath({
       pathname: '/kyc',
