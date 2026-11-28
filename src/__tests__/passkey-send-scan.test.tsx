@@ -441,7 +441,9 @@ describe('passkey send paste and scan', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
       await waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
       expect(stopSecond).toHaveBeenCalledTimes(1);
-      expect(screen.queryByTestId('passkey-send-scan')).not.toBeInTheDocument();
+      // The camera effect stops the tracks first and closes the camera with a state update; the
+      // re-render that removes the video runs in a later scheduler task, so wait for it.
+      await waitFor(() => expect(screen.queryByTestId('passkey-send-scan')).not.toBeInTheDocument());
       expect(screen.getByLabelText('Destination')).toHaveValue('');
       expect(detect).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole('button', { name: 'Close' }));
